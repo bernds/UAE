@@ -7,21 +7,34 @@
   */
 
 struct hardfiledata {
-    unsigned long size;
+    uae_u64 size;
+    uae_u64 offset;
     int nrcyls;
     int secspertrack;
     int surfaces;
     int reservedblocks;
     int blocksize;
     FILE *fd;
+
+    /* geometry from possible RDSK block */
+    unsigned int cylinders;
+    unsigned int sectors;
+    unsigned int heads;
 };
+
+#define FILESYS_VIRTUAL 0
+#define FILESYS_HARDFILE 1
+#define FILESYS_HARDFILE_RDB 2
+#define FILESYS_HARDDRIVE 3
+
+#define FILESYS_MAX_BLOCKSIZE 2048
 
 struct uaedev_mount_info;
 
 extern struct hardfiledata *get_hardfile_data (int nr);
 
 extern int nr_units (struct uaedev_mount_info *mountinfo);
-extern int is_hardfile (struct uaedev_mount_info *mountinfo, int unit_no);
+extern int hardfile_fs_type (struct uaedev_mount_info *mountinfo, int unit_no);
 
 extern char *set_filesys_unit (struct uaedev_mount_info *mountinfo, int,
 			       const char *devname, const char *volname, const char *rootdir,
@@ -52,3 +65,6 @@ extern void filesys_start_threads (void);
 extern void filesys_install (void);
 extern void filesys_install_code (void);
 extern void filesys_store_devinfo (uae_u8 *);
+
+extern int hdf_read (struct hardfiledata *hfd, void *buffer, uae_u64 offset, int len);
+extern int hdf_write (struct hardfiledata *hfd, void *buffer, uae_u64 offset, int len);

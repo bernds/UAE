@@ -2381,7 +2381,7 @@ static void gen_opcode (unsigned long int opcode)
 	genamode (curi->dmode, "dstreg", sz_long, "dst", 2, 0, 0);
 	start_brace ();
 	printf ("\tuae_s32 offset = extra & 0x800 ? m68k_dreg (regs, (extra >> 6) & 7) : (extra >> 6) & 0x1f;\n");
-	printf ("\tint width = (((extra & 0x20 ? m68k_dreg (regs, extra & 7) : extra) -1) & 0x1f) +1;\n");
+	printf ("\tint width = (((extra & 0x20 ? m68k_dreg (regs, extra & 7) : (uae_u32)extra) - 1) & 0x1f) + 1;\n");
 	if (curi->dmode == Dreg) {
 	    printf ("\tuae_u32 tmp = m68k_dreg (regs, dstreg) << (offset & 0x1f);\n");
 	} else {

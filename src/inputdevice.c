@@ -21,6 +21,8 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
+#include <ctype.h>
+
 #include "options.h"
 #include "custom.h"
 #include "xwin.h"
@@ -1462,7 +1464,7 @@ static int ismouse (int ei)
 extern int cd32_enabled;
 #endif
 
-static void scanevents(struct uae_prefs *p)
+static void scanevents (struct uae_prefs *p)
 {
     int i, j, k, ei;
     struct inputevent *e;

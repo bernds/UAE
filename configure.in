@@ -7,7 +7,7 @@ dnl this into the public domain.
 dnl There are still many uncaught errors (e.g. --enable-dga on an Amiga)
 dnl I didn't have the nerve to track them all down.
 
-AC_INIT(UAE, 0.8.28, , uae)
+AC_INIT(UAE, 0.8.29, , uae)
 AC_CONFIG_SRCDIR([amiga/source/transdisk.c])
 AC_PREREQ(2.59)
 

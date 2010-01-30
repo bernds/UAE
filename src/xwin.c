@@ -1551,7 +1551,7 @@ static void unacquire_mouse (unsigned int num)
    return;
 }
 
-static unsigned int get_mouse_num (void)
+static int get_mouse_num (void)
 {
     return 1;
 }
@@ -1561,7 +1561,7 @@ static const char *get_mouse_name (unsigned int mouse)
     return 0;
 }
 
-static unsigned int get_mouse_widget_num (unsigned int mouse)
+static int get_mouse_widget_num (unsigned int mouse)
 {
     return MAX_AXES + MAX_BUTTONS;
 }
@@ -1606,7 +1606,7 @@ struct inputdevice_functions inputdevicefunc_mouse = {
 /*
  * Keyboard inputdevice functions
  */
-static unsigned int get_kb_num (void)
+static int get_kb_num (void)
 {
     return 1;
 }
@@ -1616,7 +1616,7 @@ static const char *get_kb_name (unsigned int kb)
     return "Default keyboard";
 }
 
-static unsigned int get_kb_widget_num (unsigned int kb)
+static int get_kb_widget_num (unsigned int kb)
 {
     return 255; // fix me
 }

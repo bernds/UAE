@@ -160,7 +160,7 @@ static uae_u32 readint (char **c)
     return val * (negative ? -1 : 1);
 }
 
-static char next_char ( char **c)
+static char next_char (char **c)
 {
     ignore_ws (c);
     return *(*c)++;
@@ -378,7 +378,7 @@ static void decode_copper_insn (FILE* file, unsigned long insn, unsigned long ad
     case 0x00000000:
     case 0x00000001: /* MOVE insn */
 	{
-	    int addr = (insn >> 16) & 0x1fe;
+	    unsigned int addr = (insn >> 16) & 0x1fe;
 	    int i = 0;
 	    while (custd[i].name) {
 		if (custd[i].adr == addr + 0xdff000)
@@ -1103,7 +1103,7 @@ static void searchmem (char **cc)
 
 static void m68k_modify (char **inptr)
 {
-    char c1, c2;
+    int c1, c2;
     uae_u32 v;
 
     c1 = toupper (next_char (inptr));

@@ -613,7 +613,7 @@ uae_u8 REGPARAM2 *kickmem_xlate (uaecptr addr)
 /* CD32/CDTV extended kick memory */
 
 uae_u8 *extendedkickmemory;
-static int extendedkickmem_size;
+static uae_u32 extendedkickmem_size;
 static uae_u32 extendedkickmem_start;
 
 #define EXTENDED_ROM_CD32 1
@@ -952,7 +952,7 @@ static int patch_residents (uae_u8 *kickmemory, int size)
     return patched;
 }
 
-static void patch_kick(void)
+static void patch_kick (void)
 {
     int patched = 0;
     if (kickmem_size >= 524288 && currprefs.kickshifter)
@@ -1183,7 +1183,7 @@ static void init_mem_banks (void)
 static void allocate_memory (void)
 {
     if (allocated_chipmem != currprefs.chipmem_size) {
-	int memsize;
+	uae_u32 memsize;
 	if (chipmemory)
 	    mapped_free (chipmemory);
 	chipmemory = 0;
@@ -1731,6 +1731,7 @@ uaecptr strcpyha_safe (uaecptr dst, const char *src)
     return res;
 }
 
+#if 0
 uae_u32 strncpyha (uae_u32 dst, const char *src, int size)
 {
     uae_u32 res = dst;
@@ -1741,6 +1742,7 @@ uae_u32 strncpyha (uae_u32 dst, const char *src, int size)
     }
     return res;
 }
+#endif
 
 uae_u32 strncpyha_safe (uae_u32 dst, const char *src, int size)
 {

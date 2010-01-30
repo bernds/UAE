@@ -121,6 +121,7 @@ void romlist_clear (int mask)
     list_of_roms = realloc (list_of_roms, sizeof (struct romlist) * j);
 }
 
+#if 0
 struct romdata *getromdatabypath(char *path)
 {
     int i;
@@ -135,6 +136,7 @@ struct romdata *getromdatabypath(char *path)
     }
     return NULL;
 }
+#endif
 
 #define NEXT_ROM_ID 68
 

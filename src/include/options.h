@@ -218,7 +218,6 @@ extern int cstype_from_prefs (struct uae_prefs *p);
 extern void built_in_chipset_prefs (struct uae_prefs *p, int);
 
 extern int fixup_prefs_dimensions (struct gfx_params *, struct uae_rect *, int);
-extern void fixup_cpu (struct uae_prefs *);
 
 extern void check_prefs_changed_custom (void);
 extern void check_prefs_changed_cpu (void);

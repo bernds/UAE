@@ -26,4 +26,6 @@ extern void DSKSYNC (uae_u16);
 extern void DSKPTL (uae_u16);
 extern void DSKPTH (uae_u16);
 
+extern void dumpdisk (void);
+
 #define MAX_PREVIOUS_FLOPPIES 99

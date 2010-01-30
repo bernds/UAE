@@ -18,9 +18,9 @@ struct inputdevice_functions {
     int (*acquire)(unsigned int,int);
     void (*unacquire)(unsigned int);
     void (*read)(void);
-    unsigned int (*get_num)(void);
-    const char* (*get_name)(unsigned int);
-    unsigned int (*get_widget_num)(unsigned int);
+    int (*get_num)(void);
+    const char *(*get_name)(unsigned int);
+    int (*get_widget_num)(unsigned int);
     int (*get_widget_type)(unsigned int,unsigned int,char*,uae_u32*);
     int (*get_widget_first)(unsigned int,int);
 };

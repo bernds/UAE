@@ -124,7 +124,7 @@ static struct color_entry current_colors;
 static unsigned int bplcon0, bplcon1, bplcon2, bplcon3, bplcon4;
 static unsigned int diwstrt, diwstop, diwhigh;
 static int diwhigh_written;
-static unsigned int ddfstrt, ddfstop;
+static int ddfstrt, ddfstop;
 
 /* The display and data fetch windows */
 

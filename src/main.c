@@ -315,11 +315,7 @@ int fixup_prefs_dimensions (struct gfx_params *p, struct uae_rect *modes, int n_
     return n_modes - 1;
 }
 
-void fixup_cpu (struct uae_prefs *p)
-{
-}
-
-void fixup_sound (struct uae_prefs *p)
+static void fixup_sound (struct uae_prefs *p)
 {
     if (p->sound_stereo_separation < 0)
 	p->sound_stereo_separation = 0;
@@ -354,7 +350,7 @@ static void fixup_prefs (struct uae_prefs *p)
 	err = 1;
     }
     if ((p->z3fastmem_size & (p->z3fastmem_size - 1)) != 0
-	|| (p->z3fastmem_size != 0 && (p->z3fastmem_size < 0x100000 || p->z3fastmem_size > 0x4000000)))
+	|| (p->z3fastmem_size != 0 && (p->z3fastmem_size < 0x100000 || p->z3fastmem_size > 0x10000000)))
     {
 	p->z3fastmem_size = 0;
 	write_log ("Unsupported Zorro III fastmem size!\n");

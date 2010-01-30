@@ -607,7 +607,7 @@ static void set_hd_state (void)
     for (i = 0; i < nr; i++) {
 	GtkTreeIter iter;
 	int secspertrack, surfaces, reserved, blocksize, size;
-	int cylinders, readonly, pri;
+	int cylinders, readonly, pri, type;
 	char *volname, *rootdir, *devname;
 	char *failure;
 
@@ -618,7 +618,8 @@ static void set_hd_state (void)
 				    &secspertrack, &surfaces, &reserved,
 				    &cylinders, &size, &blocksize, &pri);
 
-	if (is_hardfile (currprefs.mountinfo, i)) {
+	type = hardfile_fs_type (currprefs.mountinfo, i);
+	if (type != FILESYS_VIRTUAL) {
 	    sprintf (texts[0], "DH%d", i );
 	    sprintf (texts[3], "%d", surfaces);
 	    sprintf (texts[4], "%d", cylinders);
@@ -2456,7 +2457,7 @@ static void did_hdchange (void)
     else
 	return;
 
-    if (is_hardfile (currprefs.mountinfo, idx)) {
+    if (hardfile_fs_type (currprefs.mountinfo, idx) != FILESYS_VIRTUAL) {
 	create_hdfdlg ("Change a hardfile", idx);
     } else {
 	create_dirdlg ("Change a mounted directory", idx);
@@ -3047,6 +3048,7 @@ int gui_init (int at_start)
 	    gui_exit ();
 	    return -2;
 	}
+	quit_program = 0;
     }
 
     return 1;

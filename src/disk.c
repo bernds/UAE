@@ -1109,8 +1109,6 @@ static void disk_events (int last)
     }
 }
 
-extern void cia_diskindex (void);
-
 void DISK_handler (void)
 {
     eventtab[ev_disk].active = 0;

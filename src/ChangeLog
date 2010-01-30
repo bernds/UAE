@@ -1,3 +1,17 @@
+A21130 hdf_read and hdf_write APIs imported from WinUAE.  Hardfile read/write
+       operations sped up by using xlateaddr and using block transfers directly
+       from Amiga memory.
+       Correct the range of allowed Z3 fastmem sizes.
+       Import the "hardfile2/filesys2" config options from WinUAE/E-UAE.
+A21127 WinUAE returns a type from is_hardfile. Import that and rename the
+       function.  Also change get_new_device and callers to match WinUAE
+       more closely.
+       Import code for multiple filesys units (unused for now; needed for RDB
+       support).
+       Minor hardfile code cleanup, and support for NSCMD_DEVICEQUERY.
+A11122 Remove MULTIPLICATION_PROFITABLE stuff in audio.c.
+       64 bit fix in filesys.c.
+       A few compiler warnings squashed.
 A11120 Remove some gtk1-specific workarounds.
        Make sure all gtk operations happen from the same thread (i.e. the
        GUI thread).

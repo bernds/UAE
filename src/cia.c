@@ -216,7 +216,7 @@ static void CIA_update (void)
 
 static void CIA_calctimers (void)
 {
-    long int ciaatimea = -1, ciaatimeb = -1, ciabtimea = -1, ciabtimeb = -1;
+    unsigned long ciaatimea = ~0UL, ciaatimeb = ~0UL, ciabtimea = ~0UL, ciabtimeb = ~0UL;
 
     eventtab[ev_cia].oldcycles = get_cycles ();
     if ((ciaacra & 0x21) == 0x01) {
@@ -224,7 +224,7 @@ static void CIA_calctimers (void)
     }
     if ((ciaacrb & 0x61) == 0x41) {
 	/* Timer B will not get any pulses if Timer A is off. */
-	if (ciaatimea >= 0) {
+	if (ciaatimea != ~0UL) {
 	    /* If Timer A is in one-shot mode, and Timer B needs more than
 	     * one pulse, it will not underflow. */
 	    if (ciaatb == 0 || (ciaacra & 0x8) == 0) {
@@ -246,7 +246,7 @@ static void CIA_calctimers (void)
     }
     if ((ciabcrb & 0x61) == 0x41) {
 	/* Timer B will not get any pulses if Timer A is off. */
-	if (ciabtimea >= 0) {
+	if (ciabtimea != ~0UL) {
 	    /* If Timer A is in one-shot mode, and Timer B needs more than
 	     * one pulse, it will not underflow. */
 	    if (ciabtb == 0 || (ciabcra & 0x8) == 0) {
@@ -260,14 +260,14 @@ static void CIA_calctimers (void)
     if ((ciabcrb & 0x61) == 0x01) {
 	ciabtimeb = (DIV10 - div10) + DIV10 * ciabtb;
     }
-    eventtab[ev_cia].active = (ciaatimea != -1 || ciaatimeb != -1
-			       || ciabtimea != -1 || ciabtimeb != -1);
+    eventtab[ev_cia].active = (ciaatimea != ~0UL || ciaatimeb != ~0UL
+			       || ciabtimea != ~0UL || ciabtimeb != ~0UL);
     if (eventtab[ev_cia].active) {
-	unsigned long int ciatime = ~0L;
-	if (ciaatimea != -1) ciatime = ciaatimea;
-	if (ciaatimeb != -1 && ciaatimeb < ciatime) ciatime = ciaatimeb;
-	if (ciabtimea != -1 && ciabtimea < ciatime) ciatime = ciabtimea;
-	if (ciabtimeb != -1 && ciabtimeb < ciatime) ciatime = ciabtimeb;
+	unsigned long int ciatime = ~0UL;
+	if (ciaatimea != ~0UL) ciatime = ciaatimea;
+	if (ciaatimeb != ~0UL && ciaatimeb < ciatime) ciatime = ciaatimeb;
+	if (ciabtimea != ~0UL && ciabtimea < ciatime) ciatime = ciabtimea;
+	if (ciabtimeb != ~0UL && ciabtimeb < ciatime) ciatime = ciabtimeb;
 	eventtab[ev_cia].evtime = ciatime + get_cycles ();
     }
     events_schedule();

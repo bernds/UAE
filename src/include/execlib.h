@@ -6,17 +6,6 @@
   * Copyright 1996 Bernd Schmidt
   */
 
-#define CMD_INVALID 0
-#define CMD_RESET   1
-#define CMD_READ    2
-#define CMD_WRITE   3
-#define CMD_UPDATE  4
-#define CMD_CLEAR   5
-#define CMD_STOP    6
-#define CMD_START   7
-#define CMD_FLUSH   8
-#define CMD_NONSTD  9
-
 #define NT_TASK     1
 #define NT_DEVICE   3
 #define NT_MSGPORT  4

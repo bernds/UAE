@@ -56,7 +56,6 @@ struct audio_channel_data {
     unsigned int wlen;
     int current_sample, last_sample;
     int vol;
-    int *voltbl;
     uae_u16 dat, nextdat, len;
     int sample_accum, sample_accum_time;
     int sinc_output_state;
@@ -84,17 +83,10 @@ void init_sound_table16 (void)
 	    sound_table[j][i] = j * (uae_s8)i * 2;
 }
 
-#ifdef MULTIPLICATION_PROFITABLE
 typedef uae_s8 sample8_t;
 #define DO_CHANNEL_1(v, c) do { (v) *= audio_channel[c].vol; } while (0)
 #define SBASEVAL16(logn) ((logn) == 1 ? SOUND16_BASE_VAL >> 1 : SOUND16_BASE_VAL)
 #define FINISH_DATA(data, b, logn) do { if (14 - (b) + (logn) > 0) (data) >>= 14 - (b) + (logn); else (data) <<= (b) - 14 - (logn); } while (0);
-#else
-typedef uae_u8 sample8_t;
-#define DO_CHANNEL_1(v, c) do { (v) = audio_channel[c].voltbl[(v)]; } while (0)
-#define SBASEVAL16(logn) SOUND16_BASE_VAL
-#define FINISH_DATA(data, b, logn)
-#endif
 
 static uae_u32 right_word_saved[SOUND_MAX_DELAY_BUFFER];
 static uae_u32 left_word_saved[SOUND_MAX_DELAY_BUFFER];
@@ -560,12 +552,8 @@ static void audio_handler (unsigned int nr)
 
 	    /* Volume attachment? */
 	    if (audav) {
-		if (nr < 3) {
+		if (nr < 3)
 		    (cdp+1)->vol = cdp->dat;
-#ifndef MULTIPLICATION_PROFITABLE
-		    (cdp+1)->voltbl = sound_table[cdp->dat];
-#endif
-		}
 	    }
 	}
 	break;
@@ -615,11 +603,6 @@ void audio_reset (void)
     } else
 	for (i = 0; i < 4; i++)
 	    audio_channel[i].dmaen = (dmacon & 0x200) && (dmacon & (1 << i));
-
-#ifndef MULTIPLICATION_PROFITABLE
-    for (i = 0; i < 4; i++)
-	audio_channel[i].voltbl = sound_table[audio_channel[i].vol];
-#endif
 
     last_cycles = get_cycles ();
     next_sample_evtime = scaled_sample_evtime;
@@ -907,9 +890,6 @@ void AUDxVOL (int nr, uae_u16 v)
     update_audio ();
 
     audio_channel[nr].vol = v2;
-#ifndef MULTIPLICATION_PROFITABLE
-    audio_channel[nr].voltbl = sound_table[v2];
-#endif
 }
 
 void update_adkmasks (void)

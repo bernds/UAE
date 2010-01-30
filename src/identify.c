@@ -246,126 +246,126 @@ struct customData custd[] =
     { "Unknown",  0xdff0DC }, /* Unknown or Unused */
     { "Unknown",  0xdff0DE }, /* Unknown or Unused */
 #endif
-    { "BPL1PTH",  0xdff0E0, 2 }, /* Bit plane pointer 1 (high 5 bits) */
-    { "BPL1PTL",  0xdff0E2, 2 }, /* Bit plane pointer 1 (low 15 bits) */
-    { "BPL2PTH",  0xdff0E4, 2 }, /* Bit plane pointer 2 (high 5 bits) */
-    { "BPL2PTL",  0xdff0E6, 2 }, /* Bit plane pointer 2 (low 15 bits) */
-    { "BPL3PTH",  0xdff0E8, 2 }, /* Bit plane pointer 3 (high 5 bits) */
-    { "BPL3PTL",  0xdff0EA, 2 }, /* Bit plane pointer 3 (low 15 bits) */
-    { "BPL4PTH",  0xdff0EC, 2 }, /* Bit plane pointer 4 (high 5 bits) */
-    { "BPL4PTL",  0xdff0EE, 2 }, /* Bit plane pointer 4 (low 15 bits) */
-    { "BPL5PTH",  0xdff0F0, 2 }, /* Bit plane pointer 5 (high 5 bits) */
-    { "BPL5PTL",  0xdff0F2, 2 }, /* Bit plane pointer 5 (low 15 bits) */
-    { "BPL6PTH",  0xdff0F4, 2 }, /* Bit plane pointer 6 (high 5 bits) */
-    { "BPL6PTL",  0xdff0F6, 2 }, /* Bit plane pointer 6 (low 15 bits) */
-    { "BPL7PTH",  0xdff0F8, 2 }, /* Bit plane pointer 7 (high 5 bits) */
-    { "BPL7PTL",  0xdff0FA, 2 }, /* Bit plane pointer 7 (low 15 bits) */
-    { "BPL8PTH",  0xdff0FC, 2 }, /* Bit plane pointer 8 (high 5 bits) */
-    { "BPL8PTL",  0xdff0FE, 2 }, /* Bit plane pointer 8 (low 15 bits) */
-    { "BPLCON0",  0xdff100, 2 }, /* Bit plane control reg (misc control bits) */
-    { "BPLCON1",  0xdff102, 2 }, /* Bit plane control reg (scroll val PF1,PF2) */
-    { "BPLCON2",  0xdff104, 2 }, /* Bit plane control reg (priority control) */
-    { "BPLCON3",  0xdff106, 2 }, /* Bit plane control reg (enhanced features) */
-    { "BPL1MOD",  0xdff108, 2 }, /* Bit plane modulo (odd planes,or active- fetch lines if bitplane scan-doubling is enabled */
-    { "BPL2MOD",  0xdff10A, 2 }, /* Bit plane modulo (even planes or inactive- fetch lines if bitplane scan-doubling is enabled */
-    { "BPLCON4",  0xdff10C, 2 }, /* Bit plane control reg (bitplane and sprite masks) */
-    { "CLXCON2",  0xdff10e, 2 }, /* Extended collision control reg */
-    { "BPL1DAT",  0xdff110, 2 }, /* Bit plane 1 data (parallel to serial con- vert) */
-    { "BPL2DAT",  0xdff112, 2 }, /* Bit plane 2 data (parallel to serial con- vert) */
-    { "BPL3DAT",  0xdff114, 2 }, /* Bit plane 3 data (parallel to serial con- vert) */
-    { "BPL4DAT",  0xdff116, 2 }, /* Bit plane 4 data (parallel to serial con- vert) */
-    { "BPL5DAT",  0xdff118, 2 }, /* Bit plane 5 data (parallel to serial con- vert) */
-    { "BPL6DAT",  0xdff11a, 2 }, /* Bit plane 6 data (parallel to serial con- vert) */
-    { "BPL7DAT",  0xdff11c, 2 }, /* Bit plane 7 data (parallel to serial con- vert) */
-    { "BPL8DAT",  0xdff11e, 2 }, /* Bit plane 8 data (parallel to serial con- vert) */
-    { "SPR0PTH",  0xdff120, 2 }, /* Sprite 0 pointer (high 5 bits) */
-    { "SPR0PTL",  0xdff122, 2 }, /* Sprite 0 pointer (low 15 bits) */
-    { "SPR1PTH",  0xdff124, 2 }, /* Sprite 1 pointer (high 5 bits) */
-    { "SPR1PTL",  0xdff126, 2 }, /* Sprite 1 pointer (low 15 bits) */
-    { "SPR2PTH",  0xdff128, 2 }, /* Sprite 2 pointer (high 5 bits) */
-    { "SPR2PTL",  0xdff12A, 2 }, /* Sprite 2 pointer (low 15 bits) */
-    { "SPR3PTH",  0xdff12C, 2 }, /* Sprite 3 pointer (high 5 bits) */
-    { "SPR3PTL",  0xdff12E, 2 }, /* Sprite 3 pointer (low 15 bits) */
-    { "SPR4PTH",  0xdff130, 2 }, /* Sprite 4 pointer (high 5 bits) */
-    { "SPR4PTL",  0xdff132, 2 }, /* Sprite 4 pointer (low 15 bits) */
-    { "SPR5PTH",  0xdff134, 2 }, /* Sprite 5 pointer (high 5 bits) */
-    { "SPR5PTL",  0xdff136, 2 }, /* Sprite 5 pointer (low 15 bits) */
-    { "SPR6PTH",  0xdff138, 2 }, /* Sprite 6 pointer (high 5 bits) */
-    { "SPR6PTL",  0xdff13A, 2 }, /* Sprite 6 pointer (low 15 bits) */
-    { "SPR7PTH",  0xdff13C, 2 }, /* Sprite 7 pointer (high 5 bits) */
-    { "SPR7PTL",  0xdff13E, 2 }, /* Sprite 7 pointer (low 15 bits) */
-    { "SPR0POS",  0xdff140, 2 }, /* Sprite 0 vert-horiz start pos data */
-    { "SPR0CTL",  0xdff142, 2 }, /* Sprite 0 position and control data */
-    { "SPR0DATA", 0xdff144, 2 }, /* Sprite 0 image data register A */
-    { "SPR0DATB", 0xdff146, 2 }, /* Sprite 0 image data register B */
-    { "SPR1POS",  0xdff148, 2 }, /* Sprite 1 vert-horiz start pos data */
-    { "SPR1CTL",  0xdff14A, 2 }, /* Sprite 1 position and control data */
-    { "SPR1DATA", 0xdff14C, 2 }, /* Sprite 1 image data register A */
-    { "SPR1DATB", 0xdff14E, 2 }, /* Sprite 1 image data register B */
-    { "SPR2POS",  0xdff150, 2 }, /* Sprite 2 vert-horiz start pos data */
-    { "SPR2CTL",  0xdff152, 2 }, /* Sprite 2 position and control data */
-    { "SPR2DATA", 0xdff154, 2 }, /* Sprite 2 image data register A */
-    { "SPR2DATB", 0xdff156, 2 }, /* Sprite 2 image data register B */
-    { "SPR3POS",  0xdff158, 2 }, /* Sprite 3 vert-horiz start pos data */
-    { "SPR3CTL",  0xdff15A, 2 }, /* Sprite 3 position and control data */
-    { "SPR3DATA", 0xdff15C, 2 }, /* Sprite 3 image data register A */
-    { "SPR3DATB", 0xdff15E, 2 }, /* Sprite 3 image data register B */
-    { "SPR4POS",  0xdff160, 2 }, /* Sprite 4 vert-horiz start pos data */
-    { "SPR4CTL",  0xdff162, 2 }, /* Sprite 4 position and control data */
-    { "SPR4DATA", 0xdff164, 2 }, /* Sprite 4 image data register A */
-    { "SPR4DATB", 0xdff166, 2 }, /* Sprite 4 image data register B */
-    { "SPR5POS",  0xdff168, 2 }, /* Sprite 5 vert-horiz start pos data */
-    { "SPR5CTL",  0xdff16A, 2 }, /* Sprite 5 position and control data */
-    { "SPR5DATA", 0xdff16C, 2 }, /* Sprite 5 image data register A */
-    { "SPR5DATB", 0xdff16E, 2 }, /* Sprite 5 image data register B */
-    { "SPR6POS",  0xdff170, 2 }, /* Sprite 6 vert-horiz start pos data */
-    { "SPR6CTL",  0xdff172, 2 }, /* Sprite 6 position and control data */
-    { "SPR6DATA", 0xdff174, 2 }, /* Sprite 6 image data register A */
-    { "SPR6DATB", 0xdff176, 2 }, /* Sprite 6 image data register B */
-    { "SPR7POS",  0xdff178, 2 }, /* Sprite 7 vert-horiz start pos data */
-    { "SPR7CTL",  0xdff17A, 2 }, /* Sprite 7 position and control data */
-    { "SPR7DATA", 0xdff17C, 2 }, /* Sprite 7 image data register A */
-    { "SPR7DATB", 0xdff17E, 2 }, /* Sprite 7 image data register B */
-    { "COLOR00",  0xdff180, 2 }, /* Color table 00 */
-    { "COLOR01",  0xdff182, 2 }, /* Color table 01 */
-    { "COLOR02",  0xdff184, 2 }, /* Color table 02 */
-    { "COLOR03",  0xdff186, 2 }, /* Color table 03 */
-    { "COLOR04",  0xdff188, 2 }, /* Color table 04 */
-    { "COLOR05",  0xdff18A, 2 }, /* Color table 05 */
-    { "COLOR06",  0xdff18C, 2 }, /* Color table 06 */
-    { "COLOR07",  0xdff18E, 2 }, /* Color table 07 */
-    { "COLOR08",  0xdff190, 2 }, /* Color table 08 */
-    { "COLOR09",  0xdff192, 2 }, /* Color table 09 */
-    { "COLOR10",  0xdff194, 2 }, /* Color table 10 */
-    { "COLOR11",  0xdff196, 2 }, /* Color table 11 */
-    { "COLOR12",  0xdff198, 2 }, /* Color table 12 */
-    { "COLOR13",  0xdff19A, 2 }, /* Color table 13 */
-    { "COLOR14",  0xdff19C, 2 }, /* Color table 14 */
-    { "COLOR15",  0xdff19E, 2 }, /* Color table 15 */
-    { "COLOR16",  0xdff1A0, 2 }, /* Color table 16 */
-    { "COLOR17",  0xdff1A2, 2 }, /* Color table 17 */
-    { "COLOR18",  0xdff1A4, 2 }, /* Color table 18 */
-    { "COLOR19",  0xdff1A6, 2 }, /* Color table 19 */
-    { "COLOR20",  0xdff1A8, 2 }, /* Color table 20 */
-    { "COLOR21",  0xdff1AA, 2 }, /* Color table 21 */
-    { "COLOR22",  0xdff1AC, 2 }, /* Color table 22 */
-    { "COLOR23",  0xdff1AE, 2 }, /* Color table 23 */
-    { "COLOR24",  0xdff1B0, 2 }, /* Color table 24 */
-    { "COLOR25",  0xdff1B2, 2 }, /* Color table 25 */
-    { "COLOR26",  0xdff1B4, 2 }, /* Color table 26 */
-    { "COLOR27",  0xdff1B6, 2 }, /* Color table 27 */
-    { "COLOR28",  0xdff1B8, 2 }, /* Color table 28 */
-    { "COLOR29",  0xdff1BA, 2 }, /* Color table 29 */
-    { "COLOR30",  0xdff1BC, 2 }, /* Color table 30 */
-    { "COLOR31",  0xdff1BE, 2 }, /* Color table 31 */
-    { "HTOTAL",   0xdff1C0, 2 }, /* Highest number count in horiz line (VARBEAMEN = 1) */
-    { "HSSTOP",   0xdff1C2, 2 }, /* Horiz line pos for HSYNC stop */
-    { "HBSTRT",   0xdff1C4, 2 }, /* Horiz line pos for HBLANK start */
-    { "HBSTOP",   0xdff1C6, 2 }, /* Horiz line pos for HBLANK stop */
-    { "VTOTAL",   0xdff1C8, 2 }, /* Highest numbered vertical line (VARBEAMEN = 1) */
-    { "VSSTOP",   0xdff1CA, 2 }, /* Vert line for VBLANK start */
-    { "VBSTRT",   0xdff1CC, 2 }, /* Vert line for VBLANK start */
-    { "VBSTOP",   0xdff1CE, 2 }, /* Vert line for VBLANK stop */
+    { "BPL1PTH",  0xdff0E0, 2, 0 }, /* Bit plane pointer 1 (high 5 bits) */
+    { "BPL1PTL",  0xdff0E2, 2, 0 }, /* Bit plane pointer 1 (low 15 bits) */
+    { "BPL2PTH",  0xdff0E4, 2, 0 }, /* Bit plane pointer 2 (high 5 bits) */
+    { "BPL2PTL",  0xdff0E6, 2, 0 }, /* Bit plane pointer 2 (low 15 bits) */
+    { "BPL3PTH",  0xdff0E8, 2, 0 }, /* Bit plane pointer 3 (high 5 bits) */
+    { "BPL3PTL",  0xdff0EA, 2, 0 }, /* Bit plane pointer 3 (low 15 bits) */
+    { "BPL4PTH",  0xdff0EC, 2, 0 }, /* Bit plane pointer 4 (high 5 bits) */
+    { "BPL4PTL",  0xdff0EE, 2, 0 }, /* Bit plane pointer 4 (low 15 bits) */
+    { "BPL5PTH",  0xdff0F0, 2, 0 }, /* Bit plane pointer 5 (high 5 bits) */
+    { "BPL5PTL",  0xdff0F2, 2, 0 }, /* Bit plane pointer 5 (low 15 bits) */
+    { "BPL6PTH",  0xdff0F4, 2, 0 }, /* Bit plane pointer 6 (high 5 bits) */
+    { "BPL6PTL",  0xdff0F6, 2, 0 }, /* Bit plane pointer 6 (low 15 bits) */
+    { "BPL7PTH",  0xdff0F8, 2, 0 }, /* Bit plane pointer 7 (high 5 bits) */
+    { "BPL7PTL",  0xdff0FA, 2, 0 }, /* Bit plane pointer 7 (low 15 bits) */
+    { "BPL8PTH",  0xdff0FC, 2, 0 }, /* Bit plane pointer 8 (high 5 bits) */
+    { "BPL8PTL",  0xdff0FE, 2, 0 }, /* Bit plane pointer 8 (low 15 bits) */
+    { "BPLCON0",  0xdff100, 2, 0 }, /* Bit plane control reg (misc control bits) */
+    { "BPLCON1",  0xdff102, 2, 0 }, /* Bit plane control reg (scroll val PF1,PF2) */
+    { "BPLCON2",  0xdff104, 2, 0 }, /* Bit plane control reg (priority control) */
+    { "BPLCON3",  0xdff106, 2, 0 }, /* Bit plane control reg (enhanced features) */
+    { "BPL1MOD",  0xdff108, 2, 0 }, /* Bit plane modulo (odd planes,or active- fetch lines if bitplane scan-doubling is enabled */
+    { "BPL2MOD",  0xdff10A, 2, 0 }, /* Bit plane modulo (even planes or inactive- fetch lines if bitplane scan-doubling is enabled */
+    { "BPLCON4",  0xdff10C, 2, 0 }, /* Bit plane control reg (bitplane and sprite masks) */
+    { "CLXCON2",  0xdff10e, 2, 0 }, /* Extended collision control reg */
+    { "BPL1DAT",  0xdff110, 2, 0 }, /* Bit plane 1 data (parallel to serial con- vert) */
+    { "BPL2DAT",  0xdff112, 2, 0 }, /* Bit plane 2 data (parallel to serial con- vert) */
+    { "BPL3DAT",  0xdff114, 2, 0 }, /* Bit plane 3 data (parallel to serial con- vert) */
+    { "BPL4DAT",  0xdff116, 2, 0 }, /* Bit plane 4 data (parallel to serial con- vert) */
+    { "BPL5DAT",  0xdff118, 2, 0 }, /* Bit plane 5 data (parallel to serial con- vert) */
+    { "BPL6DAT",  0xdff11a, 2, 0 }, /* Bit plane 6 data (parallel to serial con- vert) */
+    { "BPL7DAT",  0xdff11c, 2, 0 }, /* Bit plane 7 data (parallel to serial con- vert) */
+    { "BPL8DAT",  0xdff11e, 2, 0 }, /* Bit plane 8 data (parallel to serial con- vert) */
+    { "SPR0PTH",  0xdff120, 2, 0 }, /* Sprite 0 pointer (high 5 bits) */
+    { "SPR0PTL",  0xdff122, 2, 0 }, /* Sprite 0 pointer (low 15 bits) */
+    { "SPR1PTH",  0xdff124, 2, 0 }, /* Sprite 1 pointer (high 5 bits) */
+    { "SPR1PTL",  0xdff126, 2, 0 }, /* Sprite 1 pointer (low 15 bits) */
+    { "SPR2PTH",  0xdff128, 2, 0 }, /* Sprite 2 pointer (high 5 bits) */
+    { "SPR2PTL",  0xdff12A, 2, 0 }, /* Sprite 2 pointer (low 15 bits) */
+    { "SPR3PTH",  0xdff12C, 2, 0 }, /* Sprite 3 pointer (high 5 bits) */
+    { "SPR3PTL",  0xdff12E, 2, 0 }, /* Sprite 3 pointer (low 15 bits) */
+    { "SPR4PTH",  0xdff130, 2, 0 }, /* Sprite 4 pointer (high 5 bits) */
+    { "SPR4PTL",  0xdff132, 2, 0 }, /* Sprite 4 pointer (low 15 bits) */
+    { "SPR5PTH",  0xdff134, 2, 0 }, /* Sprite 5 pointer (high 5 bits) */
+    { "SPR5PTL",  0xdff136, 2, 0 }, /* Sprite 5 pointer (low 15 bits) */
+    { "SPR6PTH",  0xdff138, 2, 0 }, /* Sprite 6 pointer (high 5 bits) */
+    { "SPR6PTL",  0xdff13A, 2, 0 }, /* Sprite 6 pointer (low 15 bits) */
+    { "SPR7PTH",  0xdff13C, 2, 0 }, /* Sprite 7 pointer (high 5 bits) */
+    { "SPR7PTL",  0xdff13E, 2, 0 }, /* Sprite 7 pointer (low 15 bits) */
+    { "SPR0POS",  0xdff140, 2, 0 }, /* Sprite 0 vert-horiz start pos data */
+    { "SPR0CTL",  0xdff142, 2, 0 }, /* Sprite 0 position and control data */
+    { "SPR0DATA", 0xdff144, 2, 0 }, /* Sprite 0 image data register A */
+    { "SPR0DATB", 0xdff146, 2, 0 }, /* Sprite 0 image data register B */
+    { "SPR1POS",  0xdff148, 2, 0 }, /* Sprite 1 vert-horiz start pos data */
+    { "SPR1CTL",  0xdff14A, 2, 0 }, /* Sprite 1 position and control data */
+    { "SPR1DATA", 0xdff14C, 2, 0 }, /* Sprite 1 image data register A */
+    { "SPR1DATB", 0xdff14E, 2, 0 }, /* Sprite 1 image data register B */
+    { "SPR2POS",  0xdff150, 2, 0 }, /* Sprite 2 vert-horiz start pos data */
+    { "SPR2CTL",  0xdff152, 2, 0 }, /* Sprite 2 position and control data */
+    { "SPR2DATA", 0xdff154, 2, 0 }, /* Sprite 2 image data register A */
+    { "SPR2DATB", 0xdff156, 2, 0 }, /* Sprite 2 image data register B */
+    { "SPR3POS",  0xdff158, 2, 0 }, /* Sprite 3 vert-horiz start pos data */
+    { "SPR3CTL",  0xdff15A, 2, 0 }, /* Sprite 3 position and control data */
+    { "SPR3DATA", 0xdff15C, 2, 0 }, /* Sprite 3 image data register A */
+    { "SPR3DATB", 0xdff15E, 2, 0 }, /* Sprite 3 image data register B */
+    { "SPR4POS",  0xdff160, 2, 0 }, /* Sprite 4 vert-horiz start pos data */
+    { "SPR4CTL",  0xdff162, 2, 0 }, /* Sprite 4 position and control data */
+    { "SPR4DATA", 0xdff164, 2, 0 }, /* Sprite 4 image data register A */
+    { "SPR4DATB", 0xdff166, 2, 0 }, /* Sprite 4 image data register B */
+    { "SPR5POS",  0xdff168, 2, 0 }, /* Sprite 5 vert-horiz start pos data */
+    { "SPR5CTL",  0xdff16A, 2, 0 }, /* Sprite 5 position and control data */
+    { "SPR5DATA", 0xdff16C, 2, 0 }, /* Sprite 5 image data register A */
+    { "SPR5DATB", 0xdff16E, 2, 0 }, /* Sprite 5 image data register B */
+    { "SPR6POS",  0xdff170, 2, 0 }, /* Sprite 6 vert-horiz start pos data */
+    { "SPR6CTL",  0xdff172, 2, 0 }, /* Sprite 6 position and control data */
+    { "SPR6DATA", 0xdff174, 2, 0 }, /* Sprite 6 image data register A */
+    { "SPR6DATB", 0xdff176, 2, 0 }, /* Sprite 6 image data register B */
+    { "SPR7POS",  0xdff178, 2, 0 }, /* Sprite 7 vert-horiz start pos data */
+    { "SPR7CTL",  0xdff17A, 2, 0 }, /* Sprite 7 position and control data */
+    { "SPR7DATA", 0xdff17C, 2, 0 }, /* Sprite 7 image data register A */
+    { "SPR7DATB", 0xdff17E, 2, 0 }, /* Sprite 7 image data register B */
+    { "COLOR00",  0xdff180, 2, 0 }, /* Color table 00 */
+    { "COLOR01",  0xdff182, 2, 0 }, /* Color table 01 */
+    { "COLOR02",  0xdff184, 2, 0 }, /* Color table 02 */
+    { "COLOR03",  0xdff186, 2, 0 }, /* Color table 03 */
+    { "COLOR04",  0xdff188, 2, 0 }, /* Color table 04 */
+    { "COLOR05",  0xdff18A, 2, 0 }, /* Color table 05 */
+    { "COLOR06",  0xdff18C, 2, 0 }, /* Color table 06 */
+    { "COLOR07",  0xdff18E, 2, 0 }, /* Color table 07 */
+    { "COLOR08",  0xdff190, 2, 0 }, /* Color table 08 */
+    { "COLOR09",  0xdff192, 2, 0 }, /* Color table 09 */
+    { "COLOR10",  0xdff194, 2, 0 }, /* Color table 10 */
+    { "COLOR11",  0xdff196, 2, 0 }, /* Color table 11 */
+    { "COLOR12",  0xdff198, 2, 0 }, /* Color table 12 */
+    { "COLOR13",  0xdff19A, 2, 0 }, /* Color table 13 */
+    { "COLOR14",  0xdff19C, 2, 0 }, /* Color table 14 */
+    { "COLOR15",  0xdff19E, 2, 0 }, /* Color table 15 */
+    { "COLOR16",  0xdff1A0, 2, 0 }, /* Color table 16 */
+    { "COLOR17",  0xdff1A2, 2, 0 }, /* Color table 17 */
+    { "COLOR18",  0xdff1A4, 2, 0 }, /* Color table 18 */
+    { "COLOR19",  0xdff1A6, 2, 0 }, /* Color table 19 */
+    { "COLOR20",  0xdff1A8, 2, 0 }, /* Color table 20 */
+    { "COLOR21",  0xdff1AA, 2, 0 }, /* Color table 21 */
+    { "COLOR22",  0xdff1AC, 2, 0 }, /* Color table 22 */
+    { "COLOR23",  0xdff1AE, 2, 0 }, /* Color table 23 */
+    { "COLOR24",  0xdff1B0, 2, 0 }, /* Color table 24 */
+    { "COLOR25",  0xdff1B2, 2, 0 }, /* Color table 25 */
+    { "COLOR26",  0xdff1B4, 2, 0 }, /* Color table 26 */
+    { "COLOR27",  0xdff1B6, 2, 0 }, /* Color table 27 */
+    { "COLOR28",  0xdff1B8, 2, 0 }, /* Color table 28 */
+    { "COLOR29",  0xdff1BA, 2, 0 }, /* Color table 29 */
+    { "COLOR30",  0xdff1BC, 2, 0 }, /* Color table 30 */
+    { "COLOR31",  0xdff1BE, 2, 0 }, /* Color table 31 */
+    { "HTOTAL",   0xdff1C0, 2, 0 }, /* Highest number count in horiz line (VARBEAMEN = 1) */
+    { "HSSTOP",   0xdff1C2, 2, 0 }, /* Horiz line pos for HSYNC stop */
+    { "HBSTRT",   0xdff1C4, 2, 0 }, /* Horiz line pos for HBLANK start */
+    { "HBSTOP",   0xdff1C6, 2, 0 }, /* Horiz line pos for HBLANK stop */
+    { "VTOTAL",   0xdff1C8, 2, 0 }, /* Highest numbered vertical line (VARBEAMEN = 1) */
+    { "VSSTOP",   0xdff1CA, 2, 0 }, /* Vert line for VBLANK start */
+    { "VBSTRT",   0xdff1CC, 2, 0 }, /* Vert line for VBLANK start */
+    { "VBSTOP",   0xdff1CE, 2, 0 }, /* Vert line for VBLANK stop */
 #if 0
     { "SPRHSTRT", 0xdff1D0 }, /* UHRES sprite vertical start */
     { "SPRHSTOP", 0xdff1D2 }, /* UHRES sprite vertical stop */
@@ -374,11 +374,11 @@ struct customData custd[] =
     { "HHPOSW",   0xdff1D8 }, /* DUAL mode hires H beam counter write */
     { "HHPOSR",   0xdff1DA }, /* DUAL mode hires H beam counter read */
 #endif
-    { "BEAMCON0", 0xdff1DC, 2 }, /* Beam counter control register (SHRES,UHRES,PAL) */
-    { "HSSTRT",   0xdff1DE, 2 }, /* Horizontal sync start (VARHSY) */
-    { "VSSTRT",   0xdff1E0, 2 }, /* Vertical sync start (VARVSY) */
-    { "HCENTER",  0xdff1E2, 2 }, /* Horizontal pos for vsync on interlace */
-    { "DIWHIGH",  0xdff1E4, 2 }, /* Display window upper bits for start/stop */
+    { "BEAMCON0", 0xdff1DC, 2, 0 }, /* Beam counter control register (SHRES,UHRES,PAL) */
+    { "HSSTRT",   0xdff1DE, 2, 0 }, /* Horizontal sync start (VARHSY) */
+    { "VSSTRT",   0xdff1E0, 2, 0 }, /* Vertical sync start (VARVSY) */
+    { "HCENTER",  0xdff1E2, 2, 0 }, /* Horizontal pos for vsync on interlace */
+    { "DIWHIGH",  0xdff1E4, 2, 0 }, /* Display window upper bits for start/stop */
 #if 0
     { "BPLHMOD",  0xdff1E6 }, /* UHRES bit plane modulo */
     { "SPRHPTH",  0xdff1E8 }, /* UHRES sprite pointer (high 5 bits) */
@@ -392,7 +392,7 @@ struct customData custd[] =
     { "RESERVED", 0xdff1F8 }, /* Reserved (forever i guess!) */
     { "RESERVED", 0xdff1Fa }, /* Reserved (forever i guess!) */
 #endif
-    { "FMODE",    0xdff1FC, 2 }, /* Fetch mode register */
+    { "FMODE",    0xdff1FC, 2, 0 }, /* Fetch mode register */
 #if 0
     { "NO-OP(NULL)", 0xdff1FE },        /*   Can also indicate last 2 or 3 refresh
 					    cycles or the restart of the COPPER after lockup.*/

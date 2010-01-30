@@ -2,6 +2,12 @@ Note! This file only contains user-visible changes. There may be others. For a
 more detailed description of changes between releases, read src/ChangeLog, and
 for the full picture, make a diff between releases.
 
+User-visible changes in 0.8.29:
+  - UAE now understands the config options "hardfile2" and "filesys2" which
+    are used by E-UAE and WinUAE.
+  - RDB hardfiles are supported.
+  - Hardfile access is faster.
+
 User-visible changes in 0.8.28:
   - Stability fixes - the GTK UI caused hangs on some systems.
   - Sound code cleanup - several useless options (such as mono sound) removed.

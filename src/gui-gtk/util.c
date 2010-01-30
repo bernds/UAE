@@ -40,7 +40,7 @@ GtkWidget *make_chooser (int count, ...)
  * Add some padding to a vbox or hbox which will consume
  * space when the box is resized to larger than default size
  */
-void add_box_padding (GtkWidget *box)
+static void add_box_padding (GtkWidget *box)
 {
     GtkWidget *vbox;
 
@@ -53,7 +53,7 @@ void add_box_padding (GtkWidget *box)
  * Add some padding to a table which will consime space when
  * when the table is resized to larger than default size
  */
-void add_table_padding (GtkWidget *table, int x, int y)
+static void add_table_padding (GtkWidget *table, int x, int y)
 {
     GtkWidget *vbox;
     vbox = gtk_vbox_new (FALSE, 0);
@@ -70,11 +70,12 @@ void add_table_padding (GtkWidget *table, int x, int y)
  * <width> is the the number of columns the widget will take up
  * <xflags> are the attachment flags that will apply horizontally
  */
-void add_to_table(GtkWidget *table, GtkWidget *widget, int x, int y, int width, int xflags)
+static void add_to_table (GtkWidget *table, GtkWidget *widget,
+			  int x, int y, int width, int xflags)
 {
-  gtk_table_attach (GTK_TABLE (table), widget, x, x+width, y, y+1,
-		   (GtkAttachOptions) (xflags),
-		   (GtkAttachOptions) (0), 0, 0);
+    gtk_table_attach (GTK_TABLE (table), widget, x, x+width, y, y+1,
+		      (GtkAttachOptions) (xflags),
+		      (GtkAttachOptions) (0), 0, 0);
 }
 
 

@@ -26,6 +26,8 @@
 
 #define cfgfile_write fprintf
 
+static int config_newfilesystem;
+
 /* @@@ need to get rid of this... just cut part of the manual and print that
  * as a help text.  */
 struct cfg_lines
@@ -399,6 +401,36 @@ static int getintval (char **p, int *result, int delim)
     return 1;
 }
 
+static int getintval2 (char **p, int *result, int delim)
+{
+    char *value = *p;
+    int base = 10;
+    char *endptr;
+    char *p2 = strchr (*p, delim);
+
+    if (p2 == 0) {
+	p2 = strchr (*p, 0);
+	if (p2 == 0) {
+	    *p = 0;
+	    return 0;
+	}
+    }
+    if (*p2 != 0)
+	*p2++ = '\0';
+
+    if (value[0] == '0' && value[1] == 'x')
+	value += 2, base = 16;
+    *result = strtol (value, &endptr, base);
+    *p = p2;
+
+    if (*endptr != '\0' || *value == '\0') {
+	*p = 0;
+	return 0;
+    }
+
+    return 1;
+}
+
 static void set_chipset_mask (struct uae_prefs *p, int val)
 {
     p->chipset_mask = (val == 0 ? 0
@@ -586,6 +618,15 @@ static int cfgfile_parse_host (struct uae_prefs *p, char *option, char *value)
 	char *aname, *root;
 	char *tmpp = strchr (value, ',');
 	char *str;
+
+	/* New versions of the emulator write out both types of config string,
+	   with the new variant going first.  When reading in the config file,
+	   we see the new variant and sest config_newfilesystem, and here we
+	   proceed to ignore the old variant since it contains duplicated
+	   information.  */
+	if (config_newfilesystem)
+	    return 1;
+
 	if (tmpp == 0)
 	    goto invalid_fs;
 
@@ -622,6 +663,84 @@ static int cfgfile_parse_host (struct uae_prefs *p, char *option, char *value)
 	str = cfgfile_subst_path (UNEXPANDED, p->path_hardfile, root);
 	tmpp = add_filesys_unit (p->mountinfo, NULL, aname, str, ro, secs,
 				 heads, reserved, bs, -1);
+	free (str);
+	if (tmpp)
+	    gui_message (tmpp);
+	return 1;
+    }
+
+    if (strcmp (option, "filesystem2") == 0
+	|| strcmp (option, "hardfile2") == 0)
+    {
+	int secs, heads, reserved, bs, ro, bp, hdcv;
+	char *dname = NULL, *aname = "", *root = NULL, *fs = NULL, *hdc;
+	char *tmpp = strchr (value, ',');
+	char *str = NULL;
+
+	config_newfilesystem = 1;
+	if (tmpp == 0)
+	    goto invalid_fs;
+
+	*tmpp++ = '\0';
+	if (strcasecmp (value, "ro") == 0)
+	    ro = 1;
+	else if (strcasecmp (value, "rw") == 0)
+	    ro = 0;
+	else
+	    goto invalid_fs;
+	secs = 0; heads = 0; reserved = 0; bs = 0; bp = 0;
+	fs = 0; hdc = 0; hdcv = 0;
+
+	value = tmpp;
+	if (strcmp (option, "filesystem2") == 0) {
+	    tmpp = strchr (value, ':');
+	    if (tmpp == 0)
+		goto empty_fs;
+	    *tmpp++ = 0;
+	    dname = value;
+	    aname = tmpp;
+	    tmpp = strchr (tmpp, ':');
+	    if (tmpp == 0)
+		goto empty_fs;
+	    *tmpp++ = 0;
+	    root = tmpp;
+	    tmpp = strchr (tmpp, ',');
+	    if (tmpp == 0)
+		goto empty_fs;
+	    *tmpp++ = 0;
+	    if (! getintval (&tmpp, &bp, 0))
+		goto empty_fs;
+	} else {
+	    tmpp = strchr (value, ':');
+	    if (tmpp == 0)
+		goto invalid_fs;
+	    *tmpp++ = '\0';
+	    dname = value;
+	    root = tmpp;
+	    tmpp = strchr (tmpp, ',');
+	    if (tmpp == 0)
+		goto invalid_fs;
+	    *tmpp++ = 0;
+	    aname = 0;
+	    if (! getintval (&tmpp, &secs, ',')
+		|| ! getintval (&tmpp, &heads, ',')
+		|| ! getintval (&tmpp, &reserved, ',')
+		|| ! getintval (&tmpp, &bs, ','))
+		goto invalid_fs;
+	    if (getintval2 (&tmpp, &bp, ',')) {
+		fs = tmpp;
+		tmpp = strchr (tmpp, ',');
+		if (tmpp != 0) {
+		    *tmpp++ = 0;
+		    hdc = tmpp;
+		}
+	    }
+	}
+      empty_fs:
+	if (root)
+	    str = cfgfile_subst_path (UNEXPANDED, p->path_hardfile, root);
+	tmpp = add_filesys_unit (p->mountinfo, NULL, aname, str, ro, secs,
+				 heads, reserved, bs, bp);
 	free (str);
 	if (tmpp)
 	    gui_message (tmpp);

@@ -116,6 +116,8 @@ static uae_u32 fsdevname, filesys_configdev;
 #define FS_STARTUP 0
 #define FS_GO_DOWN 1
 
+#define DEVNAMES_PER_HDF 32
+
 typedef struct {
     char *devname; /* device name, e.g. UAE0: */
     uaecptr devname_amiga;
@@ -135,6 +137,15 @@ typedef struct {
     /* Reset handling */
     uae_sem_t reset_sync_sem;
     int reset_state;
+
+    /* RDB stuff */
+    uaecptr rdb_devname_amiga[DEVNAMES_PER_HDF];
+    int rdb_lowcyl;
+    int rdb_highcyl;
+    int rdb_cylblocks;
+    uae_u8 *rdb_filesysstore;
+    int rdb_filesyssize;
+    char *filesysdir;
 } UnitInfo;
 
 #define MAX_UNITS 20
@@ -151,9 +162,20 @@ int nr_units (struct uaedev_mount_info *mountinfo)
     return mountinfo->num_units;
 }
 
-int is_hardfile (struct uaedev_mount_info *mountinfo, int unit_no)
+int hardfile_fs_type (struct uaedev_mount_info *mountinfo, int unit_no)
 {
-    return mountinfo->ui[unit_no].volname == 0;
+    if (mountinfo->ui[unit_no].volname)
+	return FILESYS_VIRTUAL;
+
+    if (mountinfo->ui[unit_no].hf.secspertrack == 0) {
+#if 0
+	if (mountinfo->ui[unit_no].hf.flags & 1)
+	    return FILESYS_HARDDRIVE;
+#endif
+	return FILESYS_HARDFILE_RDB;
+    }
+
+    return FILESYS_HARDFILE;
 }
 
 static void close_filesys_unit (UnitInfo *uip)
@@ -234,10 +256,11 @@ static char *set_filesys_unit_1 (struct uaedev_mount_info *mountinfo, int nr,
 	if (ui->hf.fd == 0)
 	    return "Hardfile not found";
 
-	if (secspertrack < 1 || secspertrack > 32767
-	    || surfaces < 1 || surfaces > 1023
-	    || reserved < 0 || reserved > 1023
-	    || (blocksize & (blocksize - 1)) != 0)
+	if ((secspertrack || surfaces || reserved)
+	    && (secspertrack < 1 || secspertrack > 32767
+		|| surfaces < 1 || surfaces > 1023
+		|| reserved < 0 || reserved > 1023
+		|| (blocksize & (blocksize - 1)) != 0))
 	{
 	    return "Bad hardfile geometry";
 	}
@@ -246,7 +269,9 @@ static char *set_filesys_unit_1 (struct uaedev_mount_info *mountinfo, int nr,
 	ui->hf.secspertrack = secspertrack;
 	ui->hf.surfaces = surfaces;
 	ui->hf.reservedblocks = reserved;
-	ui->hf.nrcyls = (ui->hf.size / blocksize) / (secspertrack * surfaces);
+	ui->hf.nrcyls = (secspertrack * surfaces
+			 ? (ui->hf.size / blocksize) / (secspertrack * surfaces)
+			 : 0);
 	ui->hf.blocksize = blocksize;
     }
     ui->self = 0;
@@ -364,10 +389,18 @@ void write_filesys_config (struct uaedev_mount_info *mountinfo,
     for (i = 0; i < mountinfo->num_units; i++) {
 	char *str;
 	str = cfgfile_subst_path (default_path, unexpanded, uip[i].rootdir);
-	if (uip[i].volname != 0) {
+	if (hardfile_fs_type (mountinfo, i) == FILESYS_VIRTUAL) {
+	    fprintf (f, "filesystem2=%s,%s:%s:%s,%d\n", uip[i].readonly ? "ro" : "rw",
+		     "", uip[i].volname, str, uip[i].bootpri);
 	    fprintf (f, "filesystem=%s,%s:%s\n", uip[i].readonly ? "ro" : "rw",
 		     uip[i].volname, str);
 	} else {
+	    fprintf (f, "hardfile2=%s,%s:%s,%d,%d,%d,%d,%d,%s,%s\n",
+		     uip[i].readonly ? "ro" : "rw",
+		     "", str,
+		     uip[i].hf.secspertrack,
+		     uip[i].hf.surfaces, uip[i].hf.reservedblocks,
+		     uip[i].hf.blocksize, uip[i].bootpri, "", "uae");
 	    fprintf (f, "hardfile=%s,%d,%d,%d,%d,%s\n",
 		     uip[i].readonly ? "ro" : "rw", uip[i].hf.secspertrack,
 		     uip[i].hf.surfaces, uip[i].hf.reservedblocks,
@@ -433,7 +466,7 @@ struct hardfiledata *get_hardfile_data (int nr)
 #define dp_Arg4 32
 
 /* result codes */
-#define DOS_TRUE ((unsigned long)-1L)
+#define DOS_TRUE (0xffffffffUL)
 #define DOS_FALSE (0L)
 
 /* Passed as type to Lock() */
@@ -3064,25 +3097,6 @@ static void reset_uaedevices (void)
     current_cdrom = 0;
 }
 
-static int get_new_device (char **devname, uaecptr *devname_amiga, int cdrom)
-{
-    int result;
-    char buffer[80];
-
-    if (cdrom) {
-	sprintf (buffer, "CD%d", current_cdrom);
-	result = current_cdrom++;
-    } else {
-	sprintf (buffer, "DH%d", current_deviceno);
-	result = current_deviceno++;
-    }
-
-    if (*devname == NULL)
-	*devname = my_strdup (buffer);
-    *devname_amiga = ds (*devname);
-    return result;
-}
-
 static void init_filesys_diagentry (void)
 {
     do_put_mem_long ((uae_u32 *)(filesysory + 0x2100), EXPANSION_explibname);
@@ -3102,11 +3116,11 @@ void filesys_start_threads (void)
 
     uip = current_mountinfo->ui;
     for (i = 0; i < current_mountinfo->num_units; i++) {
-	uip[i].unit_pipe = 0;
-	uip[i].devno = get_new_device (&uip[i].devname, &uip[i].devname_amiga, 0);
+	UnitInfo *ui = &uip[i];
+	ui->unit_pipe = 0;
 
 #ifdef UAE_FILESYS_THREADS
-	if (! is_hardfile (current_mountinfo, i)) {
+	if (hardfile_fs_type (current_mountinfo, i) == FILESYS_VIRTUAL) {
 	    uip[i].unit_pipe = (smp_comm_pipe *)xmalloc (sizeof (smp_comm_pipe));
 	    uip[i].back_pipe = (smp_comm_pipe *)xmalloc (sizeof (smp_comm_pipe));
 	    init_comm_pipe (uip[i].unit_pipe, 50, 3);
@@ -3241,27 +3255,404 @@ static uae_u32 filesys_diagentry (TrapContext *dummy)
     return 1;
 }
 
+/* don't forget filesys.asm! */
+#define PP_MAXSIZE 4 * 96
+#define PP_FSSIZE 400
+#define PP_FSPTR 404
+#define PP_FSRES 408
+#define PP_EXPLIB 412
+#define PP_FSHDSTART 416
+
+static uae_u32 REGPARAM2 filesys_dev_bootfilesys (TrapContext *dummy)
+{
+    uaecptr devicenode = m68k_areg (regs, 3);
+    uaecptr parmpacket = m68k_areg (regs, 1);
+    uaecptr fsres = get_long (parmpacket + PP_FSRES);
+    uaecptr fsnode;
+    uae_u32 dostype, dostype2;
+    int no = m68k_dreg (regs, 6);
+    int unit_no = no & 65535;
+    int type = hardfile_fs_type (current_mountinfo, unit_no);
+
+    if (type == FILESYS_VIRTUAL)
+	return 0;
+    dostype = get_long (parmpacket + 80);
+    fsnode = get_long (fsres + 18);
+    while (get_long (fsnode)) {
+	dostype2 = get_long (fsnode + 14);
+	if (dostype2 == dostype) {
+	    if (get_long (fsnode + 22) & (1 << 7)) {
+		put_long (devicenode + 32, get_long (fsnode + 54)); /* dn_SegList */
+		put_long (devicenode + 36, -1); /* dn_GlobalVec */
+	    }
+	    return 1;
+	}
+	fsnode = get_long (fsnode);
+    }
+    return 0;
+}
+
 /* Remember a pointer AmigaOS gave us so we can later use it to identify
  * which unit a given startup message belongs to.  */
 static uae_u32 filesys_dev_remember (TrapContext *dummy)
 {
-    int unit_no = m68k_dreg (regs, 6);
+    int no = m68k_dreg (regs, 6);
+    int unit_no = no & 65535;
+    int sub_no = no >> 16;
     UnitInfo *uip = &current_mountinfo->ui[unit_no];
     uaecptr devicenode = m68k_areg (regs, 3);
+    uaecptr parmpacket = m68k_areg (regs, 1);
 
-    uip->startup = get_long (devicenode + 28);
+    /* copy filesystem loaded from RDB */
+    if (get_long (parmpacket + PP_FSPTR)) {
+	int i;
+	for (i = 0; i < uip->rdb_filesyssize; i++)
+	    put_byte (get_long (parmpacket + PP_FSPTR) + i, uip->rdb_filesysstore[i]);
+	free (uip->rdb_filesysstore);
+	uip->rdb_filesysstore = 0;
+	uip->rdb_filesyssize = 0;
+    }
+    if ((uae_s32)m68k_dreg (regs, 3) >= 0)
+	uip->startup = get_long (devicenode + 28);
     return devicenode;
+}
+
+static int legalrdbblock (UnitInfo *uip, int block)
+{
+    if (block <= 0)
+	return 0;
+    if (block >= uip->hf.size / uip->hf.blocksize)
+	return 0;
+    return 1;
+}
+
+static int rl (uae_u8 *p)
+{
+    return (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | (p[3]);
+}
+
+static int rdb_checksum (char *id, uae_u8 *p, int block)
+{
+    uae_u32 sum = 0;
+    int i, blocksize;
+
+    if (memcmp (id, p, 4))
+	return 0;
+    blocksize = rl (p + 4);
+    if (blocksize < 1 || blocksize * 4 > FILESYS_MAX_BLOCKSIZE)
+	return 0;
+    for (i = 0; i < blocksize; i++)
+	sum += rl (p + i * 4);
+    sum = -sum;
+    if (sum) {
+	write_log ("RDB: block %d ('%s') checksum error\n", block, id);
+	return 0;
+    }
+    return 1;
+}
+
+static void dump_partinfo (char *name, int num, uaecptr pp, int partblock)
+{
+    uae_u32 dostype = get_long (pp + 80);
+    write_log ("RDB: '%s' dostype=%08.8X. PartBlock=%d\n", name, dostype, partblock);
+    write_log ("BlockSize: %d, Surfaces: %d, SectorsPerBlock %d\n",
+	       get_long (pp + 20) * 4, get_long (pp + 28), get_long (pp + 32));
+    write_log ("SectorsPerTrack: %d, Reserved: %d, LowCyl %d, HighCyl %d\n",
+	       get_long (pp + 36), get_long (pp + 40), get_long (pp + 52), get_long (pp + 56));
+    write_log ("Buffers: %d, BufMemType: %08.8x, MaxTransfer: %08.8x, BootPri: %d\n",
+	       get_long (pp + 60), get_long (pp + 64), get_long (pp + 68), get_long (pp + 76));
+}
+
+static char *device_dupfix (uaecptr expbase, char *devname)
+{
+    uaecptr bnode, dnode, name;
+    int len, i, modified;
+    char dname[256], newname[256];
+
+    strcpy (newname, devname);
+    modified = 1;
+    while (modified) {
+	modified = 0;
+	bnode = get_long (expbase + 74); /* expansion.library bootnode list */
+	while (get_long (bnode)) {
+	    dnode = get_long (bnode + 16); /* device node */
+	    name = get_long (dnode + 40) << 2; /* device name BSTR */
+	    len = get_byte (name);
+	    for (i = 0; i < len; i++)
+		dname[i] = get_byte (name + 1 + i);
+	    dname[len] = 0;
+	    for (;;) {
+		if (strcasecmp (newname, dname) == 0) {
+		    if (strlen (newname) > 2 && newname[strlen (newname) - 2] == '_') {
+			newname[strlen (newname) - 1]++;
+		    } else {
+			strcat (newname, "_0");
+		    }
+		    modified = 1;
+		} else {
+		    break;
+		}
+	    }
+	    bnode = get_long (bnode);
+	}
+    }
+    return my_strdup (newname);
+}
+
+#define rdbmnt write_log ("Mounting uaehf.device %d (%d) (size=%llu):\n", unit_no, partnum, hfd->size);
+
+static int rdb_mount (UnitInfo *uip, int unit_no, int partnum, uaecptr parmpacket)
+{
+    int lastblock = 63, blocksize, readblocksize, badblock, driveinitblock;
+    uae_u8 bufrdb[FILESYS_MAX_BLOCKSIZE], *buf = 0;
+    uae_u8 *fsmem = 0;
+    int rdblock, partblock, fileblock, lsegblock, i;
+    uae_u32 flags;
+    struct hardfiledata *hfd = &uip->hf;
+    uae_u32 dostype;
+    uaecptr fsres, fsnode;
+    int err = 0;
+    int oldversion, oldrevision;
+    int newversion, newrevision;
+
+    if (hfd->blocksize == 0) {
+	rdbmnt
+	write_log ("failed, blocksize == 0\n");
+	return -1;
+    }
+    if (lastblock * hfd->blocksize > hfd->size) {
+	rdbmnt
+	write_log ("failed, too small (%d*%d > %I64u)\n", lastblock, hfd->blocksize, hfd->size);
+	return -2;
+    }
+    for (rdblock = 0; rdblock < lastblock; rdblock++) {
+	hdf_read (hfd, bufrdb, rdblock * hfd->blocksize, hfd->blocksize);
+	if (rdb_checksum ("RDSK", bufrdb, rdblock))
+	    break;
+	hdf_read (hfd, bufrdb, rdblock * hfd->blocksize, hfd->blocksize);
+	if (!memcmp ("RDSK", bufrdb, 4)) {
+	    bufrdb[0xdc] = 0;
+	    bufrdb[0xdd] = 0;
+	    bufrdb[0xde] = 0;
+	    bufrdb[0xdf] = 0;
+#if 0
+	    if (rdb_checksum ("RDSK", bufrdb, rdblock)) {
+		write_log ("Windows 95/98/ME trashed RDB detected, fixing..\n");
+		hdf_write (hfd, bufrdb, rdblock * hfd->blocksize, hfd->blocksize);
+		break;
+	    }
+#endif
+	}
+    }
+    if (rdblock == lastblock) {
+	rdbmnt
+	write_log ("failed, no RDB detected\n");
+	return -2;
+    }
+    blocksize = rl (bufrdb + 16);
+    readblocksize = blocksize > hfd->blocksize ? blocksize : hfd->blocksize;
+    badblock = rl (bufrdb + 24);
+    if (badblock != -1) {
+	rdbmnt
+	write_log ("RDB: badblock list is not yet supported. Contact the author.\n");
+	return -2;
+    }
+    driveinitblock = rl (bufrdb + 36);
+    if (driveinitblock != -1) {
+	rdbmnt
+	write_log ("RDB: driveinit is not yet supported. Contact the author.\n");
+	return -2;
+    }
+    hfd->cylinders = rl (bufrdb + 64);
+    hfd->sectors = rl (bufrdb + 68);
+    hfd->heads = rl (bufrdb + 72);
+    fileblock = rl (bufrdb + 32);
+
+    if (partnum == 0) {
+	write_log ("RDB: RDSK detected at %d, FSHD=%d, C=%d S=%d H=%d\n",
+	    rdblock, fileblock, hfd->cylinders, hfd->sectors, hfd->heads);
+    }
+
+    buf = (uae_u8*)xmalloc (readblocksize);
+    for (i = 0; i <= partnum; i++) {
+	if (i == 0)
+	    partblock = rl (bufrdb + 28);
+	else
+	    partblock = rl (buf + 4 * 4);
+	if (!legalrdbblock (uip, partblock)) {
+	    err = -2;
+	    goto error;
+	}
+	memset (buf, 0, readblocksize);
+	hdf_read (hfd, buf, partblock * hfd->blocksize, readblocksize);
+	if (!rdb_checksum ("PART", buf, partblock)) {
+	    err = -2;
+	    goto error;
+	}
+    }
+
+    rdbmnt
+    flags = rl (buf + 20);
+    if (flags & 2) { /* do not mount */
+	err = -1;
+	write_log ("RDB: Automount disabled, not mounting\n");
+	goto error;
+    }
+
+    if (!(flags & 1)) /* not bootable */
+	m68k_dreg (regs, 7) = 0;
+
+    buf[37 + buf[36]] = 0; /* zero terminate BSTR */
+    uip->rdb_devname_amiga[partnum]
+	= ds (device_dupfix (get_long (parmpacket + PP_EXPLIB), buf + 37));
+    put_long (parmpacket, uip->rdb_devname_amiga[partnum]); /* name */
+    put_long (parmpacket + 4, ROM_hardfile_resname);
+    put_long (parmpacket + 8, uip->devno);
+    put_long (parmpacket + 12, 0); /* Device flags */
+    for (i = 0; i < PP_MAXSIZE; i++)
+	put_byte (parmpacket + 16 + i, buf[128 + i]);
+    dump_partinfo (buf + 37, uip->devno, parmpacket, partblock);
+    dostype = get_long (parmpacket + 80);
+
+    if (dostype == 0) {
+	write_log ("RDB: mount failed, dostype=0\n");
+	err = -1;
+	goto error;
+    }
+
+    if (hfd->cylinders * hfd->sectors * hfd->heads * blocksize > hfd->size)
+	write_log ("RDB: WARNING: end of partition > size of disk!\n");
+
+    err = 2;
+
+    /* load custom filesystems if needed */
+    if (fileblock == -1 || !legalrdbblock (uip, fileblock))
+	goto error;
+
+    fsres = get_long (parmpacket + PP_FSRES);
+    if (!fsres) {
+	write_log ("RDB: FileSystem.resource not found, this shouldn't happen!\n");
+	goto error;
+    }
+    fsnode = get_long (fsres + 18);
+    while (get_long (fsnode)) {
+	if (get_long (fsnode + 14) == dostype)
+	    break;
+	fsnode = get_long (fsnode);
+    }
+    oldversion = oldrevision = -1;
+    if (get_long (fsnode)) {
+	oldversion = get_word (fsnode + 18);
+	oldrevision = get_word (fsnode + 20);
+    } else {
+	fsnode = 0;
+    }
+
+    for (;;) {
+	if (fileblock == -1) {
+	    if (!fsnode)
+		write_log ("RDB: required FS %08.8X not in FileSystem.resource or in RDB\n", dostype);
+	    goto error;
+	}
+	if (!legalrdbblock (uip, fileblock)) {
+	    write_log ("RDB: corrupt FSHD pointer %d\n", fileblock);
+	    goto error;
+	}
+	memset (buf, 0, readblocksize);
+	hdf_read (hfd, buf, fileblock * hfd->blocksize, readblocksize);
+	if (!rdb_checksum ("FSHD", buf, fileblock)) {
+	    write_log ("RDB: checksum error in FSHD block %d\n", fileblock);
+	    goto error;
+	}
+	fileblock = rl (buf + 16);
+	if ((dostype >> 8) == (rl (buf + 32) >> 8))
+	    break;
+    }
+    newversion = (buf[36] << 8) | buf[37];
+    newrevision = (buf[38] << 8) | buf[39];
+
+    write_log ("RDB: RDB filesystem %08.8X version %d.%d\n", dostype, newversion, newrevision);
+    if (fsnode) {
+	write_log ("RDB: %08.8X in FileSystem.resouce version %d.%d\n", dostype, oldversion, oldrevision);
+    }
+    if (newversion * 65536 + newrevision <= oldversion * 65536 + oldrevision && oldversion >= 0) {
+	write_log ("RDB: FS in FileSystem.resource is newer or same, ignoring RDB filesystem\n");
+	goto error;
+    }
+
+    for (i = 0; i < 140; i++)
+	put_byte (parmpacket + PP_FSHDSTART + i, buf[32 + i]);
+    put_long (parmpacket + PP_FSHDSTART, dostype);
+    /* we found required FSHD block */
+    fsmem = (uae_u8*)xmalloc (262144);
+    lsegblock = rl (buf + 72);
+    i = 0;
+    for (;;) {
+	int pb = lsegblock;
+	if (!legalrdbblock (uip, lsegblock))
+	    goto error;
+	memset (buf, 0, readblocksize);
+	hdf_read (hfd, buf, lsegblock * hfd->blocksize, readblocksize);
+	if (!rdb_checksum ("LSEG", buf, lsegblock))
+	    goto error;
+	lsegblock = rl (buf + 16);
+	if (lsegblock == pb)
+	    goto error;
+	memcpy (fsmem + i * (blocksize - 20), buf + 20, blocksize - 20);
+	i++;
+	if (lsegblock == -1)
+	    break;
+    }
+    write_log ("RDB: Filesystem loaded, %d bytes\n", i * (blocksize - 20));
+    put_long (parmpacket + PP_FSSIZE, i * (blocksize - 20)); /* RDB filesystem size hack */
+    uip->rdb_filesysstore = fsmem;
+    uip->rdb_filesyssize = i * (blocksize - 20);
+    free (buf);
+    return 2;
+error:
+    free (buf);
+    free (fsmem);
+    return err;
+}
+
+static void get_new_device (int type, uaecptr parmpacket, char **devname,
+			   uaecptr *devname_amiga, int unit_no)
+{
+    char buffer[80];
+
+    sprintf (buffer, "DH%d", unit_no);
+
+    if (*devname == NULL)
+	*devname = device_dupfix (get_long (parmpacket + PP_EXPLIB), buffer);
+    *devname_amiga = ds (*devname);
+    if (type == FILESYS_VIRTUAL)
+	write_log ("FS: mounted virtual unit %s\n", buffer);
+    else
+	write_log ("FS: mounted HDF unit %s\n", buffer);
 }
 
 /* Fill in per-unit fields of a parampacket */
 static uae_u32 filesys_dev_storeinfo (TrapContext *dummy)
 {
     UnitInfo *uip = current_mountinfo->ui;
-    int unit_no = m68k_dreg (regs, 6);
+    int no = m68k_dreg (regs, 6);
+    int unit_no = no & 65535;
+    int sub_no = no >> 16;
+    int type = hardfile_fs_type (current_mountinfo, unit_no);
     uaecptr parmpacket = m68k_areg (regs, 0);
 
+    if (type == FILESYS_HARDFILE_RDB || type == FILESYS_HARDDRIVE) {
+	/* RDB hardfile */
+	uip[unit_no].devno = unit_no;
+	return rdb_mount (&uip[unit_no], unit_no, sub_no, parmpacket);
+    }
+    /* No subunits for normal filesystems and hardfiles.  */
+    if (sub_no)
+        return -2;
+    get_new_device (type, parmpacket, &uip[unit_no].devname, &uip[unit_no].devname_amiga, unit_no);
+    uip[unit_no].devno = unit_no;
     put_long (parmpacket, uip[unit_no].devname_amiga);
-    put_long (parmpacket + 4, is_hardfile (current_mountinfo, unit_no) ? ROM_hardfile_resname : fsdevname);
+    put_long (parmpacket + 4, type != FILESYS_VIRTUAL ? ROM_hardfile_resname : fsdevname);
     put_long (parmpacket + 8, uip[unit_no].devno);
     put_long (parmpacket + 12, 0); /* Device flags */
     put_long (parmpacket + 16, 16); /* Env. size */
@@ -3283,7 +3674,7 @@ static uae_u32 filesys_dev_storeinfo (TrapContext *dummy)
     put_long (parmpacket + 80, 0x444f5300); /* DOS\0 */
     put_long (parmpacket + 84, 0); /* pad */
 
-    return is_hardfile (current_mountinfo, unit_no);
+    return type;
 }
 
 void filesys_install (void)
@@ -3303,6 +3694,11 @@ void filesys_install (void)
     dw (0x4ED0); /* JMP (a0) - jump to code that inits Residents */
 
     loop = here ();
+
+    org (RTAREA_BASE + 0xFF18);
+    calltrap (deftrap (filesys_dev_bootfilesys));
+    dw (RTS);
+
     /* Special trap for the assembly make_dev routine */
     org (RTAREA_BASE + 0xFF20);
     calltrap (deftrap (filesys_dev_remember));
