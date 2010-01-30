@@ -1,6 +1,9 @@
 config_description=Power User configuration (128 MB + 32 MB RTG)
 config_version=0.8.25
-kickstart_rom_crc=..\System\rom\amiga-os-310.rom
+# A1200 3.1
+kickstart_rom_crc_attempt=0x1483a091
+# A500 3.1
+kickstart_rom_crc_attempt=0xfc24ae0d
 kickstart_ext_rom_file=
 flash_file=
 cart_file=
@@ -18,11 +21,15 @@ floppy_speed=100
 maprom=0x0
 immediate_blits=true
 ntsc=false
-show_leds=false
 chipset=aga
 collision_level=playfields
+ide=none
+a1000ram=false
+fatgary=-1
+ramsey=-1
 fastmem_size=0
 a3000mem_size=0
+mbresmem_size=0
 z3mem_size=128
 bogomem_size=0
 gfxcard_size=32

@@ -3672,7 +3672,6 @@ NO_REORDER_CFLAGS=
 LDFLAGS="$LDFLAGS -L."
 
 HAVE_BEOS=no
-HAVE_POS=no
 { echo "$as_me:$LINENO: checking for main in -lMedia_s" >&5
 echo $ECHO_N "checking for main in -lMedia_s... $ECHO_C" >&6; }
 if test "${ac_cv_lib_Media_s_main+set}" = set; then
@@ -13288,34 +13287,6 @@ _ACEOF
 
 fi
 
-if [ $target = "p.os" ]; then
-    HAVE_POS=yes
-else
-  { echo "$as_me:$LINENO: checking for pOS" >&5
-echo $ECHO_N "checking for pOS... $ECHO_C" >&6; }
-  cat >conftest.$ac_ext <<_ACEOF
-/* confdefs.h.  */
-_ACEOF
-cat confdefs.h >>conftest.$ac_ext
-cat >>conftest.$ac_ext <<_ACEOF
-/* end confdefs.h.  */
-#ifdef __POS__
-    yes
-  #endif
-
-_ACEOF
-if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
-  $EGREP "yes" >/dev/null 2>&1; then
-  { echo "$as_me:$LINENO: result: yes" >&5
-echo "${ECHO_T}yes" >&6; }; HAVE_POS=yes
-else
-  { echo "$as_me:$LINENO: result: no" >&5
-echo "${ECHO_T}no" >&6; }; HAVE_POS=no
-fi
-rm -f conftest*
-
-fi
-
 if test "$SDL_CONFIG" = "not-found" ; then
   HAVE_SDL_LIB=no
 else
@@ -14408,12 +14379,6 @@ echo "${ECHO_T}BeOS" >&6; }
   TARGETDEP=t-beos.h
   GFXOBJS=osdep/beos.o
   OPTIMIZE_CFLAGS=-O7
-else if [ "x$HAVE_POS" = "xyes" ]; then
-  { echo "$as_me:$LINENO: result: p.OS" >&5
-echo "${ECHO_T}p.OS" >&6; }
-  TARGET=p_os
-  TARGETDEP=t-pos.h
-  GFXOBJS="osdep/pos-win.o osdep/pos-disk.o osdep/pos-rexx.o"
 else if [ "x$HAVE_AMIGA_LIB" = "xyes" ]; then
   { echo "$as_me:$LINENO: result: AmigaOS" >&5
 echo "${ECHO_T}AmigaOS" >&6; }
@@ -14499,8 +14464,6 @@ if [ "x$WANT_UI" != "xno" ]; then
     GUIOBJS=osdep/win32gui.o
   else if [ "x$HAVE_AMIGA_LIB" = "xyes" ]; then
     GUIOBJS="osdep/ami-gui.o"
-  else if [ "x$HAVE_POS" = "xyes" ]; then
-    GUIOBJS="osdep/pos-gui.o"
   else if [ "x$WANT_NCURSES_UI" = "xyes" ]; then
     if [ "x$HAVE_NCURSES_LIB" = "xno" ]; then
       echo "ncurses is unavailable, can't provide a user interface"
@@ -14570,10 +14533,38 @@ HAVEGCC27=no
 HAVEI386=no
 HAVE68K=no
 HAVEPPC=no
-HAVEGLIBC2=no
 
 ASMOBJS=
 CPUOBJS=cpuemu.o
+
+{ echo "$as_me:$LINENO: checking host cpu support" >&5
+echo $ECHO_N "checking host cpu support... $ECHO_C" >&6; }
+
+HOST_CPU=generic
+MDFPP_H=fpp-unknown.h
+
+case $host_cpu in
+     i[3-6]86)
+       HOST_CPU=i386
+       MDFPP_H=fpp-ieee.h
+       ;;
+     amd64 | x86_64)
+       HOST_CPU=amd64
+       MDFPP_H=fpp-ieee.h
+       ;;
+     powerpc)
+       HOST_CPU=ppc
+       MDFPP_H=fpp-ieee.h
+       ;;
+     m68k)
+       HOST_CPU=68k
+       MDFPP_H=fpp-ieee.h
+       ;;
+esac
+
+{ echo "$as_me:$LINENO: result: $HOST_CPU" >&5
+echo "${ECHO_T}$HOST_CPU" >&6; }
+MACHDEP="md-$HOST_CPU"
 
 { echo "$as_me:$LINENO: checking for GCC 2.7 or higher" >&5
 echo $ECHO_N "checking for GCC 2.7 or higher... $ECHO_C" >&6; }
@@ -14600,51 +14591,13 @@ rm -f conftest*
 
 
 if test $ac_cv_c_compiler_gnu = yes; then
-  if test $HAVEGCC27 != yes; then
-    echo "I suggest you upgrade to at least version 2.7 of GCC"
-  fi
-else
-  if test $uae_cv_prog_cc_watcom != yes; then
-    echo "Couldn't find GCC. UAE may or may not compile and run correctly."
-    NR_WARNINGS=`expr $NR_WARNINGS + 1`
-  fi
-fi
-
-if [ "x$ac_cv_header_features_h" = "xyes" ]; then
-  { echo "$as_me:$LINENO: checking for glibc-2.0 or higher" >&5
-echo $ECHO_N "checking for glibc-2.0 or higher... $ECHO_C" >&6; }
-  cat >conftest.$ac_ext <<_ACEOF
-/* confdefs.h.  */
-_ACEOF
-cat confdefs.h >>conftest.$ac_ext
-cat >>conftest.$ac_ext <<_ACEOF
-/* end confdefs.h.  */
-#include <features.h>
-#if __GLIBC__ - 1 >= 1
-  yes
-#endif
-
-_ACEOF
-if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
-  $EGREP "yes" >/dev/null 2>&1; then
-  { echo "$as_me:$LINENO: result: yes" >&5
-echo "${ECHO_T}yes" >&6; }; HAVEGLIBC2=yes
-else
-  { echo "$as_me:$LINENO: result: no" >&5
-echo "${ECHO_T}no" >&6; }
-fi
-rm -f conftest*
-
-fi
-
-if test $ac_cv_c_compiler_gnu = yes; then
   WARNING_CFLAGS="-Wall -Wno-unused -Wno-format -W -Wmissing-prototypes -Wstrict-prototypes"
   OPTIMIZE_CFLAGS="-O2 -fomit-frame-pointer"
     CFLAGS=
 fi
 
 if [ "x$DO_PROFILING" = "xyes" ]; then
-  if [ "x$CC" = "xgcc" ]; then
+  if test $ac_cv_c_compiler_gnu = yes; then
     OPTIMIZE_CFLAGS="-O"
     DEBUG_CFLAGS="-g -fno-inline -fno-omit-frame-pointer -pg -DUSE_PROFILING"
     LDFLAGS="-pg"
@@ -14657,93 +14610,24 @@ fi
 
 CFLAGS="$OPTIMIZE_CFLAGS $DEBUG_CFLAGS $WARNING_CFLAGS $CFLAGS $ADDITIONAL_CFLAGS"
 
-if [ "x$HAVEGCC27" = "xyes" ]; then
-  CFLAGS="$CFLAGS -DGCCCONSTFUNC=\"__attribute__((const))\""
+if test $ac_cv_c_compiler_gnu = yes; then
+  if test $HAVEGCC27 != yes; then
+    { echo "$as_me:$LINENO: WARNING: Version 2.7 or better of GCC is recommended" >&5
+echo "$as_me: WARNING: Version 2.7 or better of GCC is recommended" >&2;}
+    NR_WARNINGS=`expr $NR_WARNINGS + 1`
+  fi
 else
-  CFLAGS="$CFLAGS -DGCCCONSTFUNC="
+  if test $uae_cv_prog_cc_watcom != yes; then
+    { echo "$as_me:$LINENO: WARNING: UAE may not compile and run correctly with your compiler" >&5
+echo "$as_me: WARNING: UAE may not compile and run correctly with your compiler" >&2;}
+    NR_WARNINGS=`expr $NR_WARNINGS + 1`
+  fi
 fi
 
-{ echo "$as_me:$LINENO: checking for x86 target CPU" >&5
-echo $ECHO_N "checking for x86 target CPU... $ECHO_C" >&6; }
-cat >conftest.$ac_ext <<_ACEOF
-/* confdefs.h.  */
-_ACEOF
-cat confdefs.h >>conftest.$ac_ext
-cat >>conftest.$ac_ext <<_ACEOF
-/* end confdefs.h.  */
-
-#ifdef __i386__
-  yes
-#endif
-
-_ACEOF
-if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
-  $EGREP "yes" >/dev/null 2>&1; then
-  { echo "$as_me:$LINENO: result: yes" >&5
-echo "${ECHO_T}yes" >&6; }; HAVEI386=yes
-else
-  { echo "$as_me:$LINENO: result: no" >&5
-echo "${ECHO_T}no" >&6; }
-fi
-rm -f conftest*
-
-
-{ echo "$as_me:$LINENO: checking for m68k target CPU" >&5
-echo $ECHO_N "checking for m68k target CPU... $ECHO_C" >&6; }
-cat >conftest.$ac_ext <<_ACEOF
-/* confdefs.h.  */
-_ACEOF
-cat confdefs.h >>conftest.$ac_ext
-cat >>conftest.$ac_ext <<_ACEOF
-/* end confdefs.h.  */
-
-#ifdef __m68k__
-  yes
-#endif
-
-_ACEOF
-if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
-  $EGREP "yes" >/dev/null 2>&1; then
-  { echo "$as_me:$LINENO: result: yes" >&5
-echo "${ECHO_T}yes" >&6; }; HAVE68K=yes
-else
-  { echo "$as_me:$LINENO: result: no" >&5
-echo "${ECHO_T}no" >&6; }
-fi
-rm -f conftest*
-
-
-{ echo "$as_me:$LINENO: checking for ppc target CPU" >&5
-echo $ECHO_N "checking for ppc target CPU... $ECHO_C" >&6; }
-cat >conftest.$ac_ext <<_ACEOF
-/* confdefs.h.  */
-_ACEOF
-cat confdefs.h >>conftest.$ac_ext
-cat >>conftest.$ac_ext <<_ACEOF
-/* end confdefs.h.  */
-
-#ifdef __powerpc__
-  yes
-#endif
-
-_ACEOF
-if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
-  $EGREP "yes" >/dev/null 2>&1; then
-  { echo "$as_me:$LINENO: result: yes" >&5
-echo "${ECHO_T}yes" >&6; }; HAVEPPC=yes
-else
-  { echo "$as_me:$LINENO: result: no" >&5
-echo "${ECHO_T}no" >&6; }
-fi
-rm -f conftest*
-
-
-if MACHINE=`uname -a 2>/dev/null`; then
-  case "$MACHINE" in
-  Linux*)
-    HAVELINUX=yes
-    ;;
-  esac
+if test $ac_cv_c_compiler_gnu = yes; then
+  if [ "$HOST_CPU" = i386 -o "$HOST_CPU" = ppc -o "$HOST_CPU" = amd64 ]; then
+    MACHDEP="$MACHDEP-gcc"
+  fi
 fi
 
 
@@ -14995,25 +14879,6 @@ else if [ "x$HAVEGCC27" = "xyes" -a "x$HAVEPPC" = "xyes" ]; then
   if [ "x$HAVE_MOTO_LIB" = "xyes" ]; then
     MATHLIB="-lmoto $MATHLIB"
   fi
-else if [ "x$TARGET" = "xp_os" ]; then
-  CPU=`uname -m`
-  if [ "x$CPU" = "xm68k" ]; then
-     MACHDEP=md-68k
-     CFLAGS="$CFLAGS -DUNALIGNED_PROFITABLE -DREGPARAM=\"__attribute__((regparm(4)))\" -DM68K_FLAG_OPT=1"
-  else if [ "x$CPU" = "xppc" ]; then
-     MACHDEP=md-ppc
-     CFLAGS="$CFLAGS -DREGPARAM="
-  else if [ "x$CPU" = "xi386" ]; then
-          MACHDEP=md-i386-gcc
-     CFLAGS="$CFLAGS -DX86_ASSEMBLY -fno-strength-reduce -DREGPARAM=\"__attribute__((regparm(3)))\""
-  else
-     echo "Unsupported CPU: $CPU!"
-     exit 5
-  fi
-  fi
-  fi
-  CFLAGS="$CFLAGS -nostdinc -I/gg/include -I/p/../inc -D__POS__"
-  OSDEP=od-pos
 else if [ "x$TARGET" = "xamigaos" ]; then
   OSDEP=od-amiga
   CPU=`uname -m`
@@ -15060,7 +14925,7 @@ fi
 fi
 
 if [ "x$TARGET" = "xx11" -o "x$TARGET" = "xsvgalib" -o "x$TARGET" = "xamigaos" \
-     -o "x$TARGET" = "xbeos" -o "x$TARGET" = "xasciiart" -o "x$TARGET" = "xp_os" ]; then
+     -o "x$TARGET" = "xbeos" -o "x$TARGET" = "xasciiart" ]; then
     CFLAGS="$CFLAGS -DUSE_ZFILE"
 fi
 
@@ -15120,11 +14985,6 @@ echo "${ECHO_T}MME sound" >&6; }
   SOUNDDEP=sd-mme
   LIBS="$LIBS -lmme"
   USE_SOUND=yes
-else if [ "x$TARGET" = "xp_os" ]; then
-  { echo "$as_me:$LINENO: result: pAudio.device" >&5
-echo "${ECHO_T}pAudio.device" >&6; }
-  SOUNDDEP=od-pos
-  USE_SOUND=yes
 else if [ "x$TARGET" = "xamigaos" ]; then
   if [ "x$ac_cv_header_devices_ahi_h" = "xyes" ]; then
     { echo "$as_me:$LINENO: result: Amiga AHI.device" >&5
@@ -15183,10 +15043,6 @@ if [ "x$USE_THREADS" = "xyes" -o "x$NEED_THREAD_SUPPORT" = "xyes" ]; then
       CFLAGS="$CFLAGS -DUAE_FILESYS_THREADS"
     fi
 
-    if [ "x$HAVELINUX" = "xno" -o "x$HAVEGLIBC2" = "xno" ]; then
-      echo "Thread support has only been tested on Linux systems with glibc-2.0"
-      NR_WARNINGS=`expr $NR_WARNINGS + 1`
-    fi
     if [ "x$TARGET" = "xsvgalib" ]; then
       echo "If you didn't compile a fixed version of SVGAlib then thread support"
       echo "in UAE will lock your machine real hard."
@@ -15334,7 +15190,7 @@ rm -f src/md-support.c
 rm -f src/md-X86.S
 rm -f src/scsi-support.c
 
-if [ "x$TARGET" = "xamigaos" -o "x$TARGET" = "xp_os" ]; then
+if [ "x$TARGET" = "xamigaos" ]; then
     { echo "$as_me:$LINENO: checking which CPU to use" >&5
 echo $ECHO_N "checking which CPU to use... $ECHO_C" >&6; }
   cpu=`cpu | cut -d' ' -f2`

@@ -55,3 +55,5 @@ extern char *romlist_get (struct romdata *rd);
 extern void romlist_clear (int mask);
 extern int decode_cloanto_rom (uae_u8 *, int, int, int);
 extern struct romlist *romlist_from_idx (int idx, int type, int need_crc32);
+
+extern void scan_roms (const char *path, int loc);

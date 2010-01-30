@@ -27,7 +27,7 @@ uaecptr EXPANSION_cddevice;
 
 /* ROM tag area memory access */
 
-static uae_u8 *rtarea;
+uae_u8 *rtarea;
 
 static uae_u32 rtarea_lget (uaecptr) REGPARAM;
 static uae_u32 rtarea_wget (uaecptr) REGPARAM;
@@ -218,6 +218,7 @@ void rtarea_init (void)
 
     filesys_install_code ();
 
+    uae_boot_rom_size = here() - RTAREA_BASE;
     init_extended_traps ();
 }
 

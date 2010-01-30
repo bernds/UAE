@@ -43,6 +43,7 @@ extern uae_u32 allocated_a3000mem;
 
 extern int ersatzkickfile;
 extern int cloanto_rom;
+extern int uae_boot_rom, uae_boot_rom_size;
 
 extern uae_u8* baseaddr[];
 
@@ -65,9 +66,11 @@ typedef struct {
        ourselves. This holds the memory address where the start of memory is
        for this particular bank. */
     uae_u8 *baseaddr;
+    const char *name;
 } addrbank;
 
 extern uae_u8 *filesysory;
+extern uae_u8 *rtarea;
 
 extern addrbank chipmem_bank;
 extern addrbank kickmem_bank;
@@ -78,6 +81,10 @@ extern addrbank rtarea_bank;
 extern addrbank expamem_bank;
 extern addrbank fastmem_bank;
 extern addrbank gfxmem_bank;
+extern addrbank gayle_bank;
+extern addrbank gayle2_bank;
+extern addrbank gayle_attr_bank;
+extern addrbank mbres_bank;
 
 extern void rtarea_init (void);
 extern void rtarea_setup (void);

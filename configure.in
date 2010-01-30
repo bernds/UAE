@@ -67,7 +67,6 @@ LDFLAGS="$LDFLAGS -L."
 
 dnl Checks for libraries.
 HAVE_BEOS=no
-HAVE_POS=no
 dnl Replace `main' with a function in -lMedia_s: (Ian!)
 AC_CHECK_LIB(Media_s, main, HAVE_MEDIA_LIB=yes, HAVE_MEDIA_LIB=no)
 dnl Replace `main' with a function in -lNeXT_s:
@@ -138,18 +137,6 @@ if test $uae_cv_prog_cc_watcom = yes -o $MINGW32 = yes; then
 fi
 if test $DO_FILEUTILS_CHECK = yes; then
   GNOME_FILEUTILS_CHECKS
-fi
-
-dnl Check for pOS or -target=p.os
-if [[ $target = "p.os" ]]; then
-    HAVE_POS=yes
-else
-  AC_MSG_CHECKING(for pOS)
-  AC_EGREP_CPP(yes,
-  [#ifdef __POS__
-    yes
-  #endif
-  ], [AC_MSG_RESULT(yes); HAVE_POS=yes], AC_MSG_RESULT(no); HAVE_POS=no)
 fi
 
 if test "$SDL_CONFIG" = "not-found" ; then
@@ -486,11 +473,6 @@ else if [[ "x$HAVE_BEOS" = "xyes" ]]; then
   TARGETDEP=t-beos.h
   GFXOBJS=osdep/beos.o
   OPTIMIZE_CFLAGS=-O7
-else if [[ "x$HAVE_POS" = "xyes" ]]; then
-  AC_MSG_RESULT(p.OS)
-  TARGET=p_os
-  TARGETDEP=t-pos.h
-  GFXOBJS="osdep/pos-win.o osdep/pos-disk.o osdep/pos-rexx.o"
 else if [[ "x$HAVE_AMIGA_LIB" = "xyes" ]]; then
   AC_MSG_RESULT(AmigaOS)
   TARGET=amigaos
@@ -573,8 +555,6 @@ if [[ "x$WANT_UI" != "xno" ]]; then
     GUIOBJS=osdep/win32gui.o
   else if [[ "x$HAVE_AMIGA_LIB" = "xyes" ]]; then
     GUIOBJS="osdep/ami-gui.o"
-  else if [[ "x$HAVE_POS" = "xyes" ]]; then
-    GUIOBJS="osdep/pos-gui.o"
   else if [[ "x$WANT_NCURSES_UI" = "xyes" ]]; then
     if [[ "x$HAVE_NCURSES_LIB" = "xno" ]]; then
       echo "ncurses is unavailable, can't provide a user interface"
@@ -634,7 +614,6 @@ dnl Find out some things about the system
 dnl  - whether we have GCC 2.7 or better.
 dnl  - what CPU we have (to use some assembly hacks on the x86)
 dnl  - whether we are on a Linux system
-dnl  - whether it's running glibc-2.0
 
 MACHDEP=md-generic
 OSDEP=od-generic
@@ -654,10 +633,40 @@ HAVEGCC27=no
 HAVEI386=no
 HAVE68K=no
 HAVEPPC=no
-HAVEGLIBC2=no
 
 ASMOBJS=
 CPUOBJS=cpuemu.o
+
+dnl
+dnl  Find out what CPU arch to build for
+dnl
+AC_MSG_CHECKING([host cpu support])
+
+dnl default is to use no CPU-specific features
+HOST_CPU=generic
+MDFPP_H=fpp-unknown.h
+
+case $host_cpu in
+     i[[3-6]]86)
+       HOST_CPU=i386
+       MDFPP_H=fpp-ieee.h       
+       ;;
+     amd64 | x86_64)
+       HOST_CPU=amd64
+       MDFPP_H=fpp-ieee.h       
+       ;;
+     powerpc)
+       HOST_CPU=ppc
+       MDFPP_H=fpp-ieee.h
+       ;;
+     m68k)
+       HOST_CPU=68k
+       MDFPP_H=fpp-ieee.h
+       ;;
+esac
+
+AC_MSG_RESULT([$HOST_CPU])
+MACHDEP="md-$HOST_CPU"
 
 AC_MSG_CHECKING(for GCC 2.7 or higher)
 AC_EGREP_CPP(yes,
@@ -667,27 +676,6 @@ AC_EGREP_CPP(yes,
 ], [AC_MSG_RESULT(yes); HAVEGCC27=yes], AC_MSG_RESULT(no))
 
 if test $ac_cv_c_compiler_gnu = yes; then
-  if test $HAVEGCC27 != yes; then
-    echo "I suggest you upgrade to at least version 2.7 of GCC"
-  fi
-else
-  if test $uae_cv_prog_cc_watcom != yes; then
-    echo "Couldn't find GCC. UAE may or may not compile and run correctly."
-    NR_WARNINGS=`expr $NR_WARNINGS + 1`
-  fi
-fi
-
-if [[ "x$ac_cv_header_features_h" = "xyes" ]]; then
-  AC_MSG_CHECKING(for glibc-2.0 or higher)
-  AC_EGREP_CPP(yes,
-[#include <features.h>
-#if __GLIBC__ - 1 >= 1
-  yes
-#endif
-], [AC_MSG_RESULT(yes); HAVEGLIBC2=yes], AC_MSG_RESULT(no))
-fi
-
-if test $ac_cv_c_compiler_gnu = yes; then
   WARNING_CFLAGS="-Wall -Wno-unused -Wno-format -W -Wmissing-prototypes -Wstrict-prototypes"
   OPTIMIZE_CFLAGS="-O2 -fomit-frame-pointer"
   dnl Not nice, but needed to turn off -g
@@ -695,7 +683,7 @@ if test $ac_cv_c_compiler_gnu = yes; then
 fi
 
 if [[ "x$DO_PROFILING" = "xyes" ]]; then
-  if [[ "x$CC" = "xgcc" ]]; then
+  if test $ac_cv_prog_gcc = yes; then
     OPTIMIZE_CFLAGS="-O"
     DEBUG_CFLAGS="-g -fno-inline -fno-omit-frame-pointer -pg -DUSE_PROFILING"
     LDFLAGS="-pg"
@@ -708,42 +696,22 @@ fi
 
 CFLAGS="$OPTIMIZE_CFLAGS $DEBUG_CFLAGS $WARNING_CFLAGS $CFLAGS $ADDITIONAL_CFLAGS"
 
-if [[ "x$HAVEGCC27" = "xyes" ]]; then
-  CFLAGS="$CFLAGS -DGCCCONSTFUNC=\"__attribute__((const))\""
+if test $ac_cv_prog_gcc = yes; then
+  if test $HAVEGCC27 != yes; then
+    AC_MSG_WARN([Version 2.7 or better of GCC is recommended])
+    NR_WARNINGS=`expr $NR_WARNINGS + 1`
+  fi
 else
-  CFLAGS="$CFLAGS -DGCCCONSTFUNC="
+  if test $uae_cv_prog_cc_watcom != yes; then
+    AC_MSG_WARN([UAE may not compile and run correctly with your compiler])
+    NR_WARNINGS=`expr $NR_WARNINGS + 1`
+  fi
 fi
 
-AC_MSG_CHECKING(for x86 target CPU)
-AC_EGREP_CPP(yes,
-[
-#ifdef __i386__
-  yes
-#endif
-], [AC_MSG_RESULT(yes); HAVEI386=yes], AC_MSG_RESULT(no))
-
-AC_MSG_CHECKING(for m68k target CPU)
-AC_EGREP_CPP(yes,
-[
-#ifdef __m68k__
-  yes
-#endif
-], [AC_MSG_RESULT(yes); HAVE68K=yes], AC_MSG_RESULT(no))
-
-AC_MSG_CHECKING(for ppc target CPU)
-AC_EGREP_CPP(yes,
-[
-#ifdef __powerpc__
-  yes
-#endif
-], [AC_MSG_RESULT(yes); HAVEPPC=yes], AC_MSG_RESULT(no))
-
-if MACHINE=`uname -a 2>/dev/null`; then
-  case "$MACHINE" in
-  Linux*)
-    HAVELINUX=yes
-    ;;
-  esac
+if test $ac_cv_prog_gcc = yes; then
+  if [[ "$HOST_CPU" = i386 -o "$HOST_CPU" = ppc -o "$HOST_CPU" = amd64 ]]; then
+    MACHDEP="$MACHDEP-gcc"
+  fi
 fi
 
 dnl X86.S needs to know whether it needs to add underscores to symbols.
@@ -839,26 +807,6 @@ else if [[ "x$HAVEGCC27" = "xyes" -a "x$HAVEPPC" = "xyes" ]]; then
   if [[ "x$HAVE_MOTO_LIB" = "xyes" ]]; then
     MATHLIB="-lmoto $MATHLIB"
   fi
-else if [[ "x$TARGET" = "xp_os" ]]; then
-  CPU=`uname -m`
-  if [[ "x$CPU" = "xm68k" ]]; then
-     MACHDEP=md-68k
-     CFLAGS="$CFLAGS -DUNALIGNED_PROFITABLE -DREGPARAM=\"__attribute__((regparm(4)))\" -DM68K_FLAG_OPT=1"
-  else if [[ "x$CPU" = "xppc" ]]; then
-     MACHDEP=md-ppc
-     CFLAGS="$CFLAGS -DREGPARAM="
-  else if [[ "x$CPU" = "xi386" ]]; then
-     dnl Sam, I don't think we can get here.
-     MACHDEP=md-i386-gcc
-     CFLAGS="$CFLAGS -DX86_ASSEMBLY -fno-strength-reduce -DREGPARAM=\"__attribute__((regparm(3)))\""
-  else
-     echo "Unsupported CPU: $CPU!"
-     exit 5
-  fi
-  fi
-  fi
-  CFLAGS="$CFLAGS -nostdinc -I/gg/include -I/p/../inc -D__POS__"
-  OSDEP=od-pos
 else if [[ "x$TARGET" = "xamigaos" ]]; then
   OSDEP=od-amiga
   CPU=`uname -m`
@@ -907,7 +855,7 @@ fi
 fi
 
 if [[ "x$TARGET" = "xx11" -o "x$TARGET" = "xsvgalib" -o "x$TARGET" = "xamigaos" \
-     -o "x$TARGET" = "xbeos" -o "x$TARGET" = "xasciiart" -o "x$TARGET" = "xp_os" ]]; then
+     -o "x$TARGET" = "xbeos" -o "x$TARGET" = "xasciiart" ]]; then
   dnl On Unix, BeOS and AmigaOS system, zfile is supposed to work. Dunno about others.
   CFLAGS="$CFLAGS -DUSE_ZFILE"
 fi
@@ -954,10 +902,6 @@ else if [[ "x$HAVE_MME_LIB" = "xyes" ]]; then
   AC_MSG_RESULT(MME sound)
   SOUNDDEP=sd-mme
   LIBS="$LIBS -lmme"
-  USE_SOUND=yes
-else if [[ "x$TARGET" = "xp_os" ]]; then
-  AC_MSG_RESULT(pAudio.device)
-  SOUNDDEP=od-pos
   USE_SOUND=yes
 else if [[ "x$TARGET" = "xamigaos" ]]; then
   if [[ "x$ac_cv_header_devices_ahi_h" = "xyes" ]]; then
@@ -1013,10 +957,6 @@ if [[ "x$USE_THREADS" = "xyes" -o "x$NEED_THREAD_SUPPORT" = "xyes" ]]; then
       CFLAGS="$CFLAGS -DUAE_FILESYS_THREADS"
     fi
 
-    if [[ "x$HAVELINUX" = "xno" -o "x$HAVEGLIBC2" = "xno" ]]; then
-      echo "Thread support has only been tested on Linux systems with glibc-2.0"
-      NR_WARNINGS=`expr $NR_WARNINGS + 1`
-    fi
     if [[ "x$TARGET" = "xsvgalib" ]]; then
       echo "If you didn't compile a fixed version of SVGAlib then thread support"
       echo "in UAE will lock your machine real hard."
@@ -1076,7 +1016,7 @@ rm -f src/md-support.c
 rm -f src/md-X86.S
 rm -f src/scsi-support.c
 
-if [[ "x$TARGET" = "xamigaos" -o "x$TARGET" = "xp_os" ]]; then
+if [[ "x$TARGET" = "xamigaos" ]]; then
   dnl Determine the cpu-type
   AC_MSG_CHECKING(which CPU to use)
   cpu=`cpu | cut -d' ' -f2`

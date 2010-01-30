@@ -34,6 +34,7 @@
 #include "gui.h"
 #include "disk.h"
 #include "audio.h"
+#include "autoconf.h"
 #include "traps.h"
 #include "keyboard.h"
 #include "inputdevice.h"
@@ -520,6 +521,40 @@ void read_inputdevice_config (struct uae_prefs *pr, char *option, char *value)
 
 static int ievent_alive = 0;
 static int lastmx, lastmy;
+
+static void mousehack_setpos (int mousexpos, int mouseypos)
+{
+    uae_u8 *p;
+    if (!uae_boot_rom)
+	return;
+#if 1
+    p = rtarea + get_long (RTAREA_BASE + 40) + 12;
+    p[0] = mousexpos >> 8;
+    p[1] = mousexpos;
+    p[2] = mouseypos >> 8;
+    p[3] = mouseypos;
+    //write_log ("%dx%d\n", mousexpos, mouseypos);
+#endif
+}
+
+static void new_mousehack_helper (void)
+{
+    int mousexpos, mouseypos;
+
+    if (!mousehack_allowed ())
+	return;
+#ifdef PICASSO96
+    if (picasso_on) {
+	mousexpos = lastmx - picasso96_state.XOffset;
+	mouseypos = lastmy - picasso96_state.YOffset;
+    } else
+#endif
+    {
+	mouseypos = coord_native_to_amiga_y (lastmy) << 1;
+	mousexpos = coord_native_to_amiga_x (lastmx);
+    }
+    mousehack_setpos (mousexpos, mouseypos);
+}
 
 int mousehack_alive (void)
 {
@@ -2291,6 +2326,7 @@ void setmousestate (int mouse, int axis, int data, int isabs)
     }
     for (i = 0; i < MAX_INPUT_SUB_EVENT; i++)
 	handle_input_event (id->eventid[ID_AXIS_OFFSET + axis][i], v, 0, 0);
+    new_mousehack_helper();
 }
 
 #if 0

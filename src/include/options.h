@@ -7,7 +7,8 @@
   * Copyright 1995-2001 Bernd Schmidt
   */
 
-typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
+typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE,
+	       KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
 extern long int version;
 
@@ -25,6 +26,13 @@ struct config_list {
 
 extern struct config_list *predef_configs;
 extern int n_predef_configs;
+
+#define FILTER_SOUND_OFF 0
+#define FILTER_SOUND_EMUL 1
+#define FILTER_SOUND_ON 2
+
+#define FILTER_SOUND_TYPE_A500 0
+#define FILTER_SOUND_TYPE_A1200 1
 
 /* maximum number native input devices supported (single type) */
 #define MAX_INPUT_DEVICES 6
@@ -45,6 +53,9 @@ struct uae_input_device {
 };
 
 typedef enum { DRV_NONE = -1, DRV_35_DD = 0, DRV_35_HD, DRV_525_SD, DRV_35_DD_ESCOM } drive_type;
+
+typedef enum { CP_GENERIC = 1, CP_CDTV, CP_CD32, CP_A500, CP_A500P, CP_A600, CP_A1000,
+	       CP_A1200, CP_A2000, CP_A3000, CP_A3000T, CP_A4000, CP_A4000T };
 
 struct gfx_params {
     int width;
@@ -84,6 +95,8 @@ struct uae_prefs {
     int sound_freq;
     int sound_maxbsiz;
     int sound_interpol;
+    int sound_filter;
+    int sound_filter_type;
 
     int gfx_framerate;
     struct gfx_params gfx_w, gfx_f;
@@ -97,6 +110,12 @@ struct uae_prefs {
     int ntscmode;
     int collision_level;
     int leds_on_screen;
+
+    int cs_rtc;
+    int cs_ide;
+    int cs_a1000ram;
+    int cs_fatgaryrev;
+    int cs_ramseyrev;
 
     char df[4][256];
     char romfile[256];
@@ -184,6 +203,9 @@ extern void cfgfile_parse_line (struct uae_prefs *p, char *);
 extern int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value);
 extern int cfgfile_get_description (const char *filename, char *description);
 extern void cfgfile_show_usage (void);
+
+extern int cstype_from_prefs (struct uae_prefs *p);
+extern void built_in_chipset_prefs (struct uae_prefs *p, int);
 
 extern void fixup_prefs_dimensions (struct gfx_params *);
 extern void fixup_cpu (struct uae_prefs *);

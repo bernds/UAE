@@ -1,13 +1,28 @@
+A10825 Merge mousehack in ROM from WinUAE, minus the crazy startup logic.
+       Merge a stripped-down gayle.c from WinUAE, just enough to get the A4000
+       Kickstart working properly.  GUI changes to take ROM requirements into
+       account, and to allow for selectable motherboard types.
+A10824 Fix two state save bugs (writing out incorrect values for fastmem size,
+       and a memory clobber in save_cpu).
+       Merge minor drawing.c changes from WinUAE.
+A10822 Wire up the filters to the other interpolations beside sinc.  Undo some
+       unsigned changes that came in from E-UAE.
+A10820 Add amd64 support - identical to x86 support for now.  Fix a crash in
+       patch_kick.  Split gtkui's memory tab into RAM and ROM.  Garbage collect
+       a few things in configure.in; eliminate the p.OS port.
 A10819 Changes in gtkui.c not to use obsolete GtkCList; everything replaced
        with GtkTreeView.
        Add preset hardware configurations; install them in a location based
        on $(datadir); scan them at startup & present a list of them in the
        GUI.
        Merge from WinUAE: a few small blitter changes, memory savestate restore
-       changes, changed A3000 mbres memory support.
-       Save & restore rom_crc32 option.
-       Boot priority support.
-       Support mounting disk files as harddisks.
+       changes, changed A3000 mbres memory support, audio filters, memory reset
+       changes (patch_kick).
+       Save & restore rom_crc32 option.  Add a kickstart_rom_crc_attempt
+       option for config files.  Provide default config files and install them.
+       Boot priority support.  Support mounting disk files as harddisks.
+       Keyboard language support in the GUI.
+       Sort the ROM list.
 A10818 Scan rom path for ROMs and key files on startup.  Present the list
        of found ROMs in a combobox in the GUI.  Try all keys in the keyring
        when trying to load a Cloanto ROM.

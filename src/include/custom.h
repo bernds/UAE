@@ -8,8 +8,10 @@
 
 /* These are the masks that are ORed together in the chipset_mask option.
  * If CSMASK_AGA is set, the ECS bits are guaranteed to be set as well.  */
+#define CSMASK_OCS 0
 #define CSMASK_ECS_AGNUS 1
 #define CSMASK_ECS_DENISE 2
+#define CSMASK_FULL_ECS 3
 #define CSMASK_AGA 4
 
 uae_u32 get_copper_address(int copno);

@@ -14,6 +14,8 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
+#include <math.h>
+
 #include "options.h"
 #include "memory.h"
 #include "custom.h"
@@ -79,7 +81,7 @@ void init_sound_table16 (void)
 
     for (i = 0; i < 256; i++)
 	for (j = 0; j < 64; j++)
-	    sound_table[j][i] = j * (uae_s8)i * (currprefs.sound_stereo ? 2 : 1);
+	    sound_table[j][i] = j * (uae_s8)i * (get_audio_ismono () ? 1 : 2);
 }
 
 #ifdef MULTIPLICATION_PROFITABLE
@@ -99,6 +101,109 @@ static uae_u32 left_word_saved[SOUND_MAX_DELAY_BUFFER];
 static int saved_ptr;
 
 static int mixed_on, mixed_stereo_size, mixed_mul1, mixed_mul2;
+static int led_filter_forced, sound_use_filter, sound_use_filter_sinc, led_filter_on;
+
+/* denormals are very small floating point numbers that force FPUs into slow
+   mode. All lowpass filters using floats are suspectible to denormals unless
+   a small offset is added to avoid very small floating point numbers. */
+#define DENORMAL_OFFSET (1E-10)
+
+static struct filter_state {
+    float rc1, rc2, rc3, rc4, rc5;
+} sound_filter_state[4];
+
+static float a500e_filter1_a0;
+static float a500e_filter2_a0;
+static float filter_a0; /* a500 and a1200 use the same */
+
+enum {
+  FILTER_NONE = 0,
+  FILTER_MODEL_A500,
+  FILTER_MODEL_A1200
+};
+
+/* Amiga has two separate filtering circuits per channel, a static RC filter
+ * on A500 and the LED filter. This code emulates both.
+ * 
+ * The Amiga filtering circuitry depends on Amiga model. Older Amigas seem
+ * to have a 6 dB/oct RC filter with cutoff frequency such that the -6 dB
+ * point for filter is reached at 6 kHz, while newer Amigas have no filtering.
+ *
+ * The LED filter is complicated, and we are modelling it with a pair of
+ * RC filters, the other providing a highboost. The LED starts to cut
+ * into signal somewhere around 5-6 kHz, and there's some kind of highboost
+ * in effect above 12 kHz. Better measurements are required.
+ *
+ * The current filtering should be accurate to 2 dB with the filter on,
+ * and to 1 dB with the filter off.
+*/
+
+static int filter(int input, struct filter_state *fs)
+{
+    int o;
+    float normal_output, led_output;
+
+    input = (uae_s16)input;
+    switch (sound_use_filter) {
+    
+    case FILTER_NONE:
+	return input;
+    case FILTER_MODEL_A500: 
+	fs->rc1 = a500e_filter1_a0 * input + (1 - a500e_filter1_a0) * fs->rc1 + DENORMAL_OFFSET;
+	fs->rc2 = a500e_filter2_a0 * fs->rc1 + (1-a500e_filter2_a0) * fs->rc2;
+	normal_output = fs->rc2;
+
+	fs->rc3 = filter_a0 * normal_output + (1 - filter_a0) * fs->rc3;
+	fs->rc4 = filter_a0 * fs->rc3       + (1 - filter_a0) * fs->rc4;
+	fs->rc5 = filter_a0 * fs->rc4       + (1 - filter_a0) * fs->rc5;
+
+	led_output = fs->rc5;
+	break;
+	
+    case FILTER_MODEL_A1200:
+	normal_output = input;
+
+	fs->rc2 = filter_a0 * normal_output + (1 - filter_a0) * fs->rc2 + DENORMAL_OFFSET;
+	fs->rc3 = filter_a0 * fs->rc2       + (1 - filter_a0) * fs->rc3;
+	fs->rc4 = filter_a0 * fs->rc3       + (1 - filter_a0) * fs->rc4;
+
+	led_output = fs->rc4;
+	break;
+
+    }
+
+    if (led_filter_on) 
+	o = led_output;
+    else
+	o = normal_output;
+
+    if (o > 32767)
+	o = 32767;
+    else if (o < -32768)
+	o = -32768;
+
+    return o;
+}
+
+/* This computes the 1st order low-pass filter term b0.
+ * The a1 term is 1.0 - b0. The center frequency marks the -3 dB point. */
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+static float rc_calculate_a0 (int sample_rate, int cutoff_freq)
+{
+    float omega;
+    /* The BLT correction formula below blows up if the cutoff is above nyquist. */
+    if (cutoff_freq >= sample_rate / 2)
+	return 1.0;
+
+    omega = 2 * M_PI * cutoff_freq / sample_rate;
+    /* Compensate for the bilinear transformation. This allows us to specify the
+     * stop frequency more exactly, but the filter becomes less steep further
+     * from stopband. */
+    omega = tan (omega / 2) * 2;
+    return 1 / (1 + 1 / omega);
+}
 
 /* Always put the right word before the left word.  */
 
@@ -205,12 +310,6 @@ STATIC_INLINE void samplexx_sinc_handler (int *datasp)
     int i, n;
     int const *winsinc;
 
-#if 1
-    /* Amiga 500 filter model is default for now. Put n=2 for A1200. */
-    n = 0;
-    if (gui_ledstate & 1) /* power led */
-	n += 1;
-#else
     if (sound_use_filter_sinc) {
 	n = (sound_use_filter_sinc == FILTER_MODEL_A500) ? 0 : 2;
 	if (led_filter_on)
@@ -218,7 +317,6 @@ STATIC_INLINE void samplexx_sinc_handler (int *datasp)
     } else {
 	n = 4;
     }
-#endif
     winsinc = winsinc_integral[n];
 
     for (i = 0; i < 4; i += 1) {
@@ -269,6 +367,8 @@ void sample16_handler (void)
     {
 	uae_u32 data = SBASEVAL16(2) + data0;
 	FINISH_DATA (data, 16, 2);
+	if (sound_use_filter)
+	    data = filter (data, &sound_filter_state[0]);
 	PUT_SOUND_WORD (data);
     }
     check_sound_buffers ();
@@ -283,6 +383,8 @@ static void sample16i_anti_handler (void)
     samplexx_anti_handler (datas);
     data1 = datas[0] + datas[3] + datas[1] + datas[2];
     FINISH_DATA (data1, 16, 2);
+    if (sound_use_filter)
+	data1 = filter (data1, &sound_filter_state[0]);
     PUT_SOUND_WORD (data1);
     check_sound_buffers ();
 }
@@ -334,6 +436,8 @@ static void sample16i_rh_handler (void)
     {
 	uae_u32 data = SBASEVAL16(2) + data0;
 	FINISH_DATA (data, 16, 2);
+	if (sound_use_filter)
+	    data = filter (data, &sound_filter_state[0]);
 	PUT_SOUND_WORD (data);
     }
 
@@ -406,6 +510,8 @@ static void sample16i_crux_handler (void)
     {
 	uae_u32 data = SBASEVAL16(2) + data0;
 	FINISH_DATA (data, 16, 2);
+	if (sound_use_filter)
+	    data = filter (data, &sound_filter_state[0]);
 	PUT_SOUND_WORD (data);
     }
     check_sound_buffers ();
@@ -420,8 +526,12 @@ static void sample16si_anti_handler (void)
     data1 = datas[0] + datas[3];
     data2 = datas[1] + datas[2];
     FINISH_DATA (data1, 16, 1);
+    if (sound_use_filter)
+	data1 = filter (data1, &sound_filter_state[0]);
     put_sound_word_right (data1);
     FINISH_DATA (data2, 16, 1);
+    if (sound_use_filter)
+	data2 = filter (data2, &sound_filter_state[1]);
     put_sound_word_left (data2);
     check_sound_buffers ();
 }
@@ -460,6 +570,8 @@ void sample16s_handler (void)
     {
 	uae_u32 data = SBASEVAL16(1) + data0;
 	FINISH_DATA (data, 16, 1);
+	if (sound_use_filter)
+	    data = filter (data, &sound_filter_state[0]);
 	put_sound_word_right (data);
     }
 
@@ -467,6 +579,8 @@ void sample16s_handler (void)
     {
 	uae_u32 data = SBASEVAL16(1) + data1;
 	FINISH_DATA (data, 16, 1);
+	if (sound_use_filter)
+	    data = filter (data, &sound_filter_state[1]);
 	put_sound_word_left (data);
     }
 
@@ -539,12 +653,16 @@ static void sample16si_crux_handler (void)
     {
 	uae_u32 data = SBASEVAL16 (1) + data0;
 	FINISH_DATA (data, 16, 1);
+	if (sound_use_filter)
+	    data = filter (data, &sound_filter_state[0]);
 	put_sound_word_right (data);
     }
 
     {
 	uae_u32 data = SBASEVAL16 (1) + data1;
 	FINISH_DATA (data, 16, 1);
+	if (sound_use_filter)
+	    data = filter (data, &sound_filter_state[1]);
 	put_sound_word_left (data);
     }
     check_sound_buffers ();
@@ -597,12 +715,16 @@ static void sample16si_rh_handler (void)
     {
 	uae_u32 data = SBASEVAL16 (1) + data0;
 	FINISH_DATA (data, 16, 1);
+	if (sound_use_filter)
+	    data = filter (data, &sound_filter_state[0]);
 	put_sound_word_right (data);
     }
 
     {
 	uae_u32 data = SBASEVAL16 (1) + data1;
 	FINISH_DATA (data, 16, 1);
+	if (sound_use_filter)
+	    data = filter (data, &sound_filter_state[1]);
 	put_sound_word_left (data);
     }
     check_sound_buffers ();
@@ -833,6 +955,7 @@ void audio_reset (void)
     int i;
     struct audio_channel_data *cdp;
 
+    memset (sound_filter_state, 0, sizeof sound_filter_state);
     if (savestate_state != STATE_RESTORE) {
 	for (i = 0; i < 4; i++) {
 	    cdp = &audio_channel[i];
@@ -852,7 +975,6 @@ void audio_reset (void)
 
     last_cycles = get_cycles ();
     next_sample_evtime = scaled_sample_evtime;
-
     schedule_audio ();
     events_schedule ();
 }
@@ -874,6 +996,9 @@ void check_prefs_changed_audio (void)
     /* Some options we can just apply without reinitializing the sound
        backend.  */
     currprefs.sound_interpol = changed_prefs.sound_interpol;
+    currprefs.sound_filter = changed_prefs.sound_filter;
+    currprefs.sound_filter_type = changed_prefs.sound_filter_type;
+
     sep = currprefs.sound_stereo_separation = changed_prefs.sound_stereo_separation;
     delay = currprefs.sound_mixed_stereo_delay = changed_prefs.sound_mixed_stereo_delay;
     mixed_mul1 = MIXED_STEREO_SCALE / 2 - sep;
@@ -913,6 +1038,24 @@ void check_prefs_changed_audio (void)
 	    events_schedule ();
 	}
     }
+
+    led_filter_forced = -1; // always off
+    sound_use_filter = sound_use_filter_sinc = 0;
+    if (currprefs.sound_filter != FILTER_SOUND_OFF) {
+	if (currprefs.sound_filter == FILTER_SOUND_ON)
+	    led_filter_forced = 1;
+	if (currprefs.sound_filter == FILTER_SOUND_EMUL)
+	    led_filter_forced = 0;
+	if (currprefs.sound_filter_type == FILTER_SOUND_TYPE_A500)
+	    sound_use_filter = FILTER_MODEL_A500;
+	else if (currprefs.sound_filter_type == FILTER_SOUND_TYPE_A1200)
+	    sound_use_filter = FILTER_MODEL_A1200;
+    }
+    a500e_filter1_a0 = rc_calculate_a0(currprefs.sound_freq, 6200);
+    a500e_filter2_a0 = rc_calculate_a0(currprefs.sound_freq, 20000);
+    filter_a0 = rc_calculate_a0(currprefs.sound_freq, 7000);
+    led_filter_audio();
+
     /* Select the right interpolation method.  */
     if (sample_handler == sample16_handler
 	|| sample_handler == sample16i_crux_handler
@@ -937,6 +1080,8 @@ void check_prefs_changed_audio (void)
 			  : sample16si_anti_handler);
     sample_prehandler = NULL;
     if (currprefs.sound_interpol == 3) {
+	sound_use_filter_sinc = sound_use_filter;
+	sound_use_filter = 0;
 	sample_prehandler = sinc_prehandler;
     } else if (currprefs.sound_interpol == 4) {
 	sample_prehandler = anti_prehandler;
@@ -1051,7 +1196,7 @@ void audio_hsync (int dmaaction)
     }
 }
 
-void AUDxDAT (unsigned int nr, uae_u16 v)
+void AUDxDAT (int nr, uae_u16 v)
 {
     struct audio_channel_data *cdp = audio_channel + nr;
 
@@ -1071,21 +1216,21 @@ void AUDxDAT (unsigned int nr, uae_u16 v)
     }
 }
 
-void AUDxLCH (unsigned int nr, uae_u16 v)
+void AUDxLCH (int nr, uae_u16 v)
 {
     update_audio ();
 
     audio_channel[nr].lc = (audio_channel[nr].lc & 0xffff) | ((uae_u32)v << 16);
 }
 
-void AUDxLCL (unsigned int nr, uae_u16 v)
+void AUDxLCL (int nr, uae_u16 v)
 {
     update_audio ();
 
     audio_channel[nr].lc = (audio_channel[nr].lc & ~0xffff) | (v & 0xFFFE);
 }
 
-void AUDxPER (unsigned int nr, uae_u16 v)
+void AUDxPER (int nr, uae_u16 v)
 {
     unsigned long per = v * CYCLE_UNIT;
     update_audio ();
@@ -1114,13 +1259,13 @@ void AUDxPER (unsigned int nr, uae_u16 v)
     audio_channel[nr].per = per;
 }
 
-void AUDxLEN (unsigned int nr, uae_u16 v)
+void AUDxLEN (int nr, uae_u16 v)
 {
     update_audio ();
     audio_channel[nr].len = v;
 }
 
-void AUDxVOL (unsigned int nr, uae_u16 v)
+void AUDxVOL (int nr, uae_u16 v)
 {
     int v2 = v & 64 ? 63 : v & 63;
 
@@ -1148,6 +1293,14 @@ int init_audio (void)
     int result = init_sound ();
     update_sound (vblank_hz);
     return result;
+}
+
+void led_filter_audio (void)
+{
+    led_filter_on = 0;
+    if (led_filter_forced > 0 || (gui_data.powerled && led_filter_forced >= 0))
+	led_filter_on = 1;
+    gui_led (0, gui_data.powerled);
 }
 
 /* audio save/restore code FIXME: not working correctly */

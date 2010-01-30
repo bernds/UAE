@@ -67,6 +67,46 @@ struct romlist *romlist_from_idx (int idx, int type, int need_crc32)
     return 0;
 }
 
+static void sort_romlist (void)
+{
+    int i, j;
+    for (i = 0; i < romlist_cnt; i++) {
+	int k = i;
+
+	if (list_of_roms[i].rd == 0)
+	    continue;
+
+	for (j = i + 1; j < romlist_cnt; j++) {
+	    if (list_of_roms[j].rd == 0)
+		continue;
+	    if (list_of_roms[j].rd == list_of_roms[k].rd
+		&& list_of_roms[j].loc == ROMLOC_USER)
+		k = j;
+	    else if (strcmp (list_of_roms[j].rd->name, list_of_roms[k].rd->name) < 0)
+		k = j;
+	}
+	if (k != i) {
+	    struct romlist t;
+	    t = list_of_roms[k];
+	    list_of_roms[k] = list_of_roms[i];
+	    list_of_roms[i] = t;
+	}
+    }
+    /* Delete duplicates from the user directory.  */
+    for (i = j = 0; i < romlist_cnt; i++) {
+	if (!list_of_roms[i].rd
+	    || i + 1 > romlist_cnt
+	    || list_of_roms[i].rd != list_of_roms[i + 1].rd
+	    || list_of_roms[i].loc == ROMLOC_SYSTEM)
+	{
+	    if (i != j)
+		list_of_roms[j] = list_of_roms[i];
+	    j++;
+	}
+    }
+    romlist_cnt = j;
+}
+
 void romlist_clear (int mask)
 {
     int i, j;
@@ -666,6 +706,7 @@ void scan_roms (const char *path, int loc)
 	    zfile_fclose (f);
 	}
     }
+    sort_romlist ();
     gui_romlist_changed ();
 
     free (data);

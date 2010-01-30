@@ -29,6 +29,7 @@
 #include "gui.h"
 #include "zfile.h"
 #include "autoconf.h"
+#include "filesys.h"
 #include "osemu.h"
 #include "picasso96.h"
 #include "traps.h"
@@ -189,6 +190,8 @@ void default_prefs (struct uae_prefs *p)
     p->sound_freq = DEFAULT_SOUND_FREQ;
     p->sound_maxbsiz = DEFAULT_SOUND_MAXB;
     p->sound_interpol = 0;
+    p->sound_filter = FILTER_SOUND_OFF;
+    p->sound_filter_type = FILTER_SOUND_TYPE_A500;
 
     p->gfx_framerate = 1;
     p->gfx_w.width = 800;
@@ -219,6 +222,13 @@ void default_prefs (struct uae_prefs *p)
 
     p->immediate_blits = 0;
     p->collision_level = 1;
+ 
+    p->chipset_mask = CSMASK_ECS_AGNUS;
+    p->cs_rtc = 2;
+    p->cs_a1000ram = 0;
+    p->cs_fatgaryrev = -1;
+    p->cs_ramseyrev = -1;
+    p->cs_ide = 0;
 
     strcpy (p->df[0], "df0.adf");
     strcpy (p->df[1], "df1.adf");

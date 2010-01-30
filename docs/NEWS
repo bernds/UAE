@@ -19,6 +19,12 @@ User-visible changes in 0.8.27:
     "/usr/share/uae/roms") where ROMs can be installed.  This directory will
     be scanned at startup.
   - Mounted filesystems/hardfiles now support adjustable boot priorities.
+  - The p.OS port has been deleted on the grounds that the OS never got off
+    the ground and has been dead for about 10 years.
+  - The mousehack utility is now built into UAE, and started at boot.  That
+    means the windowing system's mouse pointer will match the Amiga side
+    mouse pointer as long as AmigaOS is running (only works with Kickstart
+    >= 1.3).
 
 User-visible changes in 0.8.26:
   - Compiles with modern gcc versions

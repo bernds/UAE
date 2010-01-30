@@ -117,7 +117,10 @@ static const char *centermode1[] = { "none", "simple", "smart", 0 };
 static const char *centermode2[] = { "false", "true", "smart", 0 };
 static const char *stereomode[] = { "mono", "stereo", "mixed", 0 };
 static const char *interpolmode[] = { "none", "rh", "crux", "sinc", "anti", 0 };
+static const char *soundfiltermode1[] = { "off", "emulated", "on", 0 };
+static const char *soundfiltermode2[] = { "standard", "enhanced", 0 };
 static const char *collmode[] = { "none", "sprites", "playfields", "full", 0 };
+static const char *idemode[] = { "none", "a600/a1200", "a4000", 0 };
 
 static const char *obsolete[] = {
     "accuracy", "gfx_opengl", "gfx_32bit_blits", "32bit_blits",
@@ -218,6 +221,8 @@ void save_options (FILE *f, struct uae_prefs *p)
     cfgfile_write (f, "sound_max_buff=%d\n", p->sound_maxbsiz);
     cfgfile_write (f, "sound_frequency=%d\n", p->sound_freq);
     cfgfile_write (f, "sound_interpol=%s\n", interpolmode[p->sound_interpol]);
+    cfgfile_write (f, "sound_filter=%s\n", soundfiltermode1[p->sound_filter]);
+    cfgfile_write (f, "sound_filter_type=%s\n", soundfiltermode2[p->sound_filter_type]);
 
     for (i = 0; i < 2; i++) {
 	int v = i == 0 ? p->jport0 : p->jport1;
@@ -258,6 +263,11 @@ void save_options (FILE *f, struct uae_prefs *p)
     else
 	cfgfile_write (f, "chipset=ocs\n");
     cfgfile_write (f, "collision_level=%s\n", collmode[p->collision_level]);
+
+    cfgfile_write (f, "ide=%s\n", p->cs_ide == 1 ? "a600/a1200" : (p->cs_ide == 2 ? "a4000" : "none"));
+    cfgfile_write (f, "a1000ram=%s\n", p->cs_a1000ram ? "true" : "false");
+    cfgfile_write (f, "fatgary=%d\n", p->cs_fatgaryrev);
+    cfgfile_write (f, "ramsey=%d\n", p->cs_ramseyrev);
 
     cfgfile_write (f, "fastmem_size=%d\n", p->fastmem_size / 0x100000);
     cfgfile_write (f, "a3000mem_size=%d\n", p->mbresmem_low_size / 0x100000);
@@ -457,6 +467,8 @@ static int cfgfile_parse_host (struct uae_prefs *p, char *option, char *value)
 	return 1;
     if (cfgfile_strval (option, value, "sound_output", &p->produce_sound, soundmode, 0)
 	|| cfgfile_strval (option, value, "sound_interpol", &p->sound_interpol, interpolmode, 0)
+	|| cfgfile_strval (option, value, "sound_filter", &p->sound_filter, soundfiltermode1, 0)
+	|| cfgfile_strval (option, value, "sound_filter_type", &p->sound_filter_type, soundfiltermode2, 0)
 	|| cfgfile_strval (option, value, "use_gui", &p->start_gui, guimode1, 1)
 	|| cfgfile_strval (option, value, "use_gui", &p->start_gui, guimode2, 1)
 	|| cfgfile_strval (option, value, "use_gui", &p->start_gui, guimode3, 0)
@@ -611,6 +623,7 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
     unsigned int crc32;
 
     if (cfgfile_yesno (option, value, "immediate_blits", &p->immediate_blits)
+	|| cfgfile_yesno (option, value, "a1000ram", &p->cs_a1000ram)
 	|| cfgfile_yesno (option, value, "kickshifter", &p->kickshifter)
 	|| cfgfile_yesno (option, value, "ntsc", &p->ntscmode)
 	|| cfgfile_yesno (option, value, "cpu_24bit_addressing", &p->address_space_24)
@@ -618,7 +631,9 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	|| cfgfile_yesno (option, value, "serial_on_demand", &p->serial_demand))
 	return 1;
     
-    if (cfgfile_uintval (option, value, "fastmem_size", &p->fastmem_size, 0x100000)
+    if (cfgfile_intval (option, value, "fatgary", &p->cs_fatgaryrev, 1)
+	|| cfgfile_intval (option, value, "ramsey", &p->cs_ramseyrev, 1)
+	|| cfgfile_uintval (option, value, "fastmem_size", &p->fastmem_size, 0x100000)
 	|| cfgfile_uintval (option, value, "a3000mem_size", &p->mbresmem_low_size, 0x100000)
 	|| cfgfile_uintval (option, value, "mbresmem_size", &p->mbresmem_high_size, 0x100000)
 	|| cfgfile_uintval (option, value, "z3mem_size", &p->z3fastmem_size, 0x100000)
@@ -651,7 +666,8 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	return 1;
     }
     
-    if (cfgfile_strval (option, value, "collision_level", &p->collision_level, collmode, 0))
+    if (cfgfile_strval (option, value, "ide", &p->cs_ide, idemode, 0)
+	|| cfgfile_strval (option, value, "collision_level", &p->collision_level, collmode, 0))
 	return 1;
 
     if (cfgfile_string (option, value, "floppy0", p->df[0], 256)
@@ -1172,4 +1188,98 @@ int parse_cmdline_option (struct uae_prefs *p, char c, char *arg)
 	break;
     }
     return !! strchr (arg_required, c);
+}
+
+int cstype_from_prefs (struct uae_prefs *p)
+{
+    if ((p->chipset_mask & CSMASK_AGA) == 0) {
+	if (p->cs_ramseyrev == -1 && p->cs_fatgaryrev == -1) {
+	    if (p->cs_ide == 0) {
+		if (p->cs_a1000ram && p->chipset_mask == CSMASK_OCS)
+		    return CP_A1000;
+		if (p->chipset_mask == CSMASK_FULL_ECS)
+		    return CP_A500P;
+		return CP_A500;
+	    }
+	    if (p->chipset_mask == CSMASK_FULL_ECS)
+		return CP_A600;
+	    return CP_GENERIC;
+	}
+	if (p->cs_ide == 0 && p->cs_fatgaryrev == 0 && p->cs_ramseyrev == 0xd)
+	    return CP_A3000;
+	return CP_GENERIC;
+    }
+    if (p->cs_ide == 1 && p->cs_ramseyrev == -1 && p->cs_fatgaryrev == -1)
+	return CP_A1200;
+    if (p->cs_ide == 2 && p->cs_ramseyrev == 0xf && p->cs_fatgaryrev == 0)
+	return CP_A4000;
+    return CP_GENERIC;
+}
+
+void built_in_chipset_prefs (struct uae_prefs *p, int cstype)
+{
+    p->cs_a1000ram = 0;
+    p->cs_fatgaryrev = -1;
+    p->cs_ide = 0;
+    p->cs_ramseyrev = -1;
+    p->chipset_mask = CSMASK_ECS_AGNUS;
+
+    switch (cstype)
+    {
+    case CP_GENERIC: // generic
+	p->cs_fatgaryrev = 0;
+	p->cs_ide = -1;
+	p->cs_ramseyrev = 0x0f;
+	break;
+    case CP_CDTV: // CDTV
+	break;
+    case CP_CD32: // CD32
+	break;
+    case CP_A500: // A500
+	break;
+    case CP_A500P: // A500+
+	p->chipset_mask = CSMASK_FULL_ECS;
+	break;
+    case CP_A600: // A600
+	p->cs_ide = 1;
+	p->chipset_mask = CSMASK_FULL_ECS;
+	break;
+    case CP_A1000: // A1000
+	p->cs_a1000ram = 1;
+	p->chipset_mask = CSMASK_OCS;
+	break;
+    case CP_A1200: // A1200
+	p->cs_ide = 1;
+	p->chipset_mask = CSMASK_AGA;
+	break;
+    case CP_A2000: // A2000
+	p->cs_rtc = 1;
+	break;
+    case CP_A3000: // A3000
+	p->cs_rtc = 2;
+	p->cs_fatgaryrev = 0;
+	p->cs_ramseyrev = 0x0d;
+	p->chipset_mask = CSMASK_FULL_ECS;
+	break;
+    case CP_A3000T: // A3000T
+	p->cs_rtc = 2;
+	p->cs_fatgaryrev = 0;
+	p->cs_ramseyrev = 0x0d;
+	p->chipset_mask = CSMASK_FULL_ECS;
+	break;
+    case CP_A4000: // A4000
+	p->cs_rtc = 2;
+	p->cs_fatgaryrev = 0;
+	p->cs_ramseyrev = 0x0f;
+	p->cs_ide = 2;
+	p->chipset_mask = CSMASK_AGA;
+	break;
+    case CP_A4000T: // A4000T
+	p->cs_rtc = 2;
+	p->cs_fatgaryrev = 0;
+	p->cs_ramseyrev = 0x0f;
+	p->cs_ide = 2;
+	p->chipset_mask = CSMASK_AGA;
+	break;
+    }
 }

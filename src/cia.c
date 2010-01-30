@@ -55,6 +55,7 @@ static unsigned long ciaata_passed, ciaatb_passed, ciabta_passed, ciabtb_passed;
 
 static unsigned long ciaatod, ciabtod, ciaatol, ciabtol, ciaaalarm, ciabalarm;
 static int ciaatlatch, ciabtlatch;
+static int oldled, oldovl;
 
 static unsigned int ciabpra;
 
@@ -386,6 +387,33 @@ void CIA_vsync_handler ()
     serial_flush_buffer();
 }
 
+static void bfe001_change (void)
+{
+    uae_u8 v = ciaapra;
+
+    v |= ~ciaadra; /* output is high when pin's direction is input */
+    if ((v & 2) != oldled) {
+	int led = (v & 2) ? 0 : 1;
+	oldled = v & 2;
+	gui_ledstate &= ~1;
+	gui_ledstate |= led;
+	gui_data.powerled = led;
+	gui_led (0, led);
+	led_filter_audio ();
+    }
+    if ((v & 1) != oldovl) {
+	int i = (allocated_chipmem>>16) > 32 ? allocated_chipmem >> 16 : 32;
+	oldovl = v & 1;
+
+	if (!oldovl || ersatzkickfile) {
+	    map_banks (&chipmem_bank, 0, i, allocated_chipmem);
+	} else if (!(currprefs.chipset_mask & CSMASK_AGA)) {
+	    /* pin disconnected in AGA chipset, CD audio mute on/off on CD32 */
+	    map_banks (&kickmem_bank, 0, i, 0x80000);
+	}
+    }
+}
+
 static uae_u8 ReadCIAA (unsigned int addr)
 {
     unsigned int tmp;
@@ -511,25 +539,8 @@ static void WriteCIAA (uae_u16 addr,uae_u8 val)
     int oldled, oldovl;
     switch (addr & 0xf) {
     case 0:
-	oldovl = ciaapra & 1;
-	oldled = ciaapra & 2;
-	ciaapra = (ciaapra & ~0x3) | (val & 0x3);
-	LED(ciaapra & 0x2);
-	gui_ledstate &= ~1;
-	gui_ledstate |= ((~ciaapra & 2) >> 1);
-	gui_data.powerled = ((~ciaapra & 2) >> 1);
-	if ((ciaapra & 2) != oldled)
-	    gui_led (0, !(ciaapra & 2));
-	if ((ciaapra & 1) != oldovl) {
-	    int i = (allocated_chipmem>>16) > 32 ? allocated_chipmem >> 16 : 32;
-
-	    if (oldovl || ersatzkickfile) {
-		map_banks (&chipmem_bank, 0, i, allocated_chipmem);
-	    } else {
-		/* Is it OK to do this for more than 2M of chip? */
-		map_banks (&kickmem_bank, 0, i, 0x80000);
-	    }
-	}
+ 	ciaapra = (ciaapra & ~0x3) | (val & 0x3);
+	bfe001_change ();
 	break;
     case 1:
 	ciaaprb = val;
@@ -568,6 +579,7 @@ static void WriteCIAA (uae_u16 addr,uae_u8 val)
 	break;
     case 2:
 	ciaadra = val;
+	bfe001_change ();
 	break;
     case 3:
 	ciaadrb = val;
@@ -761,6 +773,8 @@ void CIA_reset (void)
 {
     kback = 1;
     kbstate = 0;
+    oldovl = -1;
+    oldled = -1;
 
     if (!savestate_state) {
 	ciaatlatch = ciabtlatch = 0;
@@ -782,11 +796,7 @@ void CIA_reset (void)
 	serial_dtr_off (); /* Drop DTR at reset */
 
     if (savestate_state) {
-	/* Reset oldovl and oldled */
-	uae_u8 v = ReadCIAA (0);
-	WriteCIAA (0,3);
-	WriteCIAA (0,0);
-	WriteCIAA (0,v);
+	bfe001_change ();
 	/* select drives */
 	DISK_select (ciabprb);
     }

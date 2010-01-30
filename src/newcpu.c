@@ -2035,7 +2035,7 @@ uae_u8 *save_cpu (int *len, uae_u8 *dstptr)
     if (dstptr)
 	dstbak = dst = dstptr;
     else
-	dstbak = dst = malloc(4+4+15*4+4+4+4+4+2+4+4+4+4+4+4+4);
+	dstbak = dst = malloc (1000);
     model = currprefs.cpu_model;
     save_u32 (model);					/* MODEL */
     save_u32 (DEFAULT_SAVE_FLAGS | (currprefs.address_space_24 ? 1 : 0));	/* FLAGS */

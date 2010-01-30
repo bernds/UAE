@@ -687,43 +687,43 @@ uae_u8 REGPARAM2 *default_xlate (uaecptr a)
 addrbank dummy_bank = {
     dummy_lget, dummy_wget, dummy_bget,
     dummy_lput, dummy_wput, dummy_bput,
-    default_xlate, dummy_check, NULL
+    default_xlate, dummy_check, NULL, NULL
 };
 
 addrbank chipmem_bank = {
     chipmem_lget, chipmem_wget, chipmem_bget,
     chipmem_lput, chipmem_wput, chipmem_bput,
-    chipmem_xlate, chipmem_check, NULL
+    chipmem_xlate, chipmem_check, NULL, "Chip memory"
 };
 
 addrbank bogomem_bank = {
     bogomem_lget, bogomem_wget, bogomem_bget,
     bogomem_lput, bogomem_wput, bogomem_bput,
-    bogomem_xlate, bogomem_check, NULL
+    bogomem_xlate, bogomem_check, NULL, "Slow memory"
 };
 
 addrbank a3000lmem_bank = {
     a3000lmem_lget, a3000lmem_wget, a3000lmem_bget,
     a3000lmem_lput, a3000lmem_wput, a3000lmem_bput,
-    a3000lmem_xlate, a3000lmem_check, NULL,
+    a3000lmem_xlate, a3000lmem_check, NULL, "RAMSEY memory (low)"
 };
 
 addrbank a3000hmem_bank = {
     a3000hmem_lget, a3000hmem_wget, a3000hmem_bget,
     a3000hmem_lput, a3000hmem_wput, a3000hmem_bput,
-    a3000hmem_xlate, a3000hmem_check, NULL,
+    a3000hmem_xlate, a3000hmem_check, NULL, "RAMSEY memory (high)"
 };
 
 addrbank kickmem_bank = {
     kickmem_lget, kickmem_wget, kickmem_bget,
     kickmem_lput, kickmem_wput, kickmem_bput,
-    kickmem_xlate, kickmem_check, NULL
+    kickmem_xlate, kickmem_check, NULL, "Kickstart ROM"
 };
 
 addrbank extendedkickmem_bank = {
     extendedkickmem_lget, extendedkickmem_wget, extendedkickmem_bget,
     extendedkickmem_lput, extendedkickmem_wput, extendedkickmem_bput,
-    extendedkickmem_xlate, extendedkickmem_check, NULL
+    extendedkickmem_xlate, extendedkickmem_check, NULL, "Extended Kickstart ROM"
 };
 
 static int kickstart_checksum (uae_u8 *mem, int size)
@@ -869,7 +869,8 @@ static int patch_residents (uae_u8 *kickmemory, int size)
     int i, j, patched = 0;
     char *residents[] = {
 	"NCR scsi.device", 
-	"scsi.device", "carddisk.device", "card.resource"
+	"scsi.device", "carddisk.device", "card.resource",
+	NULL
     };
     uaecptr base = size == 524288 ? 0xf80000 : 0xfc0000;
 
@@ -931,7 +932,7 @@ static int load_kickstart (void)
 	f = zfile_open (currprefs.romfile, "rb");
 
     if (f == NULL) {
-#if defined (AMIGA)||defined (__POS__)
+#if defined (AMIGA)
 #define USE_UAE_ERSATZ "USE_UAE_ERSATZ"
 	if (!getenv (USE_UAE_ERSATZ)) {
 	    write_log ("Using current ROM. (create ENV:%s to " "use uae's ROM replacement)\n", USE_UAE_ERSATZ);
@@ -1226,10 +1227,10 @@ void memory_reset (void)
     currprefs.mbresmem_low_size = changed_prefs.mbresmem_low_size;
     currprefs.mbresmem_high_size = changed_prefs.mbresmem_high_size;
 
+    need_hardreset = 0;
     if (last_address_space_24 != currprefs.address_space_24)
 	need_hardreset = 1;
 
-    need_hardreset = 0;
     last_address_space_24 = currprefs.address_space_24;
     allocate_memory ();
 
@@ -1254,7 +1255,8 @@ void memory_reset (void)
 
     map_banks (&custom_bank, 0xC0, 0xE0 - 0xC0, 0);
     map_banks (&cia_bank, 0xA0, 32, 0);
-    map_banks (&clock_bank, 0xDC, 1, 0);
+    if (currprefs.cs_rtc)
+	map_banks (&clock_bank, 0xDC, 1, 0);
 
     /* map "nothing" to 0x200000 - 0x9FFFFF (0xBEFFFF if PCMCIA or AGA) */
     bnk = allocated_chipmem >> 16;
@@ -1271,12 +1273,33 @@ void memory_reset (void)
 	    t = 0x10;
 	map_banks (&bogomem_bank, 0xC0, t, allocated_bogomem);
     }
+    if (currprefs.cs_ide) {
+	if(currprefs.cs_ide == 1) {
+	    map_banks (&gayle_bank, 0xD8, 6, 0);
+	    map_banks (&gayle2_bank, 0xDD, 2, 0);
+	    // map_banks (&gayle_attr_bank, 0xA0, 8, 0); only if PCMCIA card inserted */
+	}
+	if (currprefs.cs_ide == 2) {
+	    map_banks (&gayle_bank, 0xDD, 1, 0);
+	}
+	if (currprefs.cs_ide < 0) {
+	    map_banks (&gayle_bank, 0xD8, 6, 0);
+	    map_banks (&gayle_bank, 0xDD, 1, 0);
+	}
+    }
+    if (currprefs.cs_fatgaryrev >= 0 || currprefs.cs_ramseyrev >= 0)
+	map_banks (&mbres_bank, 0xDE, 1, 0);
+
     if (a3000lmemory != 0)
 	map_banks (&a3000lmem_bank, a3000lmem_start >> 16, allocated_a3000lmem >> 16, 0);
     if (a3000hmemory != 0)
 	map_banks (&a3000hmem_bank, a3000hmem_start >> 16, allocated_a3000hmem >> 16, 0);
 
-    map_banks (&rtarea_bank, RTAREA_BASE >> 16, 1, 0);
+    if (need_uae_boot_rom ()) {
+	uae_boot_rom = 1;
+	map_banks (&rtarea_bank, RTAREA_BASE >> 16, 1, 0);
+    } else
+	uae_boot_rom = 0;
 
     map_banks (&kickmem_bank, 0xF8, 8, 0);
     if (a1000_bootrom)

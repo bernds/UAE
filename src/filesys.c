@@ -3291,14 +3291,14 @@ void filesys_install (void)
 
     TRACE (("Installing filesystem\n"));
 
-    ROM_filesys_resname = ds("UAEunixfs.resource");
-    ROM_filesys_resid = ds("UAE unixfs 0.4");
+    ROM_filesys_resname = ds ("UAEunixfs.resource");
+    ROM_filesys_resid = ds ("UAE unixfs 0.4");
 
     fsdevname = ds ("uae.device"); /* does not really exist */
 
     ROM_filesys_diagentry = here();
     calltrap (deftrap(filesys_diagentry));
-    dw(0x4ED0); /* JMP (a0) - jump to code that inits Residents */
+    dw (0x4ED0); /* JMP (a0) - jump to code that inits Residents */
 
     loop = here ();
     /* Special trap for the assembly make_dev routine */
@@ -3332,9 +3332,9 @@ void filesys_install_code (void)
     align(4);
 
     /* The last offset comes from the code itself, look for it near the top. */
-    EXPANSION_bootcode = here () + 8 + 0x14 + 4;
+    EXPANSION_bootcode = here () + 8 + 0x1c + 4;
     /* Ouch. Make sure this is _always_ a multiple of two bytes. */
-    filesys_initcode = here() + 8 + 0x28 + 4;
+    filesys_initcode = here() + 8 + 0x30 + 4;
 
     #include "filesys_bootrom.c"
 }

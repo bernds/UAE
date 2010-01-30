@@ -38,6 +38,7 @@
 #include "picasso96.h"
 #include "drawing.h"
 #include "savestate.h"
+#include "gayle.h"
 
 #define SPR0_HPOS 0x15
 
@@ -3394,6 +3395,7 @@ static void hsync_handler (void)
     cop_state.hpos = 0;
     compute_spcflag_copper ();
     inputdevice_hsync ();
+    gayle_hsync ();
 }
 
 void init_eventtab (void)
@@ -3467,6 +3469,7 @@ void customreset (void)
 
     n_frames = 0;
 
+    gayle_reset (1);
     expamem_reset ();
 
     DISK_reset ();

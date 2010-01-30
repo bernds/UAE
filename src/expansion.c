@@ -120,6 +120,7 @@ uaecptr ROM_filesys_resname = 0, ROM_filesys_resid = 0;
 uaecptr ROM_filesys_diagentry = 0;
 uaecptr ROM_hardfile_resname = 0, ROM_hardfile_resid = 0;
 uaecptr ROM_hardfile_init = 0;
+int uae_boot_rom, uae_boot_rom_size; /* size = code size only */
 
 /* ********************************************************** */
 
@@ -185,7 +186,7 @@ static void expamem_bput (uaecptr, uae_u32) REGPARAM;
 addrbank expamem_bank = {
     expamem_lget, expamem_wget, expamem_bget,
     expamem_lput, expamem_wput, expamem_bput,
-    default_xlate, default_check, NULL
+    default_xlate, default_check, NULL, "Autoconfig"
 };
 
 static uae_u32 REGPARAM2 expamem_lget (uaecptr addr)
@@ -377,7 +378,7 @@ static uae_u8 REGPARAM2 *fastmem_xlate (uaecptr addr)
 addrbank fastmem_bank = {
     fastmem_lget, fastmem_wget, fastmem_bget,
     fastmem_lput, fastmem_wput, fastmem_bput,
-    fastmem_xlate, fastmem_check, NULL
+    fastmem_xlate, fastmem_check, NULL, "Fast memory"
 };
 
 
@@ -444,7 +445,7 @@ static void REGPARAM2 filesys_bput (uaecptr addr, uae_u32 b)
 addrbank filesys_bank = {
     filesys_lget, filesys_wget, filesys_bget,
     filesys_lput, filesys_wput, filesys_bput,
-    default_xlate, default_check, NULL
+    default_xlate, default_check, NULL, "Filesystem Autoconfig Area"
 };
 
 /*
@@ -533,7 +534,7 @@ static uae_u8 REGPARAM2 *z3fastmem_xlate (uaecptr addr)
 addrbank z3fastmem_bank = {
     z3fastmem_lget, z3fastmem_wget, z3fastmem_bget,
     z3fastmem_lput, z3fastmem_wput, z3fastmem_bput,
-    z3fastmem_xlate, z3fastmem_check, NULL
+    z3fastmem_xlate, z3fastmem_check, NULL, "ZorroIII Fast RAM"
 };
 
 /* Z3-based UAEGFX-card */
@@ -816,6 +817,10 @@ static void allocate_expamem (void)
     if (savestate_state == STATE_RESTORE) {
 	if (allocated_fastmem > 0) {
 	    restore_ram (fast_filepos, fastmemory);
+	    if (fastmem_start == 0 || fastmem_start & 0xFFFF) {
+		write_log ("Statefile most likely corrupt.  Using a sane default for fastmem address.\n");
+		fastmem_start = 0x200000;
+	    }
 	    map_banks (&fastmem_bank, fastmem_start >> 16, currprefs.fastmem_size >> 16,
 		       allocated_fastmem);
 	}
@@ -829,6 +834,7 @@ static void allocate_expamem (void)
 
 int need_uae_boot_rom (void)
 {
+    return 1; /* always want mousehack */
     if (nr_units (currprefs.mountinfo) > 0)
 	return 1;
     if (currprefs.socket_emu)
@@ -857,9 +863,11 @@ void expamem_reset (void)
 	write_log ("Kickstart version is below 1.3!  Disabling autoconfig devices.\n");
 	do_mount = 0;
     }
+#if 0 /* Always want this, for mousehack.  */
     /* No need for filesystem stuff if there aren't any mounted.  */
     if (nr_units (currprefs.mountinfo) == 0)
 	do_mount = 0;
+#endif
 
     if (fastmemory != NULL) {
 	card_init[cardno] = expamem_init_fastcard;
@@ -967,7 +975,7 @@ uae_u8 *save_expansion (int *len, uae_u8 *dstptr)
     save_u32 (fastmem_start);
     save_u32 (z3fastmem_start);
     *len = 8;
-    return dst;
+    return dstbak;
 }
 
 const uae_u8 *restore_expansion (const uae_u8 *src)

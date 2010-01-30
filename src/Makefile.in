@@ -40,7 +40,7 @@ INCLUDES=-I. -I@top_srcdir@/src/include/
 OBJS =  main.o newcpu.o memory.o @CPUOBJS@ custom.o cia.o serial.o blitter.o \
 	autoconf.o ersatz.o filesys.o hardfile.o keybuf.o expansion.o zfile.o \
 	fpp.o readcpu.o cpudefs.o gfxutil.o traps.o blitfunc.o blittable.o \
-	rommgr.o disk.o audio.o drawing.o cpustbl.o inputdevice.o \
+	gayle.o rommgr.o disk.o audio.o drawing.o cpustbl.o inputdevice.o \
 	uaelib.o picasso96.o uaeexe.o bsdsocket.o bsdsocket-posix-new.o \
 	missing.o \
 	sd-sound.o od-joy.o md-support.o \

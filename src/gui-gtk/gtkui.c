@@ -75,16 +75,18 @@ static GtkAdjustment *cpuspeed_adj;
 static GtkWidget *cpuspeed_widgets[4], *cpuspeed_scale;
 static GtkWidget *cpu_widget[7], *fpu_widget[5];
 static GtkWidget *sound_widget[4], *sound_ch_widget[3], *sound_interpol_widget[5];
+static GtkWidget *sound_filter_widget[5];
 static GtkAdjustment *stereo_sep_adj, *stereo_delay_adj;
 static GtkWidget *stereo_sep_scale, *stereo_delay_scale;
 
 static GtkWidget *coll_widget[4], *cslevel_widget[4];
+static GtkWidget *mbtype_widget, *mbtype_labelled;
 static GtkWidget *fcop_widget;
 
 static GtkAdjustment *framerate_adj;
 static GtkWidget *bimm_widget, *showleds_widget, *b32_widget, *afscr_widget, *pfscr_widget;
 
-static GtkWidget *joy_widget[2][6], *legacy_widget;
+static GtkWidget *joy_widget[2][6], *legacy_widget, *kbdlang_widget;
 
 static GtkWidget *led_widgets[5];
 static GdkColor led_on[5], led_off[5];
@@ -97,6 +99,9 @@ static GtkTreeSelection *hd_selection;
 
 static GtkWidget *preset_list, *preset_button;
 static GtkTreeSelection *preset_selection;
+
+static GtkWidget *req68020, *req68ec020, *req68030, *reqa4000;
+static int rom_cpu_req;
 
 static GtkWidget *lab_info;
 static GtkWidget *notebook;
@@ -135,6 +140,15 @@ static GtkWidget *make_labelled_button (guchar *label, GtkAccelGroup *accel_grou
     return gtk_button_new_with_mnemonic (label);
 }
 
+static int find_current_toggle (GtkWidget **widgets, int count)
+{
+    int i;
+    for (i = 0; i < count; i++)
+	if (GTK_TOGGLE_BUTTON (*widgets++)->active)
+	    return i;
+    write_log ("GTKUI: Can't happen!\n");
+    return -1;
+}
 
 /*
  * make_message_box()
@@ -326,8 +340,6 @@ static void set_romlist_state (void)
 
 static void set_cpu_state (void)
 {
-    int i;
-
     gtk_widget_set_sensitive (cpuspeed_scale, changed_prefs.m68k_speed > 0);
 
     gtk_widget_set_sensitive (fpu_widget[0], changed_prefs.cpu_model != 68040 && changed_prefs.cpu_model != 68060);
@@ -346,7 +358,7 @@ static void set_cpu_widget (void)
 	      : changed_prefs.cpu_model == 68040 ? 5
 	      : 6);
 
-    if (nr == 2 && changed_prefs.address_space_24)
+    if (nr == 2 && !changed_prefs.address_space_24)
 	nr++;
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (cpu_widget[nr]), TRUE);
 
@@ -375,7 +387,28 @@ static void set_gfx_state (void)
 static void set_chipset_state (void)
 {
     int t0 = 0;
+    int cstype;
+    int needs_aga, allows_ocs, allows_ecs;
+
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (coll_widget[changed_prefs.collision_level]), TRUE);
+    cstype = cstype_from_prefs (&changed_prefs);
+
+    needs_aga = cstype == CP_A1200 || cstype == CP_A4000 || cstype == CP_A4000T || cstype == CP_CD32;
+    allows_ocs = cstype == CP_A1000 || cstype == CP_A500 || cstype == CP_A2000;
+    allows_ecs = !needs_aga && cstype != CP_A1000;
+
+    gtk_widget_set_sensitive (cslevel_widget[0], cstype == CP_GENERIC || allows_ocs);
+    gtk_widget_set_sensitive (cslevel_widget[1], cstype == CP_GENERIC || allows_ecs);
+    gtk_widget_set_sensitive (cslevel_widget[2], cstype == CP_GENERIC || allows_ecs);
+    gtk_widget_set_sensitive (cslevel_widget[3], cstype == CP_GENERIC || needs_aga);
+
+    if (cstype != CP_GENERIC) {
+	if (needs_aga)
+	    changed_prefs.chipset_mask = CSMASK_AGA | CSMASK_FULL_ECS;
+	else if (! allows_ecs)
+	    changed_prefs.chipset_mask = 0;
+    }
+
     if (changed_prefs.chipset_mask & CSMASK_AGA)
 	t0 = 3;
     else if (changed_prefs.chipset_mask & CSMASK_ECS_DENISE)
@@ -383,10 +416,20 @@ static void set_chipset_state (void)
     else if (changed_prefs.chipset_mask & CSMASK_ECS_AGNUS)
 	t0 = 1;
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (cslevel_widget[t0]), TRUE);
+
+    t0 = (cstype == CP_GENERIC ? 0
+	  : cstype == CP_A1000 ? 1
+	  : cstype == CP_A500 || cstype == CP_A500P ? 2
+	  : cstype == CP_A600 ? 3
+	  : cstype == CP_A1200 ? 4
+	  : cstype == CP_A3000 ? 5
+	  : 6);
+    gtk_combo_box_set_active (GTK_COMBO_BOX (mbtype_widget), t0);
 }
 
 static void set_sound_state (void)
 {
+    int n;
     int stereo = changed_prefs.sound_stereo;
 
     gtk_widget_set_sensitive (stereo_sep_scale, changed_prefs.sound_stereo != SND_MONO);
@@ -395,6 +438,10 @@ static void set_sound_state (void)
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_widget[changed_prefs.produce_sound]), 1);
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_ch_widget[stereo]), 1);
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_interpol_widget[changed_prefs.sound_interpol]), 1);
+    n = (changed_prefs.sound_filter == FILTER_SOUND_OFF ? 0
+	 : ((changed_prefs.sound_filter == FILTER_SOUND_EMUL ? 1 : 2)
+	    + (changed_prefs.sound_filter_type == FILTER_SOUND_TYPE_A500 ? 0 : 2)));
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_filter_widget[n]), 1);
 }
 
 static void set_mem_state (void)
@@ -483,6 +530,9 @@ static void set_joy_state (void)
 
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (legacy_widget),
 				  changed_prefs.input_selected_setting == 0);
+
+    gtk_combo_box_set_active (GTK_COMBO_BOX (kbdlang_widget),
+			      changed_prefs.keyboard_lang);
 }
 
 static void set_hd_state (void)
@@ -550,6 +600,40 @@ static void set_hd_state (void)
     gtk_widget_set_sensitive (hddel_button, FALSE);
 }
 
+static void rom_requirements_change (void)
+{
+    int i, min_widget = 0;
+
+    gtk_widget_hide (req68020);
+    gtk_widget_hide (req68ec020);
+    gtk_widget_hide (req68030);
+    gtk_widget_hide (reqa4000);
+    if ((rom_cpu_req & 3) == 1) {
+	min_widget = 2;
+	gtk_widget_show (req68ec020);
+    } else if ((rom_cpu_req & 3) == 2) {
+	min_widget = 3;
+	gtk_widget_show (req68020);
+    } else if ((rom_cpu_req & 3) == 3) {
+	min_widget = 4;
+	gtk_widget_show (req68030);
+    }
+    if (rom_cpu_req & 4) {
+	gtk_widget_show (reqa4000);
+	gtk_combo_box_set_active (GTK_COMBO_BOX (mbtype_widget), 6);
+	gtk_widget_set_sensitive (mbtype_labelled, 0);
+    } else
+	gtk_widget_set_sensitive (mbtype_labelled, 1);
+
+
+    i = find_current_toggle (cpu_widget, 7);
+    if (i < min_widget)
+	gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (cpu_widget[min_widget]), TRUE);
+
+    for (i = 0; i < 7; i++)
+	gtk_widget_set_sensitive (cpu_widget[i], i >= min_widget);
+}
+
 static void draw_led (int nr)
 {
     GtkWidget *thing = led_widgets[nr];
@@ -570,6 +654,7 @@ static void set_widgets_from_config (void)
 {
     set_disk_state ();
     enable_disk_buttons (1);
+    set_romlist_state ();
     set_cpu_widget ();
     set_cpu_state ();
     set_gfx_state ();
@@ -578,7 +663,7 @@ static void set_widgets_from_config (void)
     set_mem_state ();
     set_hd_state ();
     set_chipset_state ();
-    set_romlist_state ();
+    rom_requirements_change ();
 }
 
 static int my_idle (void)
@@ -625,8 +710,9 @@ static int my_idle (void)
 	}
     }
 
-    if (gui_active && gtk_notebook_get_current_page (GTK_NOTEBOOK (notebook)) == 0) {
-	for (i = 0; i < 5; i++) {
+    if (gui_active) {
+	int n = gtk_notebook_get_current_page (GTK_NOTEBOOK (notebook)) == 0 ? 5 : 1;
+	for (i = 0; i < n; i++) {
 	    unsigned int mask = 1 << i;
 	    unsigned int on = leds & mask;
 
@@ -650,16 +736,6 @@ static gint gui_delete_event (GtkWidget *widget, GdkEvent *event, gpointer data)
     return FALSE;
 }
 
-static int find_current_toggle (GtkWidget **widgets, int count)
-{
-    int i;
-    for (i = 0; i < count; i++)
-	if (GTK_TOGGLE_BUTTON (*widgets++)->active)
-	    return i;
-    write_log ("GTKUI: Can't happen!\n");
-    return -1;
-}
-
 static void dftype_changed (GtkWidget *w, gpointer data)
 {
     int i;
@@ -671,6 +747,12 @@ static void dftype_changed (GtkWidget *w, gpointer data)
 	changed_prefs.dfxtype[i] = (which == 0 ? DRV_NONE : which == 1 ? DRV_35_DD : DRV_35_HD);
     }
     enable_disk_buttons (1);
+}
+
+static void kbdlang_changed (GtkWidget *w, gpointer data)
+{
+    int which = gtk_combo_box_get_active (GTK_COMBO_BOX (kbdlang_widget));
+    changed_prefs.keyboard_lang = which;
 }
 
 static void joy_changed (void)
@@ -746,11 +828,9 @@ static void cputype_changed (void)
 	return;
 
     whichtoggle = find_current_toggle (cpu_widget, 7);
-    if (whichtoggle >= 3) {
-	changed_prefs.address_space_24 = whichtoggle == 3;
+    changed_prefs.address_space_24 = whichtoggle < 3;
+    if (whichtoggle >= 3)
 	whichtoggle--;
-    } else
-	changed_prefs.address_space_24 = whichtoggle < 2;
 
     if (whichtoggle == 5)
 	whichtoggle = 6;
@@ -822,28 +902,57 @@ static void rom_combo_changed (void)
     int t = gtk_combo_box_get_active (GTK_COMBO_BOX (romlist_widget));
     gtk_widget_set_sensitive (romsel_button, t == 0);
     gtk_widget_set_sensitive (rom_text_widget, t == 0);
+
+    rom_cpu_req = 0;
+
     if (t == 0) {
 	changed_prefs.rom_crc32 = 0;
     } else {
 	struct romlist *rl = romlist_from_idx (t - 1, ROMTYPE_KICK, 1);
 	if (rl) {
 	    changed_prefs.rom_crc32 = rl->rd->crc32;
+	    rom_cpu_req = rl->rd->cpu;
 	}
     }
+    rom_requirements_change ();
 }
 
 static void sound_changed (void)
 {
-    int channels;
+    int n;
+
     changed_prefs.produce_sound = find_current_toggle (sound_widget, 4);
-    channels = find_current_toggle (sound_ch_widget, 3);
-    changed_prefs.sound_stereo = channels == 0 ? SND_MONO : SND_STEREO;
+    n = find_current_toggle (sound_ch_widget, 3);
+    changed_prefs.sound_stereo = n == 0 ? SND_MONO : SND_STEREO;
     changed_prefs.sound_interpol = find_current_toggle (sound_interpol_widget, 5);
+    n = find_current_toggle (sound_filter_widget, 5);
+    if (n == 0)
+	changed_prefs.sound_filter = FILTER_SOUND_OFF;
+    else {
+	changed_prefs.sound_filter = (n & 1) ? FILTER_SOUND_EMUL : FILTER_SOUND_ON;
+	changed_prefs.sound_filter_type = (n > 2 ? FILTER_SOUND_TYPE_A1200 : FILTER_SOUND_TYPE_A500);
+    }
     changed_prefs.sound_mixed_stereo_delay = stereo_delay_adj->value;
     changed_prefs.sound_stereo_separation = stereo_sep_adj->value;
 
     gtk_widget_set_sensitive (stereo_sep_scale, changed_prefs.sound_stereo == SND_STEREO);
     gtk_widget_set_sensitive (stereo_delay_scale, changed_prefs.sound_stereo == SND_STEREO);
+}
+
+static void mbtype_changed (void)
+{
+    int n;
+
+    n = gtk_combo_box_get_active (GTK_COMBO_BOX (mbtype_widget));
+    n = (n == 0 ? CP_GENERIC
+	 : n == 1 ? CP_A1000
+	 : n == 2 ? CP_A500
+	 : n == 3 ? CP_A600
+	 : n == 4 ? CP_A1200
+	 : n == 5 ? CP_A3000
+	 : CP_A4000);
+    built_in_chipset_prefs (&changed_prefs, n);
+    set_chipset_state ();
 }
 
 static void did_reset (void)
@@ -1060,6 +1169,8 @@ static void did_romchange (GtkWidget *w, gpointer data)
 	char *filename;
 
 	filename = gtk_file_chooser_get_filename (GTK_FILE_CHOOSER (romsel));
+	rom_cpu_req = 0;
+	rom_requirements_change ();
 
 	uae_sem_wait (&gui_sem);
 	gui_romname = strdup (filename);
@@ -1364,7 +1475,7 @@ static void make_cpu_widgets (GtkWidget *vbox)
     GtkWidget *newbox, *hbox, *frame;
     GtkWidget *thing, *label;
     static const char *cpulabels[] = {
-	"68000", "68010", "68020", "68EC020", "68030", "68040", "68060",
+	"68000", "68010", "68EC020", "68020", "68030", "68040", "68060",
 	NULL
     };
     static const char *fpulabels[] = {
@@ -1393,11 +1504,20 @@ static void make_cpu_widgets (GtkWidget *vbox)
     gtk_widget_show (hbox);
     gtk_box_pack_start (GTK_BOX (vbox), hbox, FALSE, FALSE, 0);
 
+    req68ec020 = gtk_label_new ("The selected ROM requires at least a 68ec020.");
+    add_centered_to_vbox (vbox, req68ec020, 0);
+
+    req68020 = gtk_label_new ("The selected ROM requires at least a 68020.");
+    add_centered_to_vbox (vbox, req68020, 0);
+
+    req68030 = gtk_label_new ("The selected ROM requires at least a 68030.");
+    add_centered_to_vbox (vbox, req68030, 0);
+
+    add_empty_vbox (vbox);
+
     label = gtk_label_new ("CPU type settings take effect after the next reset.");
     gtk_widget_show (label);
     add_centered_to_vbox (vbox, label, 0);
-
-    add_empty_vbox (vbox);
 }
 
 static void make_gfx_widgets (GtkWidget *vbox)
@@ -1472,7 +1592,7 @@ static void make_gfx_widgets (GtkWidget *vbox)
 
 static void make_chipset_widgets (GtkWidget *vbox)
 {
-    GtkWidget *newbox, *hbox;
+    GtkWidget *newbox, *hbox, *thing;
     static const char *colllabels[] = {
 	"None (fastest)", "Sprites only", "Sprites & playfields", "Full (very slow)",
 	NULL
@@ -1482,6 +1602,14 @@ static void make_chipset_widgets (GtkWidget *vbox)
     };
 
     add_empty_vbox (vbox);
+
+    mbtype_widget = make_chooser (7, "Generic", "A1000", "A500/A2000", "A600", "A1200", "A3000", "A4000");
+    gtk_widget_show (mbtype_widget);
+    gtk_signal_connect (GTK_OBJECT (mbtype_widget), "changed", (GtkSignalFunc) mbtype_changed,
+			NULL);
+    mbtype_labelled = make_labelled_widget ("Motherboard type:", mbtype_widget, TRUE);
+    gtk_widget_show (mbtype_labelled);
+    add_centered_to_vbox (vbox, mbtype_labelled, 0);
 
     hbox = gtk_hbox_new (FALSE, 10);
     gtk_widget_show (hbox);
@@ -1494,6 +1622,9 @@ static void make_chipset_widgets (GtkWidget *vbox)
     newbox = make_radio_group_box ("Chipset", cslevellabels, cslevel_widget, 0, cslevel_changed);
     gtk_widget_show (newbox);
     gtk_box_pack_start (GTK_BOX (hbox), newbox, FALSE, TRUE, 0);
+
+    reqa4000 = gtk_label_new ("The selected ROM requires at least an A4000.");
+    add_centered_to_vbox (vbox, reqa4000, 0);
 
     add_empty_vbox (vbox);
 }
@@ -1511,6 +1642,10 @@ static void make_sound_widgets (GtkWidget *vbox)
 	NULL
     }, *soundlabels3[] = {
 	"Mono", "Stereo",
+	NULL
+    }, *soundlabels4[] = {
+	"Off", "A500 (power LED)", "A500 (always on)",
+	"A1200 (power LED)", "A1200 (always on)",
 	NULL
     };
 
@@ -1541,6 +1676,10 @@ static void make_sound_widgets (GtkWidget *vbox)
     make_radio_group (soundlabels3, newbox, sound_ch_widget, 0, 1, sound_changed, -1, NULL);
 
     newbox = make_radio_group_box ("Interpolation", soundlabels2, sound_interpol_widget, 0, sound_changed);
+    gtk_widget_show (newbox);
+    gtk_box_pack_start (GTK_BOX (hbox), newbox, FALSE, TRUE, 0);
+
+    newbox = make_radio_group_box ("Filter", soundlabels4, sound_filter_widget, 0, sound_changed);
     gtk_widget_show (newbox);
     gtk_box_pack_start (GTK_BOX (hbox), newbox, FALSE, TRUE, 0);
 
@@ -1579,28 +1718,12 @@ static void make_sound_widgets (GtkWidget *vbox)
     add_empty_vbox (vbox);
 }
 
-static void make_mem_widgets (GtkWidget *dvbox)
+static void make_rom_widgets (GtkWidget *dvbox)
 {
     GtkWidget *hbox = gtk_hbox_new (FALSE, 10);
     GtkWidget *label, *frame;
 
-    static const char *chiplabels[] = {
-	"512 KB", "1 MB", "2 MB", "4 MB", "8 MB", NULL
-    };
-    static const char *bogolabels[] = {
-	"None", "512 KB", "1 MB", "1.8 MB", NULL
-    };
-    static const char *fastlabels[] = {
-	"None", "1 MB", "2 MB", "4 MB", "8 MB", NULL
-    };
-    static const char *z3labels[] = {
-	"None", "1 MB", "2 MB", "4 MB", "8 MB",
-	"16 MB", "32 MB", "64 MB", "128 MB", "256 MB",
-	NULL
-    };
-    static const char *p96labels[] = {
-	"None", "1 MB", "2 MB", "4 MB", "8 MB", "16 MB", "32 MB", NULL
-    };
+    rom_cpu_req = 0;
 
     add_empty_vbox (dvbox);
 
@@ -1653,6 +1776,38 @@ static void make_mem_widgets (GtkWidget *dvbox)
 	gtk_signal_connect (GTK_OBJECT (thing), "clicked", (GtkSignalFunc) did_keychange, 0);
     }
 
+    label = gtk_label_new ("These settings take effect after the next reset.");
+    gtk_widget_show (label);
+    add_centered_to_vbox (dvbox, label, 0);
+
+    add_empty_vbox (dvbox);
+}
+
+static void make_ram_widgets (GtkWidget *dvbox)
+{
+    GtkWidget *hbox = gtk_hbox_new (FALSE, 10);
+    GtkWidget *label, *frame;
+
+    static const char *chiplabels[] = {
+	"512 KB", "1 MB", "2 MB", "4 MB", "8 MB", NULL
+    };
+    static const char *bogolabels[] = {
+	"None", "512 KB", "1 MB", "1.8 MB", NULL
+    };
+    static const char *fastlabels[] = {
+	"None", "1 MB", "2 MB", "4 MB", "8 MB", NULL
+    };
+    static const char *z3labels[] = {
+	"None", "1 MB", "2 MB", "4 MB", "8 MB",
+	"16 MB", "32 MB", "64 MB", "128 MB", "256 MB",
+	NULL
+    };
+    static const char *p96labels[] = {
+	"None", "1 MB", "2 MB", "4 MB", "8 MB", "16 MB", "32 MB", NULL
+    };
+
+    add_empty_vbox (dvbox);
+
     gtk_widget_show (hbox);
     add_centered_to_vbox (dvbox, hbox, 0);
 
@@ -1687,6 +1842,7 @@ static void make_joy_widgets (GtkWidget *dvbox)
 {
     int i;
     GtkWidget *hbox = gtk_hbox_new (FALSE, 10);
+    GtkWidget *thing;
     static const char *joylabels[] = {
 	"Joystick 0", "Joystick 1", "Mouse", "Numeric pad",
 	"Cursor keys/Right Ctrl", "T/F/H/B/Left Alt",
@@ -1705,7 +1861,6 @@ static void make_joy_widgets (GtkWidget *dvbox)
 
     for (i = 0; i < 2; i++) {
 	GtkWidget *vbox, *frame;
-	GtkWidget *thing;
 	char buffer[20];
 	int j;
 
@@ -1714,6 +1869,13 @@ static void make_joy_widgets (GtkWidget *dvbox)
 	gtk_widget_show (frame);
 	gtk_box_pack_start (GTK_BOX (hbox), frame, FALSE, TRUE, 0);
     }
+
+    thing = make_chooser (7, "English (QUERTY)", "Danish", "Deutsch (QWERTZ)", "Swedish",
+			  "Francais (AZERTY)", "Italian", "Spanish");
+    gtk_signal_connect (GTK_OBJECT (thing), "changed", (GtkSignalFunc) kbdlang_changed,
+			GINT_TO_POINTER (i));
+    kbdlang_widget = thing;
+    thing = add_labelled_widget_centered ("Keyboard language:", thing, dvbox);
 
     add_empty_vbox (dvbox);
 }
@@ -2313,13 +2475,14 @@ static void create_guidlg (void)
 	void (*createfunc)(GtkWidget *);
     } pages[] = {
 	/* ??? If this isn't the first page, there are errors in draw_led.  */
-	{ "Floppy disks", make_floppy_disks },
-	{ "Memory", make_mem_widgets },
-	{ "CPU emulation", make_cpu_widgets },
+	{ "Floppies", make_floppy_disks },
+	{ "ROM", make_rom_widgets },
+	{ "RAM", make_ram_widgets },
+	{ "CPU", make_cpu_widgets },
 	{ "Graphics", make_gfx_widgets },
 	{ "Chipset", make_chipset_widgets },
 	{ "Sound", make_sound_widgets },
-	{ "Game ports", make_joy_widgets },
+	{ "Input devices", make_joy_widgets },
 	{ "Harddisks", make_hd_widgets },
 	{ "Presets", make_presets },
 	{ "About", make_about_widgets }
