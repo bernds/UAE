@@ -578,7 +578,7 @@ uae_u32 mousehack_helper (TrapContext *dummy)
 
     switch (m68k_dreg (regs, 0)) {
     case 0:
-	return ievent_alive ? -1 : !uae_boot_rom && needmousehack ();
+	return ievent_alive ? -1 : (1 || !uae_boot_rom) && needmousehack ();
     case 1:
 	ievent_alive = 10;
 	if (!mousehack_allowed ())

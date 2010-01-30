@@ -1510,7 +1510,7 @@ static void do_sprite_collisions (void)
     int first = curr_drawinfo[next_lineno].first_sprite_entry;
     int i;
     unsigned int collision_mask = clxmask[clxcon >> 12];
-    int bplres = GET_RES_NOSH (bplcon0);
+    int bplres = GET_RES (bplcon0);
     hwres_t ddf_left = thisline_decision.plfleft * 2 << bplres;
     hwres_t hw_diwlast = coord_window_to_diw_x (thisline_decision.diwlastword);
     hwres_t hw_diwfirst = coord_window_to_diw_x (thisline_decision.diwfirstword);

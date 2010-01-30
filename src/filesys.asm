@@ -150,7 +150,7 @@ exter_server_exit:
 	rts
 
 setup_exter:
-	bsr.w mousehack_init
+		; 	bsr.w mousehack_init
 	moveq.l #26,d0
 	move.l #$10001,d1
 	jsr -198(a6); AllocMem

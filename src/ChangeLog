@@ -1,3 +1,5 @@
+A11111 Disable mousehack-in-ROM for the next release.
+       Fix a compile error in custom.c
 A10828 Disallow mousehack utility to start if we have a bootrom.
        NTSC toggle in the GTK UI.  Some ntsc/varsync changes merged from
        WinUAE.  Also merged chipmem_agnus functions and a couple more minor
