@@ -1,7 +1,57 @@
+9B1121 Mini-merge of noncontroversial WinUAE filesys.c code.
+       Add harddisk page to gtkui.  Also change gui behaviour to wait for
+       the user to unpause before starting the emulator.
+       Add Toni's drive-led display.
+       Fixed a rather amazing source of crashes (we could fail to notice
+       the end of the frame in some cases).
+       Default to scanline mode.
+       Some tweaks to the SDL driver and the Win32 gui, mostly buffer-size
+       related.
+       Moved C source files back from tools directory (but still build them
+       there) to preserve my CVS history.
+9B1119 Move all the build tools (gencpu, cpuopti etc.) into their own
+       directory which is configured separately.  This was necessary to
+       avoid picking up SDL CFLAGS (which can #define main to _SDL_main, and
+       that breaks if you don't link with SDL), and to make cross-compiling
+       at least a little more likely.
+       Remove sanity check for SDL header file - rely on sdl-config getting
+       things right (not that we have much choice).
+       Move thread support code past sound code in configure, and make sure
+       that SDL sound enables threads.
+       Move sername into options structure.
+       Check for existance of isinf/isnan before using them.
+       Rather large WinUAE merge - this tree compiles again under Windows.
+       Most of the additional features are missing though.
+9B1118 Restore code to mirror banks for 24 bit address space which got lost
+       when all the JIT memory changes were put in.
+       Speed up the CPU time calibration code.
+       Fix the broken file selector handling in the gtk ui.  Add kickstart
+       selector.
+       Don't call XCloseDisplay, it apparently leads to crashes.
+       Try to solve the "missing write_log" problem in a sane way.
+       SDL joystick support.
+       When configure detects win32, use fsdb_win32 rather than fsdb_unix.
+9B1117 Proper masking for DDFSTOP; proper handling of AUDLEN == 0, changed
+       delayoffset code, gencpu BFINS fix, and lots of disk updates (all
+       Toni).
+       Some additional regs for move2c/movec2 (also by Toni IIRC)
+9B1115 COLOR_READ typo fix (Toni).
+9B1024 Filesystem reset leak fixes (Brian)
+       Allocate enough memory for custom state saving.
+       bploff renamed to bpl_off.
+       AGA copper cycle diagram (Toni)
+       Disable disk_data_used optimization.
+9B0926 Delayed palette setting for Picasso modes.  Also fixed problem with
+       palette setting in CLUT emulation - we need to redraw the entire
+       screen if that happens.
+9B0921 Miscellaneous small bugfixes.  Delete some obsolete code.
+9B0907 Beginnings of SDL support.  Exterminated some penguins.
+9B0825 Some xwin.c fixes from Maik Qualmann.
 9B0730 Some sprite state machine tweaks.  Fix sprite vs. DIW comparison.
        HAM linebuffer was too small by half - oops.
        Make absolutely, positively sure that when hsync_handler calls
        sync_copper_with_cpu, we don't take any invalid shortcuts.
+       Memory management changes for JIT (Bernie [2], mostly).
 9B0729 Silly mistake - need to call flush_plane_data unless plfleft is
        -1, even if no planes were enabled.
 9B0728 Small hack to reduce the time we lose with unnecessary

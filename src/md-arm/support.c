@@ -15,14 +15,3 @@
 
 struct flag_struct regflags;
 
-int fast_memcmp(const void *foo, const void *bar, int len)
-{
-    return memcmp(foo, bar, len);
-}
-
-int memcmpy(void *foo, const void *bar, int len)
-{
-    int differs = memcmp(foo, bar, len);
-    memcpy(foo, bar, len);
-    return differs;
-}

@@ -1,4 +1,4 @@
-This is version 0.8.17 of UAE, the Un*x Amiga Emulator.
+This is version 0.8.18 of UAE, the UAE Amiga Emulator.
 
 Versions numbered 0.8.x are beta versions, to be used for development only.
 If you are only a user of UAE, you are better off using the latest 0.7.x
@@ -29,10 +29,10 @@ display, keyboard, harddisk and mouse taking the parts of their emulated
 counterparts.
 
 UAE was developed for Unixoid systems. Meanwhile, it has been ported to the
-Mac, DOS, the BeBox, NextStep, the XFree86/OS2 environment and the Amigas (it
-can run itself by now). You should have received several other files along
-with this document with details on how to install and use the version for your
-operating system.
+Mac, DOS, Windows, the BeBox, NextStep, the XFree86/OS2 environment and the
+Amigas (it can run itself by now). You should have received several other
+files along with this document with details on how to install and use the
+version for your operating system.
 
 This section is just what it says: an overview. Please read _all_ of this
 file, especially if you have problems. UAE has many, many features and
@@ -183,12 +183,12 @@ joyport0=mode [default=mouse]
   will stay enabled until you hit the autofire toggle again.
 joyport1=mode [default=joy0]
   Like joyport0, but for the Amiga's joystick port 1.
-use_gui=bool [default=yes]
-  Show a user-interface that enables changing these options at run-time.
-32bit_blits=bool [default=no]
-  If enabled, the blitter emulation will use 32 bit operations where that
-  seems profitable (note that this will cause bus errors on most  RISC
-  machines)
+use_gui=state [default=yes]
+  If enabled, show a user-interface that enables changing these options at
+  run-time.  Possible settings are "no", "yes" and "nowait".  If "nowait" is
+  used, the GUI will be shown at program startup, but the emulator will also
+  start immediately without waiting for the user to change any of the
+  settings.
 immediate_blits=bool [default=no]
   If enabled, all blits will finish immediately, which can be nice for speed,
   but may cause incompatibilities.
@@ -303,7 +303,7 @@ gfx_height=n [default=300]
 gfx_lores=bool [default=no]
   Enable this option if you use a very small window width (320 to 400 pixels)
   to shrink the display horizontally.
-gfx_linemode=type [default=none]
+gfx_linemode=type [default=scanlines]
   The type can be none (every line is drawn once), "double" (every line is
   drawn twice), and "scanlines" (every line is drawn once, but the image is
   stretched vertically by inserting a black line every other line to simulate
@@ -750,6 +750,11 @@ generally faster than UAE.  The Fellow homepage is at
 
   http://www.geocities.com/SiliconValley/Peaks/5244/
 
+The homepage of the Disk2FDI project, which allows you to read Amiga floppies
+if you have two PC drives, is
+
+  http://fast.emuunlim.com/disk2fdi/
+
 
 Thanks & Acknowledgements
 =========================
@@ -778,10 +783,10 @@ Special thanks to:
     world...
   - Jens Schönfeld, inventor of the Catweasel controller, donated one
     controller card.
-  - Jürgen Beck, maintainer of the Amiga emulation web site "Back to the
-    Roots" (http://back2roots.emuunlim.com) and everyone else who spends
-    time writing to software companies asking for permission to distribute
-    old Amiga games.
+  - Jürgen Beck and Ralf Steines, maintainers of the Amiga emulation web
+    site "Back to the Roots" (http://www.back2roots.org) and everyone else
+    who spends time writing to software companies asking for permission to
+    distribute old Amiga games.
   - all the software companies who allow distribution of their Amiga games on
     sites like "Back to the Roots".
 
@@ -893,13 +898,9 @@ try to help people who have questions, but sometimes it takes too much time.
 
 Please don't ask for Kickstart ROM files or other copyrighted software. Don't
 _send_ me stuff like this either. If you want to send me something else which
-is big (>= 50K), ask me before or put it somewhere in Webspace.
-If I get 3MB of screen shots or a core dump ("it doesn't work, it generates
-this file"), I'm very likely to get extremely angry, I might complain to your
-sysadmin, and you might lose your account. Think twice.
-
-I'm also going to be extremely annoyed if you send email in HTML format.
-Fight this disease!
+is big (>= 50K), ask me before or put it somewhere in Webspace.  This
+university mail account has a limit on how big my mailbox can get before it
+risks getting deleted without warning, and I don't enjoy that happening.
 
 Oh, and another thing: If I promise to do things (like implement new
 features), and forget about them, pester me. That happens occasionally, it's

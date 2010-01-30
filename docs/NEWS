@@ -2,6 +2,13 @@ Note! This file only contains user-visible changes. There may be others. For a
 more detailed description of changes between releases, read src/ChangeLog, and
 for the full picture, make a diff between releases.
 
+User-visible changes in 0.8.18:
+  - Numerous bug fixes.
+  - The gtk UI has more options; it also now behaves similar to the GUI found
+    in the Windows version in that it waits for the user to explicitly start
+    the emulation, thus allowing to select the desired options first.
+  - There's a track and LED display added to the bottom of the screen.
+
 User-visible changes in 0.8.17:
   - AGA should be a bit faster.
   - AGA sprites emulation added by Toni Wilen.

@@ -48,6 +48,11 @@ int nr_joysticks;
 
 static int js0, js1;
 
+struct joy_range
+{
+    int minx, maxx, miny, maxy;
+} range0, range1;
+
 void read_joystick(int nr, unsigned int *dir, int *button)
 {
     static int minx = INT_MAX, maxx = INT_MIN;
@@ -56,6 +61,7 @@ void read_joystick(int nr, unsigned int *dir, int *button)
     uae_joystick_t buffer;
     int len;
     int fd = nr == 0 ? js0 : js1;
+    struct joy_range *r = nr == 0 ? &range0 : &range1;
 
     *dir = 0;
     *button = 0;
@@ -66,19 +72,19 @@ void read_joystick(int nr, unsigned int *dir, int *button)
     if (len != sizeof(buffer)) 
     	return;
     
-    if (buffer.x < minx) minx = buffer.x;
-    if (buffer.y < miny) miny = buffer.y;
-    if (buffer.x > maxx) maxx = buffer.x;
-    if (buffer.y > maxy) maxy = buffer.y;
+    if (buffer.x < r->minx) r->minx = buffer.x;
+    if (buffer.y < r->miny) r->miny = buffer.y;
+    if (buffer.x > r->maxx) r->maxx = buffer.x;
+    if (buffer.y > r->maxy) r->maxy = buffer.y;
     
-    if (buffer.x < (minx + (maxx-minx)/3))
+    if (buffer.x < (r->minx + (r->maxx - r->minx)/3))
     	left = 1;
-    else if (buffer.x > (minx + 2*(maxx-minx)/3))
+    else if (buffer.x > (r->minx + 2*(r->maxx - r->minx)/3))
     	right = 1;
 
-    if (buffer.y < (miny + (maxy-miny)/3))
+    if (buffer.y < (r->miny + (r->maxy - r->miny)/3))
     	top = 1;
-    else if (buffer.y > (miny + 2*(maxy-miny)/3))
+    else if (buffer.y > (r->miny + 2*(r->maxy - r->miny)/3))
     	bot = 1;
     	
     if (left) top = !top;
@@ -104,12 +110,21 @@ void init_joystick(void)
     }
     write_log ("Found two joysticks\n");
     nr_joysticks = 2;
+
+    range0.minx = INT_MAX;
+    range0.maxx = INT_MIN;
+    range0.miny = INT_MAX;
+    range0.maxy = INT_MIN;
+    range1.minx = INT_MAX;
+    range1.maxx = INT_MIN;
+    range1.miny = INT_MAX;
+    range1.maxy = INT_MIN;
 }
 
 void close_joystick(void)
 {
     if (js0 >= 0)
-	close(js0);
+	close (js0);
     if (js1 >= 0)
-	close(js1);
+	close (js1);
 }

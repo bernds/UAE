@@ -18,7 +18,7 @@
 
 #include "config.h"
 #include "options.h"
-#include "threaddep/penguin.h"
+#include "threaddep/thread.h"
 #include "memory.h"
 #include "events.h"
 #include "custom.h"
@@ -55,7 +55,7 @@ static int floppy_speed = NORMAL_FLOPPY_SPEED;
  */
 
 static int side, direction, writing;
-static uae_u8 selected = 15;
+static uae_u8 selected = 15, disabled;
 
 static uae_u8 *writebuffer[544 * 22];
 
@@ -84,7 +84,6 @@ typedef struct {
     int cyl;
     int motoroff;
     int state;
-    int disabled;
     int wrprot;
     uae_u16 bigmfmbuf[0x8000];
     int mfmpos;
@@ -92,13 +91,6 @@ typedef struct {
     int trackspeed;
     int dmalen;
     int num_tracks, num_secs;
-    /* dskchange is set to a small number when a disk is removed. At a step
-     * impulse, it is reset if there is a new disk in the drive or counted
-     * down to 1 if the drive contains a disk. DISK_check_change will only
-     * insert a new disk when dskchange is 1, or if the dskchange_time timer
-     * expires. The last condition can happen if AmigaOS isn't running and a
-     * game/demo doesn't use the step motor to check for a new disk.
-     */
     int dskchange;
     int dskchange_time;
     int dskready;
@@ -107,6 +99,7 @@ typedef struct {
     int ddhd; /* 1=DD 2=HD */
     int drive_id_scnt; /* drive id shift counter */
     unsigned long drive_id; /* drive id to be reported */
+    char newname[256]; /* storage space for new filename during eject delay */
 } drive;
 
 static drive floppy[4];
@@ -295,12 +288,6 @@ static int drive_empty (drive * drv)
 
 static void drive_step (drive * drv)
 {
-    if (!drive_empty (drv))
-	drv->dskchange = 0;
-    else if (drv->dskchange > 1) {
-/*	printf("Stepping...\n");
-	drv->dskchange--;*/
-    }
     if (drv->steplimit)
 	return;
     /* A1200's floppy drive needs at least 30 raster lines between steps
@@ -308,6 +295,8 @@ static void drive_step (drive * drv)
      * (stupid trackloaders with CPU delay loops)
      */
     drv->steplimit = 2;
+    if (!drive_empty (drv))
+	drv->dskchange = 0;
     if (direction) {
 	if (drv->cyl)
 	    drv->cyl--;
@@ -344,14 +333,11 @@ static int drive_running (drive * drv)
 
 static void drive_motor (drive * drv, int off)
 {
-    if (drv->disabled)
-	off = 1;
-    /* A value of 2 works out to a guaranteed delay of 1/10 of a second
-       (which is the frequency with which DISK_check_change is called).
+    /* A value of 5 works out to a guaranteed delay of 1/2 of a second
        Higher values are dangerous, e.g. a value of 8 breaks the RSI
        demo.  */
     if (drv->motoroff && !off) {
-	drv->dskready_time = 2;
+	drv->dskready_time = 5;
 	disk_data_used = 0;
 	drv->drive_id_scnt = 0; /* Reset id shift reg counter */
 #ifdef DEBUG_DRIVE_ID
@@ -694,12 +680,12 @@ static void drive_eject (drive * drv)
 {
     if (!drive_empty (drv))
 	zfile_close (drv->diskfile);
-
-    drv->dskchange = 4;
-    drv->dskchange_time = 20;
-/*    printf("setting changed bit %d\n", drv-floppy);*/
     drv->diskfile = 0;
+    drv->dskchange = 1;
     drive_settype_id(drv); /* Back to 35 DD */
+#ifdef DISK_DEBUG
+    write_log ("eject drive %d\n", drv - &floppy[0]);
+#endif
 }
 
 /* We use this function if we have no Kickstart ROM.
@@ -716,43 +702,53 @@ void disk_eject (int num)
     gui_filename (num, "");
     drive_eject (floppy + num);
     *currprefs.df[num] = *changed_prefs.df[num] = 0;
+    floppy[num].newname[0] = 0;
 }
 
 void disk_insert (int num, const char *name)
 {
-    /* just to be sure */
-    drive_eject (floppy + num);
-    drive_insert (floppy + num, num, name);
+    drive *drv = floppy + num;
+    if (name[0] == 0) {
+	disk_eject (num);
+    } else if (!drive_empty(drv) || drv->dskchange_time > 0) {
+	drive_eject (drv);
+	/* set dskchange_time, disk_insert() will be
+	 * called from DISK_check_change() after 1 second delay
+	 * this makes sure that all programs detect disk change correctly
+	 */
+	strcpy (drv->newname, name);
+	drv->dskchange_time = 10; /* 1 second disk change delay */
+    } else {
+	/* no delayed insert if drive is already empty */
+	drive_insert (drv, num, name);
+    }
 }
 
 void DISK_check_change (void)
 {
     int i;
-    static int count = 0;
-    count++;
 
     for (i = 0; i < 4; i++) {
-        /* emulate drive motor turn on time */
-        if (floppy[i].dskready_time) {
-	    floppy[i].dskready_time--;
-	    if (floppy[i].dskready_time == 0) {
-	        floppy[i].dskready = 1;
-	    }
+	drive *drv = floppy + i;
+	if (strcmp (currprefs.df[i], changed_prefs.df[i])) {
+	    strcpy (currprefs.df[i], changed_prefs.df[i]);
+	    disk_insert (i, currprefs.df[i]);
 	}
-	if (strcmp (currprefs.df[i], changed_prefs.df[i]) != 0) {
-	    if (currprefs.df[i][0] != '\0') {
-		drive_eject (floppy + i);
-		currprefs.df[i][0] = '\0';
-		gui_filename (i, "");
-	    } else if (floppy[i].dskchange == 1) {
-		/* In theory, it should work without the dskchange test.
-		 * In practice, it doesn't. */
-		drive_insert (floppy + i, i, changed_prefs.df[i]);
-	    } else if (floppy[i].dskchange > 1 && floppy[i].dskchange_time > 0) {
-		/* Force the dskchange bit to go to 1 after a given timeout */
-		if (--floppy[i].dskchange_time == 0) {
-		    floppy[i].dskchange = 1;
-		}
+	/* emulate drive motor turn on time */
+	if (drv->dskready_time) {
+	    drv->dskready_time--;
+	    if (drv->dskready_time == 0)
+		drv->dskready = 1;
+	}
+	/* delay until new disk image is inserted */
+	if (drv->dskchange_time) {
+	    drv->dskchange_time--;
+	    if (drv->dskchange_time == 0) {
+		drive_insert (drv, i, drv->newname);
+#ifdef DISK_DEBUG
+		write_log ("delayed insert, drive %d, image '%s'\n", i, drv->newname);
+#endif
+		drv->newname[0] = 0;
 	    }
 	}
     }
@@ -771,10 +767,11 @@ void DISK_select (uae_u8 data)
     int dr;
     static uae_u8 prevdata;
 
-    if (selected != lastselected)
-	disk_data_used = 1;
     lastselected = selected;
     selected = (data >> 3) & 15;
+    selected |= disabled;
+    if (selected != lastselected)
+	disk_data_used = 1;
     side = 1 - ((data >> 2) & 1);
 
     direction = (data >> 1) & 1;
@@ -794,7 +791,7 @@ void DISK_select (uae_u8 data)
 	/* motor flipflop is set only when drive select goes from high to low */ 
 	if (!(selected & (1 << dr)) && (lastselected & (1 << dr)) ) {
 	    if (floppy[dr].motoroff) {
-	        /* motor off: if motor bit = 0 in prevdata or data -> turn motor on */
+		/* motor off: if motor bit = 0 in prevdata or data -> turn motor on */
 		if ((prevdata & 0x80) == 0 || (data & 0x80) == 0)
 		    drive_motor (floppy + dr, 0);
 	    } else {
@@ -823,7 +820,7 @@ uae_u8 DISK_status (void)
 	    if (drive_running (drv)) {
 		if (drv->dskready)
 		    st &= ~0x20;
-	    } else if (!drv->disabled) {
+	    } else {
 		/* report drive ID */
 		if (drv->drive_id & (1L << (31 - drv->drive_id_scnt)))
 		    st |= 0x20;
@@ -832,24 +829,18 @@ uae_u8 DISK_status (void)
 #ifdef DEBUG_DRIVE_ID		
 		write_log("DISK_status: sel %d id %s [0x%08lx, bit #%02d: %d]\n",
 		    dr,drive_id_name(drv), drv->drive_id << drv->drive_id_scnt, 31 - drv->drive_id_scnt, st & 0x20 ? 1:0);
-#endif	
+#endif
 		/* Left shift id reg bit should be done with each LH transition of drv_sel */
 		drv->drive_id_scnt++;
 		drv->drive_id_scnt &= 31;
 	    }
-	    if (drive_track0 (drv)) {
+	    if (drive_track0 (drv))
 		st &= ~0x10;
-	    }
-	    if (drive_writeprotected (drv)) {
+	    if (drive_writeprotected (drv))
 		st &= ~8;
-	    }
-	    if (drv->dskchange) {
-		/*printf("changed bit set: %d\n",dr); */
-		st &= ~0x4;
-		if (drv->dskchange > 1)
-		    drv->dskchange--;
-	    }
-	}
+	    if (drv->dskchange)
+		st &= ~4;
+	} 
     }
     return st;
 }
@@ -872,9 +863,9 @@ static uae_u32 dskpt;
 static void disk_dmafinished (void)
 {
     INTREQ (0x8002);
-    dskdmaen = 0;
+    dskdmaen = 1; /* surprise, it isn't set to zero! */
 #ifdef DISK_DEBUG
-    write_log("disk dma finished\n");
+    write_log("disk dma finished %08.8X\n", dskpt);
 #endif
 }    
 
@@ -905,7 +896,8 @@ void DISK_handler (void)
     disk_events (disk_sync_cycle);
 }
 
-static int syncfound, dmaon, word, bitoffset;
+static int dma_enable, bitoffset;
+static uae_u32 word;
 
 /* Always carried through to the next line.  */
 static int disk_hpos;
@@ -940,7 +932,7 @@ static void disk_doupdate_write (drive * drv)
 }
 
 /* get one bit from MFM bit stream */
-static uae_u16 getonebit (uae_u16 * mfmbuf, int mfmpos, uae_u16 word)
+static uae_u32 getonebit (uae_u16 * mfmbuf, int mfmpos, uae_u32 word)
 {
     uae_u16 *buf;
 
@@ -956,8 +948,9 @@ static uae_u16 getonebit (uae_u16 * mfmbuf, int mfmpos, uae_u16 word)
 static void disk_doupdate_read (drive * drv)
 {
     int hpos = disk_hpos;
-    int is_sync = 0, dmaon;
+    int is_sync = 0;
     int j = 0, k = 1, l = 0;
+    uae_u16 synccheck;
     static int dskbytr_last = 0, wordsync_last = -1;
 
     dskbytr_tab[0] = dskbytr_tab[dskbytr_last];
@@ -973,39 +966,37 @@ static void disk_doupdate_read (drive * drv)
 	    word <<= 1;
 	drv->mfmpos++;
 	drv->mfmpos %= drv->tracklen;
-        if (!drv->mfmpos) {
+	if (!drv->mfmpos) {
 	    disk_sync[hpos >> 8] |= DISK_INDEXSYNC;
 	    is_sync = 1;
 	}
-	if (bitoffset == 15 && (!(adkcon & 0x400) || syncfound))
-	    dmaon = 1;
-	else
-	    dmaon = 0;
-	if (word == dsksync) {
+	if (bitoffset == 31 && dma_enable) {
+	    dma_tab[j++] = (word >> 16) & 0xffff;
+	    if (j == MAX_DISK_WORDS_PER_LINE - 1) {
+		write_log ("Bug: Disk DMA buffer overflow!\n");
+		j--;
+	    }
+	}
+	if (bitoffset == 15 || bitoffset == 23 || bitoffset == 31) {
+	    dskbytr_tab[k] = (word >> 8) & 0xff;
+	    dskbytr_tab[k] |= 0x8000;
+	    dskbytr_last = k;
+	    dskbytr_cycle[k++] = hpos >> 8;
+	}
+	synccheck = (word >> 8) & 0xffff;
+	if (synccheck == dsksync) {
 	    if (adkcon & 0x400) {
-		if (!syncfound) bitoffset = -1;
-		syncfound = 1;
+		if (bitoffset != 23 || !dma_enable)
+		    bitoffset = 7;
+		dma_enable = 1;
 	    }
 	    wordsync_last = l;
 	    wordsync_cycle[l++] = hpos >> 8;
 	    disk_sync[hpos >> 8] |= DISK_WORDSYNC;
 	    is_sync = 1;
 	}
-	if (dmaon) {
-	    dma_tab[j++] = word;
-	    if (j == MAX_DISK_WORDS_PER_LINE - 1) {
-		write_log ("Bug: Disk DMA buffer overflow!\n");
-		j--;
-	    }
-	}
-	if (bitoffset == 7 || bitoffset == 15) {
-	    dskbytr_tab[k] = word & 0xff;
-	    dskbytr_tab[k] |= 0x8000;
-	    dskbytr_last = k;
-	    dskbytr_cycle[k++] = hpos >> 8;
-	}
 	bitoffset++;
-	bitoffset &= 15;
+	if (bitoffset == 32) bitoffset = 16;
 	hpos += drv->trackspeed;
     }
     dma_tab[j] = 0xffffffff;
@@ -1020,6 +1011,9 @@ static void disk_doupdate_read (drive * drv)
 /* disk DMA fetch happens on real Amiga at the beginning of next horizontal line
    (cycles 9, 11 and 13 according to hardware manual) We transfer all DMA'd
    data at cycle 0. I don't think any program cares about this small difference.
+
+   We must handle dsklength = 0 because some copy protections use it to detect
+   wordsync without transferring any data.
 */
 static void dodmafetch (void)
 {
@@ -1027,14 +1021,15 @@ static void dodmafetch (void)
 
     i = 0;
     while (dma_tab[i] != 0xffffffff && dskdmaen == 2 && (dmacon & 0x210) == 0x210) {
-	put_word (dskpt, dma_tab[i]);
-	dskpt += 2;
-	dsklength--;
+	if (dsklength > 0) {
+	    put_word (dskpt, dma_tab[i++]);
+	    dskpt += 2;
+	    dsklength--;
+	}
 	if (dsklength == 0) {
 	    disk_dmafinished ();
 	    break;
 	}
-	i++;
     }
     dma_tab[0] = 0xffffffff;
 }
@@ -1056,11 +1051,10 @@ static void DISK_start (void)
 	    /* Ugh.  A nasty hack.  Assume ADF_EXT1 tracks are always read
 	       from the start.  */
 	    if (ti->type == TRACK_RAW1)
-	        drv->mfmpos = 0;
+		drv->mfmpos = 0;
 	}
     }
-    syncfound = 0;
-    dmaon = 0;
+    dma_enable = (adkcon & 0x400) ? 0 : 1;
     word = 0;
     bitoffset = 0;
     dma_tab[0] = 0xffffffff;
@@ -1102,7 +1096,7 @@ void DISK_update (void)
 
 	if (dskdmaen == 3)
 	    disk_doupdate_write (drv);
-	else if (disk_data_used < 50 * 2) {
+	else if (1 || disk_data_used < MAXVPOS * 50 * 2) {
 	    disk_data_used++;
 	    disk_doupdate_read (drv);
 	}
@@ -1124,7 +1118,7 @@ void DSKLEN (uae_u16 v, int hpos)
 	    write_log ("warning: Disk write DMA aborted, %d words left\n", dsklength);
 	dskdmaen = 0;
     }
-    dsklength = v & 0x3fff;
+    dsklength = v & 0x3ffe;
     if (dskdmaen <= 1)
 	return;
     if (v & 0x4000)
@@ -1175,7 +1169,7 @@ void DSKLEN (uae_u16 v, int hpos)
 			pos %= drv->tracklen;
 			if (drv->bigmfmbuf[pos >> 4] == dsksync) {
 			    /* must skip first disk sync marker */
-	    		    pos += 16;
+			    pos += 16;
 			    pos %= drv->tracklen;
 			    break;
 			}
@@ -1212,9 +1206,9 @@ uae_u16 DSKBYTR (int hpos)
     dskbytr_tab[i] &= ~0x8000;
     if (wordsync_cycle[0] != 255) {
 	i = 0;
-        while (hpos < wordsync_cycle[i])
-    	    i++;
-        if (hpos - wordsync_cycle[i] <= WORDSYNC_CYCLES)
+	while (hpos < wordsync_cycle[i])
+	    i++;
+	if (hpos - wordsync_cycle[i] <= WORDSYNC_CYCLES)
 	    v |= 0x1000;
     }
     if (dskdmaen && (dmacon & 0x210) == 0x210)
@@ -1271,7 +1265,7 @@ void DISK_init (void)
 
     for (dr = 0; dr < 4; dr++) {
 	drive *drv = &floppy[dr];
-        /* reset all drive types to 3.5 DD */
+	/* reset all drive types to 3.5 DD */
 	drive_settype_id (drv);
 	if (!drive_insert (drv, dr, currprefs.df[dr]))
 	    disk_eject (dr);
@@ -1285,10 +1279,12 @@ void DISK_reset (void)
     int i;
     disk_hpos = 0;
     disk_data_used = 0;
+    disabled = 0;
     for (i = 0; i < 4; i++) {
-	floppy[i].disabled = 0;
-	if (i >= currprefs.nr_floppies)
-	    floppy[i].disabled = 1;
+	if (i >= currprefs.nr_floppies) {
+	    disabled |= 1 << i;
+	    floppy[i].motoroff = 1;
+	}
     }
 }
 
@@ -1364,9 +1360,10 @@ uae_u8 *restore_floppy(uae_u8 *src)
 {
     word = restore_u16();
     bitoffset = restore_u8();
-    syncfound = restore_u8();
+    dma_enable = restore_u8();
     disk_hpos = restore_u8();
     dskdmaen = restore_u8();
+    word |= restore_u16() << 16;
 
     return src;
 }
@@ -1378,12 +1375,13 @@ uae_u8 *save_floppy(int *len)
     /* flush dma buffer before saving */
     dodmafetch();
 
-    dstbak = dst = malloc(2+1+1+1+1);
-    save_u16 (word);		/* current word */
+    dstbak = dst = malloc(2+1+1+1+1+2);
+    save_u16 (word);		/* current fifo (low word) */
     save_u8 (bitoffset);	/* dma bit offset */
-    save_u8 (syncfound);	/* disk sync found */
+    save_u8 (dma_enable);	/* disk sync found */
     save_u8 (disk_hpos);	/* next bit read position */
     save_u8 (dskdmaen);		/* dma status */
+    save_u16 (word >> 16);	/* current fifo (high word) */
 
     *len = dst - dstbak;
     return dstbak;

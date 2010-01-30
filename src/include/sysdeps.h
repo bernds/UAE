@@ -231,6 +231,13 @@ extern void *xcalloc(size_t, size_t);
 #ifdef __GNUC__
 #define ENUMDECL typedef enum
 #define ENUMNAME(name) name
+
+/* While we're here, make abort more useful.  */
+#define abort() \
+  do { \
+    write_log ("Internal error; file %s, line %d\n", __FILE__, __LINE__); \
+    (abort) (); \
+} while (0)
 #else
 #define ENUMDECL enum
 #define ENUMNAME(name) ; typedef int name
@@ -360,6 +367,21 @@ extern void mallocemu_free (void *ptr);
 
 #include "target.h"
 
+#ifdef UAE_CONSOLE
+#undef write_log
+#define write_log write_log_standard
+#endif
+
+#if __GNUC__ - 1 > 1 || __GNUC_MINOR__ - 1 > 6
+extern void write_log (const char *, ...) __attribute__ ((format (printf, 1, 2)));
+#else
+extern void write_log (const char *, ...);
+#endif
+
+extern void console_out (const char *, ...);
+extern void console_flush (void);
+extern int console_get (char *, int);
+
 #ifndef O_BINARY
 #define O_BINARY 0
 #endif
@@ -367,3 +389,25 @@ extern void mallocemu_free (void *ptr);
 #ifndef STATIC_INLINE
 #define STATIC_INLINE static __inline__
 #endif
+
+/* Every Amiga hardware clock cycle takes this many "virtual" cycles.  This
+   used to be hardcoded as 1, but using higher values allows us to time some
+   stuff more precisely.
+   512 is the official value from now on - it can't change, unless we want
+   _another_ config option "finegrain2_m68k_speed".
+
+   We define this value here rather than in events.h so that gencpu.c sees
+   it.  */
+#define CYCLE_UNIT 512
+
+/* This one is used by cfgfile.c.  We could reduce the CYCLE_UNIT back to 1,
+   I'm not 100% sure this code is bug free yet.  */
+#define OFFICIAL_CYCLE_UNIT 512
+
+/*
+ * You can specify numbers from 0 to 5 here. It is possible that higher
+ * numbers will make the CPU emulation slightly faster, but if the setting
+ * is too high, you will run out of memory while compiling.
+ * Best to leave this as it is.
+ */
+#define CPU_EMU_SIZE 0

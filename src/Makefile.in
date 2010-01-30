@@ -4,7 +4,7 @@
 
 @SET_MAKE@
 CC        = @CC@
-WRC       = @WRC@
+WRC       = @WRCPRG@
 CPP       = @CPP@
 LDFLAGS   = @LDFLAGS@
 CFLAGS    = @CFLAGS@ -D__inline__=@ac_cv_c_inline@
@@ -38,8 +38,9 @@ OBJS = main.o newcpu.o memory.o @CPUOBJS@ custom.o cia.o serial.o blitter.o \
        fpp.o readcpu.o cpudefs.o gfxutil.o gfxlib.o blitfunc.o blittable.o \
        disk.o audio.o compiler.o uaelib.o drawing.o picasso96.o cpustbl.o \
        uaeexe.o bsdsocket.o missing.o sd-sound.o od-joy.o md-support.o \
-       fsusage.o cfgfile.o native2amiga.o fsdb.o fsdb_unix.o identify.o \
-       savestate.o @ASMOBJS@ @GFXOBJS@ @DEBUGOBJS@ @SCSIOBJS@
+       fsusage.o cfgfile.o native2amiga.o @FSDBOBJS@ fsdb.o identify.o \
+       savestate.o writelog.o @ASMOBJS@ @GFXOBJS@ @DEBUGOBJS@ @SCSIOBJS@
+
 
 all: $(TARGET)
 
@@ -74,8 +75,9 @@ uae: $(OBJS)
 	$(CC) $(OBJS) -o uae $(GFXLDFLAGS) $(LDFLAGS) $(DEBUGFLAGS) $(LIBRARIES) $(MATHLIB)
 
 clean:
+	$(MAKE) -C tools clean
 	-rm -f $(OBJS) *.o uae readdisk
-	-rm -f gencpu genblitter blit.h cpudefs.c cpuopti
+	-rm -f blit.h cpudefs.c
 	-rm -f cpuemu.c build68k cputmp.s cpufast*.s cpustbl.c cputbl.h
 	-rm -f blitfunc.c blitfunc.h blittable.c
 
@@ -87,41 +89,44 @@ streifenfrei: clean
 	-rm -f od-joy.c md-X86.S sd-sound.c md-support.c
 	-rm -f machdep osdep threaddep sounddep target.h config.h
 
-blit.h: genblitter
-	./genblitter i >blit.h
-blitfunc.c: genblitter blitfunc.h
-	./genblitter f >blitfunc.c
-blitfunc.h: genblitter
-	./genblitter h >blitfunc.h
-blittable.c: genblitter blitfunc.h
-	./genblitter t >blittable.c
+blit.h: tools/genblitter
+	./tools/genblitter i >blit.h
+blitfunc.c: tools/genblitter blitfunc.h
+	./tools/genblitter f >blitfunc.c
+blitfunc.h: tools/genblitter
+	./tools/genblitter h >blitfunc.h
+blittable.c: tools/genblitter blitfunc.h
+	./tools/genblitter t >blittable.c
 
-genblitter: genblitter.o blitops.o
-	$(CC) $(LDFLAGS) -o genblitter genblitter.o blitops.o
-build68k: build68k.o
-	$(CC) $(LDFLAGS) -o build68k build68k.o
-cpuopti: cpuopti.o
-	$(CC) $(LDFLAGS) -o cpuopti cpuopti.o
-gencpu: gencpu.o readcpu.o cpudefs.o missing.o
-	$(CC) $(LDFLAGS) -o gencpu gencpu.o readcpu.o missing.o cpudefs.o
+tools/genblitter:
+	$(MAKE) -C tools genblitter
+tools/build68k:
+	$(MAKE) -C tools build68kc
+tools/cpuopti:
+	$(MAKE) -C tools cpuopti
+tools/gencpu: 
+	$(MAKE) -C tools gencpu
 
 custom.o: blit.h
 drawing.o: linetoscr.c
 
-cpudefs.c: build68k @top_srcdir@/src/table68k
-	./build68k <@top_srcdir@/src/table68k >cpudefs.c
+cpudefs.c: tools/build68k @top_srcdir@/src/table68k
+	./tools/build68k <@top_srcdir@/src/table68k >cpudefs.c
 
-cpuemu.c: gencpu
-	./gencpu
+cpuemu.c: tools/gencpu
+	./tools/gencpu
 
 # gencpu also creates cpustbl.c and cputbl.h
 cpustbl.c: cpuemu.c
 cputbl.h: cpuemu.c
 
-cpufast.s: cpuemu.c cpuopti
+cpufast.s: cpuemu.c tools/cpuopti
 	$(CC) $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp.s
-	./cpuopti <cputmp.s >$@
+	./tools/cpuopti <cputmp.s >$@
 	rm cputmp.s
+
+console_missing.o: missing.c
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(CFLAGS_$@) $< -o $@
 
 osdep/beos.o: osdep/beos.cpp
 	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) osdep/beos.cpp -o osdep/beos.o
@@ -131,7 +136,7 @@ osdep/beos.o: osdep/beos.cpp
 .m.o:
 	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $<
 .c.o:
-	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $< -o $@
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(CFLAGS_$@) $< -o $@
 .c.s:
 	$(CC) $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $< -o $@
 .c.i:
@@ -170,35 +175,35 @@ blitter.o: config.h include/events.h blit.h
 # sam: this is for people with low memory. (is there a way do do this with a single rule ?)
 cpufast1.s: cpuemu.c cpuopti
 	$(CC) -DPART_1 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp1.s
-	./cpuopti <cputmp1.s >$@
+	./tools/cpuopti <cputmp1.s >$@
 	rm cputmp1.s
 cpufast2.s: cpuemu.c cpuopti
 	$(CC) -DPART_2 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp2.s
-	./cpuopti <cputmp2.s >$@
+	./tools/cpuopti <cputmp2.s >$@
 	rm cputmp2.s
 cpufast3.s: cpuemu.c cpuopti
 	$(CC) -DPART_3 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp3.s
-	./cpuopti <cputmp3.s >$@
+	./tools/cpuopti <cputmp3.s >$@
 	rm cputmp3.s
 cpufast4.s: cpuemu.c cpuopti
 	$(CC) -DPART_4 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp4.s
-	./cpuopti <cputmp4.s >$@
+	./tools/cpuopti <cputmp4.s >$@
 	rm cputmp4.s
 cpufast5.s: cpuemu.c cpuopti
 	$(CC) -DPART_5 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp5.s
-	./cpuopti <cputmp5.s >$@
+	./tools/cpuopti <cputmp5.s >$@
 	rm cputmp5.s
 cpufast6.s: cpuemu.c cpuopti
 	$(CC) -DPART_6 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp6.s
-	./cpuopti <cputmp6.s >$@
+	./tools/cpuopti <cputmp6.s >$@
 	rm cputmp6.s
 cpufast7.s: cpuemu.c cpuopti
 	$(CC) -DPART_7 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp7.s
-	./cpuopti <cputmp7.s >$@
+	./tools/cpuopti <cputmp7.s >$@
 	rm cputmp7.s
 cpufast8.s: cpuemu.c cpuopti
 	$(CC) -DPART_8 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp8.s
-	./cpuopti <cputmp8.s >$@
+	./tools/cpuopti <cputmp8.s >$@
 	rm cputmp8.s
 
 cpuemu1.o: cpuemu.c

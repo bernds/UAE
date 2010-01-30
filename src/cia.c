@@ -13,7 +13,7 @@
 
 #include "config.h"
 #include "options.h"
-#include "threaddep/penguin.h"
+#include "threaddep/thread.h"
 #include "events.h"
 #include "memory.h"
 #include "custom.h"
@@ -474,6 +474,7 @@ static void WriteCIAA (uae_u16 addr,uae_u8 val)
 	LED(ciaapra & 0x2);
 	gui_ledstate &= ~1;
 	gui_ledstate |= ((~ciaapra & 2) >> 1);
+	gui_data.powerled = ((~ciaapra & 2) >> 1);
 	if ((ciaapra & 2) != oldled)
 	    gui_led (0, !(ciaapra & 2));
 	if ((ciaapra & 1) != oldovl) {

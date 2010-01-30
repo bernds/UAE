@@ -9,7 +9,7 @@
 
 #define UAEMAJOR 0
 #define UAEMINOR 8
-#define UAESUBREV 17
+#define UAESUBREV 18
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -26,6 +26,7 @@ struct uae_prefs {
     struct strlist *unknown_lines;
 
     char description[256];
+    char info[256];
 
     int illegal_mem;
     int no_xhair;
@@ -79,6 +80,7 @@ struct uae_prefs {
     char romfile[256];
     char keyfile[256];
     char prtname[256];
+    char sername[256];
 
     char path_floppy[256];
     char path_hardfile[256];
@@ -159,12 +161,6 @@ extern const char *gameport_state (int n);
 
 extern struct uae_prefs currprefs, changed_prefs;
 
-#if __GNUC__ - 1 > 1 || __GNUC_MINOR__ - 1 > 6
-extern void write_log (const char *, ...) __attribute__ ((format (printf, 1, 2)));
-#else
-extern void write_log (const char *, ...);
-#endif
-
 extern void machdep_init (void);
 
 /* AIX doesn't think it is Unix. Neither do I. */
@@ -173,22 +169,7 @@ extern void machdep_init (void);
 #define __unix
 #endif
 
-extern char romfile[], keyfile[], prtname[], sername[];
-
-extern int cloanto_rom;
-
 #define MAX_COLOR_MODES 5
-
-extern int fast_memcmp(const void *foo, const void *bar, int len);
-extern int memcmpy(void *foo, const void *bar, int len);
-
-/*
- * You can specify numbers from 0 to 5 here. It is possible that higher
- * numbers will make the CPU emulation slightly faster, but if the setting
- * is too high, you will run out of memory while compiling.
- * Best to leave this as it is.
- */
-#define CPU_EMU_SIZE 0
 
 /* #define NEED_TO_DEBUG_BADLY */
 
@@ -270,18 +251,3 @@ STATIC_INLINE void fuzzy_memset_le32_1 (void *p, uae_u32 c, int offset, int len)
 #if defined(AMIGA) && defined(__GNUC__)
 #include "od-amiga/amiga-kludges.h"
 #endif
-
-/* Every Amiga hardware clock cycle takes this many "virtual" cycles.  This
-   used to be hardcoded as 1, but using higher values allows us to time some
-   stuff more precisely.
-   512 is the official value from now on - it can't change, unless we want
-   _another_ config option "finegrain2_m68k_speed".
-
-   We define this value here rather than in events.h so that gencpu.c sees
-   it.  */
-#define CYCLE_UNIT 512
-
-/* This one is used by cfgfile.c.  We could reduce the CYCLE_UNIT back to 1,
-   I'm not 100% sure this code is bug free yet.  */
-#define OFFICIAL_CYCLE_UNIT 512
-

@@ -13,6 +13,7 @@
 #include "sysdeps.h"
 
 #include "fsdb.h"
+#include <windows.h>
 
 /* these are deadly (but I think allowed on the Amiga): */
 #define NUM_EVILCHARS 7
@@ -82,7 +83,7 @@ void fsdb_fill_file_attrs (a_inode *aino)
     aino->amigaos_mode = filesys_parse_mask(aino->amigaos_mode);
 }
 
-int fsdb_set_file_attrs (a_inode *aino, uae_u32 mask)
+int fsdb_set_file_attrs (a_inode *aino, int mask)
 {
     struct stat statbuf;
     uae_u32 mode=0, tmpmask;
@@ -152,7 +153,7 @@ char *fsdb_create_unique_nname (a_inode *base, const char *suggestion)
 	/* tmpnam isn't reentrant and I don't really want to hack configure
 	 * right now to see whether tmpnam_r is available...  */
 	for (i = 0; i < 8; i++) {
-	    tmp[i+8] = "_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"[random () % 63];
+	    tmp[i+8] = "_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"[rand () % 63];
 	}
     }
 }

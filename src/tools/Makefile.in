@@ -1,0 +1,78 @@
+#
+# Makefile.in for UAE tools
+#
+
+@SET_MAKE@
+CC        = @CC@
+LDFLAGS   = @LDFLAGS@
+CFLAGS    = @CFLAGS@ -D__inline__=@ac_cv_c_inline@ -DUAE_CONSOLE
+LIBRARIES = @LIBS@
+
+INSTALL         = @INSTALL@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_DATA    = @INSTALL_DATA@
+prefix          = @prefix@
+exec_prefix     = @exec_prefix@
+bindir          = @bindir@
+libdir          = @libdir@
+sysconfdir      = @sysconfdir@
+
+VPATH = @top_srcdir@
+
+.SUFFIXES: .o .c .h .m .i .S
+
+INCLUDES=-I. -I@top_srcdir@/../include/ -I@top_srcdir@
+
+all: gencpu build68k genblitter cpuopti
+
+install:
+
+
+clean:
+	-rm -f *.o
+	-rm -f gencpu genblitter cpuopti build68k
+
+
+streifenfrei: clean
+
+genblitter: genblitter.o blitops.o writelog.o
+	$(CC) $(LDFLAGS) -o genblitter genblitter.o blitops.o writelog.o
+build68k: build68k.o writelog.o
+	$(CC) $(LDFLAGS) -o build68k build68k.o writelog.o
+cpuopti: cpuopti.o writelog.o
+	$(CC) $(LDFLAGS) -o cpuopti cpuopti.o writelog.o
+gencpu: gencpu.o readcpu.o cpudefs.o missing.o writelog.o
+	$(CC) $(LDFLAGS) -o gencpu gencpu.o readcpu.o cpudefs.o missing.o writelog.o
+
+custom.o: blit.h
+drawing.o: linetoscr.c
+
+cpudefs.c: build68k @top_srcdir@/../table68k
+	./build68k <@top_srcdir@/../table68k >cpudefs.c
+
+# Normally I'd move the programs into this directory, but given that CVS
+# sucks I have no choice but to leave them in their previous directory.
+missing.o: @top_srcdir@/../missing.c
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(DEBUGFLAGS) @top_srcdir@/../missing.c -o $@
+readcpu.o: @top_srcdir@/../readcpu.c
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(DEBUGFLAGS) @top_srcdir@/../readcpu.c -o $@
+writelog.o: @top_srcdir@/../writelog.c
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(DEBUGFLAGS) @top_srcdir@/../writelog.c -o $@
+genblitter.o: @top_srcdir@/../genblitter.c
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(DEBUGFLAGS) @top_srcdir@/../genblitter.c -o $@
+gencpu.o: @top_srcdir@/../gencpu.c
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(DEBUGFLAGS) @top_srcdir@/../gencpu.c -o $@
+build68k.o: @top_srcdir@/../build68k.c
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(DEBUGFLAGS) @top_srcdir@/../build68k.c -o $@
+blitops.o: @top_srcdir@/../blitops.c
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(DEBUGFLAGS) @top_srcdir@/../blitops.c -o $@
+cpuopti.o: @top_srcdir@/../cpuopti.c
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(DEBUGFLAGS) @top_srcdir@/../cpuopti.c -o $@
+
+.c.o:
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(CFLAGS_$@) $< -o $@
+.c.s:
+	$(CC) $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $< -o $@
+.c.i:
+	$(CC) $(INCLUDES) -E $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $< > $@
+

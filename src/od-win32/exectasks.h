@@ -16,7 +16,11 @@
 #endif
 #endif
 
-#ifdef CAN_DO_STACK_MAGIC
+#if defined _MSC_VER && !defined( _WIN32_WCE )
+#define CAN_DO_STACK_MAGIC
+#endif
+
+#if defined __GNUC__ && defined CAN_DO_STACK_MAGIC
 static inline void transfer_control(void *, int, void *, void *, int) __attribute__((noreturn));
 static inline void transfer_control(void *s, int size, void *pc, void *f, int has_retval)
 {
@@ -40,10 +44,4 @@ static inline int stack_has_retval (void *s, int size)
 {
     return *(int *)((char *)s + size - 4);
 }
-
-#define USE_EXECLIB
-
-#else
-
 #endif
-

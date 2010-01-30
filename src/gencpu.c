@@ -22,8 +22,6 @@
 #include "sysdeps.h"
 #include <ctype.h>
 
-#include "config.h"
-#include "options.h"
 #include "readcpu.h"
 
 #define BOOL_TYPE "int"
@@ -39,11 +37,6 @@ static int cpu_level;
  * Initialized to -1 for each opcode. If it remains unchanged, indicates we
  * are done with that opcode.  */
 static int next_cpu_level;
-
-void write_log (const char *s, ...)
-{
-    fprintf (stderr, "%s", s);
-}
 
 static int *opcode_map;
 static int *opcode_next_clev;
@@ -2026,6 +2019,8 @@ static void gen_opcode (unsigned long int opcode)
 	    break;
 	case i_BFINS:
 	    printf ("\ttmp = m68k_dreg(regs, (extra >> 12) & 7);\n");
+	    printf ("\tSET_NFLG (tmp & (1 << (width - 1)) ? 1 : 0);\n");
+	    printf ("\tSET_ZFLG (tmp == 0);\n");
 	    break;
 	default:
 	    break;

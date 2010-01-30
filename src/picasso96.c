@@ -35,7 +35,7 @@
 
 #include "config.h"
 #include "options.h"
-#include "threaddep/penguin.h"
+#include "threaddep/thread.h"
 #include "uae.h"
 #include "memory.h"
 #include "custom.h"
@@ -187,6 +187,11 @@ static void DumpTemplate (struct Template *tmp, uae_u16 w, uae_u16 h)
 	}
 	write_log ("\n");
     }
+}
+
+int picasso_nr_resolutions (void)
+{
+    return mode_count;
 }
 
 static void ShowSupportedResolutions (void)
@@ -594,7 +599,6 @@ void picasso_refresh (void)
 	ri.BytesPerRow = picasso96_state.BytesPerRow;
 	ri.RGBFormat = picasso96_state.RGBFormat;
 	do_blit (ptr, picasso96_state.BytesPerRow, 0, 0, 0, 0, picasso96_state.Width, picasso96_state.Height, 0);
-	write_log ("picasso_refresh() successful.\n");
     } else
 	write_log ("ERROR - picasso_refresh() can't refresh!\n");
 }
@@ -796,8 +800,9 @@ uae_u32 picasso_SetSwitch (void)
      * desired state, and wait for custom.c to call picasso_enablescreen
      * whenever it is ready to change the screen state.  */
     picasso_requested_on = !!flag;
+#if 0
     write_log ("SetSwitch() - trying to show %s screen\n", flag ? "picasso96" : "amiga");
-
+#endif
     /* Put old switch-state in D0 */
     return !flag;
 }
@@ -806,7 +811,25 @@ void picasso_enablescreen (int on)
 {
     wgfx_linestart = 0xFFFFFFFF;
     picasso_refresh ();
+#if 0
     write_log ("SetSwitch() - showing %s screen\n", on ? "picasso96" : "amiga");
+#endif
+}
+
+static int first_color_changed = 256;
+static int last_color_changed = -1;
+
+void picasso_handle_vsync (void)
+{
+    if (first_color_changed < last_color_changed) {
+	DX_SetPalette (first_color_changed, last_color_changed);
+	/* If we're emulating a CLUT mode, we need to redraw the entire screen.  */
+	if (picasso_vidinfo.rgbformat != picasso96_state.RGBFormat)
+	    picasso_refresh ();
+    }
+
+    first_color_changed = 256;
+    last_color_changed = -1;
 }
 
 /*
@@ -845,7 +868,10 @@ uae_u32 picasso_SetColorArray (void)
 	clut += 3;
     }
     if (changed) {
-	DX_SetPalette (start, count);
+	if (start < first_color_changed)
+	    first_color_changed = start;
+	if (start + count > last_color_changed)
+	    last_color_changed = start + count;
     }
     /*write_log ("SetColorArray(%d,%d)\n", start, count); */
     return 1;
@@ -2259,6 +2285,20 @@ addrbank gfxmem_bank = {
     gfxmem_lput, gfxmem_wput, gfxmem_bput,
     gfxmem_xlate, gfxmem_check, NULL
 };
+
+int picasso_display_mode_index (uae_u32 x, uae_u32 y, uae_u32 d)
+{
+    int i;
+    for (i = 0; i < mode_count; i++) {
+        if (DisplayModes[i].res.width == x
+	    && DisplayModes[i].res.height == y
+	    && DisplayModes[i].depth == d)
+            break;
+    }
+    if (i == mode_count)
+        i = -1;
+    return i;
+}
 
 static int resolution_compare (const void *a, const void *b)
 {

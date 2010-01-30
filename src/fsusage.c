@@ -50,7 +50,7 @@ adjust_blocks (blocks, fromsize, tosize)
 
 #ifdef _WIN32
 #include "sysdeps.h"
-
+#include <windows.h>
 int
 get_fs_usage (path, disk, fsp)
      const char *path;

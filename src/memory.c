@@ -797,7 +797,7 @@ uae_u8 *mapped_malloc (size_t s, char *file)
     return mapped_malloc (s, file);
 }
 
-void mapped_free (uae_u8 base)
+void mapped_free (uae_u8 *base)
 {
     shmpiece *x = find_shmpiece (base);
     if (! x)
@@ -892,6 +892,19 @@ void memory_reset (void)
 
     allocate_memory ();
 
+    if (strcmp (currprefs.romfile, changed_prefs.romfile) != 0
+	|| strcmp (currprefs.keyfile, changed_prefs.keyfile) != 0)
+    {
+	ersatzkickfile = 0;
+	memcpy (currprefs.romfile, changed_prefs.romfile, sizeof currprefs.romfile);
+	memcpy (currprefs.keyfile, changed_prefs.keyfile, sizeof currprefs.keyfile);
+	/* Clear out whatever data remains across a reset.  */
+	memset (chipmemory, 0, allocated_chipmem);
+	if (! load_kickstart ()) {
+	    init_ersatz_rom (kickmemory);
+	    ersatzkickfile = 1;
+	}
+    }    
     /* Map the chipmem into all of the lower 8MB */
     i = allocated_chipmem > 0x200000 ? (allocated_chipmem >> 16) : 32;
     map_banks (&chipmem_bank, 0x00, i, allocated_chipmem);
@@ -953,11 +966,27 @@ void memory_init (void)
     kickmem_mask = kickmem_size - 1;
 }
 
+void memory_cleanup( void )
+{
+    if (a3000memory)
+	mapped_free (a3000memory);
+    if (bogomemory)
+	mapped_free (bogomemory);
+    if (kickmemory)
+	mapped_free (kickmemory);
+    if (chipmemory)
+	mapped_free (chipmemory);
+  
+    a3000memory = 0;
+    bogomemory = 0;
+    kickmemory = 0;
+    chipmemory = 0;
+}
+
 void map_banks (addrbank *bank, int start, int size, int realsize)
 {
     int bnr;
     unsigned long int hioffs = 0, endhioffs = 0x100;
-    int real_left;
     addrbank* orgbank = bank;
     uae_u32 realstart = start;
     
@@ -968,7 +997,6 @@ void map_banks (addrbank *bank, int start, int size, int realsize)
  
     if (!realsize)
 	realsize = size << 16;
-    real_left = 0;
 
     if ((size << 16) < realsize) {
 	fprintf (stderr, "Please report to bmeyer@cs.monash.edu.au, and mention:\n");
@@ -979,6 +1007,7 @@ void map_banks (addrbank *bank, int start, int size, int realsize)
     }
 
     if (start >= 0x100) {
+	int real_left = 0;
 	for (bnr = start; bnr < start + size; bnr++) {
 	    if (!real_left) {
 		realstart = bnr;
@@ -992,8 +1021,10 @@ void map_banks (addrbank *bank, int start, int size, int realsize)
 	}
 	return;
     }
+    if (currprefs.address_space_24)
+	endhioffs = 0x10000;
     for (hioffs = 0; hioffs < endhioffs; hioffs += 0x100) {
-	real_left=0;
+	int real_left = 0;
 	for (bnr = start; bnr < start+size; bnr++) {
 	    if (!real_left) {
 		realstart = bnr + hioffs;

@@ -75,6 +75,7 @@ extern void filesys_store_devinfo (uae_u8 *);
 extern void hardfile_install (void);
 extern void emulib_install (void);
 extern void expansion_init (void);
+extern void expansion_cleanup (void);
 
 #define TRAPFLAG_NO_REGSAVE 1
 #define TRAPFLAG_NO_RETVAL 2

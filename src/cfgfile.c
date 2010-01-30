@@ -14,7 +14,7 @@
 
 #include "config.h"
 #include "options.h"
-#include "threaddep/penguin.h"
+#include "threaddep/thread.h"
 #include "uae.h"
 #include "autoconf.h"
 #include "events.h"
@@ -81,7 +81,10 @@ static struct cfg_lines opttable[] =
     {"filesystem", "access,'Amiga volume-name':'host directory path' - where 'access' can be 'read-only' or 'read-write'" }
 };
 
-static const char *csmode[] = { "ocs", "ecs_agnus", "ecs_denise", "ecs", "aga" };
+static const char *guimode1[] = { "no", "yes", "nowait", 0 };
+static const char *guimode2[] = { "false", "true", "nowait", 0 };
+static const char *guimode3[] = { "0", "1", "nowait", 0 };
+static const char *csmode[] = { "ocs", "ecs_agnus", "ecs_denise", "ecs", "aga", 0 };
 static const char *linemode1[] = { "none", "double", "scanlines", 0 };
 static const char *linemode2[] = { "n", "d", "s", 0 };
 static const char *speedmode[] = { "max", "real", 0 };
@@ -148,7 +151,7 @@ void save_options (FILE *f, struct uae_prefs *p)
 
     target_save_options (f, p);
 
-    fprintf (f, "use_gui=%s\n", p->start_gui ? "true" : "false");
+    fprintf (f, "use_gui=%s\n", guimode1[p->start_gui]);
     fprintf (f, "use_debugger=%s\n", p->start_debugger ? "true" : "false");
     str = cfgfile_subst_path (p->path_rom, UNEXPANDED, p->romfile);
     fprintf (f, "kickstart_rom_file=%s\n", str);
@@ -356,7 +359,6 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	return 0;
     }
     if (cfgfile_yesno (option, value, "use_debugger", &p->start_debugger)
-	|| cfgfile_yesno (option, value, "use_gui", &p->start_gui)
 	|| cfgfile_yesno (option, value, "bsdsocket_emu", &p->socket_emu)
 	|| cfgfile_yesno (option, value, "immediate_blits", &p->immediate_blits)
 	|| cfgfile_yesno (option, value, "32bit_blits", &p->blits_32bit_enabled)
@@ -395,6 +397,9 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	|| cfgfile_strval (option, value, "sound_interpol", &p->sound_interpol, interpolmode, 0)
 	|| cfgfile_strval (option, value, "joyport0", &p->jport0, portmode, 0)
 	|| cfgfile_strval (option, value, "joyport1", &p->jport1, portmode, 0)
+	|| cfgfile_strval (option, value, "use_gui", &p->start_gui, guimode1, 1)
+	|| cfgfile_strval (option, value, "use_gui", &p->start_gui, guimode2, 1)
+	|| cfgfile_strval (option, value, "use_gui", &p->start_gui, guimode3, 0)
 	|| cfgfile_strval (option, value, "collision_level", &p->collision_level, collmode, 0)
 	|| cfgfile_strval (option, value, "gfx_linemode", &p->gfx_linedbl, linemode1, 1)
 	|| cfgfile_strval (option, value, "gfx_linemode", &p->gfx_linedbl, linemode2, 0)

@@ -57,15 +57,21 @@ static __inline__ uae_s32 toint(fptype src)
 static uae_u32 get_fpsr (void) 
 {
     uae_u32 answer = regs.fpsr & 0x00ffffff;
+#ifdef HAVE_ISNAN
     if (isnan (regs.fp_result))
 	answer |= 0x01000000;
-    else if (regs.fp_result == 0)
-	answer |= 0x04000000;
-    else if (regs.fp_result < 0)
-	answer |= 0x08000000;
-    if (isinf (regs.fp_result))
-	answer |= 0x02000000;
-	
+    else
+#endif
+    {
+	if (regs.fp_result == 0)
+	    answer |= 0x04000000;
+	else if (regs.fp_result < 0)
+	    answer |= 0x08000000;
+#ifdef HAVE_ISINF
+	if (isinf (regs.fp_result))
+	    answer |= 0x02000000;
+#endif
+    }
     return answer;
 }
 
@@ -500,8 +506,12 @@ STATIC_INLINE int fpp_cond (uae_u32 opcode, int contition)
     int N = (regs.fp_result<0);
     int Z = (regs.fp_result==0);
     /* int I = (regs.fpsr & 0x2000000) != 0; */
-    int NotANumber = isnan(regs.fp_result);
-    
+    int NotANumber = 0;
+
+#ifdef HAVE_ISNAN
+    NotANumber = isnan (regs.fp_result);
+#endif
+
     if (NotANumber)
 	N=Z=0;
 

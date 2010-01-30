@@ -3,8 +3,12 @@
  *
  * Win32 interface
  *
- * Copyright 1997 Mathias Ortmann
+ * Copyright 1997-1998 Mathias Ortmann
+ * Copyright 1997-1999 Brian King
  */
+
+/* Uncomment this line if you want the logs time-stamped */
+/* #define TIMESTAMP_LOGS */
 
 #include "config.h"
 #include "sysconfig.h"
@@ -13,15 +17,14 @@
 #include <stdarg.h>
 #include <signal.h>
 
-/* No idea what this is for, but it doesn't link without it if we use
-   QueryInterface.  */
-#define INITGUID
-
 #include <windows.h>
-#include <ddraw.h>
 #include <commctrl.h>
 #include <commdlg.h>
-#include <io.h>
+#include <shellapi.h>
+#include <zmouse.h>
+#include <ddraw.h>
+#include <dbt.h>
+#include <math.h>
 
 #include "sysdeps.h"
 #include "options.h"
@@ -33,79 +36,64 @@
 #include "events.h"
 #include "xwin.h"
 #include "keyboard.h"
+#include "keybuf.h"
+#include "drawing.h"
 #include "picasso96.h"
-
+#include "bsdsocket.h"
 #include "osdep/win32.h"
+#include "osdep/win32gfx.h"
 #include "osdep/win32gui.h"
-#include "resource.h"
+#include "osdep/dxwrap.h"
+#include "autoconf.h"
+#include "gui.h"
+#include "newcpu.h"
+extern void WIN32GFX_WindowMove ( void );
+extern void WIN32GFX_WindowSize ( void );
+unsigned long *win32_stackbase; 
+unsigned long *win32_freestack[42]; //EXTRA_STACK_SIZE
 
-#define IHF_WINDOWHIDDEN 6
+/* Comment out the following line if you don't want ZLIB.DLL support */
+#undef USE_ZLIB_DLL
 
-HINSTANCE hInst;
+#ifdef USE_ZLIB_DLL
+#include "zlib.h"
+#endif
 
-static BOOL (WINAPI * pGetOpenFileNameA) (LPOPENFILENAME);
-static HRESULT (WINAPI * pDirectDrawCreate) (GUID FAR *, LPDIRECTDRAW FAR *, IUnknown FAR *);
-static HRESULT CALLBACK modesCallback (LPDDSURFACEDESC modeDesc, LPVOID context);
+int useqpc = 0; /* Set to TRUE to use the QueryPerformanceCounter() function instead of rdtsc() */
 
-static int display_change_requested = 0;
+static FILE *debugfile = NULL;
 
-int julian_mode;
-int debug_logging = 3;
+HINSTANCE hInst = NULL;
+HMODULE hUIDLL = NULL;
 
-HWND hAmigaWnd, hMainWnd, hStatusWnd;
+HWND (WINAPI *pHtmlHelp)(HWND, LPCSTR, UINT, LPDWORD ) = NULL;
+
+HWND hAmigaWnd, hMainWnd;
 /*DWORD Keys; */
-static RECT amigawin_rect;
-
-char *start_path = NULL;
-
-static LPDIRECTDRAW lpDD;
-static LPDIRECTDRAW2 lpDD2;
-static LPDIRECTDRAWSURFACE lpDDS;
-static LPDIRECTDRAWCLIPPER lpDDC;
-static LPDIRECTDRAWPALETTE lpDDP;
-static DDSURFACEDESC current_surface;
-static DDSURFACEDESC ddsd;
-
-#define TITLETEXT PROGNAME " -- Amiga Display"
+RECT amigawin_rect;
 
 char VersionStr[256];
 
-static int current_width, current_height, current_depth;
-static int fullscreen, needs_fullscreen;
-static int current_pixbytes;
-
-static int in_sizemove;
-
-static int screen_is_picasso = 0;
-
+int in_sizemove = 0;
+int manual_painting_needed = 0;
 int customsize = 0;
 
 int bActive;
 int toggle_sound;
 
-int process_desired_pri;
-
 BOOL viewing_child = FALSE;
-BOOL running_winnt = FALSE;
 
-static char scrlinebuf[8192];	/* this is too large, but let's rather play on the safe side here */
-static int scrindirect;
-
-static void set_linemem (void)
-{
-    if (scrindirect)
-	gfxvidinfo.linemem = scrlinebuf;
-    else
-	gfxvidinfo.linemem = 0;
-}
+HKEY hWinUAEKey    = NULL;
+COLORREF g_dwBackgroundColor  = RGB(10, 0, 10);
 
 /* Keyboard emulation, Win32 helper routines. */
 static LPARAM keysdown[256];
 static short numkeysdown;
-
 int checkkey (int vkey, LPARAM lParam)
 {
     switch (vkey) {
+    case VK_LWIN:
+    case VK_RWIN:
      case VK_SHIFT:
      case VK_LSHIFT:
      case VK_RSHIFT:
@@ -125,6 +113,11 @@ static int mousecx = 160, mousecy = 100, mousedx = 160, mousedy = 100;
 static int mousecl = MAKELONG (160, 100);
 int mouseactive;
 
+void WIN32_MouseDefaults( void )
+{
+    mousecx = 160, mousecy = 100, mousedx = 160, mousedy = 100, mousecl = MAKELONG (160, 100);
+}
+
 void setmouseactive (int active)
 {
     mousedx = (amigawin_rect.right - amigawin_rect.left) / 2;
@@ -137,14 +130,22 @@ void setmouseactive (int active)
 	return;
     mouseactive = active;
 
-    if (active) {
-	ShowCursor (FALSE);
-	SetCursorPos (mousecx, mousecy);
-	SetWindowText (hMainWnd ? hMainWnd : hAmigaWnd, TITLETEXT " [Mouse active - press Alt-Tab to cancel]");
+    if (active) 
+    {
+#ifdef HARDWARE_SPRITE_EMULATION
+	if( !WIN32GFX_IsPicassoScreen() )
+#endif
+	{
+	    ShowCursor (FALSE);
+	    SetCursorPos (mousecx, mousecy);
+	}
+	SetWindowText (hMainWnd ? hMainWnd : hAmigaWnd, "UAE/Win32 - [Mouse active - press Alt-Tab to cancel]");
 	ClipCursor (&amigawin_rect);
-    } else {
+    }
+    else
+    {
 	ShowCursor (TRUE);
-	SetWindowText (hMainWnd ? hMainWnd : hAmigaWnd, TITLETEXT);
+	SetWindowText (hMainWnd ? hMainWnd : hAmigaWnd, "UAE/Win32" );
 	ClipCursor (NULL);
     }
 }
@@ -159,7 +160,7 @@ static void setcapture (void)
     SetCapture (hAmigaWnd);
 }
 
-static __inline__ void releasecapture (void)
+void releasecapture (void)
 {
     if (!hascapture)
 	return;
@@ -167,608 +168,239 @@ static __inline__ void releasecapture (void)
     ReleaseCapture ();
 }
 
-static void illhandler(int foo)
+frame_time_t read_processor_time_cyrix (void)
+{
+    LARGE_INTEGER counter;
+    QueryPerformanceCounter( &counter );
+    return (frame_time_t)(counter.LowPart);
+}
+
+#include <setjmp.h>
+jmp_buf catch_test;
+
+static RETSIGTYPE illhandler(int foo)
 {
     rpt_available = 0;
+    longjmp(catch_test,1);
+}
+
+int have_rdtsc (void)
+{
+    rpt_available = 1;
+    write_log ("Testing the RDTSC instruction ... ");
+    signal (SIGILL, illhandler);
+    if (setjmp (catch_test) == 0)
+	read_processor_time ();
+    signal (SIGILL, SIG_DFL);
+    write_log ("done.\n");
+    if (! rpt_available) {
+	write_log ("Your processor does not support the RDTSC instruction.\n");
+	return 0;
+    }
+    return 1;
 }
 
 static void figure_processor_speed (void)
 {
-    frame_time_t best_time;
-    int i;
+    extern volatile frame_time_t vsynctime;
+    extern unsigned long syncbase;
+    frame_time_t clockrate;
 
-    rpt_available = 1;
-    signal (SIGILL, illhandler);
-    read_processor_time ();
-    signal (SIGILL, SIG_DFL);
-    if (! rpt_available) {
-	fprintf (stderr, "Your processor does not support the RDTSC instruction.\n");
-	return;
-    }
-    fprintf (stderr, "Calibrating delay loop.. ");
-    fflush (stderr);
-    best_time = (frame_time_t)-1;
-    for (i = 0; i < 5; i++) {
-	frame_time_t t = read_processor_time ();
-	Sleep (1001);
-	t = 2 * read_processor_time () - t;
-	Sleep (1);
-	t -= read_processor_time ();
-	if (t < best_time)
-	    best_time = t;
-    }
-    fprintf (stderr, "ok - %.2f BogoMIPS\n",
-	     ((double)best_time / 1000000), best_time);
-    vsynctime = best_time / 50;
-}
-
-/* DirectDraw stuff */
-static char *getddrname (HRESULT ddrval)
-{
-    switch (ddrval) {
-     case DDERR_ALREADYINITIALIZED:
-	return "This object is already initialized.";
-     case DDERR_CANNOTATTACHSURFACE:
-	return "Cannot attach surface.";
-     case DDERR_CANNOTDETACHSURFACE:
-	return "Cannot detach surface.";
-     case DDERR_CURRENTLYNOTAVAIL:
-	return "Support unavailable.";
-     case DDERR_EXCEPTION:
-	return "Unexpected exception.";
-     case DDERR_GENERIC:
-	return "Undefined";	/* THIS MAKES SENSE!  FUCKING M$ */
-     case DDERR_HEIGHTALIGN:
-	return "Height needs to be aligned.";
-     case DDERR_INCOMPATIBLEPRIMARY:
-	return "New params doesn't match existing primary surface.";
-     case DDERR_INVALIDCAPS:
-	return "Device doesn't have requested capabilities.";
-     case DDERR_INVALIDCLIPLIST:
-	return "Provided clip-list not supported.";
-     case DDERR_INVALIDMODE:
-	return "Mode not supported.";
-     case DDERR_INVALIDOBJECT:
-	return "Invalid object.";
-     case DDERR_INVALIDPARAMS:
-	return "Invalid params.";
-     case DDERR_INVALIDPIXELFORMAT:
-	return "Device doesn't support requested pixel format.";
-     case DDERR_INVALIDRECT:
-	return "Invalid RECT.";
-     case DDERR_LOCKEDSURFACES:
-	return "Surface locked.";
-     case DDERR_NO3D:
-	return "No 3d capabilities.";
-     case DDERR_NOALPHAHW:
-	return "No alpha h/w.";
-     case DDERR_NOCLIPLIST:
-	return "No clip-list.";
-     case DDERR_NOCOLORCONVHW:
-	return "No colour-conversion h/w.";
-     case DDERR_NOCOOPERATIVELEVELSET:
-	return "No cooperative-level set.";
-     case DDERR_NOCOLORKEY:
-	return "No colour-key.";
-     case DDERR_NOCOLORKEYHW:
-	return "No colour-key hardware.";
-     case DDERR_NODIRECTDRAWSUPPORT:
-	return "No DirectDraw support with this display driver!";
-     case DDERR_NOEXCLUSIVEMODE:
-	return "Exlusive-mode needed but not set yet.";
-     case DDERR_NOFLIPHW:
-        return "No flipping hardware.";
-     case DDERR_NOGDI:
-        return "No GDI present.";
-     case DDERR_NOMIRRORHW:
-        return "No mirror hardware.";
-     case DDERR_NOTFOUND:
-        return "Requested item not found.";
-     case DDERR_NOOVERLAYHW:
-        return "No overlay hardware.";
-     case DDERR_NORASTEROPHW:
-        return "No raster-op hardware.";
-     case DDERR_NOROTATIONHW:
-        return "No rotation hardware.";
-     case DDERR_NOSTRETCHHW:
-        return "No stretch hardware.";
-     case DDERR_NOT4BITCOLOR:
-        return "Not a 4-bit colour palette.";
-     case DDERR_NOT4BITCOLORINDEX:
-        return "Not a 4-bit colour-index.";
-     case DDERR_NOT8BITCOLOR:
-        return "Not an 8-bit colour palette.";
-     case DDERR_NOTEXTUREHW:
-        return "No texture hardware.";
-     case DDERR_BLTFASTCANTCLIP:
-	return "Cannot use BLTFAST with Clipper attached to surface.";
-     case DDERR_CANTCREATEDC:
-	return "Cannot create DC Device Context.";
-     case DDERR_CANTDUPLICATE:
-	return "Cannot duplicate.";
-     case DDERR_CANTLOCKSURFACE:
-	return "Access to surface refused (no DCI Provider).";
-     case DDERR_CANTPAGELOCK:
-	return "PageLock failure.";
-     case DDERR_CANTPAGEUNLOCK:
-	return "PageUnlock failure.";
-     case DDERR_CLIPPERISUSINGHWND:
-	return "Can't set a clip-list for a Clipper which is attached to an HWND.";
-     case DDERR_COLORKEYNOTSET:
-	return "No source colour-key provided.";
-     case DDERR_DCALREADYCREATED:
-	return "Surface already has a Device Context.";
-     case DDERR_DIRECTDRAWALREADYCREATED:
-	return "DirectDraw already bound to this process.";
-     case DDERR_EXCLUSIVEMODEALREADYSET:
-	return "Already in exclusive mode.";
-     case DDERR_HWNDALREADYSET:
-	return "HWND already set for cooperative level.";
-     case DDERR_HWNDSUBCLASSED:
-	return "HWND has been subclassed.";
-     case DDERR_IMPLICITLYCREATED:
-	return "Can't restore an implicitly created surface.";
-     case DDERR_INVALIDDIRECTDRAWGUID:
-	return "Invalid GUID.";
-     case DDERR_INVALIDPOSITION:
-	return "Overlay position illegal.";
-     case DDERR_INVALIDSURFACETYPE:
-	return "Wrong type of surface.";
-     case DDERR_NOBLTHW:
-	return "No blit h/w.";
-     case DDERR_NOCLIPPERATTACHED:
-	return "No Clipper attached.";
-
-     case DDERR_NOTLOCKED:
-	return "Not locked.";
-     case DDERR_NOTPAGELOCKED:
-	return "Not page-locked.";
-     case DDERR_NOTPALETTIZED:
-	return "Not palette-based.";
-
-     case DDERR_OUTOFCAPS:
-	return "out of caps";
-     case DDERR_OUTOFMEMORY:
-	return "Out of memory.";
-     case DDERR_OUTOFVIDEOMEMORY:
-	return "out of video memory.";
-     case DDERR_PALETTEBUSY:
-	return "Palette busy.";
-     case DDERR_PRIMARYSURFACEALREADYEXISTS:
-	return "Already a primary surface.";
-
-     case DDERR_SURFACEBUSY:
-	return "Surface busy.";
-	/*case DDERR_SURFACEOBSCURED:     return "Surface is obscured."; */
-     case DDERR_SURFACELOST:
-	return "Surface lost.";
-
-     case DDERR_UNSUPPORTED:
-	return "Unsupported.";
-     case DDERR_UNSUPPORTEDFORMAT:
-	return "Unsupported format.";
-
-     case DDERR_WASSTILLDRAWING:
-	return "Was still drawing.";
-
-     case DDERR_WRONGMODE:
-	return "Wrong Mode.";
-    
-    }
-    return "";
-}
-
-static int lockcnt = 0;
-
-static int do_surfacelock (void)
-{
-    HRESULT ddrval = IDirectDrawSurface_Lock (lpDDS, NULL, &ddsd, DDLOCK_SURFACEMEMORYPTR | DDLOCK_WAIT, NULL);
-    if (ddrval != DD_OK) {
-	if (ddrval == DDERR_SURFACELOST)
-	    ddrval = IDirectDrawSurface_Restore (lpDDS);
-	else if (ddrval != DDERR_SURFACEBUSY)
-	    write_log ("lpDDS->Lock() failed - %s (%d)\n", getddrname (ddrval), (unsigned short) ddrval);
-	return 0;
-    }
-    lockcnt++;
-    return 1;
-}
-
-void unlockscr (void)
-{
-    lockcnt--;
-    IDirectDrawSurface_Unlock (lpDDS, ddsd.lpSurface);
-}
-
-/* Return one of the pixel formats declared in picasso96.h if the surface
- * is usable for us, or RGBFB_NONE if it is not usable.  */
-static RGBFTYPE surface_pixelformat (DDSURFACEDESC *surface)
-{
-    DDPIXELFORMAT *pfp = &surface->ddpfPixelFormat;
-    DWORD r, g, b;
-
-    if ((surface->dwFlags & (DDSD_PIXELFORMAT | DDSD_WIDTH | DDSD_HEIGHT | DDSD_REFRESHRATE)) 
-	!= (DDSD_PIXELFORMAT | DDSD_WIDTH | DDSD_HEIGHT | DDSD_REFRESHRATE))
-	return RGBFB_NONE;
-
-    if ((pfp->dwFlags & DDPF_RGB) == 0)
-	return RGBFB_NONE;
-
-    r = pfp->dwRBitMask;
-    g = pfp->dwGBitMask;
-    b = pfp->dwBBitMask;
-    switch (pfp->dwRGBBitCount) {
-     case 8:
-	if ((pfp->dwFlags & DDPF_PALETTEINDEXED8) != 0)
-	    return RGBFB_CHUNKY;
-	break;
-
-     case 16:
-	if (r == 0xF800 && g == 0x07E0 && b == 0x001F)
-	    return RGBFB_R5G6B5PC;
-	if (r == 0x7C00 && g == 0x03E0 && b == 0x001F)
-	    return RGBFB_R5G5B5PC;
-	if (b == 0xF800 && g == 0x07E0 && r == 0x001F)
-	    return RGBFB_B5G6R5PC;
-	if (b == 0x7C00 && g == 0x03E0 && r == 0x001F)
-	    return RGBFB_B5G5R5PC;
-	/* This happens under NT - with r == b == g == 0 !!! */
-	printf ("Unknown 16 bit format %d %d %d\n", r, g, b);
-	break;
-
-     case 24:
-	if (r == 0xFF0000 && g == 0x00FF00 && b == 0x0000FF)
-	    return RGBFB_B8G8R8;
-	if (r == 0x0000FF && g == 0x00FF00 && b == 0xFF0000)
-	    return RGBFB_R8G8B8;
-	break;
-
-     case 32:
-	if (r == 0x00FF0000 && g == 0x0000FF00 && b == 0x000000FF)
-	    return RGBFB_B8G8R8A8;
-	if (r == 0x000000FF && g == 0x0000FF00 && b == 0x00FF0000)
-	    return RGBFB_R8G8B8A8;
-	if (r == 0xFF000000 && g == 0x00FF0000 && b == 0x0000FF00)
-	    return RGBFB_A8B8G8R8;
-	if (r == 0x0000FF00 && g == 0x00FF0000 && b == 0xFF000000)
-	    return RGBFB_A8R8G8B8;
-	break;
-	
-     default:
-	printf ("Unknown %d bit format %d %d %d\n", pfp->dwRGBBitCount, r, g, b);
-	break;
-    }
-    return RGBFB_NONE;
-}
-
-static int rgbformat_bits (RGBFTYPE t)
-{
-    unsigned long f = 1 << t;
-    return ((f & RGBMASK_8BIT) != 0 ? 8
-	    : (f & RGBMASK_15BIT) != 0 ? 15
-	    : (f & RGBMASK_16BIT) != 0 ? 16
-	    : (f & RGBMASK_24BIT) != 0 ? 24
-	    : (f & RGBMASK_32BIT) != 0 ? 32
-	    : 0);
-}
-
-static void release_ddraw (void)
-{
-#if 0
-    if (lpDD2) {
-	IDirectDraw2_RestoreDisplayMode (lpDD2);
-	IDirectDraw2_SetCooperativeLevel (lpDD2, hAmigaWnd, DDSCL_NORMAL);
-    }
+#if defined __GNUC__
+    if (! have_rdtsc ())
+	useqpc = 1;
 #else
-    if (lpDD) {
-	IDirectDraw_RestoreDisplayMode (lpDD);
-	IDirectDraw_SetCooperativeLevel (lpDD, hAmigaWnd, DDSCL_NORMAL);
+    LARGE_INTEGER freq;
+
+    __try
+    {
+	__asm{rdtsc};
     }
-#endif
-
-    if (lpDDC)
-	IDirectDrawClipper_Release (lpDDC);
-    if (lpDDS)
-	IDirectDrawSurface_Release (lpDDS);
-    if (lpDDP)
-	IDirectDrawPalette_Release (lpDDP);
-    if (lpDD2)
-	IDirectDraw2_Release (lpDD2);
-    if (lpDD)
-	IDirectDraw_Release (lpDD);
-    lpDDC = 0;
-    lpDDS = 0;
-    lpDDP = 0;
-    lpDD2 = 0;
-    lpDD = 0;
-}
-
-
-static int start_ddraw (void)
-{
-    HRESULT ddrval;
-
-    ddrval = (*pDirectDrawCreate) (NULL, &lpDD, NULL);
-    if (ddrval != DD_OK)
-	goto oops;
-
-#if 0
-    ddrval = IDirectDraw_QueryInterface (lpDD, &IID_IDirectDraw2, (LPVOID *)&lpDD2);
-    if (ddrval != DD_OK)
-	goto oops;
-#endif
-
-    current_surface.dwSize = sizeof current_surface;
-    ddrval = IDirectDraw_GetDisplayMode (lpDD, &current_surface);
-    if (ddrval != DD_OK)
-	goto oops;
-
-    return 1;
-
-  oops:
-    write_log ("DirectDraw initialization failed with %s/%d\n", getddrname (ddrval), ddrval);
-    release_ddraw ();
-    return 0;
-}
-
-static int set_ddraw (int width, int height, int wantfull, int bits,
-		      LPPALETTEENTRY pal)
-{
-    HRESULT ddrval;
-
-    bits = (bits + 7) & ~7;
-    
-    ddrval = IDirectDraw_SetCooperativeLevel (lpDD, hAmigaWnd,
-					      (wantfull
-					       ? DDSCL_ALLOWREBOOT | DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN
-					       : DDSCL_NORMAL));
-    if (ddrval != DD_OK)
-	goto oops;
-
-    ddrval = IDirectDraw_CreateClipper (lpDD, 0, &lpDDC, NULL);
-    if (ddrval != DD_OK)
-	goto oops;
-
-    ddrval = IDirectDrawClipper_SetHWnd (lpDDC, 0, hAmigaWnd);
-    if (ddrval != DD_OK)
-	goto oops;
-
-    if (wantfull) {
-	/* Hmmm...
-	 * The "bits" parameter is somewhat suspicious.  What if a graphics
-	 * card supports A8R8G8B8 and A8B8G8R8 modes? */
-	printf ("Trying %dx%d, %d\n", width, height, bits);
-	ddrval = IDirectDraw_SetDisplayMode (lpDD, width, height, bits);
-	if (ddrval != DD_OK)
-	    goto oops;
-	printf ("ok\n");
-
-	current_surface.dwSize = sizeof current_surface;
-	ddrval = IDirectDraw_GetDisplayMode (lpDD, &current_surface);
-	if (ddrval != DD_OK)
-	    goto oops;
+    __except( GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION )
+    {
+	useqpc = 1;
     }
+    if( QueryPerformanceFrequency( &freq ) )
+    {
+	if (freq.LowPart > 90000000) /* looks like CPU freq. */
+	    write_log( "CLOCKFREQ: QueryPerformanceFrequency() reports %d-MHz\n", freq.LowPart / 1000000 ); 
+	else
+	    write_log( "CLOCKFREQ: QueryPerformanceFrequency() reports %.2f-MHz\n", (float)freq.LowPart / 1000000.0f );
 
-    ddsd.dwSize = sizeof (ddsd);
-    ddsd.dwFlags = DDSD_CAPS;
-    ddsd.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE;
-
-    ddrval = IDirectDraw_CreateSurface (lpDD, &ddsd, &lpDDS, NULL);
-    if (ddrval != DD_OK)
-	goto oops;
-
-    if (! do_surfacelock ())
-	return 0;
-    unlockscr ();
-
-    current_pixbytes = (ddsd.ddpfPixelFormat.dwRGBBitCount + 7) >> 3;
-
-    if (current_pixbytes == 1) {
-	ddrval = IDirectDraw_CreatePalette (lpDD, DDPCAPS_8BIT | DDPCAPS_ALLOW256,
-					    pal,
-					    &lpDDP, NULL);
-	if (ddrval != DD_OK)
-	    goto oops;
-
-	ddrval = IDirectDrawSurface2_SetPalette (lpDDS, lpDDP);
-	if (ddrval != DD_OK)
-	    goto oops;
-    }
-
-    return 1;
-
-  oops:
-    write_log ("DirectDraw initialization failed with %s/%d\n", getddrname (ddrval), ddrval);
-    return 0;
-}
-
-/* Color management */
-
-static xcolnr xcol8[4096];
-static PALETTEENTRY colors256[256];
-static int ncols256 = 0;
-
-static int red_bits, green_bits, blue_bits;
-static int red_shift, green_shift, blue_shift;
-
-static int get_color (int r, int g, int b, xcolnr * cnp)
-{
-    if (ncols256 == 256)
-	return 0;
-    colors256[ncols256].peRed = r * 0x11;
-    colors256[ncols256].peGreen = g * 0x11;
-    colors256[ncols256].peBlue = b * 0x11;
-    colors256[ncols256].peFlags = 0;
-    *cnp = ncols256;
-    ncols256++;
-    return 1;
-}
-
-static void init_colors (void)
-{
-    int i;
-
-    if (ncols256 == 0) {
-	alloc_colors256 (get_color);
-	memcpy (xcol8, xcolors, sizeof xcol8);
-    }
-
-    /* init colors */
-
-    switch (current_pixbytes) {
-    case 1:
-	memcpy (xcolors, xcol8, sizeof xcolors);
-	if (lpDDP != 0) {
-	    HRESULT ddrval = IDirectDrawPalette_SetEntries (lpDDP, 0, 0, 256, colors256);
-	    if (ddrval != DD_OK)
-		write_log ("DX_SetPalette() failed with %s/%d\n", getddrname (ddrval), ddrval);
+	if( freq.LowPart < 1000000 )
+	{
+	    write_log( "CLOCKFREQ: Weird value.  Using QueryPerformanceCounter() instead of RDTSC.\n" );
+	    useqpc = 1;
 	}
-	break;
-
-    case 2:
-    case 3:
-    case 4:
-	red_bits = bits_in_mask (ddsd.ddpfPixelFormat.dwRBitMask);
-	green_bits = bits_in_mask (ddsd.ddpfPixelFormat.dwGBitMask);
-	blue_bits = bits_in_mask (ddsd.ddpfPixelFormat.dwBBitMask);
-	red_shift = mask_shift (ddsd.ddpfPixelFormat.dwRBitMask);
-	green_shift = mask_shift (ddsd.ddpfPixelFormat.dwGBitMask);
-	blue_shift = mask_shift (ddsd.ddpfPixelFormat.dwBBitMask);
-
-	alloc_colors64k (red_bits, green_bits, blue_bits, red_shift,
-			 green_shift, blue_shift);
-	break;
+	rpt_available = 1;
     }
-    switch (gfxvidinfo.pixbytes) {
-     case 2:
-	for (i = 0; i < 4096; i++)
-	    xcolors[i] = xcolors[i] * 0x00010001;
-	gfxvidinfo.can_double = 1;
-	break;
-     case 1:
-	for (i = 0; i < 4096; i++)
-	    xcolors[i] = xcolors[i] * 0x01010101;
-	gfxvidinfo.can_double = 1;
-	break;
-     default:
-	gfxvidinfo.can_double = 0;
-	break;
-    }
-}
-
-static void close_windows (void)
-{
-    gfxvidinfo.bufmem = 0;
-    gfxvidinfo.linemem = 0;
-
-    releasecapture ();
-    setmouseactive (0);
-    ClipCursor (NULL);
-    release_ddraw ();
-    dsound_newwindow (0);
-
-    if (hAmigaWnd)
-	DestroyWindow (hAmigaWnd);
-    if (hStatusWnd)
-	DestroyWindow (hStatusWnd);
-    if (hMainWnd)
-	DestroyWindow (hMainWnd);
-
-    hMainWnd = 0;
-    hStatusWnd = 0;
-    hAmigaWnd = 0;
-}
-
-void toggle_fullscreen (void)
-{
-    if (needs_fullscreen)
-	return;
-
-    display_change_requested = 1;
-    if (screen_is_picasso)
-	currprefs.gfx_pfullscreen ^= 1;
     else
-	currprefs.gfx_afullscreen ^= 1;    
+    {
+	write_log( "CLOCKFREQ: No support for clock-rate stuff!\n" );
+	rpt_available = 0;
+    }
+#endif
+    SetPriorityClass( GetCurrentProcess(), REALTIME_PRIORITY_CLASS );
+    clockrate = read_processor_time();
+    Sleep( 1000 );
+    clockrate = read_processor_time() - clockrate;
+    SetPriorityClass( GetCurrentProcess(), NORMAL_PRIORITY_CLASS );
+
+    write_log( "CLOCKFREQ: Measured as %d-MHz\n", clockrate / 1000000 );
+    syncbase = clockrate;
+    vsynctime = syncbase / VBLANK_HZ_PAL; /* default to 50Hz */
 }
+
+static BOOL bDiskChanged = FALSE;
 
 static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     PAINTSTRUCT ps;
     HDC hDC;
+    short wheeldelta;
+    static int store_xy = 0;
+    BOOL minimized;
+    LPMINMAXINFO lpmmi;
+    RECT rect;
 
-    switch (message) {
-     case WM_ACTIVATEAPP:
-	if (bActive = wParam) {
-	    if (fullscreen) {
-		SetCursor (NULL);
-		SetCursorPos (mousecx, mousecy);
+    switch( message ) 
+    {
+        case WM_PALETTECHANGED:
+            if( (HWND)wParam != hWnd )
+            {
+                write_log( "WM_PALETTECHANGED Request\n" );
+                WIN32GFX_PaletteChange();
+            }
+        break;
+        case WM_ACTIVATEAPP:
+            if (bActive = wParam) 
+            {
+		if( WIN32GFX_IsFullScreen() ) 
+                {
+		    SetCursor (NULL);
+#ifndef HARDWARE_SPRITE_EMULATION
+		    SetCursorPos (mousecx, mousecy);
+#else
+		    if( !WIN32GFX_IsPicassoScreen() )
+			SetCursorPos (mousecx, mousecy);
+#endif
+	        }
+    	        my_kbd_handler (VK_CAPITAL, 0x3a, TRUE);
 	    }
-	    my_kbd_handler (VK_CAPITAL, 0x3a, TRUE);
-	} else {
-	    if (!fullscreen)
-		setmouseactive (0);
-	}
-	break;
+            else
+            {
+                if( !WIN32GFX_IsFullScreen() )
+		    setmouseactive (0);
+                else
+                {
+                    if( WIN32GFX_IsPicassoScreen() )
+                    {
+                        WIN32GFX_DisablePicasso();
+                    }
+                }
+	        }
+	    break;
+        case WM_ACTIVATE:
+            minimized = HIWORD( wParam );
+            if (LOWORD (wParam) != WA_INACTIVE) 
+            {
+                write_log( "WinUAE now active via WM_ACTIVATE\n" );
+                if( !minimized )
+                {
+		    write_log( "Clear_inhibit_frame\n" );
+		    clear_inhibit_frame( IHF_WINDOWHIDDEN );
+                }
+	        ShowWindow (hWnd, SW_RESTORE);
+                if( WIN32GFX_IsPicassoScreen() )
+                {
+                    WIN32GFX_EnablePicasso();
+                }
+	    }
+            else
+            {
+                write_log( "WinUAE now inactive via WM_ACTIVATE\n" );
+                if( minimized && !quit_program )
+                {
+		    write_log( "Set_inhibit_frame\n" );
+		    set_inhibit_frame( IHF_WINDOWHIDDEN );
+                }
+            }
+	    break;
 
-     case WM_ACTIVATE:
-	if (LOWORD (wParam) != WA_INACTIVE) {
-	    ShowWindow (hWnd, SW_RESTORE);
-	}
-	break;
+        case WM_SETCURSOR:
+	        if( WIN32GFX_IsFullScreen() ) 
+            {
+#ifdef HARDWARE_SPRITE_EMULATION
+		    if( !WIN32GFX_IsPicassoScreen() )
+#endif
+	            SetCursor (NULL);
+	            return TRUE;
+	        }
+	    break;
 
-     case WM_SETCURSOR:
-	if (fullscreen) {
-	    SetCursor (NULL);
-	    return TRUE;
-	}
-	break;
+        case WM_SYSCOMMAND:
+            switch( wParam & 0xFFF0 )
+            {
+                case SC_MAXIMIZE:
+                    WIN32GFX_ToggleFullScreen();
+	                return 0;
+                break;
+                case SC_MINIMIZE:
+                    WIN32GFX_DisablePicasso();
+                break;
+            }
+	    break;
 
-     case WM_SYSCOMMAND:
-	if (wParam == SC_ZOOM) {
-	    toggle_fullscreen ();
-	    return 0;
-	}
-	break;
-
-     case WM_KEYUP:
-     case WM_SYSKEYUP:
-	numkeysdown--;
-	keysdown[wParam] = 0;
-	my_kbd_handler (wParam, (lParam >> 16) & 0x1ff, FALSE);
-	break;
+        case WM_KEYUP:
+        case WM_SYSKEYUP:
+	        numkeysdown--;
+	        keysdown[wParam] = 0;
+	        my_kbd_handler (wParam, (lParam >> 16) & 0x1ff, FALSE);
+            return 0;
+    	break;
 
      case WM_KEYDOWN:
      case WM_SYSKEYDOWN:
-	if (LOWORD (lParam) == 1) {
-	    if (numkeysdown) {
-		int key;
-		numkeysdown = 0;
+	if (LOWORD (lParam) == 1) 
+    {
+	    if (numkeysdown) 
+        {
+		    int key;
+		    numkeysdown = 0;
 
-		for (key = 256; key--;) {
-		    if (keysdown[key]) {
-			if (checkkey (key, lParam))
-			    numkeysdown++;
-			else {
-			    my_kbd_handler (key, (keysdown[key] >> 16) & 0x1ff, FALSE);
-			    keysdown[key] = 0;
-			}
+		    for (key = 256; key--;) 
+            {
+		        if (keysdown[key]) 
+                {
+			        if (checkkey (key, lParam))
+			            numkeysdown++;
+			        else 
+                    {
+			            my_kbd_handler (key, (keysdown[key] >> 16) & 0x1ff, FALSE);
+			            keysdown[key] = 0;
+			        }
+		        }
 		    }
-		}
 	    }
-	    if (!keysdown[wParam]) {
-		keysdown[wParam] = lParam;
-		numkeysdown++;
+	    if (!keysdown[wParam]) 
+        {
+		    keysdown[wParam] = lParam;
+		    numkeysdown++;
 	    }
 	    numkeysdown++;
 	    my_kbd_handler (wParam, (lParam >> 16) & 0x1ff, TRUE);
 	}
 	break;
 
+     case WM_LBUTTONDBLCLK: // According to MSDN, having CS_DBLCLKS in your window-class
+			    // means that the sequence is WM_LBUTTONDOWN, WM_LBUTTONUP,
+			    // WM_LBUTTONDBLCLK, and WM_LBUTTONUP.
+			    // So we need to make WM_LBUTTONDBLCLK act like WM_LBUTTONDOWN.
      case WM_LBUTTONDOWN:
 	if (ievent_alive) {
 	    setcapture ();
 	    buttonstate[0] = 1;
-	} else if (!fullscreen && !mouseactive)
+	} else if (!WIN32GFX_IsFullScreen() && !mouseactive)
 	    setmouseactive (1);
 	else
 	    buttonstate[0] = 1;
@@ -778,6 +410,7 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 	releasecapture ();
 	buttonstate[0] = 0;
 	break;
+
 
      case WM_MBUTTONDOWN:
 	if (ievent_alive)
@@ -801,41 +434,80 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 	buttonstate[2] = 0;
 	break;
 
-     case WM_MOUSEMOVE:
-	if ((mouseactive && !ievent_alive) || fullscreen) {
-	    /*
-	     * In this mode, the mouse pointer is always centered in the window,
-	     * this is ensured by the SetCursorPos call below.
-	     * We don't want to handle messages that result from such a SetCursorPos
-	     * call (recursion!), so exit early if we see one.
-	     */
-	    if (lParam == mousecl)
-		break;
-	    lastmx += (signed short) LOWORD (lParam) - mousedx;
-	    lastmy += (signed short) HIWORD (lParam) - mousedy;
-	    if (ievent_alive) {
-		if (lastmx < 0)
-		    lastmx = 0;
-		if (lastmx > current_width)
-		    lastmx = current_width;
-		if (lastmy < 0)
-		    lastmy = 0;
-		if (lastmy > current_height)
-		    lastmy = current_height;
+     case WM_VSCROLL:
+         write_log( "WM_VSCROLL\n" );
+         if( LOWORD( wParam ) == SB_LINEDOWN )
+             record_key(0x7A<<1);
+         else if( LOWORD( wParam ) == SB_LINEUP )
+             record_key(0x7B<<1);
+         break;
 
-	    }
-	    SetCursorPos (mousecx, mousecy);
-	    break;
+     case WM_MOUSEWHEEL:
+         wheeldelta = HIWORD(wParam);
+         write_log( "WM_MOUSEWHEEL with delta %d\n", wheeldelta );
+         if( wheeldelta > 0 )
+             record_key(0x7A<<1);
+         else if( wheeldelta < 0 )
+             record_key(0x7B<<1);
+         break;
+
+     case WM_MOUSEMOVE:
+#ifndef HARDWARE_SPRITE_EMULATION
+	 if( ( mouseactive && !ievent_alive ) || 
+	     WIN32GFX_IsFullScreen() ) 
+#else
+	 if( ( ( mouseactive && !ievent_alive ) || WIN32GFX_IsFullScreen() ) &&
+	     !WIN32GFX_IsPicassoScreen() )
+#endif
+	 {
+	     /*
+	      * In this mode, the mouse pointer is always centered in the window,
+	      * this is ensured by the SetCursorPos call below.
+	      * We don't want to handle messages that result from such a SetCursorPos
+	      * call (recursion!), so exit early if we see one.
+	      */
+	     if (lParam == mousecl)
+		 break;
+	     lastmx += (signed short) LOWORD (lParam) - mousedx;
+	     lastmy += (signed short) HIWORD (lParam) - mousedy;
+	     if (ievent_alive) 
+	     {
+		 if (lastmx < 0)
+		     lastmx = 0;
+		 if (lastmx > WIN32GFX_GetWidth() )
+		     lastmx = WIN32GFX_GetWidth();
+		 if (lastmy < 0)
+		     lastmy = 0;
+		 if (lastmy > WIN32GFX_GetHeight() )
+		     lastmy = WIN32GFX_GetHeight();
+	     }
+	     SetCursorPos (mousecx, mousecy);
+	     break;
 	}
 	lastmx = (signed short) LOWORD (lParam);
 	lastmy = (signed short) HIWORD (lParam);
-	break;
+    break;
 
      case WM_PAINT:
-	clear_inhibit_frame (IHF_WINDOWHIDDEN);
-	hDC = BeginPaint (hWnd, &ps);
-	EndPaint (hWnd, &ps);
 	notice_screen_contents_lost ();
+
+        hDC = BeginPaint (hWnd, &ps);
+        /* Check to see if this WM_PAINT is coming while we've got the GUI visible */
+        if( manual_painting_needed )
+        {
+            /* Update the display area */
+            if( !WIN32GFX_IsFullScreen() )
+            {
+		if( DirectDraw_GetLockableType() != overlay_surface )
+		    DX_Blit( 0, 0, 0, 0, WIN32GFX_GetWidth(), WIN32GFX_GetHeight(), BLIT_SRC );
+            }
+            else
+            {
+                DirectDraw_Blt( primary_surface, NULL, secondary_surface, NULL, DDBLT_WAIT, NULL );
+            }
+        }
+	EndPaint (hWnd, &ps);
+
 	break;
 
      case WM_DROPFILES:
@@ -855,10 +527,6 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 	finishjob ();
 	break;
 
-     case WM_USER + 0x200:
-	DoSomeWeirdPrintingStuff (wParam);
-	break;
-
      case WM_CREATE:
 	DragAcceptFiles (hWnd, TRUE);
 	break;
@@ -868,8 +536,56 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 	return 0;
 
      case WM_WINDOWPOSCHANGED:
-	GetWindowRect (hAmigaWnd, &amigawin_rect);
+	if( GetWindowRect( hWnd, &amigawin_rect) )
+	{
+	    if( hMainWnd )
+	    {
+		if( hWinUAEKey && store_xy++)
+		{
+		    RegSetValueEx( hWinUAEKey, "xPos", 0, REG_DWORD, (LPBYTE)&amigawin_rect.left, sizeof( LONG ) );
+		    RegSetValueEx( hWinUAEKey, "yPos", 0, REG_DWORD, (LPBYTE)&amigawin_rect.top, sizeof( LONG ) );
+		}
+	    }
+	}
 	break;
+
+    case WM_MOVING:
+    case WM_MOVE:
+    WIN32GFX_WindowMove();
+    return TRUE;
+
+    case WM_SIZING:
+    WIN32GFX_WindowSize();
+    return TRUE;
+    case WM_SIZE:
+    WIN32GFX_WindowSize();
+    return 0;
+
+    case WM_GETMINMAXINFO:
+    rect.left=0;
+    rect.top=0;
+    lpmmi=(LPMINMAXINFO)lParam;
+    rect.right=320;
+    rect.bottom=256;
+    //AdjustWindowRectEx(&rect,WSTYLE,0,0);
+    lpmmi->ptMinTrackSize.x=rect.right-rect.left;
+    lpmmi->ptMinTrackSize.y=rect.bottom-rect.top;
+    return 0;
+
+    default:
+#if 0
+#ifdef BSDSOCKET_SUPPORTED
+    if( message >= 0xB000 && message < 0xB000+MAXPENDINGASYNC*2 )
+    {
+#if DEBUG_SOCKETS
+        write_log( "sockmsg(0x%x, 0x%x, 0x%x)\n", message, wParam, lParam );
+#endif
+        sockmsg( message, wParam, lParam );
+        return 0;
+    }
+#endif
+#endif
+    break;
     }
 
     return DefWindowProc (hWnd, message, wParam, lParam);
@@ -883,8 +599,10 @@ static long FAR PASCAL MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, L
 
     switch (message) {
      case WM_LBUTTONDOWN:
+     case WM_MOUSEWHEEL:
      case WM_MOUSEMOVE:
      case WM_ACTIVATEAPP:
+     case WM_DROPFILES:
      case WM_ACTIVATE:
      case WM_SETCURSOR:
      case WM_SYSCOMMAND:
@@ -897,603 +615,74 @@ static long FAR PASCAL MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, L
      case WM_MBUTTONUP:
      case WM_RBUTTONDOWN:
      case WM_RBUTTONUP:
-     case WM_DROPFILES:
+     case WM_MOVING:
+     case WM_MOVE:
+     case WM_SIZING:
+     case WM_SIZE:
+     case WM_GETMINMAXINFO:
      case WM_CREATE:
      case WM_DESTROY:
      case WM_USER + 0x200:
      case WM_CLOSE:
+     case WM_HELP:
+     case WM_DEVICECHANGE:
 	return AmigaWindowProc (hWnd, message, wParam, lParam);
 
      case WM_DISPLAYCHANGE:
-	if (!fullscreen && (wParam + 7) / 8 != current_pixbytes)
-	    display_change_requested = 1;
+	if (!WIN32GFX_IsFullScreen && (wParam + 7) / 8 != DirectDraw_GetBytesPerPixel() )
+	    WIN32GFX_DisplayChangeRequested();
 	break;
-	
+
      case WM_ENTERSIZEMOVE:
 	in_sizemove++;
 	break;
 
      case WM_EXITSIZEMOVE:
 	in_sizemove--;
-
 	/* fall through */
 
      case WM_WINDOWPOSCHANGED:
-	GetWindowRect (hAmigaWnd, &amigawin_rect);
+	WIN32GFX_WindowMove();
+	if( hAmigaWnd && GetWindowRect (hAmigaWnd, &amigawin_rect) )
+	{
+	    if (in_sizemove > 0)
+		break;
 
-	if (in_sizemove > 0)
-	    break;
-
-	if (!fullscreen && hAmigaWnd) {
-	    if (amigawin_rect.left & 3) {
-		RECT rc2;
-		GetWindowRect (hMainWnd, &rc2);
-		if (1 /*!mon || rc2.left + 4 < GetSystemMetrics (SM_CXSCREEN) */ ) {
-		    MoveWindow (hMainWnd, rc2.left + 4 - amigawin_rect.left % 4, rc2.top,
-				rc2.right - rc2.left, rc2.bottom - rc2.top, TRUE);
+	    if( !WIN32GFX_IsFullScreen() && hAmigaWnd )
+	    {
+		if( amigawin_rect.left & 3 ) 
+		{
+		    RECT rc2;
+		    if( GetWindowRect( hMainWnd, &rc2 ) )
+		    {
+			MoveWindow (hMainWnd, rc2.left + 4 - amigawin_rect.left % 4, rc2.top,
+				    rc2.right - rc2.left, rc2.bottom - rc2.top, TRUE);
+		    }
 		}
+		//setmouseactive (0);
+		return 0;
 	    }
-
-	    setmouseactive (0);
-	    return 0;
 	}
-
 	break;
 
      case WM_PAINT:
 	hDC = BeginPaint (hWnd, &ps);
 	GetClientRect (hWnd, &rc);
 	DrawEdge (hDC, &rc, EDGE_SUNKEN, BF_RECT);
-
 	EndPaint (hWnd, &ps);
 	break;
-
      case WM_NCLBUTTONDBLCLK:
 	if (wParam == HTCAPTION) {
-	    toggle_fullscreen ();
+	    WIN32GFX_ToggleFullScreen();
 	    return 0;
 	}
 	break;
+    default:
+    break;
+
     }
 
     return DefWindowProc (hWnd, message, wParam, lParam);
-}
-
-static HANDLE debugfile;
-
-/* Console Win32 helper routines */
-void activate_debugger ();
-
-static BOOL __stdcall ctrlchandler (DWORD type)
-{
-    SetConsoleCtrlHandler ((PHANDLER_ROUTINE) ctrlchandler, FALSE);
-
-    if (type == CTRL_C_EVENT) {
-	activate_debugger ();
-	return TRUE;
-    }
-    return FALSE;
-}
-
-void setup_brkhandler (void)
-{
-    SetConsoleCtrlHandler ((PHANDLER_ROUTINE) ctrlchandler, TRUE);
-}
-
-void remove_brkhandler (void)
-{
-    SetConsoleCtrlHandler ((PHANDLER_ROUTINE) ctrlchandler, FALSE);
-}
-
-static int register_classes (void)
-{
-    WNDCLASS wc;
-
-    wc.style = 0;
-    wc.lpfnWndProc = AmigaWindowProc;
-    wc.cbClsExtra = 0;
-    wc.cbWndExtra = 0;
-    wc.hInstance = 0;
-    wc.hIcon = LoadIcon (GetModuleHandle (NULL), IDI_APPICON);
-    wc.hCursor = LoadCursor (NULL, IDC_ARROW);
-    wc.hbrBackground = GetStockObject (BLACK_BRUSH);
-    wc.lpszMenuName = 0;
-    wc.lpszClassName = "AmigaPowah";
-    if (!RegisterClass (&wc))
-	return 0;
-
-    wc.style = 0;
-    wc.lpfnWndProc = MainWindowProc;
-    wc.cbClsExtra = 0;
-    wc.cbWndExtra = 0;
-    wc.hInstance = 0;
-    wc.hIcon = LoadIcon (GetModuleHandle (NULL), IDI_APPICON);
-    wc.hCursor = LoadCursor (NULL, IDC_ARROW);
-    wc.hbrBackground = GetStockObject (BLACK_BRUSH);
-    wc.lpszMenuName = 0;
-    wc.lpszClassName = "PCsuxRox";
-    if (!RegisterClass (&wc))
-	return 0;
-    return 1;
-}
-
-struct win32_displaymode *win32_displaymode_list;
-
-static HRESULT CALLBACK modesCallback (LPDDSURFACEDESC modeDesc, LPVOID context)
-{
-    struct win32_displaymode **dmpp;
-    RGBFTYPE colortype;
-
-    colortype = surface_pixelformat (modeDesc);
-    if (colortype == RGBFB_NONE)
-	return DDENUMRET_OK;
-
-    dmpp = &win32_displaymode_list;
-    while (*dmpp != 0) {
-	if ((*dmpp)->width == modeDesc->dwWidth
-	    && (*dmpp)->height == modeDesc->dwHeight
-	    && (*dmpp)->refreshrate == modeDesc->dwRefreshRate)
-	    break;
-	dmpp = &(*dmpp)->next;
-    }
-
-    if (*dmpp == 0) {
-	*dmpp = (struct win32_displaymode *)malloc (sizeof **dmpp);
-	(*dmpp)->next = 0;
-	(*dmpp)->width = modeDesc->dwWidth;
-	(*dmpp)->height = modeDesc->dwHeight;
-	(*dmpp)->refreshrate = modeDesc->dwRefreshRate;
-	(*dmpp)->colormodes = 0;
-    }
-    (*dmpp)->colormodes |= 1 << colortype;
-    return DDENUMRET_OK;
-}
-
-static int our_possible_depths[] = { 8, 15, 16, 24, 32 };
-
-static void figure_pixel_formats (void)
-{
-    HWND tmpw;
-    HRESULT ddrval;
-    struct win32_displaymode *dm;
-
-    tmpw = CreateWindowEx (WS_EX_TOPMOST,
-			   "AmigaPowah", PROGNAME,
-			   WS_VISIBLE | WS_POPUP,
-			   CW_USEDEFAULT, CW_USEDEFAULT,
-			   GetSystemMetrics (SM_CXSCREEN),
-			   GetSystemMetrics (SM_CYSCREEN),
-			   0, NULL, 0, NULL);
-
-    ddrval = IDirectDraw_SetCooperativeLevel (lpDD, tmpw,
-					      DDSCL_ALLOWREBOOT | DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN);
-    if (ddrval != DD_OK) {
-	printf ("error %s\n", getddrname (ddrval));
-	goto out;
-    }
-
-    for (dm = win32_displaymode_list; dm != 0; dm = dm->next) {
-	int i;
-
-	printf ("Attempting %dx%d: ", dm->width, dm->height);
-	dm->colormodes = 0;
-
-	for (i = 0; i < 5; i++) {
-	    RGBFTYPE colortype;
-	    ddrval = IDirectDraw_SetDisplayMode (lpDD, dm->width, dm->height, our_possible_depths[i]);
-	    if (ddrval != DD_OK)
-		continue;
-
-	    current_surface.dwSize = sizeof current_surface;
-	    ddrval = IDirectDraw_GetDisplayMode (lpDD, &current_surface);
-	    if (ddrval != DD_OK)
-		continue;
-	    colortype = surface_pixelformat (&current_surface);
-	    if (colortype != RGBFB_NONE) {
-		printf ("%d ", our_possible_depths[i]);
-		dm->colormodes |= 1 << colortype;
-	    }
-	}
-	printf ("(%08lx)\n", dm->colormodes);
-    }
-    out:
-    DestroyWindow (tmpw);
-}
-
-#define NORMAL_WINDOW_STYLE (WS_VISIBLE | WS_BORDER | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX)
-
-#define NUM_PARTS 6
-#define LED_WIDTH 50
-#define DRIVE_WIDTH 16
-
-static int create_windows (void)
-{
-    if (!fullscreen) {
-	RECT rc;
-	HLOCAL hloc;
-	LPINT lpParts;
-
-	rc.left = 0;
-	rc.top = 0;
-	rc.right = current_width;
-	rc.bottom = current_height + GetSystemMetrics (SM_CYMENU);
-	rc.right += 4;
-	rc.bottom += 4;
-	AdjustWindowRect (&rc, NORMAL_WINDOW_STYLE, FALSE);
-	printf ("(%d %d) (%d %d)\n", rc.left, rc.top, rc.right, rc.bottom);
-
-	hMainWnd = CreateWindowEx (WS_EX_ACCEPTFILES, "PCsuxRox", TITLETEXT,
-				   NORMAL_WINDOW_STYLE, CW_USEDEFAULT, CW_USEDEFAULT,
-				   rc.right - rc.left, rc.bottom - rc.top,
-				   NULL, NULL, 0, NULL);
-
-	if (! hMainWnd)
-	    return 0;
-	hStatusWnd = CreateStatusWindow (WS_CHILD | WS_VISIBLE, "", hMainWnd, 1);
-	if (hStatusWnd) {
-	    GetClientRect (hMainWnd, &rc);
-	    /* Allocate an array for holding the right edge coordinates. */
-	    hloc = LocalAlloc (LHND, sizeof (int) * NUM_PARTS);
-	    if (hloc) {
-		lpParts = LocalLock (hloc);
-
-		/* Calculate the right edge coordinate for each part, and copy the coords
-		 * to the array.  */
-		lpParts[0] = rc.right - (DRIVE_WIDTH * 4) - LED_WIDTH - 2;
-		lpParts[1] = lpParts[0] + LED_WIDTH;
-		lpParts[2] = lpParts[1] + DRIVE_WIDTH;
-		lpParts[3] = lpParts[2] + DRIVE_WIDTH;
-		lpParts[4] = lpParts[3] + DRIVE_WIDTH;
-		lpParts[5] = lpParts[4] + DRIVE_WIDTH;
-
-		/* Create the six parts */
-		SendMessage (hStatusWnd, SB_SETPARTS, (WPARAM) NUM_PARTS, (LPARAM) lpParts);
-
-		LocalUnlock (hloc);
-		LocalFree (hloc);
-	    }
-	}
-    } else
-	hMainWnd = NULL;
-
-    hAmigaWnd = CreateWindowEx (fullscreen ? WS_EX_TOPMOST : WS_EX_ACCEPTFILES,
-				"AmigaPowah", PROGNAME,
-				hMainWnd ? WS_VISIBLE | WS_CHILD : WS_VISIBLE | WS_POPUP,
-				hMainWnd ? 2 : CW_USEDEFAULT, hMainWnd ? 2 : CW_USEDEFAULT,
-				fullscreen ? GetSystemMetrics (SM_CXSCREEN) : current_width,
-				fullscreen ? GetSystemMetrics (SM_CYSCREEN) : current_height,
-				hMainWnd, NULL, 0, NULL);
-
-    
-    if (! hAmigaWnd) {
-	if (hMainWnd)
-	    DestroyWindow (hMainWnd);
-	return 0;
-    }
-
-    if (hMainWnd)
-	UpdateWindow (hMainWnd);
-    if (hAmigaWnd)
-	UpdateWindow (hAmigaWnd);
-
-    return 1;
-}
-
-/* DirectX will fail with "Mode not supported" if we try to switch to a full
- * screen mode that doesn't match one of the dimensions we got during enumeration.
- * So try to find a best match for the given resolution in our list.  */
-static int adjust_screenmode (int *pwidth, int *pheight, int *ppixbits)
-{
-    struct win32_displaymode *best;
-    uae_u32 selected_mask = (*ppixbits == 8 ? RGBMASK_8BIT
-			     : *ppixbits == 15 ? RGBMASK_15BIT
-			     : *ppixbits == 16 ? RGBMASK_16BIT
-			     : *ppixbits == 24 ? RGBMASK_24BIT
-			     : RGBMASK_32BIT);
-    int pass;
-    
-    for (pass = 0; pass < 2; pass++) {
-	struct win32_displaymode *dm;
-	uae_u32 mask = (pass == 0
-			? selected_mask
-			: RGBMASK_8BIT | RGBMASK_16BIT | RGBMASK_24BIT | RGBMASK_32BIT);
-
-	best = win32_displaymode_list;
-	dm = best->next;
-
-	while (dm != 0) {
-	    if ((dm->colormodes & mask) != 0) {
-		if (dm->width <= best->width && dm->height <= best->height
-		    && dm->width >= *pwidth && dm->height >= *pheight)
-		    best = dm;
-		if (dm->width >= best->width && dm->height >= best->height
-		    && dm->width <= *pwidth && dm->height <= *pheight)
-		    best = dm;
-	    }
-	    dm = dm->next;
-	}
-	if (best->width == *pwidth && best->height == *pheight)
-	    break;
-    }
-    *pwidth = best->width;
-    *pheight = best->height;
-    if ((best->colormodes & selected_mask) != 0)
-	return 1;
-    if (best->colormodes & RGBMASK_8BIT)
-	*ppixbits = 8;
-    else if (best->colormodes & RGBMASK_16BIT)
-	*ppixbits = 16;
-    else if (best->colormodes & RGBMASK_32BIT)
-	*ppixbits = 32;
-    else if (best->colormodes & RGBMASK_24BIT)
-	*ppixbits = 24;
-
-    return 1;
-}
-
-static BOOL doInit (void)
-{
-    if (! create_windows ())
-	goto oops;
-
-    if (screen_is_picasso) {
-	if (! set_ddraw (current_width, current_height, fullscreen, current_depth,
-			(LPPALETTEENTRY) & picasso96_state.CLUT))
-	    goto oops;
-	picasso_vidinfo.rowbytes = ddsd.lPitch;
-	picasso_vidinfo.pixbytes = current_pixbytes;
-	picasso_vidinfo.rgbformat = surface_pixelformat (&current_surface);
-    } else {
-	if (fullscreen)
-	    if (! adjust_screenmode (&current_width, &current_height, &current_depth))
-		abort ();
-
-	if (! set_ddraw (current_width, current_height, fullscreen, current_depth, colors256))
-	    goto oops;
-	gfxvidinfo.bufmem = 0;
-	gfxvidinfo.linemem = 0;
-	gfxvidinfo.maxblocklines = 0;
-	gfxvidinfo.pixbytes = current_pixbytes;
-	gfxvidinfo.width = current_width;
-	gfxvidinfo.height = current_height;
-	gfxvidinfo.rowbytes = ddsd.lPitch;
-    }
-
-    if (fullscreen) {
-	scrindirect = 0;
-	gfxvidinfo.linemem = 0;
-	mousecx = 160, mousecy = 100, mousedx = 160, mousedy = 100, mousecl = MAKELONG (160, 100);
-    }
-    if (! do_surfacelock ())
-	goto oops;
-    unlockscr ();
-
-    if ((ddsd.ddpfPixelFormat.dwFlags & (DDPF_RGB | DDPF_PALETTEINDEXED8 | DDPF_RGBTOYUV)) != 0) {
-	write_log ("%s mode (bits: %d, pixbytes: %d)\n", fullscreen ? "Full screen" : "Window",
-		   ddsd.ddpfPixelFormat.dwRGBBitCount, current_pixbytes);
-    } else {
-	write_log ("Error: Unsupported pixel format - use a different screen mode\n");
-	goto oops;
-    }
-
-    init_colors ();
-
-    if (! fullscreen)
-	MainWindowProc (0, WM_WINDOWPOSCHANGED, 0, 0);
-    dsound_newwindow (hAmigaWnd);
-    return 1;
-
-  oops:
-    release_ddraw ();
-    if (hMainWnd)
-	DestroyWindow (hMainWnd);
-    if (hAmigaWnd)
-	DestroyWindow (hAmigaWnd);
-    return 0;
-}
-
-struct myRGNDATA {
-    RGNDATAHEADER rdh;
-    RECT rects[640];		/* fixed buffers suck, but this is _very_ unlikely to overflow */
-} ClipList = { { sizeof (ClipList), RDH_RECTANGLES, 0, 640 * sizeof (RECT) } };
-
-/* this is the way the display line is put to screen
- * if the display is not 16 bits deep or the window is not fully visible */
-static void clipped_linetoscr (char *dst, char *src, int y)
-{
-    LPRECT lpRect = ClipList.rects;
-    int i;
-
-    switch (current_pixbytes) {
-     case 1:
-	for (i = ClipList.rdh.nCount; i--; lpRect++) {
-	    if (y >= lpRect->top && y < lpRect->bottom)
-		memcpy (dst + lpRect->left, src + lpRect->left, lpRect->right);
-	}
-	break;
-
-     case 2:
-	for (i = ClipList.rdh.nCount; i--; lpRect++) {
-	    if (y >= lpRect->top && y < lpRect->bottom)
-		memcpy (dst + lpRect->left * 2, src + lpRect->left * 2, lpRect->right * 2);
-	}
-	break;
-
-     case 3:
-	for (i = ClipList.rdh.nCount; i--; lpRect++) {
-	    if (y >= lpRect->top && y < lpRect->bottom)
-		memcpy (dst + lpRect->left * 3, src + lpRect->left * 3, lpRect->right * 3);
-	}
-	break;
-
-     case 4:
-	for (i = ClipList.rdh.nCount; i--; lpRect++) {
-	    if (y >= lpRect->top && y < lpRect->bottom)
-		memcpy (dst + lpRect->left * 4, src + lpRect->left * 4, lpRect->right * 4);
-	}
-	break;
-    }
-}
-
-void flush_line (int lineno)
-{
-    if (scrindirect)
-	clipped_linetoscr (gfxvidinfo.bufmem + lineno * gfxvidinfo.rowbytes,
-			   scrlinebuf, lineno);
-}
-
-void flush_block (int a, int b)
-{
-}
-
-void flush_screen (int a, int b)
-{
-}
-
-static uae_u8 *dolock (void)
-{
-    char *surface = NULL, *oldsurface;
-    DWORD tmp;
-    LPRECT lpRect;
-
-    if (! do_surfacelock ())
-	return 0;
-
-    surface = ddsd.lpSurface;
-    oldsurface = gfxvidinfo.bufmem;
-    if (! fullscreen) {
-	surface += amigawin_rect.top * ddsd.lPitch + current_pixbytes * amigawin_rect.left;
-    }
-    gfxvidinfo.bufmem = surface;
-    if (surface != oldsurface && ! screen_is_picasso) {
-	write_log ("Need to init_row_map\n");
-	init_row_map ();
-    }
-    scrindirect = 0;
-
-    if (fullscreen) {
-	set_linemem ();
-	clear_inhibit_frame (IHF_WINDOWHIDDEN);
-	return surface;
-    }
-    tmp = sizeof (ClipList.rects);
-
-    /* This is the VERY instruction that drags other threads (input/file system) down when in windowed
-     * mode - WHY can't Microsoft implement the IsClipListChanged() method as documented? ARGH! */
-    if (IDirectDrawClipper_GetClipList (lpDDC, NULL, (LPRGNDATA) & ClipList, &tmp) == DD_OK) {
-	lpRect = ClipList.rects;
-
-	if (!ClipList.rdh.nCount) {
-	    set_inhibit_frame (IHF_WINDOWHIDDEN);
-	    unlockscr ();
-	    return 0;
-	}
-	if (ClipList.rdh.nCount != 1
-	    || lpRect->right - lpRect->left != current_width
-	    || lpRect->bottom - lpRect->top != current_height)
-	{
-	    scrindirect = 1;
-	    for (tmp = ClipList.rdh.nCount; tmp--; lpRect++) {
-		lpRect->left -= amigawin_rect.left;
-		lpRect->right -= amigawin_rect.left;
-		lpRect->top -= amigawin_rect.top;
-		lpRect->bottom -= amigawin_rect.top;
-
-		lpRect->right -= lpRect->left;
-	    }
-	}
-    }
-    set_linemem ();
-    clear_inhibit_frame (IHF_WINDOWHIDDEN);
-    return surface;
-}
-
-int lockscr (void)
-{
-    return dolock () != 0;
-}
-
-uae_u8 *gfx_lock_picasso (void)
-{
-    return dolock ();
-}
-
-void gfx_unlock_picasso (void)
-{
-    unlockscr ();
-}
-
-static int open_windows (void)
-{
-    char *fs_warning = 0;
-    RGBFTYPE colortype;
-
-    current_pixbytes = 0;
-
-    in_sizemove = 0;
-    fixup_prefs_dimensions (&currprefs);
-
-    if (! start_ddraw ())
-	return 0;
-
-    colortype = surface_pixelformat (&current_surface);
-    printf ("Ct: %08lx, picasso_vidinfo.selected_rgbformat %08lx\n", (unsigned long)colortype,
-	    picasso_vidinfo.selected_rgbformat);
-
-    if (screen_is_picasso) {
-	fullscreen = currprefs.gfx_pfullscreen;
-	current_width = picasso_vidinfo.width;
-	current_height = picasso_vidinfo.height;
-	current_depth = rgbformat_bits (picasso_vidinfo.selected_rgbformat);
-    } else {
-	fullscreen = currprefs.gfx_afullscreen;
-	current_width = currprefs.gfx_width;
-	current_height = currprefs.gfx_height;
-	current_depth = (currprefs.color_mode == 0 ? 8
-			 : currprefs.color_mode == 1 ? 15
-			 : currprefs.color_mode == 2 ? 16
-			 : currprefs.color_mode == 3 ? 8
-			 : currprefs.color_mode == 4 ? 8 : 32);
-    }
-
-    needs_fullscreen = 0;
-    if (colortype == RGBFB_NONE) {
-	needs_fullscreen = 1;
-	fs_warning = "the desktop is running in an unknown color mode.";
-    } else if (colortype == RGBFB_CLUT) {
-	needs_fullscreen = 1;
-	fs_warning = "the desktop is running in 8 bit color depth, which UAE can't use in windowed mode.";
-    } else if (current_width > current_surface.dwWidth || current_height > current_surface.dwHeight) {
-	needs_fullscreen = 1;
-	fs_warning = "the desktop is too small for the specified window size.";
-    } else if (screen_is_picasso
-	       && picasso_vidinfo.selected_rgbformat != RGBFB_CHUNKY
-	       && picasso_vidinfo.selected_rgbformat != colortype)
-    {
-	needs_fullscreen = 1;
-	fs_warning = "you selected a Picasso display with a color depth different from that of the desktop.";
-    }
-
-    if (needs_fullscreen && ! fullscreen) {
-	char tmpstr[300];
-	fullscreen = needs_fullscreen;
-	/* Temporarily drop the DirectDraw stuff.  This is necessary, otherwise
-	 * WinNT will just return 1 for the message box without ever displaying 
-	 * it on the screen.  */
-	release_ddraw ();
-	sprintf (tmpstr, "The selected screen mode can't be displayed in a window, because %s\n"
-		 "Switching to full-screen display.", fs_warning);
-	MessageBox (0, tmpstr, "UAE", MB_ICONEXCLAMATION | MB_OK);
-	start_ddraw ();
-    }
-    
-    if (! fullscreen)
-	current_depth = rgbformat_bits (colortype);
-    
-    if (! doInit ())
-	return 0;
-
-    return 1;
 }
 
 void handle_events (void)
@@ -1506,122 +695,53 @@ void handle_events (void)
     }
 }
 
-int check_prefs_changed_gfx (void)
+/* Console Win32 helper routines */
+void activate_debugger ();
+
+/* We're not a console-app anymore! */
+void setup_brkhandler (void)
 {
-    if (display_change_requested) {
-	display_change_requested = 0;
-	close_windows ();
-	open_windows ();
-	return 1;
-    }
-    return 0;
 }
 
-/* this truly sucks, I'll include a native gunzip() routine soon */
-int gunzip_hack (const char *src, const char *dst)
+void remove_brkhandler (void)
 {
-    char buf[1024];
-    STARTUPINFO si =
-    {sizeof si};
-    PROCESS_INFORMATION pi;
-
-    strcpy (buf, dst);
-    strcat (buf, ".gz");
-
-    if (CopyFile (src, buf, FALSE)) {
-	sprintf (buf, "gzip -f -d \"%s.gz\"", dst);
-	si.dwFlags = STARTF_USESTDHANDLES;
-	if (CreateProcess (NULL, buf, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
-	    WaitForSingleObject (pi.hProcess, INFINITE);
-	    return -1;
-	} else {
-	    write_log ("Error: You need gzip.exe (32 bit) to use .adz/.roz files!\n");
-	}
-    }
-    return 0;
 }
 
-static OPENFILENAME ofn =
+int WIN32_RegisterClasses( void )
 {
-    sizeof (OPENFILENAME),
-    NULL, NULL, "Amiga Disk Files\000*.adf;*.adz\000",
-    NULL, 0, 0, 0, 256, NULL, 0, "",
-    0,
-    OFN_NOCHANGEDIR | OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY,
-    0,
-    0,
-    "adf",
-    0,
-    NULL,
-    NULL
-};
+    WNDCLASS wc;
+    HDC hDC = GetDC( NULL ); 
 
-int requestfname (char *title, char *name)
-{
-    char *result;
+    if( GetDeviceCaps( hDC, NUMCOLORS ) != -1 ) 
+        g_dwBackgroundColor = RGB( 255, 0, 255 );    
+    ReleaseDC( NULL, hDC );
 
-    ofn.hwndOwner = hAmigaWnd;
-    ofn.lpstrTitle = title;
-    ofn.lpstrFile = name;
-
-    if (pGetOpenFileNameA == 0)
+    wc.style = CS_BYTEALIGNCLIENT | CS_BYTEALIGNWINDOW | CS_DBLCLKS;
+    wc.lpfnWndProc = AmigaWindowProc;
+    wc.cbClsExtra = 0;
+    wc.cbWndExtra = 0;
+    wc.hInstance = 0;
+    wc.hIcon = LoadIcon (GetModuleHandle (NULL), MAKEINTRESOURCE( IDI_APPICON ) );
+    wc.hCursor = LoadCursor (NULL, IDC_ARROW);
+    wc.lpszMenuName = 0;
+    wc.lpszClassName = "AmigaPowah";
+    wc.hbrBackground = CreateSolidBrush( g_dwBackgroundColor ); 
+    if (!RegisterClass (&wc))
 	return 0;
 
-    if (!fullscreen)
-	setmouseactive (0);
-
-    if (title)
-	result = (char *) ((*pGetOpenFileNameA) (&ofn));
-    else {
-	GetSettings (0);
-    }
-
-    if (!fullscreen || !mouseactive)
-	SetCursor (NULL);
-
-    notice_screen_contents_lost ();
-
-    if (result)
-	return 1;
-
-    return 0;
-}
-
-int DisplayGUI (void)
-{
-#ifdef PICASSO96
-    BITMAPINFO bminfo =
-    {
-	{
-	    sizeof (BITMAPINFOHEADER),
-	    0, 0,
-	    1, 8, BI_RGB, 0, 0, 0, 0, 0,
-	},
-	0
-    };
-#endif
-
-    bminfo.bmiHeader.biWidth = current_width;
-    bminfo.bmiHeader.biHeight = -current_height;
-#if 0
-    /* ??????? */
-    bminfo.bmiColors[0] = &picasso96_state.CLUT;
-#endif
-    if (pGetOpenFileNameA) {
-	if (lpDDP)
-	    IDirectDrawSurface_SetPalette (lpDDS, NULL);
-
-	if (!fullscreen)
-	    setmouseactive (FALSE);
-	GetSettings (0);
-
-	if (lpDDP)
-	    IDirectDrawSurface2_SetPalette (lpDDS, lpDDP);
-
-	if (!fullscreen || !mouseactive)
-	    SetCursor (NULL);
-    }
-    return 0;
+    wc.style = CS_BYTEALIGNCLIENT | CS_BYTEALIGNWINDOW | CS_DBLCLKS | CS_HREDRAW | CS_VREDRAW;
+    wc.lpfnWndProc = MainWindowProc;
+    wc.cbClsExtra = 0;
+    wc.cbWndExtra = 0;
+    wc.hInstance = 0;
+    wc.hIcon = LoadIcon (GetModuleHandle (NULL), MAKEINTRESOURCE( IDI_APPICON ) );
+    wc.hCursor = LoadCursor (NULL, IDC_ARROW);
+    wc.hbrBackground = CreateSolidBrush( g_dwBackgroundColor ); 
+    wc.lpszMenuName = 0;
+    wc.lpszClassName = "PCsuxRox";
+    if (!RegisterClass (&wc))
+	return 0;
+    return 1;
 }
 
 #ifdef __GNUC__
@@ -1629,317 +749,854 @@ int DisplayGUI (void)
 #define WINAPI
 #endif
 
-static HINSTANCE hDDraw = NULL, hComDlg32 = NULL, hRichEdit = NULL;
+static HINSTANCE hRichEdit = NULL, hHtmlHelp = NULL;
 
-static int cleanuplibs (void)
+#ifdef USE_ZLIB_DLL
+static HINSTANCE hZlib = NULL;
+FARPROC	pgzread = NULL, pgzopen = NULL, pgzclose = NULL, pgzwrite = NULL, pgzerror = NULL;
+#endif
+
+int WIN32_CleanupLibraries( void )
 {
     if (hRichEdit)
 	FreeLibrary (hRichEdit);
-    if (hDDraw)
-	FreeLibrary (hDDraw);
-    if (hComDlg32)
-	FreeLibrary (hComDlg32);
+    
+    if( hHtmlHelp )
+        FreeLibrary( hHtmlHelp );
+
+    if( hUIDLL )
+	FreeLibrary( hUIDLL );
+
+#ifdef USE_ZLIB_DLL
+    if( hZlib )
+	FreeLibrary( hZlib );
+#endif
+
     return 1;
 }
 
-/* try to load COMDLG32 and DDRAW, initialize csDraw, try to obtain the system clock frequency
- * from the registry, try to find out if we are running on a Pentium */
-static int initlibs (void)
+/* HtmlHelp Initialization - optional component */
+int WIN32_InitHtmlHelp( void )
 {
-    OSVERSIONINFO osinfo;
-    /* Figure out which Win32 OS we're running under */
-    osinfo.dwOSVersionInfoSize = sizeof (OSVERSIONINFO);
-    if (GetVersionEx (&osinfo)) {
-	if (osinfo.dwPlatformId == VER_PLATFORM_WIN32_NT)
-	    running_winnt = TRUE;
-	else
-	    running_winnt = FALSE;
+    int result = 0;
+    if( hHtmlHelp = LoadLibrary( "HHCTRL.OCX" ) )
+    {
+        pHtmlHelp = ( HWND(WINAPI *)(HWND, LPCSTR, UINT, LPDWORD ) )GetProcAddress( hHtmlHelp, "HtmlHelpA" );
+        result = 1;
     }
-    figure_processor_speed ();
+
+
+    return result;
+}
+
+#if 0
+#define TESTING_LANGUAGES
+#define TEST_LANGID LANG_GERMAN
+//#define TEST_LANGID LANG_FRENCH
+//#define TEST_LANGID LANG_TURKISH
+#endif
+
+static HMODULE LoadGUI( void )
+{
+    HMODULE result = NULL;
+    LPCTSTR dllname = NULL;
+    LANGID language = GetUserDefaultLangID() & 0x3FF; // low 9-bits form the primary-language ID
+#ifdef TESTING_LANGUAGES
+    language = TEST_LANGID;
+#endif
+
+    switch( language )
+    {
+    case LANG_AFRIKAANS:
+	dllname = "WinUAE_Afrikaans.dll";
+	break;
+    case LANG_ARABIC:
+	dllname = "WinUAE_Arabic.dll";
+	break;
+    case LANG_ARMENIAN:
+	dllname = "WinUAE_Armenian.dll";
+	break;
+    case LANG_ASSAMESE:
+	dllname = "WinUAE_Assamese.dll";
+	break;
+    case LANG_AZERI:
+	dllname = "WinUAE_Azeri.dll";
+	break;
+    case LANG_BASQUE:
+	dllname = "WinUAE_Basque.dll";
+	break;
+    case LANG_BELARUSIAN:
+	dllname = "WinUAE_Belarusian.dll";
+	break;
+    case LANG_BENGALI:
+	dllname = "WinUAE_Bengali.dll";
+	break;
+    case LANG_BULGARIAN:
+	dllname = "WinUAE_Bulgarian.dll";
+	break;
+    case LANG_CATALAN:
+	dllname = "WinUAE_Catalan.dll";
+	break;
+    case LANG_CHINESE:
+	dllname = "WinUAE_Chinese.dll";
+	break;
+    case LANG_CROATIAN:
+	dllname = "WinUAE_CroatianSerbian.dll";
+	break;
+    case LANG_CZECH:
+	dllname = "WinUAE_Czech.dll";
+	break;
+    case LANG_DANISH:
+	dllname = "WinUAE_Danish.dll";
+	break;
+    case LANG_DUTCH:
+	dllname = "WinUAE_Dutch.dll";
+	break;
+    case LANG_ESTONIAN:
+	dllname = "WinUAE_Estonian.dll";
+	break;
+    case LANG_FAEROESE:
+	dllname = "WinUAE_Faeroese.dll";
+	break;
+    case LANG_FARSI:
+	dllname = "WinUAE_Farsi.dll";
+	break;
+    case LANG_FINNISH:
+	dllname = "WinUAE_Finnish.dll";
+	break;
+    case LANG_FRENCH:
+	dllname = "WinUAE_French.dll";
+	break;
+    case LANG_GEORGIAN:
+	dllname = "WinUAE_Georgian.dll";
+	break;
+    case LANG_GERMAN:
+	dllname = "WinUAE_German.dll";
+	break;
+    case LANG_GREEK:
+	dllname = "WinUAE_Greek.dll";
+	break;
+    case LANG_GUJARATI:
+	dllname = "WinUAE_Gujarati.dll";
+	break;
+    case LANG_HEBREW:
+	dllname = "WinUAE_Hebrew.dll";
+	break;
+    case LANG_HINDI:
+	dllname = "WinUAE_Hindi.dll";
+	break;
+    case LANG_HUNGARIAN:
+	dllname = "WinUAE_Hungarian.dll";
+	break;
+    case LANG_ICELANDIC:
+	dllname = "WinUAE_Icelandic.dll";
+	break;
+    case LANG_INDONESIAN:
+	dllname = "WinUAE_Indonesian.dll";
+	break;
+    case LANG_ITALIAN:
+	dllname = "WinUAE_Italian.dll";
+	break;
+    case LANG_JAPANESE:
+	dllname = "WinUAE_Japanese.dll";
+	break;
+    case LANG_KANNADA:
+	dllname = "WinUAE_Kannada.dll";
+	break;
+    case LANG_KASHMIRI:
+	dllname = "WinUAE_Kashmiri.dll";
+	break;
+    case LANG_KAZAK:
+	dllname = "WinUAE_Kazak.dll";
+	break;
+    case LANG_KONKANI:
+	dllname = "WinUAE_Konkani.dll";
+	break;
+    case LANG_KOREAN:
+	dllname = "WinUAE_Korean.dll";
+	break;
+    case LANG_LATVIAN:
+	dllname = "WinUAE_Latvian.dll";
+	break;
+    case LANG_LITHUANIAN:
+	dllname = "WinUAE_Lithuanian.dll";
+	break;
+    case LANG_MACEDONIAN:
+	dllname = "WinUAE_Macedonian.dll";
+	break;
+    case LANG_MALAY:
+	dllname = "WinUAE_Malay.dll";
+	break;
+    case LANG_MALAYALAM:
+	dllname = "WinUAE_Malayalam.dll";
+	break;
+    case LANG_MANIPURI:
+	dllname = "WinUAE_Manipuri.dll";
+	break;
+    case LANG_MARATHI:
+	dllname = "WinUAE_Marathi.dll";
+	break;
+    case LANG_NEPALI:
+	dllname = "WinUAE_Nepali.dll";
+	break;
+    case LANG_NORWEGIAN:
+	dllname = "WinUAE_Norwegian.dll";
+	break;
+    case LANG_ORIYA:
+	dllname = "WinUAE_Oriya.dll";
+	break;
+    case LANG_POLISH:
+	dllname = "WinUAE_Polish.dll";
+	break;
+    case LANG_PORTUGUESE:
+	dllname = "WinUAE_Portuguese.dll";
+	break;
+    case LANG_PUNJABI:
+	dllname = "WinUAE_Punjabi.dll";
+	break;
+    case LANG_ROMANIAN:
+	dllname = "WinUAE_Romanian.dll";
+	break;
+    case LANG_RUSSIAN:
+	dllname = "WinUAE_Russian.dll";
+	break;
+    case LANG_SANSKRIT:
+	dllname = "WinUAE_Sanskrit.dll";
+	break;
+    case LANG_SINDHI:
+	dllname = "WinUAE_Sindhi.dll";
+	break;
+    case LANG_SLOVAK:
+	dllname = "WinUAE_Slovak.dll";
+	break;
+    case LANG_SLOVENIAN:
+	dllname = "WinUAE_Slovenian.dll";
+	break;
+    case LANG_SPANISH:
+	dllname = "WinUAE_Spanish.dll";
+	break;
+    case LANG_SWAHILI:
+	dllname = "WinUAE_Swahili.dll";
+	break;
+    case LANG_SWEDISH:
+	dllname = "WinUAE_Swedish.dll";
+	break;
+    case LANG_TAMIL:
+	dllname = "WinUAE_Tamil.dll";
+	break;
+    case LANG_TATAR:
+	dllname = "WinUAE_Tatar.dll";
+	break;
+    case LANG_TELUGU:
+	dllname = "WinUAE_Telugu.dll";
+	break;
+    case LANG_THAI:
+	dllname = "WinUAE_Thai.dll";
+	break;
+    case LANG_TURKISH:
+	dllname = "WinUAE_Turkish.dll";
+	break;
+    case LANG_UKRAINIAN:
+	dllname = "WinUAE_Ukrainian.dll";
+	break;
+    case LANG_URDU:
+	dllname = "WinUAE_Urdu.dll";
+	break;
+    case LANG_UZBEK:
+	dllname = "WinUAE_Uzbek.dll";
+	break;
+    case LANG_VIETNAMESE:
+	dllname = "WinUAE_Vietnamese.dll";
+	break;
+    case 0x400:
+	dllname = "guidll.dll";
+	break;
+    }
+
+    if( dllname )
+    {
+	TCHAR  szFilename[ MAX_PATH ];
+	DWORD  dwVersionHandle, dwFileVersionInfoSize;
+	LPVOID lpFileVersionData = NULL;
+	BOOL   success = FALSE;
+	result = LoadLibrary( dllname );
+	if( result && GetModuleFileName( result, (LPTSTR)&szFilename, MAX_PATH ) )
+	{
+	    dwFileVersionInfoSize = GetFileVersionInfoSize( szFilename, &dwVersionHandle );
+	    if( dwFileVersionInfoSize )
+	    {
+		if( lpFileVersionData = calloc( 1, dwFileVersionInfoSize ) )
+		{
+		    if( GetFileVersionInfo( szFilename, dwVersionHandle, dwFileVersionInfoSize, lpFileVersionData ) )
+		    {
+			VS_FIXEDFILEINFO *vsFileInfo = NULL;
+			UINT uLen;
+			if( VerQueryValue( lpFileVersionData, TEXT("\\"), (void **)&vsFileInfo, &uLen ) )
+			{
+			    if( vsFileInfo &&
+				( HIWORD(vsFileInfo->dwProductVersionMS) == UAEMAJOR ) 
+				&& ( LOWORD(vsFileInfo->dwProductVersionMS) == UAEMINOR ) 
+				&& ( HIWORD(vsFileInfo->dwProductVersionLS) == UAESUBREV )
+// Change this to an #if 1 when the WinUAE Release version (as opposed to UAE-core version) 
+// requires a GUI-DLL change...
+#if 0
+				&& ( LOWORD(vsFileInfo->dwProductVersionLS) == WINUAERELEASE) 
+#endif
+				)
+			    {
+				success = TRUE;
+			    }
+			}
+		    }
+		    free( lpFileVersionData );
+		}
+	    }
+	}
+	if( result && !success )
+	{
+	    FreeLibrary( result );
+	    result = NULL;
+	}
+    }
+
+    return result;
+}
+
+#ifndef _WIN32_WCE
+/* try to load COMDLG32 and DDRAW, initialize csDraw */
+int WIN32_InitLibraries( void )
+{
+    int result = 1;
+    /* Determine our processor speed and capabilities */
+    figure_processor_speed();
+    
     /* Make sure we do an InitCommonControls() to get some advanced controls */
-    InitCommonControls ();
+    InitCommonControls();
+    
+    hRichEdit = LoadLibrary( "RICHED32.DLL" );
+    
+    hUIDLL = LoadGUI();
 
-    if (hComDlg32 = LoadLibrary ("COMDLG32.DLL")) {
-	pGetOpenFileNameA = (BOOL (WINAPI *) (LPOPENFILENAME)) GetProcAddress (hComDlg32, "GetOpenFileNameA");
-    } else
-	/* System administrator? ROFL! -- Bernd */
-	write_log ("COMDLG32.DLL not available. Please contact your system administrator.\n");
-
-    /* LoadLibrary the richedit control stuff */
-    if ((hRichEdit = LoadLibrary ("RICHED32.DLL")) == NULL) {
-	write_log ("RICHED32.DLL not available. Please contact your system administrator.\n");
+#ifdef USE_ZLIB_DLL
+    hZlib = LoadLibrary( "ZLIB.DLL" );
+    if( hZlib )
+    {
+	pgzread = GetProcAddress( hZlib, "gzread" );
+	pgzopen = GetProcAddress( hZlib, "gzopen" );
+	pgzclose = GetProcAddress( hZlib, "gzclose" );
+	pgzwrite = GetProcAddress( hZlib, "gzwrite" );
+	pgzerror = GetProcAddress( hZlib, "gzerror" );
+	if( !pgzread || !pgzopen || !pgzclose || !pgzwrite || !pgzerror)
+	{
+	    FreeLibrary( hZlib );
+	    hZlib = NULL;
+	}
     }
-    hDDraw = LoadLibrary ("DDRAW.DLL");
-    if (hDDraw == 0) {
-	write_log ("You have to install DirectX on your system before you can use UAE.\n"
-		   "Refer to the documentation for further details.\n");
-	return 0;
+#endif
+    return result;
+}
+#endif
+
+/* Mathias says: "this truly sucks, I'll include a native gunzip() routine soon" */
+
+#ifdef USE_ZLIB_DLL
+extern FARPROC	pgzread, pgzopen, pgzclose, pgzwrite, pgzerror;
+#define GZOPEN( X, Y ) (gzFile)pgzopen( X, Y )
+#define GZCLOSE( X ) (int)pgzclose( X )
+#define GZREAD( X, Y, Z ) (int)pgzread( X, Y, Z )
+
+#define ZLIB_BUFFER_SIZE 32767
+
+/* gzip decompression via zlib */
+static int zlib_gunzip( const char *src, char *dst )
+{
+    int result = 0, gzResult = 0;
+    gzFile zSrc = NULL;
+    FILE *fDst = NULL;
+    size_t filesize = 0;
+    uae_u8 *buffer = NULL;
+
+    if( hZlib )
+    {
+	zSrc = GZOPEN( src, "rb" );
+	fDst = fopen( dst, "wb" );
+	buffer = xmalloc( ZLIB_BUFFER_SIZE + 1 );
+	
+	if( zSrc && fDst && buffer )
+	{
+	    DWORD dwWritten = 0;
+	    result = 1;
+	    do
+	    {
+		gzResult = GZREAD( zSrc, buffer, ZLIB_BUFFER_SIZE );
+		if( gzResult > 0 )
+		{
+		    if( fwrite( buffer, gzResult, 1, fDst ) != 1 )
+		    {
+			result = 0;
+			break;
+		    }
+		}
+	    } while( gzResult == ZLIB_BUFFER_SIZE );
+	}
+	
+	if( zSrc )
+	{
+	    GZCLOSE( zSrc );
+	}
+	
+	if( fDst )
+	{
+	    fclose( fDst );
+	}
     }
-    pDirectDrawCreate = (HRESULT (WINAPI *) (GUID FAR *, LPDIRECTDRAW FAR *, IUnknown FAR *)) GetProcAddress (hDDraw, "DirectDrawCreate");
+    return result;
+}
+#endif
 
-    process_desired_pri = IDLE_PRIORITY_CLASS;
+static char *uncompress_error[2] = { "Error: You need zlib.dll to use .adz/.roz files!\n", 
+                                    "Error: You need xdms.exe (32 bit) to use .dms files!\n" };
 
-    return 1;
+int uncompress_hack( int type, const char *src, const char *dst)
+{
+    int result = 0;
+    char fullname[1024];
+    char buf[1024];
+    char cmd[256];
+    char *posn = NULL;
+    STARTUPINFO si = {sizeof si};
+    PROCESS_INFORMATION pi;
+
+    strcpy( fullname, dst );
+
+    if( type == 1 )
+    {
+#ifdef USE_ZLIB_DLL
+	result = zlib_gunzip( src, fullname );
+	if( !result )
+	{
+            gui_message( uncompress_error[type-1] );
+	}
+	return result;
+#else
+        strcpy( cmd, "gzip.exe -f -d" );
+        strcat( fullname, ".gz" );
+#endif
+    }
+    else if( type == 2 )
+    {
+        strcpy( cmd, "xdms.exe u" );
+        posn = strrchr( fullname, '.' );
+        if( posn )
+        {
+            *posn = 0;
+            strcat( fullname, ".dms" );
+        }
+    }
+
+    if( CopyFile( src, fullname, FALSE ) ) 
+    {
+	sprintf (buf, "%s %s +%s", cmd, fullname, dst );
+	si.dwFlags = STARTF_USESTDHANDLES;
+	if( CreateProcess( NULL, buf, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi ) ) 
+        {
+	    WaitForSingleObject( pi.hProcess, INFINITE );
+            result = -1;
+    	}
+        else
+        {
+            gui_message( uncompress_error[type-1] );
+        }
+    }
+
+    /* Special handling for broken xdms.exe */
+    if( type == 2 )
+    {
+        DeleteFile( fullname );     /* Delete the uaeXX.dms file */
+    }
+
+    return result;
 }
 
-void write_log (const char *format,...)
+/* console window for debugging messages */
+/* Brian: disable for release version if you want (TW) */
+
+#define WRITE_LOG_BUF_SIZE 4096
+
+static int consoleopen = 0;
+HANDLE stdinput,stdoutput;
+
+static void openconsole(void)
 {
-    DWORD numwritten;
-    char buffer[512];
+    if(consoleopen) return;
+    AllocConsole();
+    stdinput=GetStdHandle(STD_INPUT_HANDLE);
+    stdoutput=GetStdHandle(STD_OUTPUT_HANDLE);
+    SetConsoleMode(stdinput,ENABLE_PROCESSED_INPUT|ENABLE_LINE_INPUT|ENABLE_ECHO_INPUT|ENABLE_PROCESSED_OUTPUT);
+    consoleopen = 1;
+}
+
+/* console functions for debugger */
+
+void console_out (const char *format,...)
+{
     va_list parms;
+    char buffer[WRITE_LOG_BUF_SIZE];
+    DWORD temp;
 
     va_start (parms, format);
-    vsprintf (buffer, format, parms);
+    _vsnprintf( buffer, WRITE_LOG_BUF_SIZE-1, format, parms );
     va_end (parms);
-
-    fprintf (stderr, "%s", buffer);
-
-    WriteFile (debugfile, buffer, strlen (buffer), &numwritten, NULL);
+    openconsole();
+    WriteConsole(stdoutput,buffer,strlen(buffer),&temp,0);
 }
+
+int console_get (char *out, int maxlen)
+{
+    DWORD len,totallen;
+
+    totallen=0;
+    while(maxlen>0) 
+    {
+	    ReadConsole(stdinput,out,1,&len,0);
+	    if(*out == 13) break;
+	    out++;
+	    maxlen--;
+	    totallen++;
+    }
+    *out=0;
+    return totallen;
+}
+
+void console_flush (void)
+{
+}
+
+/* GCC/EGCS wants this write_log in order to work from socket-land and to do traces */
+#ifdef __GNUC__
+void write_log (const char *format, ...)
+{
+    int result = 0;
+    DWORD numwritten;
+    char buffer[12];
+    va_list parms;
+    int count = 0;
+    int *blah = NULL;
+
+    if( debugfile )
+    {
+#if defined HAVE_GETTICKCOUNT && defined TIMESTAMP_LOGS
+        {
+            sprintf( buffer, "%7d - ", GetTickCount() );
+            fprintf( debugfile, buffer );
+        }
+#endif
+        va_start (parms, format);
+        count = vfprintf( debugfile, format, parms );
+        fflush( debugfile );
+        if( count >= WRITE_LOG_BUF_SIZE-1 )
+        {
+            fprintf( debugfile, "SHIT in write_log()\n" );
+            fflush( debugfile );
+            *blah = 0; /* Access Violation here! */
+            abort();
+        }
+	else
+	    result = count;
+        va_end (parms);
+    }
+}
+#else /* MSVC likes this one, and so do I */
+int write_log( const char *format, ... )
+{
+    int result = 0;
+#ifdef _DEBUG
+    DWORD numwritten;
+#endif
+    char buffer[ WRITE_LOG_BUF_SIZE ];
+    va_list parms;
+    int count = 0;
+    int *blah = (int *)0xdeadbeef;
+
+    va_start (parms, format);
+    count = _vsnprintf( buffer, WRITE_LOG_BUF_SIZE-1, format, parms );
+#if defined HAVE_GETTICKCOUNT && defined TIMESTAMP_LOGS
+    {
+        char buffme[WRITE_LOG_BUF_SIZE];
+        sprintf( buffme, "%7d - %s", GetTickCount(), buffer );
+        OutputDebugString( buffme );
+        if( debugfile )
+            fprintf( debugfile, buffme );
+	result = strlen( buffme );
+    }
+#else
+    OutputDebugString( buffer );
+    if( debugfile )
+    {
+        fprintf( debugfile, buffer );
+	fflush( debugfile );
+    }
+    result = strlen( buffer );
+#endif
+#ifdef _DEBUG
+    openconsole();
+    WriteConsole(stdoutput,buffer,strlen(buffer),&numwritten,0);
+#endif
+    va_end (parms);
+    return result;
+}
+#endif
 
 int debuggable (void)
 {
-    return 1;
+    return 0;
 }
 
 int needmousehack (void)
 {
-    return 1;
+    if( WIN32GFX_IsFullScreen() || WIN32GFX_IsPicassoScreen() )
+	return 0;
+    else
+	return 1;
 }
 
 void LED (int a)
 {
 }
 
-int DX_FillResolutions (uae_u16 * ppixel_format)
+void logging_init( void )
 {
-    struct win32_displaymode *dm;
-    int count = 0;
-
-    *ppixel_format = 0;
-    for (dm = win32_displaymode_list; dm != 0; dm = dm->next) {
-	*ppixel_format |= dm->colormodes;
-	if (dm->colormodes & RGBMASK_8BIT) {
-	    DisplayModes[count].res.width = dm->width;
-	    DisplayModes[count].res.height = dm->height;
-	    DisplayModes[count].refresh = 75;
-	    DisplayModes[count].depth = 1;
-	    count++;
-	}
-	if (count >= MAX_PICASSO_MODES)
-	    break;
-	if (dm->colormodes & (RGBMASK_16BIT | RGBMASK_15BIT)) {
-	    DisplayModes[count].res.width = dm->width;
-	    DisplayModes[count].res.height = dm->height;
-	    DisplayModes[count].refresh = 75;
-	    DisplayModes[count].depth = 2;
-	    count++;
-	}
-	if (count >= MAX_PICASSO_MODES)
-	    break;
-	if (dm->colormodes & RGBMASK_24BIT) {
-	    DisplayModes[count].res.width = dm->width;
-	    DisplayModes[count].res.height = dm->height;
-	    DisplayModes[count].refresh = 75;
-	    DisplayModes[count].depth = 3;
-	    count++;
-	}
-	if (count >= MAX_PICASSO_MODES)
-	    break;
-	if (dm->colormodes & RGBMASK_32BIT) {
-	    DisplayModes[count].res.width = dm->width;
-	    DisplayModes[count].res.height = dm->height;
-	    DisplayModes[count].refresh = 75;
-	    DisplayModes[count].depth = 4;
-	    count++;
-	}
-	if (count >= MAX_PICASSO_MODES)
-	    break;
+    char debugfilename[MAX_PATH];
+    if (1) {
+        sprintf( debugfilename, "%s\\winuaelog.txt", start_path );
+        if( !debugfile )
+            debugfile = fopen( debugfilename, "wt" );
     }
-    return count;
+    write_log ( "%s\n", VersionStr );
+    write_log ("\n(c) 1995-2001 Bernd Schmidt   - Core UAE concept and implementation."
+	       "\n(c) 1996-1999 Mathias Ortmann - Win32 port and bsdsocket support."
+	       "\n(c) 1996-2001 Brian King      - Win32 port, Picasso96 RTG, and GUI."
+	       "\n(c) 1998-2001 Toni Wilen      - AGA chipset, NTSC/PAL modes.\n"
+	       "\n(c) 2000-2001 Bernd Meyer     - JIT engine.\n"
+	       "\n(c) 2000-2001 Bernd Roesch    - MIDI input, many fixes.\n"
+	       "\nPress F12 to show the Settings Dialog (GUI), Alt-F4 to quit."
+	       "\nEnd+F1 changes floppy 0, End+F2 changes floppy 1, etc.\n"
+	       "\nhttp://www.codepoet.com/UAE/\n\n");
 }
 
-void DX_SetPalette (int start, int count)
+void logging_cleanup( void )
 {
-    HRESULT ddrval;
-
-    if (! screen_is_picasso || picasso96_state.RGBFormat != RGBFB_CHUNKY)
-	return;
-
-    if (picasso_vidinfo.pixbytes != 1) {
-	printf ("DX Setpalette emulation\n");
-	/* This is the case when we're emulating a 256 color display.  */
-	while (count-- > 0) {
-	    int r = picasso96_state.CLUT[start].Red;
-	    int g = picasso96_state.CLUT[start].Green;
-	    int b = picasso96_state.CLUT[start].Blue;
-	    picasso_vidinfo.clut[start++] = (doMask256 (r, red_bits, red_shift)
-					     | doMask256 (g, green_bits, green_shift)
-					     | doMask256 (b, blue_bits, blue_shift));
-	}
-	return;
-    }
-
-    /* Set our DirectX palette here */
-    if (lpDDP && current_pixbytes == 1) {
-	/* For now, until I figure this out, just set the entire range of CLUT values */
-	ddrval = IDirectDrawPalette_SetEntries (lpDDP, 0, start, count, (LPPALETTEENTRY) & (picasso96_state.CLUT[start]));
-	if (ddrval != DD_OK)
-	    write_log ("DX_SetPalette() failed with %s/%d\n", getddrname (ddrval), ddrval);
-	else
-	    printf ("DX_SetPalette OK\n");
-    } else
-	write_log ("ERROR - DX_SetPalette() doesn't have palette, or isn't Chunky mode.\n");
+    if( debugfile )
+        fclose( debugfile );
 }
 
-void DX_Invalidate (int first, int last)
+static const char *sound_styles[] = { "waveout_looping", "waveout_dblbuff", "dsound_looping", "dsound_dblbuff", 0 };
+
+void target_save_options (FILE *f, struct uae_prefs *p)
 {
 }
 
-int DX_BitsPerCannon (void)
-{
-    return 8;
-}
-
-int DX_FillRect (uaecptr addr, uae_u16 X, uae_u16 Y, uae_u16 Width, uae_u16 Height, uae_u32 Pen, uae_u8 Bpp)
+int target_parse_option (struct uae_prefs *p, char *option, char *value)
 {
     return 0;
 }
 
-void gfx_set_picasso_state (int on)
+void WIN32_HandleRegistryStuff( void )
 {
-    if (screen_is_picasso == on)
-	return;
+    RGBFTYPE colortype      = RGBFB_NONE;
+    DWORD dwType            = REG_DWORD;
+    DWORD dwDisplayInfoSize = sizeof( colortype );
+    DWORD disposition;
+    char path[MAX_PATH] = "";
+    HKEY hWinUAEKeyLocal = NULL;
 
-    screen_is_picasso = on;
-    close_windows ();
-    open_windows ();
-    DX_SetPalette (0, 256);
-}
+    /* Create/Open the hWinUAEKey which points to our config-info */
+    if( RegCreateKeyEx( HKEY_CLASSES_ROOT, ".uae", 0, "", REG_OPTION_NON_VOLATILE,
+                          KEY_ALL_ACCESS, NULL, &hWinUAEKey, &disposition ) == ERROR_SUCCESS )
+    {
+	// Regardless of opening the existing key, or creating a new key, we will write the .uae filename-extension
+	// commands in.  This way, we're always up to date.
 
-void gfx_set_picasso_modeinfo (int w, int h, int depth, int rgbfmt)
-{
-    depth >>= 3;
-    if (picasso_vidinfo.width == w
-	&& picasso_vidinfo.height == h
-	&& picasso_vidinfo.depth == depth
-	&& picasso_vidinfo.selected_rgbformat == rgbfmt)
-	return;
+        /* Set our (default) sub-key to point to the "WinUAE" key, which we then create */
+        RegSetValueEx( hWinUAEKey, "", 0, REG_SZ, (CONST BYTE *)"WinUAE", strlen( "WinUAE" ) + 1 );
 
-    picasso_vidinfo.selected_rgbformat = rgbfmt;
-    picasso_vidinfo.width = w;
-    picasso_vidinfo.height = h;
-    picasso_vidinfo.depth = depth;
-    picasso_vidinfo.extra_mem = 1;
+        if( ( RegCreateKeyEx( HKEY_CLASSES_ROOT, "WinUAE\\shell\\Edit\\command", 0, "", REG_OPTION_NON_VOLATILE,
+                              KEY_ALL_ACCESS, NULL, &hWinUAEKeyLocal, &disposition ) == ERROR_SUCCESS ) )
+        {
+            /* Set our (default) sub-key to BE the "WinUAE" command for editing a configuration */
+            sprintf( path, "%s\\WinUAE.exe -f \"%%1\" -s use_gui=yes", start_path );
+            RegSetValueEx( hWinUAEKeyLocal, "", 0, REG_SZ, (CONST BYTE *)path, strlen( path ) + 1 );
+        }
+	RegCloseKey( hWinUAEKeyLocal );
 
-    if (screen_is_picasso) {
-	close_windows ();
-	open_windows ();
-	DX_SetPalette (0, 256);
+        if( ( RegCreateKeyEx( HKEY_CLASSES_ROOT, "WinUAE\\shell\\Open\\command", 0, "", REG_OPTION_NON_VOLATILE,
+                              KEY_ALL_ACCESS, NULL, &hWinUAEKeyLocal, &disposition ) == ERROR_SUCCESS ) )
+        {
+            /* Set our (default) sub-key to BE the "WinUAE" command for launching a configuration */
+            sprintf( path, "%s\\WinUAE.exe -f \"%%1\"", start_path );
+            RegSetValueEx( hWinUAEKeyLocal, "", 0, REG_SZ, (CONST BYTE *)path, strlen( path ) + 1 );
+        }
+	RegCloseKey( hWinUAEKeyLocal );
     }
-}
+    else
+    {
+	char szMessage[ MAX_PATH ];
+	WIN32GUI_LoadUIString( IDS_REGKEYCREATEFAILED, szMessage, MAX_PATH );
+        gui_message( szMessage );
+        hWinUAEKey = NULL;
+    }
+    RegCloseKey( hWinUAEKey );
 
-int graphics_init (void)
-{
-    SetPriorityClass (GetCurrentProcess (), process_desired_pri);
-
-    return open_windows ();
-}
-
-int graphics_setup (void)
-{
-    char *posn;
-    int i;
-
-    debugfile = CreateFile ("outfile", GENERIC_WRITE, 0, 0, CREATE_ALWAYS,
-			    0, NULL);
-
-    /* Get our executable's root-path */
-    start_path = xmalloc (MAX_PATH);
-    GetModuleFileName (0, start_path, MAX_PATH);
-    if (posn = strrchr (start_path, '\\'))
-	*posn = 0;
-
-    write_log ("UAE " UAEWINVERSION " Win32/DirectX, release " UAEWINRELEASE "\n");
-    strcpy (VersionStr, PROGNAME);
-    write_log ("\n(c) 1995-1997 Bernd Schmidt   - Core UAE concept and implementation."
-	       "\n(c) 1996-1997 Mathias Ortmann - Win32 port and enhancements."
-	       "\n(c) 1996-1997 Brian King      - Picasso96 and AHI support, GUI.\n"
-	       "\nPress F12 to show the Settings Dialog (GUI), Alt-F4 to quit.\n"
-	       "\nhttp://www.informatik.tu-muenchen.de/~ortmann/uae/\n\n");
-
-    if (! initlibs ())
-	return 0;
-
-    if (! register_classes ())
-	return 0;
-
-    if (! start_ddraw ())
-	return 0;
-    IDirectDraw_EnumDisplayModes (lpDD, 0, NULL, NULL, modesCallback);
-#if 0
-    figure_pixel_formats ();
-#endif
-    release_ddraw ();
-
-    return 1;
+    /* Create/Open the hWinUAEKey which points our config-info */
+    if( RegCreateKeyEx( HKEY_CURRENT_USER, "Software\\CodePoet Computing\\WinUAE", 0, "", REG_OPTION_NON_VOLATILE,
+                          KEY_ALL_ACCESS, NULL, &hWinUAEKey, &disposition ) == ERROR_SUCCESS )
+    {
+        if( disposition == REG_CREATED_NEW_KEY )
+        {
+            /* Create and initialize all our sub-keys to the default values */
+            colortype = 0;
+            RegSetValueEx( hWinUAEKey, "DisplayInfo", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
+            RegSetValueEx( hWinUAEKey, "xPos", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
+            RegSetValueEx( hWinUAEKey, "yPos", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
+            RegSetValueEx( hWinUAEKey, "FloppyPath", 0, REG_SZ, (CONST BYTE *)start_path, strlen( start_path ) + 1 );
+            RegSetValueEx( hWinUAEKey, "KickstartPath", 0, REG_SZ, (CONST BYTE *)start_path, strlen( start_path ) + 1 );
+            RegSetValueEx( hWinUAEKey, "hdfPath", 0, REG_SZ, (CONST BYTE *)start_path, strlen( start_path ) + 1 );
+        }
+	// Set this even when we're opening an existing key, so that the version info is always up to date.
+        RegSetValueEx( hWinUAEKey, "Version", 0, REG_SZ, (CONST BYTE *)VersionStr, strlen( VersionStr ) + 1 );
+        
+	RegQueryValueEx( hWinUAEKey, "DisplayInfo", 0, &dwType, (LPBYTE)&colortype, &dwDisplayInfoSize );
+	if( colortype == 0 ) /* No color information stored in the registry yet */
+	{
+	    char szMessage[ 4096 ];
+	    char szTitle[ MAX_PATH ];
+	    WIN32GUI_LoadUIString( IDS_GFXCARDCHECK, szMessage, 4096 );
+	    WIN32GUI_LoadUIString( IDS_GFXCARDTITLE, szTitle, MAX_PATH );
+	    
+	    if( MessageBox( NULL, szMessage, szTitle, 
+		MB_YESNO | MB_ICONWARNING | MB_TASKMODAL | MB_SETFOREGROUND ) == IDYES )
+	    {
+		colortype = WIN32GFX_FigurePixelFormats(0);
+		RegSetValueEx( hWinUAEKey, "DisplayInfo", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
+	    }
+	}
+	if( colortype )
+	{
+	    /* Set the 16-bit pixel format for the appropriate modes */
+	    WIN32GFX_FigurePixelFormats( colortype );
+	}
+    }
+    else
+    {
+	char szMessage[ MAX_PATH ];
+	WIN32GUI_LoadUIString( IDS_REGKEYCREATEFAILED, szMessage, MAX_PATH );
+        gui_message( szMessage );
+        hWinUAEKey = NULL;
+    }
 }
 
 void machdep_init (void)
 {
 }
 
-void graphics_leave (void)
-{
-    close_windows ();
-    dumpcustom ();
-    cleanuplibs ();
-}
+char *start_path = NULL;
+char help_file[ MAX_PATH ];
 
-#if defined NO_MAIN_IN_MAIN_C
 int PASCAL WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
 		    int nCmdShow)
 {
-    hInst = hInstance;
+    char *posn;
+    HANDLE hMutex;
+    OSVERSIONINFO osVersion;
 
-    printf ("WinMain called\n");
-
-    /*initgfxspecs(); */
-#ifdef __CYGWIN32__
-    {
-	char *token, *tmpbuf;
-	int my_argc, i;
-	char ** my_argv;
-
-	tmpbuf = my_strdup (lpCmdLine);
-	my_argc = 1;
-	if (strtok (tmpbuf, "\n ") != NULL) {
-	    do {
-		my_argc++;
-	    } while (strtok (NULL, "\n ") != NULL);
-	}
-	free (tmpbuf);
-
-	tmpbuf = my_strdup (lpCmdLine);
-
-	my_argv = (char **)malloc ((1 + my_argc) * sizeof (char **));
-	my_argv[0] = "uae.exe";
-
-	token = strtok (tmpbuf, "\n ");
-	i = 1;
-	while (token != NULL) {
-	    my_argv[i++] = my_strdup (token);
-	    token = strtok (NULL, "\n ");
-	}
-	my_argv[my_argc] = NULL;
-
-	real_main (my_argc, my_argv);
-    }
-#elif defined __MINGW32__
-    real_main (_argc, _argv);
+#ifdef __GNUC__
+    __asm__ ("leal -2300*1024(%%esp),%0" : "=r" (win32_stackbase) :);
 #else
-    real_main (__argc, __argv);
+__asm{
+    mov eax,esp
+    sub eax,2300*1024
+    mov win32_stackbase,eax
+ }
 #endif
+
+    hInst = hInstance;
+    hMutex = CreateMutex( NULL, FALSE, "WinUAE Instantiated" ); // To tell the installer we're running
+    
+    osVersion.dwOSVersionInfoSize = sizeof( OSVERSIONINFO );
+    if( GetVersionEx( &osVersion ) )
+    {
+	if( ( osVersion.dwPlatformId == VER_PLATFORM_WIN32_NT ) &&
+	    ( osVersion.dwMajorVersion <= 4 ) )
+	{
+	    /* WinUAE not supported on this version of Windows... */
+	    char szWrongOSVersion[ MAX_PATH ];
+	    WIN32GUI_LoadUIString( IDS_WRONGOSVERSION, szWrongOSVersion, MAX_PATH );
+	    gui_message( szWrongOSVersion );
+	    return FALSE;
+	}
+    }
+
+    /* Get our executable's root-path */
+    if( ( start_path = xmalloc( MAX_PATH ) ) )
+    {
+	GetModuleFileName( NULL, start_path, MAX_PATH );
+	if( ( posn = strrchr( start_path, '\\' ) ) )
+	    *posn = 0;
+	sprintf( help_file, "%s\\WinUAE.chm", start_path );
+
+	sprintf( VersionStr, "WinUAE %d.%d.%d, Release %d%s", UAEMAJOR, UAEMINOR, UAESUBREV, WINUAERELEASE, WINUAEBETA ? WINUAEBETASTR : "" );
+
+	logging_init ();
+	printf ("Hello, world\n");
+
+	if( WIN32_RegisterClasses() && WIN32_InitLibraries() && DirectDraw_Start() )
+	{
+	    struct foo {
+		DEVMODE actual_devmode;
+		char overrun[8];
+	    } devmode;
+
+	    DWORD i = 0;
+
+	    DirectDraw_EnumDisplayModes( 0, modesCallback );
+	    
+	    memset( &devmode, 0, sizeof(DEVMODE) + 8 );
+	    devmode.actual_devmode.dmSize = sizeof(DEVMODE);
+	    devmode.actual_devmode.dmDriverExtra = 8;
+#define ENUM_CURRENT_SETTINGS ((DWORD)-1)
+	    if( EnumDisplaySettings( NULL, ENUM_CURRENT_SETTINGS, (LPDEVMODE)&devmode ) )
+	    {
+		default_freq = devmode.actual_devmode.dmDisplayFrequency;
+		write_log( "Your Windows desktop refresh frequency is %d Hz\n", default_freq );
+		if( default_freq >= 70 )
+		    default_freq = 70;
+		else
+		    default_freq = 60;
+	    }
+
+	    WIN32_HandleRegistryStuff();
+	    if( WIN32_InitHtmlHelp() == 0 )
+	    {
+		char szMessage[ MAX_PATH ];
+		WIN32GUI_LoadUIString( IDS_NOHELP, szMessage, MAX_PATH );
+		write_log( szMessage );
+	    }
+
+	    DirectDraw_Release();
+#ifdef __MINGW32__
+	    real_main (_argc, _argv);
+#else
+	    real_main (__argc, __argv);
+#endif
+	}
+	free( start_path );
+    }
+	
+    WIN32_CleanupLibraries();
+    _fcloseall();
+    if( hWinUAEKey )
+	RegCloseKey( hWinUAEKey );
+    CloseHandle( hMutex );
     return FALSE;
 }
-#endif
+

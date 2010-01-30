@@ -1,30 +1,10 @@
  /*
   * UAE - The Un*x Amiga Emulator
-  * 
-  * "SSSSSYYYMMMETTTTTRIICCC MMMMMMULTIIIIIII PPPPPPENGGGGUIIIIN!!!!!"
-  *   -- David S. Miller
-  * 
-  * Symmetric Multi Penguin support - of course this also works on single
-  * penguin machines, but it's kind of pointless there.
-  * 
-  * This is a rough, simpleminded draft - expect changes when it gets ported 
-  * to other systems, and/or rewritten by someone who has experience with this
-  * kind of thing. This is just to get started and to see how this works out.
   *
-  * Copyright 1997 Bernd Schmidt
+  * Communication between threads
+  *
+  * Copyright 1997, 2001 Bernd Schmidt
   */
-
-#include <pthread.h>
-#include <semaphore.h>
-
-/* Sempahores. We use POSIX semaphores; if you are porting this to a machine
- * with different ones, make them look like POSIX semaphores. */
-typedef sem_t uae_sem_t;
-#define uae_sem_init sem_init
-#define uae_sem_post sem_post
-#define uae_sem_wait sem_wait
-#define uae_sem_trywait sem_trywait
-#define uae_sem_getvalue sem_getvalue
 
 typedef union {
     int i;
@@ -57,9 +37,16 @@ static __inline__ void init_comm_pipe (smp_comm_pipe *p, int size, int chunks)
     p->rdp = p->wrp = 0;
     p->reader_waiting = 0;
     p->writer_waiting = 0;
-    sem_init (&p->lock, 0, 1);
-    sem_init (&p->reader_wait, 0, 0);
-    sem_init (&p->writer_wait, 0, 0);
+    uae_sem_init (&p->lock, 0, 1);
+    uae_sem_init (&p->reader_wait, 0, 0);
+    uae_sem_init (&p->writer_wait, 0, 0);
+}
+
+static __inline__ void destroy_comm_pipe (smp_comm_pipe *p)
+{
+    uae_sem_destroy (&p->lock);
+    uae_sem_destroy (&p->reader_wait);
+    uae_sem_destroy (&p->writer_wait);
 }
 
 static __inline__ void maybe_wake_reader (smp_comm_pipe *p, int no_buffer)
@@ -68,7 +55,7 @@ static __inline__ void maybe_wake_reader (smp_comm_pipe *p, int no_buffer)
 	&& (no_buffer || ((p->wrp - p->rdp + p->size) % p->size) >= p->chunks))
     {
 	p->reader_waiting = 0;
-	sem_post (&p->reader_wait);
+	uae_sem_post (&p->reader_wait);
     }
 }
 
@@ -84,33 +71,33 @@ static __inline__ void write_comm_pipe_pt (smp_comm_pipe *p, uae_pt data, int no
 	return;
     }
     
-    sem_wait (&p->lock);
+    uae_sem_wait (&p->lock);
     if (nxwrp == p->rdp) {
 	/* Pipe full! */
 	p->writer_waiting = 1;
-	sem_post (&p->lock);
+	uae_sem_post (&p->lock);
 	/* Note that the reader could get in between here and do a
 	 * sem_post on writer_wait before we wait on it. That's harmless.
 	 * There's a similar case in read_comm_pipe_int_blocking. */
-	sem_wait (&p->writer_wait);
-	sem_wait (&p->lock);
+	uae_sem_wait (&p->writer_wait);
+	uae_sem_wait (&p->lock);
     }
     p->data[p->wrp] = data;
     p->wrp = nxwrp;
     maybe_wake_reader (p, no_buffer);
-    sem_post (&p->lock);
+    uae_sem_post (&p->lock);
 }
 
 static __inline__ uae_pt read_comm_pipe_pt_blocking (smp_comm_pipe *p)
 {
     uae_pt data;
 
-    sem_wait (&p->lock);
+    uae_sem_wait (&p->lock);
     if (p->rdp == p->wrp) {
 	p->reader_waiting = 1;
-	sem_post (&p->lock);
-	sem_wait (&p->reader_wait);
-	sem_wait (&p->lock);
+	uae_sem_post (&p->lock);
+	uae_sem_wait (&p->reader_wait);
+	uae_sem_wait (&p->lock);
     }
     data = p->data[p->rdp];
     p->rdp = (p->rdp + 1) % p->size;
@@ -118,9 +105,9 @@ static __inline__ uae_pt read_comm_pipe_pt_blocking (smp_comm_pipe *p)
     /* We ignore chunks here. If this is a problem, make the size bigger in the init call. */
     if (p->writer_waiting) {
 	p->writer_waiting = 0;
-	sem_post (&p->writer_wait);
+	uae_sem_post (&p->writer_wait);
     }
-    sem_post (&p->lock);
+    uae_sem_post (&p->lock);
     return data;
 }
 
@@ -166,12 +153,3 @@ static __inline__ void write_comm_pipe_pvoid (smp_comm_pipe *p, void *data, int 
     foo.pv = data;
     write_comm_pipe_pt (p, foo, no_buffer);
 }
-
-typedef pthread_t penguin_id;
-#define BAD_PENGUIN -1
-
-static __inline__ int start_penguin (void *(*f) (void *), void *arg, penguin_id *foo)
-{
-    return pthread_create (foo, 0, f, arg);
-}
-#define UAE_PENGUIN_EXIT pthread_exit(0)

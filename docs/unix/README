@@ -15,21 +15,9 @@ These are the requirements for getting the Unix version to run:
   - The 386 is the only CPU that UAE will not run on. You need a 486 or
     higher if you want to use an Intel CPU.
   - an ANSI C compiler. Do not use a K&R compiler, otherwise you risk getting
-    incorrect code. GCC is _strongly_ recommended. Don't use versions of GCC
-    older than 2.7.2. I wouldn't recommend 2.7.2 either.
+    incorrect code. GCC is _strongly_ recommended, preferrably version 2.95.3.
   - Optionally, the gtk library, available from ftp.gimp.org, and a pthreads
     library.
-
-For reference, this is my system configuration:
-  OS: Linux 2.2.13
-  CPU: AMD-K6-233
-  RAM: 64MB
-  X11: version 3.3.4
-  Compiler: gcc-2.95.1
-  Libraries: glibc-2.1.1 (includes libpthread), gtk-1.2.3
-  binutils: 2.9.1
-If you have the same configuration, and it doesn't run, you're doing something
-wrong ;)
 
 
 Compilation

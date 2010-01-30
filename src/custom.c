@@ -16,7 +16,7 @@
 
 #include "config.h"
 #include "options.h"
-#include "threaddep/penguin.h"
+#include "threaddep/thread.h"
 #include "uae.h"
 #include "gensound.h"
 #include "sounddep/sound.h"
@@ -125,13 +125,12 @@ static uae_s16 bpl1mod, bpl2mod;
 static uaecptr bplpt[8];
 uae_u8 *real_bplpt[8];
 /* Used as a debugging aid, to offset any bitplane temporarily.  */
-int bploff[8];
+int bpl_off[8];
 
 /*static int blitcount[256];  blitter debug */
 
 static struct color_entry current_colors;
 static unsigned int bplcon0, bplcon1, bplcon2, bplcon3, bplcon4;
-static int nr_planes_from_bplcon0, corrected_nr_planes_from_bplcon0;
 static unsigned int diwstrt, diwstop, diwhigh;
 static int diwhigh_written;
 static unsigned int ddfstrt, ddfstop;
@@ -511,7 +510,7 @@ static void finish_playfield_line (void)
     }
 
     if (dmaen (DMA_BITPLANE))
-	switch (nr_planes_from_bplcon0) {
+	switch (GET_PLANES (bplcon0)) {
 	case 8: bplpt[7] += m2;
 	case 7: bplpt[6] += m1;
 	case 6: bplpt[5] += m2;
@@ -564,6 +563,67 @@ static int fetchunits[] = { 8,8,8,0, 16,8,8,0, 32,16,8,0 };
 static int fetchstarts[] = { 3,2,1,0, 4,3,2,0, 5,4,3,0 };
 static int fm_maxplanes[] = { 3,2,1,0, 3,3,2,0, 3,3,3,0 }; 
 
+static int cycle_diagram_table[3][3][9][32];
+static int *curr_diagram;
+static int cycle_sequences[3*8] = { 2,1,2,1,2,1,2,1, 4,2,3,1,4,2,3,1, 8,4,6,2,7,3,5,1 };
+
+static void debug_cycle_diagram(void)
+{
+    int fm, res, planes, cycle, v;
+    char aa;
+
+    for (fm = 0; fm < 3; fm++) {
+	write_log ("FMODE %d\n=======\n", fm);
+	for (res = 0; res <= 2; res++) {
+	    for (planes = 0; planes <= 8; planes++) {
+		write_log("%d: ",planes);
+		for (cycle = 0; cycle < 32; cycle++) {
+		    v=cycle_diagram_table[fm][res][planes][cycle];
+		    if (v==0) aa='-'; else if(v>0) aa='1'; else aa='X';
+		    write_log("%c",aa);
+		}
+		write_log("\n");
+	    }
+	    write_log("\n");
+	}
+    }
+    fm=0;
+}
+
+static void create_cycle_diagram_table(void)
+{
+    int fm, res, cycle, planes, v;
+    int fetch_start, max_planes;
+    int *cycle_sequence;
+
+    for (fm = 0; fm <= 2; fm++) {
+	for (res = 0; res <= 2; res++) {
+	    max_planes = fm_maxplanes[fm * 4 + res];
+	    fetch_start = 1 << fetchstarts[fm * 4 + res];
+	    cycle_sequence = &cycle_sequences[(max_planes - 1) * 8];
+	    max_planes = 1 << max_planes;
+	    for (planes = 0; planes <= 8; planes++) {
+		for (cycle = 0; cycle < 32; cycle++)
+		    cycle_diagram_table[fm][res][planes][cycle] = -1;
+		if (planes <= max_planes) {
+		    for (cycle = 0; cycle < fetch_start; cycle++) {
+			if (cycle < max_planes && planes >= cycle_sequence[cycle & 7]) {
+			    v = 1;
+			} else {
+			    v = 0;
+			}
+			cycle_diagram_table[fm][res][planes][cycle] = v;
+		    }
+		}
+	    }
+	}
+    }
+#if 0
+    debug_cycle_diagram ();
+#endif
+}
+
+
 /* Used by the copper.  */
 static int estimated_last_fetch_cycle;
 static int cycle_diagram_shift;
@@ -613,7 +673,14 @@ STATIC_INLINE void compute_delay_offset (int hpos)
     /* this fixes most horizontal scrolling jerkyness but can't be correct */
     delayoffset = ((hpos - fm_maxplane - 0x18) & fetchstart_mask) << 1;
     delayoffset &= ~7;
-    delayoffset &= 31;
+    if (delayoffset & 8)
+	delayoffset = 8;
+    else if (delayoffset & 16)
+	delayoffset = 16;
+    else if (delayoffset & 32)
+	delayoffset = 32;
+    else
+	delayoffset = 0;
 }
 
 static void expand_fmodes (void)
@@ -684,7 +751,7 @@ STATIC_INLINE void fetch (int nr, int fm)
     uaecptr p;
     if (nr >= toscr_nr_planes)
 	return;
-    p = bplpt[nr] + bploff[nr];
+    p = bplpt[nr] + bpl_off[nr];
     switch (fm) {
     case 0:
 	fetched[nr] = chipmem_wget (p);
@@ -935,7 +1002,7 @@ STATIC_INLINE void beginning_of_plane_block (int pos, int dma, int fm)
 /* The usual inlining tricks - don't touch unless you know what you are doing.  */
 STATIC_INLINE void long_fetch_ecs (int plane, int nwords, int weird_number_of_bits, int dma)
 {
-    uae_u16 *real_pt = (uae_u16 *)pfield_xlateptr (bplpt[plane] + bploff[plane], nwords * 2);
+    uae_u16 *real_pt = (uae_u16 *)pfield_xlateptr (bplpt[plane] + bpl_off[plane], nwords * 2);
     int delay = ((plane & 1) ? toscr_delay2 : toscr_delay1);
     int tmp_nbits = out_nbits;
     uae_u32 shiftbuffer = todisplay[plane][0];
@@ -990,7 +1057,7 @@ STATIC_INLINE void long_fetch_ecs (int plane, int nwords, int weird_number_of_bi
 
 STATIC_INLINE void long_fetch_aga (int plane, int nwords, int weird_number_of_bits, int fm, int dma)
 {
-    uae_u32 *real_pt = (uae_u32 *)pfield_xlateptr (bplpt[plane] + bploff[plane], nwords * 2);
+    uae_u32 *real_pt = (uae_u32 *)pfield_xlateptr (bplpt[plane] + bpl_off[plane], nwords * 2);
     int delay = ((plane & 1) ? toscr_delay2 : toscr_delay1);
     int tmp_nbits = out_nbits;
     uae_u32 *shiftbuffer = todisplay[plane];
@@ -1226,7 +1293,7 @@ STATIC_INLINE void update_fetch (int until, int fm)
     update_toscr_planes ();
 
     pos = last_fetch_hpos;
-    cycle_diagram_shift = (last_fetch_hpos - fetch_cycle) & 7;
+    cycle_diagram_shift = (last_fetch_hpos - fetch_cycle) & fetchstart_mask;
 
     /* First, a loop that prepares us for the speedup code.  We want to enter
        the SPEEDUP case with fetch_state == fetch_was_plane0, and then unroll
@@ -2372,14 +2439,7 @@ static void BPLCON0 (int hpos, uae_u16 v)
     decide_fetch (hpos);
 
     bplcon0 = v;
-    nr_planes_from_bplcon0 = GET_PLANES (v);
-
-    if (currprefs.chipset_mask & CSMASK_AGA)
-	/* It's not clear how the copper timings are affected by the number
-	 * of bitplanes on AGA machines */
-	corrected_nr_planes_from_bplcon0 = 4;
-    else
-	corrected_nr_planes_from_bplcon0 = nr_planes_from_bplcon0 << GET_RES (bplcon0);
+    curr_diagram = cycle_diagram_table[fetchmode][GET_RES(bplcon0)][GET_PLANES (v)];
 
     if (currprefs.chipset_mask & CSMASK_AGA) {
 	decide_sprites (hpos);
@@ -2516,8 +2576,9 @@ static void DDFSTOP (int hpos, uae_u16 v)
 {
     /* ??? "Virtual Meltdown" sets this to 0xD2 and expects it to behave
        differently from 0xD0.  RSI Megademo sets it to 0xd1 and expects it
-       to behave like 0xd0.  So mask it with 0xFE.  */
-    v &= ~1;
+       to behave like 0xd0.  Some people also write the high 8 bits and
+       expect them to be ignored.  So mask it with 0xFE.  */
+    v &= 0xFE;
     if (ddfstop == v)
 	return;
     decide_line (hpos);
@@ -2554,6 +2615,7 @@ static void FMODE (uae_u16 v)
 	fetchmode = 2;
 	break;
     }
+    curr_diagram = cycle_diagram_table[fetchmode][GET_RES (v)][GET_PLANES (bplcon0)];
     expand_fmodes ();
 }
 
@@ -2753,9 +2815,9 @@ static uae_u16 COLOR_READ (int num)
     cg = (current_colors.color_regs_aga[colreg] >> 8) & 0xFF;
     cb = current_colors.color_regs_aga[colreg] & 0xFF;
     if (bplcon3 & 0x200)
-	cval = ((cr & 15) << 12) | ((cg & 15) << 4) | ((cb & 15) << 0);
+	cval = ((cr & 15) << 8) | ((cg & 15) << 4) | ((cb & 15) << 0);
     else
-	cval = ((cr >> 4) << 12) | ((cg >> 4) << 4) | ((cb >> 4) << 0);
+	cval = ((cr >> 4) << 8) | ((cg >> 4) << 4) | ((cb >> 4) << 0);
     return cval;
 }
 
@@ -2914,28 +2976,13 @@ static void JOYTEST (uae_u16 v)
 
 /* Determine which cycles are available for the copper in a display
  * with a agiven number of planes.  */
-static int cycles_for_plane[9][8] = {
-    { 0, -1, 0, -1, 0, -1, 0, -1 },
-    { 0, -1, 0, -1, 0, -1, 0, -1 },
-    { 0, -1, 0, -1, 0, -1, 0, -1 },
-    { 0, -1, 0, -1, 0, -1, 0, -1 },
-    { 0, -1, 0, -1, 0, -1, 0, -1 },
-    { 0, -1, 0, -1, 0, -1, 1, -1 },
-    { 0, -1, 1, -1, 0, -1, 1, -1 },
-    { 1, -1, 1, -1, 1, -1, 1, -1 },
-    { 1, -1, 1, -1, 1, -1, 1, -1 }
-};
 
-STATIC_INLINE int copper_cant_read (int hpos, int planes)
+STATIC_INLINE int copper_cant_read (int hpos)
 {
     int t;
 
     if (hpos + 1 >= maxhpos)
 	return 1;
-
-    if (currprefs.chipset_mask & CSMASK_AGA)
-	/* FIXME */
-	return 0;
 
     if (fetch_state == fetch_not_started || hpos < thisline_decision.plfleft)
 	return 0;
@@ -2944,7 +2991,7 @@ STATIC_INLINE int copper_cant_read (int hpos, int planes)
 	|| hpos >= estimated_last_fetch_cycle)
 	return 0;
 
-    t = cycles_for_plane[planes][(hpos + cycle_diagram_shift) & 7];
+    t = curr_diagram[(hpos + cycle_diagram_shift) & fetchstart_mask];
 #if 0
     if (t == -1)
 	abort ();
@@ -3213,7 +3260,7 @@ static void update_copper (int until_hpos)
 	}
 
 	c_hpos += 2;
-	if (copper_cant_read (old_hpos, corrected_nr_planes_from_bplcon0))
+	if (copper_cant_read (old_hpos))
 	    continue;
 
 	switch (cop_state.state) {
@@ -3616,7 +3663,10 @@ static void vsync_handler (void)
     if (bplcon0 & 4)
 	lof ^= 0x8000;
 
+    if (picasso_on)
+	picasso_handle_vsync ();
     vsync_handle_redraw (lof, lof_changed);
+
     if (quit_program > 0)
 	return;
 
@@ -3728,7 +3778,7 @@ static void hsync_handler (void)
 			cdp->wlen = cdp->len;
 			cdp->intreq2 = 1;
 		    } else
-			cdp->wlen--;
+			cdp->wlen = (cdp->wlen - 1) & 0xFFFF;
 		}
 	    }
 	}
@@ -3736,7 +3786,12 @@ static void hsync_handler (void)
 
     hardware_line_completed (next_lineno);
 
-    if (++vpos == (maxvpos + (lof != 0))) {
+    /* In theory only an equality test is needed here - but if a program
+       goes haywire with the VPOSW register, it can cause us to miss this,
+       with vpos going into the thousands (and all the nasty consequences
+       this has).  */
+
+    if (++vpos >= (maxvpos + (lof != 0))) {
 	vpos = 0;
 	vsync_handler ();
     }
@@ -3886,6 +3941,7 @@ void customreset (void)
 	copcon = 0;
 	DSKLEN (0, 0);
 
+	bplcon0 = 0;
 	bplcon4 = 0x11; /* Get AGA chipset into ECS compatibility mode */
 	bplcon3 = 0xC00;
 
@@ -4091,7 +4147,9 @@ void custom_init (void)
     mousestate = unknown_mouse;
 
     if (needmousehack ())
-	mousehack_setfollow();
+	mousehack_setfollow ();
+
+    create_cycle_diagram_table ();
 }
 
 /* Custom chip memory bank */
@@ -4690,7 +4748,7 @@ uae_u8 *save_custom_sprite(int *len, int num)
 {
     uae_u8 *dstbak, *dst;
 
-    dstbak = dst = malloc (1 + 4 + 2 + 2 + 2 +2 + 3*2);
+    dstbak = dst = malloc (25);
     SL (spr[num].pt);		/* 120-13E SPRxPT */
     SW (sprpos[num]);		/* 1x0 SPRxPOS */
     SW (sprctl[num]);		/* 1x2 SPRxPOS */

@@ -12,7 +12,7 @@
 
 #include "config.h"
 #include "options.h"
-#include "threaddep/penguin.h"
+#include "threaddep/thread.h"
 #include "memory.h"
 #include "custom.h"
 #include "keyboard.h"

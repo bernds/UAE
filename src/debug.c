@@ -15,7 +15,7 @@
 
 #include "config.h"
 #include "options.h"
-#include "threaddep/penguin.h"
+#include "threaddep/thread.h"
 #include "uae.h"
 #include "memory.h"
 #include "custom.h"
@@ -673,11 +673,11 @@ void debug (void)
 		int plane = readint (&inptr);
 		int offs = readint (&inptr);
 		if (plane >= 0 && plane < 8)
-		    bploff[plane] = offs;
+		    bpl_off[plane] = offs;
 	    } else {
 		int i;
 		for (i = 0; i < 8; i++)
-		    printf ("Plane %d offset %d\n", i, bploff[i]);
+		    printf ("Plane %d offset %d\n", i, bpl_off[i]);
 	    }
 	    break;
 	case 'h':

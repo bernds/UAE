@@ -19,6 +19,7 @@ AC_PATH_PROG(MAKEDEPPRG, makedepend, not-found)
 AC_PATH_PROG(FILEPRG, file, not-found)
 AC_PATH_PROG(WRCPRG, wrc, not-found)
 AC_PATH_PROG(RCLPRG, rcl, not-found)
+AC_PATH_PROG(SDL_CONFIG, sdl-config, not-found)
 
 AC_AIX
 AC_ISC_POSIX
@@ -83,7 +84,7 @@ AC_CHECK_HEADERS(windows.h ddraw.h)
 AC_CHECK_HEADER(be_math.h, HAVE_BEOS=yes, HAVE_BEOS=no)
 AC_CHECK_HEADERS(machine/joystick.h)
 AC_CHECK_HEADERS(devices/ahi.h)
-AC_CHECK_HEADERS(dmedia/audio.h)
+AC_CHECK_HEADERS(dmedia/audio.h SDL/SDL.h)
 AC_CHECK_HEADERS(libraries/cybergraphics.h cybergraphx/cybergraphics.h)
 
 AC_CHECK_SIZEOF(char, 1)
@@ -111,7 +112,8 @@ AC_PROG_GCC_TRADITIONAL
 AC_FUNC_MEMCMP
 AC_TYPE_SIGNAL
 AC_FUNC_UTIME_NULL
-AC_CHECK_FUNCS(getcwd getopt strdup gettimeofday sigaction mkdir rmdir select strerror strstr)
+AC_CHECK_FUNCS(getcwd getopt strdup gettimeofday sigaction mkdir rmdir)
+AC_CHECK_FUNCS(select strerror strstr isnan isinf setitimer)
 AC_CHECK_FUNCS(tcgetattr cfmakeraw readdir_r vprintf vsprintf vfprintf)
 
 dnl GNOME_FILEUTILS_CHECKS will fail for native Win32 compilers like Watcom C
@@ -135,6 +137,15 @@ else
   #endif
   ], [AC_MSG_RESULT(yes); HAVE_POS=yes], AC_MSG_RESULT(no); HAVE_POS=no)
 fi
+
+if test "$SDL_CONFIG" = "not-found" ; then
+  HAVE_SDL_LIB=no
+else
+  HAVE_SDL_LIB=yes
+  SDL_CFLAGS=`$SDL_CONFIG --cflags`
+  SDL_LIBS=`$SDL_CONFIG --libs`
+fi
+
 
 dnl Verify that the ncurses installation makes some sense.
 
@@ -165,7 +176,6 @@ if [[ "x$HAVE_NCURSES_LIB" = "xyes" ]]; then
     fi
   fi
 fi
-
 
 AC_MSG_CHECKING(for pthread library)
 TMP_SAVE_CFLAGS=$CFLAGS
@@ -215,21 +225,29 @@ WANT_UI=dunno
 WANT_NCURSES_UI=no
 WANT_DGA=no
 WANT_VIDMODE=no
-SYSTEM_IS_ELF=dunno
 
 AC_ARG_ENABLE(profiling,[  --enable-profiling      Build a profiling (SLOW!) version],[DO_PROFILING=$enableval],[])
 AC_ARG_WITH(svgalib,[  --with-svgalib          Use SVGAlib for graphics output],[WANT_SVGALIB=$withval],[])
+AC_ARG_WITH(sdl,[  --with-sdl              Use SDL library],[WANT_SDL=$withval],[])
 AC_ARG_WITH(asciiart,[  --with-asciiart         Use ncurses ascii art for graphics output],[WANT_ASCIIART=$withval],[])
 AC_ARG_ENABLE(dga,[  --enable-dga            X11 version: Use the DGA extension],[WANT_DGA=$enableval],[])
 AC_ARG_ENABLE(vidmode,[  --enable-vidmode        X11 version: Use the XF86VidMode extension],[WANT_VIDMODE=$enableval],[])
 AC_ARG_ENABLE(ui,[  --enable-ui             Use a user interface if possible (default on)],[WANT_UI=$enableval],[])
-AC_ARG_WITH(elf,[  --with-elf              Explicitly state that this system is ELF],[SYSTEM_IS_ELF=$withval],[])
+AC_ARG_WITH(hostcc,[  --with-hostcc=x         Use a x as compiler for the host system],[HOSTCC=$withval],[HOSTCC=$CC])
 
 dnl Some simple plausibility tests...
 
 if [[ "x$WANT_DGA" = "xyes" ]]; then
-  if [[ "x$WANT_SVGALIB" = "xyes" -o "x$WANT_ASCIIART" = "xyes" ]]; then
-    echo "You can't enable DGA for SVGAlib and ncurses targets!"
+  if [[ "x$WANT_SVGALIB" = "xyes" -o "x$WANT_ASCIIART" = "xyes" -o "x$WANT_SDL" = "xyes" ]]; then
+    echo "You can't enable DGA for SVGAlib, SDL and ncurses targets!"
+    NR_ERRORS=`expr $NR_ERRORS + 1`
+    WANT_DGA=no
+  fi
+fi
+
+if [[ "x$WANT_SVGALIB" = "xyes" ]]; then
+  if [[ "x$WANT_ASCIIART" = "xyes" -o "x$WANT_SDL" = "xyes" ]]; then
+    echo "You can't enable both SVGAlib and other targets!"
     NR_ERRORS=`expr $NR_ERRORS + 1`
     WANT_DGA=no
   fi
@@ -259,12 +277,23 @@ if [[ "x$WANT_SVGALIB" = "xyes" ]]; then
   fi
 fi
 
+if [[ "x$WANT_SDL" = "xyes" ]]; then
+  if [[ "x$HAVE_SDL_LIB" = "xno" ]]; then
+    echo "Could not find libSDL, disabling SDL support."
+    NR_ERRORS=`expr $NR_ERRORS + 1`
+    WANT_SDL=no
+  else
+    LIBS="$LIBS $SDL_LIBS"
+    ADDITIONAL_CFLAGS="$ADDITIONAL_CFLAGS $SDL_CFLAGS -DUSE_SDL"
+  fi
+fi
+
 if [[ "x$WANT_ASCIIART" = "xyes" ]]; then
   if [[ "x$HAVE_NCURSES_LIB" = "xno" ]]; then
     echo "Could not find libncurses, disabling ascii art support."
     NR_ERRORS=`expr $NR_ERRORS + 1`
     WANT_ASCIIART=no
-  else if [[ "x$WANT_SVGALIB" = "xyes" ]]; then
+  else if [[ "x$WANT_SVGALIB" = "xyes" -o "x$WANT_SDL" = "xyes" ]]; then
     echo "You can't configure for both ncurses and another target. Disabling ncurses."
     NR_ERRORS=`expr $NR_ERRORS + 1`
     WANT_ASCIIART=no
@@ -482,7 +511,6 @@ dnl Find out some things about the system
 dnl  - whether we have GCC 2.7 or better.
 dnl  - what CPU we have (to use some assembly hacks on the x86)
 dnl  - whether we are on a Linux system
-dnl  - whether that is an ELF system
 dnl  - whether it's running glibc-2.0
 
 MACHDEP=md-generic
@@ -626,40 +654,6 @@ rm -f conftest*
 
 AC_ARG_ENABLE(threads,[  --enable-threads        Enable some generally useful thread support],[USE_THREADS=$enableval],[])
 
-if [[ "x$NEED_THREAD_SUPPORT" = "xyes" ]]; then
-  if [[ "x$USE_THREADS" != "xyes" ]]; then
-    echo "The gtk+ GUI needs threads; enabling thread support."
-  fi
-fi
-
-if [[ "x$USE_THREADS" = "xyes" -o "x$NEED_THREAD_SUPPORT" = "xyes" ]]; then
-  if [[ "x$HAVE_PTHREAD_LIB" = "xyes" ]]; then
-    THREADDEP=td-posix
-    CFLAGS="$CFLAGS -DSUPPORT_THREADS -D_REENTRANT"
-    LIBS="$LIBS -lpthread"
-    if [[ "x$HAVE_POSIX4_LIB" = "xyes" ]]; then
-      LIBS="$LIBS -lposix4"
-    fi
-
-    if [[ "x$USE_THREADS" = "xyes" ]]; then    
-      CFLAGS="$CFLAGS -DUAE_FILESYS_THREADS"
-    fi
-
-    if [[ "x$HAVELINUX" = "xno" -o "x$HAVEGLIBC2" = "xno" ]]; then
-      echo "Thread support has only been tested on Linux systems with glibc-2.0"
-      NR_WARNINGS=`expr $NR_WARNINGS + 1`
-    fi
-    if [[ "x$TARGET" = "xsvgalib" ]]; then
-      echo "If you didn't compile a fixed version of SVGAlib then thread support"
-      echo "in UAE will lock your machine real hard."
-      NR_WARNINGS=`expr $NR_WARNINGS + 1`
-    fi
-  else
-    echo "You tried to enable threads, but I couldn't find a thread library!"
-    NR_ERRORS=`expr $NR_ERRORS + 1`
-  fi
-fi
-
 dnl See if we have something better than GCC 2.7.
 
 if [[ "x$HAVEGCC27" = "xyes" -a "x$HAVEI386" = "xyes" ]]; then
@@ -771,8 +765,10 @@ fi
 fi
 fi
 
+FSDBOBJS=fsdb_unix.o
 if [[ "x$TARGET" = "xwin32" ]]; then
   OSDEP=od-win32
+  FSDBOBJS=osdep/fsdb_win32.o
   if test $ac_cv_prog_gcc = yes; then
     LIBS="$LIBS -lddraw -lwinmm -lcomctl32 -lcomdlg32 -luser32 -lgdi32 -lkernel32 -ladvapi32 -lshell32"
   else if test $uae_cv_prog_cc_watcom = yes; then
@@ -820,6 +816,11 @@ if [[ "x$USE_FILE_SOUND" = "xyes" ]]; then
   AC_MSG_RESULT(file output)
   SOUNDDEP=sd-file
   USE_SOUND=yes  
+else if [[ "x$WANT_SDL" = "xyes" ]]; then
+  AC_MSG_RESULT(SDL)
+  SOUNDDEP=sd-sdl
+  USE_SOUND=yes
+  NEED_THREAD_SUPPORT=yes
 else if [[ "x$HAVE_USS_SOUND" = "xyes" ]]; then
   AC_MSG_RESULT(USS)
   SOUNDDEP=sd-uss
@@ -876,6 +877,44 @@ fi
 fi
 fi
 fi
+fi
+
+if [[ "x$NEED_THREAD_SUPPORT" = "xyes" ]]; then
+  if [[ "x$USE_THREADS" != "xyes" ]]; then
+    echo "Threads are needed for this configuration; enabling thread support."
+  fi
+fi
+
+if [[ "x$USE_THREADS" = "xyes" -o "x$NEED_THREAD_SUPPORT" = "xyes" ]]; then
+  if [[ "x$WANT_SDL" = "xyes" ]]; then
+    THREADDEP=td-sdl
+  else if [[ "x$HAVE_PTHREAD_LIB" = "xyes" ]]; then
+    THREADDEP=td-posix
+    CFLAGS="$CFLAGS -DSUPPORT_THREADS -D_REENTRANT"
+    LIBS="$LIBS -lpthread"
+    if [[ "x$HAVE_POSIX4_LIB" = "xyes" ]]; then
+      LIBS="$LIBS -lposix4"
+    fi
+
+    if [[ "x$USE_THREADS" = "xyes" ]]; then    
+      CFLAGS="$CFLAGS -DUAE_FILESYS_THREADS"
+    fi
+
+    if [[ "x$HAVELINUX" = "xno" -o "x$HAVEGLIBC2" = "xno" ]]; then
+      echo "Thread support has only been tested on Linux systems with glibc-2.0"
+      NR_WARNINGS=`expr $NR_WARNINGS + 1`
+    fi
+    if [[ "x$TARGET" = "xsvgalib" ]]; then
+      echo "If you didn't compile a fixed version of SVGAlib then thread support"
+      echo "in UAE will lock your machine real hard."
+      NR_WARNINGS=`expr $NR_WARNINGS + 1`
+    fi
+  else
+    echo "You tried to enable threads, but I couldn't find a thread library!"
+    NR_ERRORS=`expr $NR_ERRORS + 1`
+  fi
+  fi
+fi
 
 SCSIOBJS=scsi-none.o
 AC_ARG_ENABLE(scsi-device,[  --enable-scsi-device    Enable the uaescsi.device],[USE_SCSI_DEVICE=$enableval],[])
@@ -904,11 +943,14 @@ fi
 
 dnl Special case hack for BSD: try to use the Linux joystick.c.
 
-if [[ "x$HAVE_MACHINE_JOYSTICK_H" = "xyes" ]]; then
-  AC_TRY_COMPILE([#include <machine/joystick.h>],[{ struct joystick a; }],
+if [[ "x$WANT_SDL" = "xyes" ]]; then
+    OD_JOYSTICK=sdl-joystick.c
+else if [[ "x$HAVE_MACHINE_JOYSTICK_H" = "xyes" ]]; then
+    AC_TRY_COMPILE([#include <machine/joystick.h>],[{ struct joystick a; }],
     OD_JOYSTICK=od-linux/joystick.c,)
 else
     OD_JOYSTICK=$OSDEP/joystick.c
+fi
 fi
 
 rm -f src/machdep
@@ -944,7 +986,7 @@ if [[ "x$TARGET" = "xamigaos" -o "x$TARGET" = "xp_os" ]]; then
 fi
 
 AC_SUBST(ac_cv_c_inline)
-AC_SUBST(WRC)
+AC_SUBST(WRCPRG)
 AC_SUBST(NO_SCHED_CFLAGS)
 AC_SUBST(LIBRARIES)
 AC_SUBST(TARGET)
@@ -954,6 +996,7 @@ AC_SUBST(ASMOBJS)
 AC_SUBST(SCSIOBJS)
 AC_SUBST(CPUOBJS)
 AC_SUBST(DEBUGOBJS)
+AC_SUBST(FSDBOBJS)
 AC_SUBST(SET_MAKE)
 AC_SUBST(MATHLIB)
 AC_SUBST(SHM_SUPPORT_LINKS)
@@ -1002,6 +1045,14 @@ if [[ "x$MACHDEP" = "xmd-i386-gcc" ]]; then
 fi
 echo "#include \"$abssrcdir/src/include/$FPP_H\"" >src/md-fpp.h
 
+mkdir -p src/tools
+progname=$0
+changequote(,)dnl
+srcd=`echo ${progname} | sed -e 's,[^/]*$,,;s,/$,,;s,^$,.,'`
+changequote([,])dnl
+topsrcdir=`cd $srcd; pwd`
+cd src/tools
+CC=$HOSTCC $topsrcdir/src/tools/configure
 
 echo
 echo

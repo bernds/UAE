@@ -125,7 +125,7 @@ extern uae_u32 lorestab_l[256][2];
 /* AGA mode color lookup tables */
 extern unsigned int xredcolors[256], xgreencolors[256], xbluecolors[256];
 
-extern int bploff[8];
+extern int bpl_off[8];
 
 /* get resolution from bplcon0 */
 #define GET_RES(CON0) (((CON0) & 0x8000) ? RES_HIRES : ((CON0) & 0x40) ? RES_SUPERHIRES : RES_LORES)

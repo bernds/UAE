@@ -11,8 +11,6 @@
 #include "sysdeps.h"
 #include <ctype.h>
 
-#include "options.h"
-
 struct line {
     struct line *next, *prev;
     int delet;

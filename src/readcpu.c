@@ -10,8 +10,6 @@
 #include "sysdeps.h"
 #include <ctype.h>
 
-#include "config.h"
-#include "options.h"
 #include "readcpu.h"
 
 int nr_cpuop_funcs;

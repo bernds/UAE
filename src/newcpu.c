@@ -759,7 +759,7 @@ static void Interrupt(int nr)
     set_special (SPCFLAG_INT);
 }
 
-static uae_u32 caar, cacr, itt0, itt1, dtt0, dtt1, tc, mmusr;
+static uae_u32 caar, cacr, itt0, itt1, dtt0, dtt1, tc, mmusr, urp, srp;
 
 int m68k_move2c (int regno, uae_u32 *regp)
 {
@@ -775,7 +775,7 @@ int m68k_move2c (int regno, uae_u32 *regp)
 	case 1: regs.dfc = *regp & 7; break;
 	case 2: cacr = *regp & (currprefs.cpu_level < 4 ? 0x3 : 0x80008000); break;
 	case 3: tc = *regp & 0xc000; break;
-	  /* Mask out fields that should be zero.  */
+	    /* Mask out fields that should be zero.  */
 	case 4: itt0 = *regp & 0xffffe364; break;
 	case 5: itt1 = *regp & 0xffffe364; break;
 	case 6: dtt0 = *regp & 0xffffe364; break;
@@ -786,6 +786,9 @@ int m68k_move2c (int regno, uae_u32 *regp)
 	case 0x802: caar = *regp & 0xfc; break;
 	case 0x803: regs.msp = *regp; if (regs.m == 1) m68k_areg(regs, 7) = regs.msp; break;
 	case 0x804: regs.isp = *regp; if (regs.m == 0) m68k_areg(regs, 7) = regs.isp; break;
+	case 0x805: mmusr = *regp; break;
+	case 0x806: urp = *regp; break;
+	case 0x807: srp = *regp; break;
 	default:
 	    op_illg (0x4E7B);
 	    return 0;
@@ -818,6 +821,8 @@ int m68k_movec2 (int regno, uae_u32 *regp)
 	case 0x803: *regp = regs.m == 1 ? m68k_areg(regs, 7) : regs.msp; break;
 	case 0x804: *regp = regs.m == 0 ? m68k_areg(regs, 7) : regs.isp; break;
 	case 0x805: *regp = mmusr; break;
+	case 0x806: *regp = urp; break;
+	case 0x807: *regp = srp; break;
 	default:
 	    op_illg (0x4E7A);
 	    return 0;

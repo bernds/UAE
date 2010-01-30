@@ -632,7 +632,7 @@ static void audio_handler (int nr)
 	cdp->state = 5;
 	INTREQ(0x8000 | (0x80 << nr));
 	if (cdp->wlen != 1)
-	    cdp->wlen--;
+	    cdp->wlen = (cdp->wlen - 1) & 0xFFFF;
 	cdp->nextdat = chipmem_bank.wget(cdp->pt);
 
 	cdp->pt += 2;
@@ -672,7 +672,7 @@ static void audio_handler (int nr)
 	/* Period attachment? */
 	if (adkcon & (0x10 << nr)) {
 	    if (cdp->intreq2 && cdp->dmaen)
-		INTREQ(0x8000 | (0x80 << nr));
+		INTREQ (0x8000 | (0x80 << nr));
 	    cdp->intreq2 = 0;
 
 	    cdp->dat = cdp->nextdat;
@@ -753,8 +753,8 @@ static void ahi_handler (int nr)
 	cdp->state = 5;
 	INTREQ (0xA000);
 	if (cdp->wlen != 1)
-	    cdp->wlen--;
-	cdp->nextdat = chipmem_bank.wget(cdp->pt);
+	    cdp->wlen = (cdp->wlen - 1) & 0xFFFF;
+	cdp->nextdat = chipmem_bank.wget (cdp->pt);
 
 	cdp->pt += 2;
 	break;
@@ -850,6 +850,7 @@ STATIC_INLINE int sound_prefs_changed (void)
     return (changed_prefs.produce_sound != currprefs.produce_sound
 	    || changed_prefs.stereo != currprefs.stereo
 	    || changed_prefs.mixed_stereo != currprefs.mixed_stereo
+	    || changed_prefs.sound_maxbsiz != currprefs.sound_maxbsiz
 	    || changed_prefs.sound_freq != currprefs.sound_freq
 	    || changed_prefs.sound_bits != currprefs.sound_bits);
 }
@@ -864,7 +865,7 @@ void check_prefs_changed_audio (void)
 	currprefs.mixed_stereo = changed_prefs.mixed_stereo;
 	currprefs.sound_bits = changed_prefs.sound_bits;
 	currprefs.sound_freq = changed_prefs.sound_freq;
-
+	currprefs.sound_maxbsiz = changed_prefs.sound_maxbsiz;
 	if (currprefs.produce_sound >= 2) {
 	    if (init_audio ()) {
 		last_cycles = get_cycles () - 1;
@@ -1014,8 +1015,10 @@ void AUDxPER (int nr, uae_u16 v)
 	&& per != PERIOD_MAX)
     {
 	audio_channel[nr].evtime = CYCLE_UNIT;
-	schedule_audio ();
-	events_schedule ();
+	if (currprefs.produce_sound > 0) {
+	    schedule_audio ();
+	    events_schedule ();
+	}
     }
     audio_channel[nr].per = per;
 }

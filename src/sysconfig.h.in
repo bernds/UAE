@@ -200,6 +200,9 @@
 /* Define if you have the select function.  */
 #undef HAVE_SELECT
 
+/* Define if you have the setitimer function.  */
+#undef HAVE_SETITIMER
+
 /* Define if you have the sigaction function.  */
 #undef HAVE_SIGACTION
 
@@ -230,6 +233,9 @@
 /* Define if you have the vsprintf function.  */
 #undef HAVE_VSPRINTF
 
+/* Define if you have the <SDL/SDL.h> header file.  */
+#undef HAVE_SDL_SDL_H
+
 /* Define if you have the <curses.h> header file.  */
 #undef HAVE_CURSES_H
 
@@ -244,6 +250,9 @@
 
 /* Define if you have the <dirent.h> header file.  */
 #undef HAVE_DIRENT_H
+
+/* Define if you have the <dmedia/audio.h> header file.  */
+#undef HAVE_DMEDIA_AUDIO_H
 
 /* Define if you have the <fcntl.h> header file.  */
 #undef HAVE_FCNTL_H

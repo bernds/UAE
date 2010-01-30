@@ -17,7 +17,7 @@
 
 /****************************************************************************/
 
-#include "threaddep/penguin.h"
+#include "threaddep/thread.h"
 #include "uae.h"
 #include "config.h"
 #include "options.h"

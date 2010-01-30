@@ -34,7 +34,7 @@
 
 #include "config.h"
 #include "options.h"
-#include "threaddep/penguin.h"
+#include "threaddep/thread.h"
 #include "uae.h"
 #include "memory.h"
 #include "custom.h"
@@ -1302,14 +1302,14 @@ STATIC_INLINE void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 
 	do_color_changes (pfield_do_fill_line, pfield_do_linetoscr);
 	if (dh == dh_emerg)
-	    memcpy (row_map[gfx_ypos], xlinebuffer + linetoscr_x_adjust_bytes, gfxvidinfo.rowbytes);
+	    memcpy (row_map[gfx_ypos], xlinebuffer + linetoscr_x_adjust_bytes, gfxvidinfo.pixbytes * gfxvidinfo.width);
 
 	do_flush_line (gfx_ypos);
 	if (do_double) {
 	    if (dh == dh_emerg)
-		memcpy (row_map[follow_ypos], xlinebuffer + linetoscr_x_adjust_bytes, gfxvidinfo.rowbytes);
+		memcpy (row_map[follow_ypos], xlinebuffer + linetoscr_x_adjust_bytes, gfxvidinfo.pixbytes * gfxvidinfo.width);
 	    else if (dh == dh_buf)
-		memcpy (row_map[follow_ypos], row_map[gfx_ypos], gfxvidinfo.rowbytes);
+		memcpy (row_map[follow_ypos], row_map[gfx_ypos], gfxvidinfo.pixbytes * gfxvidinfo.width);
 	    do_flush_line (follow_ypos);
 	}
 	if (currprefs.gfx_lores == 2)
@@ -1342,14 +1342,14 @@ STATIC_INLINE void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 	do_color_changes (pfield_do_fill_line, pfield_do_fill_line);
 
 	if (dh == dh_emerg)
-	    memcpy (row_map[gfx_ypos], xlinebuffer + linetoscr_x_adjust_bytes, gfxvidinfo.rowbytes);
+	    memcpy (row_map[gfx_ypos], xlinebuffer + linetoscr_x_adjust_bytes, gfxvidinfo.pixbytes * gfxvidinfo.width);
 
 	do_flush_line (gfx_ypos);
 	if (do_double) {
 	    if (dh == dh_emerg)
-		memcpy (row_map[follow_ypos], xlinebuffer + linetoscr_x_adjust_bytes, gfxvidinfo.rowbytes);
+		memcpy (row_map[follow_ypos], xlinebuffer + linetoscr_x_adjust_bytes, gfxvidinfo.pixbytes * gfxvidinfo.width);
 	    else if (dh == dh_buf)
-		memcpy (row_map[follow_ypos], row_map[gfx_ypos], gfxvidinfo.rowbytes);
+		memcpy (row_map[follow_ypos], row_map[gfx_ypos], gfxvidinfo.pixbytes * gfxvidinfo.width);
 	    /* If dh == dh_line, do_flush_line will re-use the rendered line
 	     * from linemem.  */
 	    do_flush_line (follow_ypos);
@@ -1469,6 +1469,120 @@ static void init_drawing_frame (void)
     drawing_color_matches = -1;
 }
 
+/*
+ * Some code to put status information on the screen.
+ */
+
+#define TD_PADX 10
+#define TD_PADY 2
+#define TD_WIDTH 32
+#define TD_LED_WIDTH 24
+#define TD_LED_HEIGHT 4
+
+#define TD_RIGHT 1
+#define TD_BOTTOM 2
+
+static int td_pos = (TD_RIGHT|TD_BOTTOM);
+
+#define TD_NUM_WIDTH 7
+#define TD_NUM_HEIGHT 7
+
+#define TD_TOTAL_HEIGHT (TD_PADY * 2 + TD_NUM_HEIGHT)
+
+static char *numbers = { /* ugly */
+"------ ------ ------ ------ ------ ------ ------ ------ ------ ------ "
+"-xxxxx ---xx- -xxxxx -xxxxx -x---x -xxxxx -xxxxx -xxxxx -xxxxx -xxxxx "
+"-x---x ----x- -----x -----x -x---x -x---- -x---- -----x -x---x -x---x "
+"-x---x ----x- -xxxxx -xxxxx -xxxxx -xxxxx -xxxxx ----x- -xxxxx -xxxxx "
+"-x---x ----x- -x---- -----x -----x -----x -x---x ---x-- -x---x -----x "
+"-xxxxx ----x- -xxxxx -xxxxx -----x -xxxxx -xxxxx ---x-- -xxxxx -xxxxx "
+"------ ------ ------ ------ ------ ------ ------ ------ ------ ------ "
+};
+
+STATIC_INLINE void putpixel (int x, xcolnr c8)
+{
+    switch(gfxvidinfo.pixbytes)
+    {
+    case 1:
+	xlinebuffer[x] = (uae_u8)c8;
+	break;
+    case 2:
+    {
+	uae_u16 *p = (uae_u16 *)xlinebuffer + x;
+	*p = c8;
+	break;
+    }
+    case 3:
+	/* no 24 bit yet */
+	break;
+    case 4:
+    {
+	uae_u32 *p = (uae_u32 *)xlinebuffer + x;
+	*p = c8;
+	break;
+    }
+    }
+}
+
+static void write_tdnumber (int x, int y, int num)
+{
+    int j;
+    uae_u8 *numptr;
+    
+    numptr = numbers + num * TD_NUM_WIDTH + 10 * TD_NUM_WIDTH * y;
+    for (j = 0; j < TD_NUM_WIDTH; j++) {
+	putpixel (x + j, *numptr == 'x' ? xcolors[0xfff] : xcolors[0x000]);
+	numptr++;
+    }
+}
+
+static void draw_status_line (int line)
+{
+    int x, y, i, j, led, on;
+    int on_rgb, off_rgb, c;
+    uae_u8 *buf;
+    
+    if (td_pos & TD_RIGHT)
+        x = gfxvidinfo.width - TD_PADX - 5*TD_WIDTH;
+    else
+        x = TD_PADX;
+
+    y = line - (gfxvidinfo.height - TD_TOTAL_HEIGHT);
+    xlinebuffer = gfxvidinfo.linemem;
+    if (xlinebuffer == 0)
+	xlinebuffer = row_map[line];
+
+    memset (xlinebuffer, 0, gfxvidinfo.width * gfxvidinfo.pixbytes);
+
+    for (led = 0; led < 5; led++) {
+	int track;
+	if (led > 0) {
+	    track = gui_data.drive_track[led-1];
+	    on = gui_data.drive_motor[led-1];
+	    on_rgb = 0x0f0;
+	    off_rgb = 0x040;
+	} else {
+	    track = -1;
+	    on = gui_data.powerled;
+	    on_rgb = 0xf00;
+	    off_rgb = 0x400;
+	}
+	c = xcolors[on ? on_rgb : off_rgb];
+
+	for (j = 0; j < TD_LED_WIDTH; j++) 
+	    putpixel (x + j, c);
+
+	if (y >= TD_PADY && y - TD_PADY < TD_NUM_HEIGHT) {
+	    if (track >= 0) {
+		int offs = (TD_WIDTH - 2 * TD_NUM_WIDTH) / 2;
+		write_tdnumber (x + offs, y - TD_PADY, track / 10);
+		write_tdnumber (x + offs + TD_NUM_WIDTH, y - TD_PADY, track % 10);
+	    }
+	}
+	x += TD_WIDTH;
+    }
+}
+
 void finish_drawing_frame (void)
 {
     int i;
@@ -1486,19 +1600,26 @@ void finish_drawing_frame (void)
     }
     for (i = 0; i < max_ypos_thisframe; i++) {
 	int where;
+	int i1 = i + min_ypos_for_screen;
 	int line = i + thisframe_y_adjust_real;
 
 	if (linestate[line] == LINE_UNDECIDED)
 	    break;
 
-	where = amiga2aspect_line_map[i+min_ypos_for_screen];
-	if (where >= gfxvidinfo.height)
+	where = amiga2aspect_line_map[i1];
+	if (where >= gfxvidinfo.height - TD_TOTAL_HEIGHT)
 	    break;
 	if (where == -1)
 	    continue;
 
-	pfield_draw_line (line, where, amiga2aspect_line_map[i+min_ypos_for_screen+1]);
+	pfield_draw_line (line, where, amiga2aspect_line_map[i1 + 1]);
     }
+    for (i = 0; i < TD_TOTAL_HEIGHT; i++) {
+	int line = gfxvidinfo.height - TD_TOTAL_HEIGHT + i;
+	draw_status_line (line);
+	do_flush_line (line);
+    }
+
     unlockscr ();
     do_flush_screen (first_drawn_line, last_drawn_line);
 }

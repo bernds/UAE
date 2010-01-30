@@ -59,7 +59,7 @@
 #include "sound.h"
 #include "gensound.h"
 #include "uaeexe.h"
-#include "threaddep/penguin.h"
+#include "threaddep/thread.h"
 #include "xwin.h"
 
 #include <ctype.h>

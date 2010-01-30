@@ -28,11 +28,12 @@
 #include "sysdeps.h"
 
 #include "config.h"
-#include "threaddep/penguin.h"
+#include "threaddep/thread.h"
 #include "options.h"
 #include "uae.h"
 #include "memory.h"
 #include "custom.h"
+#include "events.h"
 #include "newcpu.h"
 #include "filesys.h"
 #include "autoconf.h"
@@ -124,7 +125,7 @@ typedef struct {
 
     /* Threading stuff */
     smp_comm_pipe *unit_pipe, *back_pipe;
-    penguin_id tid;
+    uae_thread_id tid;
     struct _unit *volatile self;
     /* Reset handling */
     uae_sem_t reset_sync_sem;
@@ -418,6 +419,12 @@ struct hardfiledata *get_hardfile_data (int nr)
 #define DOS_TRUE ((unsigned long)-1L)
 #define DOS_FALSE (0L)
 
+/* Passed as type to Lock() */
+#define SHARED_LOCK         -2     /* File is readable by others */
+#define ACCESS_READ         -2     /* Synonym */
+#define EXCLUSIVE_LOCK      -1     /* No other access allowed    */
+#define ACCESS_WRITE        -1     /* Synonym */
+
 /* packet types */
 #define ACTION_CURRENT_VOLUME	7
 #define ACTION_LOCATE_OBJECT	8
@@ -690,16 +697,17 @@ static void update_child_names (Unit *unit, a_inode *a, a_inode *parent)
     while (a != 0) {
 	char *name_start;
 	char *new_name;
-
+	char dirsep[2] = { FSDB_DIR_SEPARATOR, '\0' };
+	  
 	a->parent = parent;
-	name_start = strrchr (a->nname, '/');
+	name_start = strrchr (a->nname, FSDB_DIR_SEPARATOR);
 	if (name_start == 0) {
 	    write_log ("malformed file name");
 	}
 	name_start++;
 	new_name = (char *)xmalloc (strlen (name_start) + l0);
 	strcpy (new_name, parent->nname);
-	strcat (new_name, "/");
+	strcat (new_name, dirsep);
 	strcat (new_name, name_start);
 	free (a->nname);
 	a->nname = new_name;
@@ -1256,7 +1264,7 @@ static void free_key (Unit *unit, Key *k)
     }
 
     if (k->fd >= 0)
-	close(k->fd);
+	close (k->fd);
 
     free(k);
 }
@@ -1392,16 +1400,16 @@ action_lock (Unit *unit, dpacket packet)
     a_inode *a;
     uae_u32 err;
 
-    if (mode != -2 && mode != -1) {
+    if (mode != SHARED_LOCK && mode != EXCLUSIVE_LOCK) {
 	TRACE(("Bad mode.\n"));
-	mode = -2;
+	mode = SHARED_LOCK;
     }
 
     TRACE(("ACTION_LOCK(0x%lx, \"%s\", %d)\n", lock, bstr (unit, name), mode));
     DUMPLOCK(unit, lock);
 
     a = find_aino (unit, lock, bstr (unit, name), &err);
-    if (err == 0 && (a->elock || (mode != -2 && a->shlock > 0))) {
+    if (err == 0 && (a->elock || (mode != SHARED_LOCK && a->shlock > 0))) {
 	err = ERROR_OBJECT_IN_USE;
     }
     /* Lock() doesn't do access checks. */
@@ -1410,7 +1418,7 @@ action_lock (Unit *unit, dpacket packet)
 	PUT_PCK_RES2 (packet, err);
 	return;
     }
-    if (mode == -2)
+    if (mode == SHARED_LOCK)
 	a->shlock++;
     else
 	a->elock = 1;
@@ -1512,6 +1520,21 @@ static void free_exkey (ExamineKey *ek)
 	closedir (ek->dir);
 }
 
+static ExamineKey *lookup_exkey (Unit *unit, uae_u32 uniq)
+{
+    ExamineKey *ek;
+    int i;
+
+    ek = unit->examine_keys;
+    for (i = 0; i < EXKEYS; i++, ek++) {
+	/* Did we find a free one? */
+	if (ek->uniq == uniq)
+	    return ek;
+    }
+    write_log ("Houston, we have a BIG problem.\n");
+    return 0;
+}
+
 /* This is so sick... who invented ACTION_EXAMINE_NEXT? What did he THINK??? */
 static ExamineKey *new_exkey (Unit *unit, a_inode *aino)
 {
@@ -1551,21 +1574,6 @@ static ExamineKey *new_exkey (Unit *unit, a_inode *aino)
     ek->dir = 0;
     ek->uniq = uniq;
     return ek;
-}
-
-static ExamineKey *lookup_exkey (Unit *unit, uae_u32 uniq)
-{
-    ExamineKey *ek;
-    int i;
-
-    ek = unit->examine_keys;
-    for (i = 0; i < EXKEYS; i++, ek++) {
-	/* Did we find a free one? */
-	if (ek->uniq == uniq)
-	    return ek;
-    }
-    write_log ("Houston, we have a BIG problem.\n");
-    return 0;
 }
 
 static void
@@ -2190,7 +2198,7 @@ action_change_mode (Unit *unit, dpacket packet)
     a_inode *a = NULL, *olda = NULL;
     uae_u32 err = 0;
     TRACE(("ACTION_CHANGE_MODE(0x%lx,%d,%d)\n",object,type,mode));
-    
+
     if (! object
 	|| (type != CHANGE_FH && type != CHANGE_LOCK))
     {
@@ -2205,7 +2213,7 @@ action_change_mode (Unit *unit, dpacket packet)
 	mode = (mode == 1006 ? -1 : -2);
 
     if (type == CHANGE_LOCK)
-        uniq = get_long (object + 4);
+	uniq = get_long (object + 4);
     else {
 	Key *k = lookup_key (unit, object);
 	if (!k) {
@@ -2213,7 +2221,7 @@ action_change_mode (Unit *unit, dpacket packet)
 	    PUT_PCK_RES2 (packet, ERROR_OBJECT_NOT_AROUND);
 	    return;
 	}
-        uniq = k->aino->uniq;
+	uniq = k->aino->uniq;
     }
     a = lookup_aino (unit, uniq);
 
@@ -2231,7 +2239,7 @@ action_change_mode (Unit *unit, dpacket packet)
 	    a->elock = 0;
 	    a->shlock++;
 	}
-    } 
+    }
 
     if (err) {
 	PUT_PCK_RES1 (packet, DOS_FALSE);
@@ -2375,7 +2383,7 @@ action_set_file_size (Unit *unit, dpacket packet)
     off_t offset = GET_PCK_ARG2 (packet);
     long mode = (uae_s32)GET_PCK_ARG3 (packet);
     int whence = SEEK_CUR;
-    
+
     if (mode > 0) whence = SEEK_END;
     if (mode < 0) whence = SEEK_SET;
 
@@ -2790,7 +2798,7 @@ static int handle_packet (Unit *unit, dpacket pck)
 }
 
 #ifdef UAE_FILESYS_THREADS
-static void *filesys_penguin (void *unit_v)
+static void *filesys_thread (void *unit_v)
 {
     UnitInfo *ui = (UnitInfo *)unit_v;
     for (;;) {
@@ -2892,20 +2900,29 @@ static uae_u32 filesys_handler (void)
 }
 
 static int current_deviceno = 0;
+static int current_cdrom = 0;
 
 static void reset_uaedevices (void)
 {
     current_deviceno = 0;
+    current_cdrom = 0;
 }
 
 static int get_new_device (char **devname, uaecptr *devname_amiga, int cdrom)
 {
+    int result;
     char buffer[80];
 
-    sprintf (buffer, cdrom ? "CD%d" : "DH%d", current_deviceno);
+    if (cdrom) {
+	sprintf (buffer, "CD%d", current_cdrom);
+	result = current_cdrom++;
+    } else {
+	sprintf (buffer, "DH%d", current_deviceno);
+	result = current_deviceno++;
+    }
 
     *devname_amiga = ds (*devname = my_strdup (buffer));
-    return current_deviceno++;
+    return result;
 }
 
 void filesys_start_threads (void)
@@ -2928,7 +2945,7 @@ void filesys_start_threads (void)
 	    uip[i].back_pipe = (smp_comm_pipe *)xmalloc (sizeof (smp_comm_pipe));
 	    init_comm_pipe (uip[i].unit_pipe, 50, 3);
 	    init_comm_pipe (uip[i].back_pipe, 50, 1);
-	    start_penguin (filesys_penguin, (void *)(uip + i), &uip[i].tid);
+	    uae_start_thread (filesys_thread, (void *)(uip + i), &uip[i].tid);
 	}
 #endif
     }
@@ -2937,7 +2954,6 @@ void filesys_start_threads (void)
 void filesys_reset (void)
 {
     Unit *u, *u1;
-    int i;
 
     /* We get called once from customreset at the beginning of the program
      * before filesys_start_threads has been called. Survive that.  */
@@ -2977,13 +2993,11 @@ void filesys_prepare_reset (void)
     u = units;
     while (u != 0) {
 	while (u->rootnode.next != &u->rootnode) {
+	    a_inode *b;
 	    a_inode *a = u->rootnode.next;
 	    u->rootnode.next = a->next;
-	    if (a->dirty && a->parent)
-		fsdb_dir_writeback (a->parent);
-	    free (a->nname);
-	    free (a->aname);
-	    free (a);
+	    de_recycle_aino (u, a);
+	    dispose_aino (u, &b, a);
 	}
 	u = u->next;
     }

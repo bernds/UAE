@@ -15,6 +15,26 @@
 #define COMP 2
 #define INVERS 4
 
+typedef enum {
+    BLIT_FALSE,
+    BLIT_NOR,
+    BLIT_ONLYDST,
+    BLIT_NOTSRC,
+    BLIT_ONLYSRC,
+    BLIT_NOTDST,
+    BLIT_EOR,
+    BLIT_NAND,
+    BLIT_AND,
+    BLIT_NEOR,
+    BLIT_DST,
+    BLIT_NOTONLYSRC,
+    BLIT_SRC,
+    BLIT_NOTONLYDST,
+    BLIT_OR,
+    BLIT_TRUE,
+    BLIT_LAST
+} BLIT_OPCODE;
+
 struct ScreenResolution
 {
     uae_u32 width;  /* in pixels */
@@ -439,6 +459,7 @@ extern int DX_BitsPerCannon (void);
 extern void DX_Invalidate (int first, int last);
 extern void picasso_enablescreen (int on);
 extern void picasso_refresh (void);
+extern void picasso_handle_vsync (void);
 
 extern uae_u8 *gfxmemory;
 
@@ -460,6 +481,7 @@ extern void gfx_set_picasso_baseaddr (uaecptr);
 extern void gfx_set_picasso_state (int on);
 extern uae_u8 *gfx_lock_picasso (void);
 extern void gfx_unlock_picasso (void);
-
+extern int picasso_display_mode_index (uae_u32 x, uae_u32 y, uae_u32 d);
+extern int picasso_nr_resolutions (void);
 
 #endif

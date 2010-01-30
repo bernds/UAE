@@ -2,7 +2,7 @@
 #include "sysdeps.h"
 
 #include "config.h"
-#include "threaddep/penguin.h"
+#include "threaddep/thread.h"
 #include "options.h"
 #include "memory.h"
 #include "custom.h"

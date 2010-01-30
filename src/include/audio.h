@@ -14,7 +14,8 @@ extern struct audio_channel_data {
     unsigned long per;
     uae_u8 dmaen, intreq2, data_written;
     uaecptr lc, pt;
-    int state, wper, wlen;
+    int state, wper;
+    unsigned int wlen;
     int current_sample, last_sample;
     int vol;
     int *voltbl;

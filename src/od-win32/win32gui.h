@@ -31,82 +31,27 @@ extern drive_specs drives[NUM_DRIVES];
 
 #define DIRECT_SOUND_ENABLED 0x01
 #define AHI_ENABLED          0x02
-#define SOUND_HAS_PRIORITY   0x03
+
+#define CONFIG_SAVE   0
+#define CONFIG_LOAD   1
+#define CONFIG_SAVE_FULL 2
+#define CONFIG_LOAD_FULL 3
+#define CONFIG_DELETE 4
 
 typedef struct
 {
-    // Configuration Version Information
-    DWORD Size;
-    WORD VersionMajor;
-    WORD VersionMinor;
-
-    // Configuration Description
     char  Name[ MAX_PATH ];
     char  Description[ CFG_DESCRIPTION_LENGTH ];
-
-    // Actual configuration information
-    char  CustomSize;             // flag that the user has selected custom xy dimensions
-    char  SerialPort;           // serial-port flag
-    char  InvalidAddresses;     // log invalid-address stuff
-    char  NoAutoConfig;         // do not add uae-devices and memory if set
-
-    char  AddressingIs24Bit;    // 24-bit addressing
-    char  JulianMode;
-    char  CPULevel;             // 0 = 68000, 1 = 68010, 2 = 68020, 3 = 68020/68881
-    char  CPUCompatible;        // 0 = no, 1 = yes
-
-    int   FakeJoystick;         // Joystick settings
-
-    char  CyrixCPU;             // related to QueryPerformanceCounter or RTSC register
-    char  GfxLibReplacement;    // use the EXPERIMENTAL gfx-lib replacement stuff
-    char  CenterX;              // center the image horizontally
-    char  CenterY;              // center the image vertically
-
-    char  Blit32;               // 32-bit blits
-    char  BlitImmediate;        // blit immediately
-    char  FullScreen;           // full-screen display mode
-    char  LineDouble;           // double lines
-
-    char  CorrectAspect;        // dunno
-    char  Lores;                // lores pixels
-    char  MoreOptions;          // 8-bit mask of other options:
-                                //   0x01 = direct-sound
-    char  DebugLogging;
-
-    char  ColorMode;            // dunno
-    char  M68KSpeed;            // -w option, for tuning CPU vs. custom-chip performance
-
-    char  SerialName[CFG_SER_LENGTH];      // name of port to use
-    char  KickstartName[CFG_ROM_LENGTH];   // Name of ROM file
-    char  KeyFileName[CFG_KEY_LENGTH];     // Name of Key-File
-    char  PrinterName[CFG_PAR_LENGTH-4];     // Name of printer
-
-    int   FrameRate;            // refresh-rate for Amiga screens
-
-    // Memory sizes
-    uae_u32 ChipMem;
-    uae_u32 FastMem;
-    uae_u32 P96Mem;
-    uae_u32 BogoMem;              // slow-mem
-    uae_u32 Z3Mem;                // Zorro-III memory
-
-    int   ScreenWidth;          // width of display for Amiga screens
-    int   ScreenHeight;         // height of display for Amiga screens
-
-    // Sound settings
-    char  SoundSupport;
-    char  SoundStereo;
-    int   SoundBits;
-    int   SoundFreq;
-
-    // Hard-Drive Settings
-    drive_specs drives[ NUM_DRIVES ];
-
-    // Floppy Settings
-    char  df[4][256];
-
 } ConfigStruct, *ConfigStructPtr;
 
+void WIN32GUI_LoadUIString( DWORD id, char *string, DWORD dwStringLen );
+void WIN32GUI_DisplayGUI( int drive );
 extern int GetSettings (int all_options);
-
+extern void DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs );
+ConfigStructPtr AllocateConfigStruct( void );
+void FreeConfigStruct( ConfigStructPtr cfgptr );
+ConfigStructPtr GetFirstConfigEntry( HANDLE *file_handle, LPWIN32_FIND_DATA find_data );
+ConfigStructPtr GetNextConfigEntry( HANDLE *file_handle, LPWIN32_FIND_DATA find_data );
+void HandleConfiguration( HWND hDlg, int flag );
+void InitializeListView( HWND hDlg );
 #endif

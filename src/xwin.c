@@ -23,7 +23,7 @@
 
 #include "config.h"
 #include "options.h"
-#include "threaddep/penguin.h"
+#include "threaddep/thread.h"
 #include "uae.h"
 #include "memory.h"
 #include "xwin.h"
@@ -281,8 +281,12 @@ static int fb_width;
 
 static void switch_to_best_mode (void)
 {
-    int i, best;
+    Screen *scr = ScreenOfDisplay (display, screen);
+    int w = WidthOfScreen (scr);
+    int h = HeightOfScreen (scr);
+    int d = DefaultDepthOfScreen (scr);
 #ifdef USE_VIDMODE_EXTENSION
+    int i, best;
     if (vidmodeavail) {
 	best = 0;
 	for (i = 1; i < vidmodecount; i++) {
@@ -303,15 +307,11 @@ static void switch_to_best_mode (void)
     XWarpPointer (display, None, rootwin, 0, 0, 0, 0, 0, 0);
     XF86DGADirectVideo (display, screen, XF86DGADirectGraphics | XF86DGADirectMouse | XF86DGADirectKeyb);
     XF86DGASetViewPort (display, screen, 0, 0);
-    memset (fb_addr, 0, fb_mem * 1024);
+    memset (fb_addr, 0, (w * h) * (d / 8));
 }
 
 static void enter_dga_mode (void)
 {
-    Screen *scr = ScreenOfDisplay (display, screen);
-    int w = WidthOfScreen (scr);
-    int h = HeightOfScreen (scr);
-
     XRaiseWindow (display, mywin);
 
     /* We want all the key presses */
@@ -333,13 +333,13 @@ static void enter_dga_mode (void)
 
 static void leave_dga_mode (void)
 {
+    XF86DGADirectVideo (display, screen, 0);
+    XUngrabPointer (display, CurrentTime);
+    XUngrabKeyboard (display, CurrentTime);
 #ifdef USE_VIDMODE_EXTENSION
     if (vidmodeavail)
 	XF86VidModeSwitchToMode (display, screen, allmodes[0]);
 #endif
-    XF86DGADirectVideo (display, screen, 0);
-    XUngrabPointer (display, CurrentTime);
-    XUngrabKeyboard (display, CurrentTime);
 }
 #endif
 
@@ -988,7 +988,9 @@ void graphics_leave (void)
     XFreeColormap (display, cmap);
     XFreeColormap (display, cmap2);
 
+#if 0
     XCloseDisplay (display);
+#endif
     dumpcustom ();
 }
 

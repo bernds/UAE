@@ -71,18 +71,21 @@ A: If you're trying to run a game or a demo, enable some slow RAM, and try
 
 Q: Is it possible to read Amiga disks with a PC?
 A: No, and yes. No, with a standard PC it's impossible. However, with some
-   additional hardware (i.e. a new floppy controller) it is possible. I
-   currently know of two solutions, the AFR package which consists of a small
-   parallel port interface that you have to build yourself and some software,
-   and the Catweasel controller which is available as an ISA card and comes
-   with DOS software that can create disk files. I have a Catweasel here, and
-   it does in fact work.
+   additional hardware (e.g. a new floppy controller or a second floppy
+   drive) it is possible. I currently know of four solutions, the AFR
+   package which consists of a small parallel port interface that you have
+   to build yourself and some software, the Catweasel controller which is
+   available as an ISA card and comes with DOS software that can create
+   disk files, and the Disk2FDI program (see below). I have a Catweasel
+   here, and it does in fact work.
 
 Q: Couldn't I attach an Amiga floppy drive to the PC somehow, and use that to 
    read Amiga disks?
-A: You can attach Amiga (low-density) drives to the PC, because they are
-   completely identical to PC drives. This won't help you, because the problem
-   is not the drive, but the PC floppy controller. You have to live with it.
+A: In theory Amiga drives and PC drives are identical, so you can attach them,
+   but this doesn't buy you anything, because the problem is not the drive,
+   but the PC floppy controller.  It has also been reported that Amiga drives
+   don't behave very well when attached to the PC, so trying it is
+   discouraged.
 
 Q: But the PC can read 11-sector formats!
 A: Yes, but those sectors look a little different to the hardware.
@@ -93,10 +96,11 @@ A: So what?
 Q: But the PC can read Atari ST disks!
 A: So what?
 
-Q: But...
-A: No way. If you still are convinced that it must be possible, prove it. 
-   Write a program to read Amiga disks with a standard PC controller, and I
-   will apologize in public.
+Q: What if I use two disk drives?
+A: What an odd question.  Interestingly, you can read Amiga disks with a
+   program called disk2fdi, provided you have two 3.5" floppies connected
+   to the same floppy controller in your PC.  See the "Links" section.
+   It still doesn't allow writing, though.
 
 Q: How can I use DMS images?
 A: Run DMS under UAE and use it just like you would on a real Amiga.
@@ -105,7 +109,7 @@ A: Run DMS under UAE and use it just like you would on a real Amiga.
 
 Q: How can I transfer non-DOS disks that are used by many demos?
 A: With transdisk. The fact that they are unreadable by AmigaDOS does not
-   mean they are unreadable by transdisk. 
+   mean they are unreadable by transdisk.
    Long explanation: There are two things to consider when talking about the
    "format" of a disk. First, the low-level format which divides each track
    into sectors in a special way. Most Amiga disks are in the standard Amiga

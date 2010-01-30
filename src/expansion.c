@@ -762,7 +762,7 @@ static void allocate_expamem (void)
 
     if (allocated_fastmem != currprefs.fastmem_size) {
 	if (fastmemory)
-	    free (fastmemory);
+	    mapped_free (fastmemory);
 	fastmemory = 0;
 	allocated_fastmem = currprefs.fastmem_size;
 	fastmem_mask = allocated_fastmem - 1;
@@ -777,7 +777,7 @@ static void allocate_expamem (void)
     }
     if (allocated_z3fastmem != currprefs.z3fastmem_size) {
 	if (z3fastmem)
-	    free (z3fastmem);
+	    mapped_free (z3fastmem);
 	z3fastmem = 0;
 
 	allocated_z3fastmem = currprefs.z3fastmem_size;
@@ -793,7 +793,7 @@ static void allocate_expamem (void)
     }
     if (allocated_gfxmem != currprefs.gfxmem_size) {
 	if (gfxmemory)
-	    free (gfxmemory);
+	    mapped_free (gfxmemory);
 	gfxmemory = 0;
 
 	allocated_gfxmem = currprefs.gfxmem_size;
@@ -891,6 +891,22 @@ void expansion_init (void)
     }
     filesys_bank.baseaddr = (uae_u8*)filesysory;
 
+}
+
+void expansion_cleanup (void)
+{
+    if (fastmemory)
+	mapped_free (fastmemory);
+    if (z3fastmem)
+	mapped_free (z3fastmem);
+    if (gfxmemory)
+	mapped_free (gfxmemory);
+    if (filesysory)
+	mapped_free (filesysory);
+    fastmemory = 0;
+    z3fastmem = 0;
+    gfxmemory = 0;
+    filesysory = 0;
 }
 
 /* State save/restore code.  */

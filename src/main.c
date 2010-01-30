@@ -12,7 +12,7 @@
 
 #include "config.h"
 #include "options.h"
-#include "threaddep/penguin.h"
+#include "threaddep/thread.h"
 #include "uae.h"
 #include "gensound.h"
 #include "audio.h"
@@ -39,6 +39,10 @@
 #include "native2amiga.h"
 #include "scsidev.h"
 
+#ifdef USE_SDL
+#include "SDL.h"
+#endif
+
 long int version = 256*65536L*UAEMAJOR + 65536L*UAEMINOR + UAESUBREV;
 
 struct uae_prefs currprefs, changed_prefs;
@@ -61,9 +65,6 @@ char optionsfile[256];
  * Under DOS it ought to be -p LPT1: or -p PRN: but you'll need a
  * PostScript printer or ghostscript -=SR=-
  */
-
-/* People must provide their own name for this */
-char sername[256] = "";
 
 /* Slightly stupid place for this... */
 /* ncurses.c might use quite a few of those. */
@@ -122,7 +123,7 @@ void default_prefs (struct uae_prefs *p)
     p->gfx_width = 800;
     p->gfx_height = 600;
     p->gfx_lores = 0;
-    p->gfx_linedbl = 0;
+    p->gfx_linedbl = 2;
     p->gfx_afullscreen = 0;
     p->gfx_pfullscreen = 0;
     p->gfx_correct_aspect = 0;
@@ -162,6 +163,9 @@ void default_prefs (struct uae_prefs *p)
     strcpy (p->path_rom, "./");
     strcpy (p->path_floppy, "./");
     strcpy (p->path_hardfile, "./");
+
+    strcpy (p->prtname, "");
+    strcpy (p->sername, "");
 
     p->m68k_speed = 0;
     p->cpu_level = 2;
@@ -394,29 +398,6 @@ static void parse_cmdline_and_init_file (int argc, char **argv)
     parse_cmdline (argc, argv);
 }
 
-void write_log_standard (const char *fmt, ...)
-{
-    va_list ap;
-    va_start (ap, fmt);
-#ifdef HAVE_VFPRINTF
-    vfprintf (stderr, fmt, ap);
-#else
-    /* Technique stolen from GCC.  */
-    {
-	int x1, x2, x3, x4, x5, x6, x7, x8;
-	x1 = va_arg (ap, int);
-	x2 = va_arg (ap, int);
-	x3 = va_arg (ap, int);
-	x4 = va_arg (ap, int);
-	x5 = va_arg (ap, int);
-	x6 = va_arg (ap, int);
-	x7 = va_arg (ap, int);
-	x8 = va_arg (ap, int);
-	fprintf (stderr, fmt, x1, x2, x3, x4, x5, x6, x7, x8);
-    }
-#endif
-}
-
 void reset_all_systems (void)
 {
     init_eventtab ();
@@ -456,6 +437,11 @@ void do_leave_program (void)
     zfile_exit ();
     if (! no_gui)
 	gui_exit ();
+#ifdef USE_SDL
+    SDL_Quit ();
+#endif
+    expansion_cleanup ();
+    memory_cleanup ();
 }
 
 void start_program (void)
@@ -471,6 +457,10 @@ void leave_program (void)
 void real_main (int argc, char **argv)
 {
     FILE *hf;
+
+#ifdef USE_SDL
+    SDL_Init (SDL_INIT_EVERYTHING | SDL_INIT_NOPARACHUTE);
+#endif
 
     default_prefs (&currprefs);
     
@@ -493,9 +483,11 @@ void real_main (int argc, char **argv)
     }
     init_joystick ();
 
+    changed_prefs = currprefs;
     no_gui = ! currprefs.start_gui;
     if (! no_gui) {
 	int err = gui_init ();
+	currprefs = changed_prefs;
 	if (err == -1) {
 	    fprintf (stderr, "Failed to initialize the GUI\n");
 	} else if (err == -2) {

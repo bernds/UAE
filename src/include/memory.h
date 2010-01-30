@@ -46,6 +46,7 @@ extern uae_u32 allocated_a3000mem;
 #define kickmem_start 0x00F80000
 
 extern int ersatzkickfile;
+extern int cloanto_rom;
 
 extern uae_u8* baseaddr[];
 
@@ -111,8 +112,9 @@ extern uae_u8 *baseaddr[65536];
         baseaddr[bankindex(addr)] = (uae_u8*)(((long)b)+1); \
 } while (0)
 
-extern void memory_init(void);
-extern void map_banks(addrbank *bank, int first, int count, int realsize);
+extern void memory_init (void);
+extern void memory_cleanup (void);
+extern void map_banks (addrbank *bank, int first, int count, int realsize);
 
 #ifndef NO_INLINE_MEMORY_ACCESS
 
@@ -206,3 +208,4 @@ extern int canbang;
 #endif
 
 extern uae_u8 *mapped_malloc (size_t, char *);
+extern void mapped_free (uae_u8 *);

@@ -1,0 +1,15 @@
+// Microsoft Developer Studio generated Help ID include file.
+// Used by winuae.rc
+//
+#define HIDC_CONFIGLIST                 0x8087057c    // IDD_LOADSAVE [English (U.S.)]
+#define HIDC_DELETE                     0x8087057b    // IDD_LOADSAVE [English (U.S.)]
+#define HIDC_EDITDESCRIPTION            0x8087057e    // IDD_LOADSAVE [English (U.S.)]
+#define HIDC_EDITNAME                   0x8087057d    // IDD_LOADSAVE [English (U.S.)]
+#define HIDC_LOAD                       0x80870579    // IDD_LOADSAVE [English (U.S.)]
+#define HIDC_MAPDRIVES                  0x807105e3    // IDD_HARDDISK [English (U.S.)]
+#define HIDC_PFULLSCREEN                0x806c04a8    // IDD_DISPLAY [English (U.S.)]
+#define HIDC_QUICKLOAD                  0x80870581    // IDD_LOADSAVE [English (U.S.)]
+#define HIDC_QUICKSAVE                  0x80870580    // IDD_LOADSAVE [English (U.S.)]
+#define HIDC_SAVE                       0x80870578    // IDD_LOADSAVE [English (U.S.)]
+#define HIDC_SWAP                       0x808a05e5    // IDD_PORTS [English (U.S.)]
+#define HIDC_TEST16BIT                  0x806c05e2    // IDD_DISPLAY [English (U.S.)]

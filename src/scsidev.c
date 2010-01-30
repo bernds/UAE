@@ -11,7 +11,7 @@
 #include "sysdeps.h"
 
 #include "config.h"
-#include "threaddep/penguin.h"
+#include "threaddep/thread.h"
 #include "options.h"
 #include "memory.h"
 #include "custom.h"
@@ -146,7 +146,7 @@ struct scsidevdata {
 #ifdef UAE_SCSIDEV_THREADS
     /* Threading stuff */
     smp_comm_pipe requests;
-    penguin_id tid;
+    uae_thread_id tid;
     int thread_running;
     uae_sem_t sync_sem;
 #endif
@@ -190,7 +190,7 @@ static struct scsidevdata *add_scsidev_data (int bus, int target, int lun, int a
     return NULL;
 }
 
-static void *scsidev_penguin(void *);
+static void *scsidev_thread(void *);
 static int start_thread (struct scsidevdata *sdd)
 {
 #ifdef UAE_SCSIDEV_THREADS
@@ -198,7 +198,7 @@ static int start_thread (struct scsidevdata *sdd)
         return 1;
     init_comm_pipe (&sdd->requests, 10, 1);
     uae_sem_init (&sdd->sync_sem, 0, 0);
-    start_penguin (scsidev_penguin, sdd, &sdd->tid);
+    uae_start_thread (scsidev_thread, sdd, &sdd->tid);
     uae_sem_wait (&sdd->sync_sem);
     return sdd->thread_running;
 #else
@@ -575,7 +575,7 @@ static uae_u32 scsidev_beginio (void)
 }
 
 #ifdef UAE_SCSIDEV_THREADS
-static void *scsidev_penguin (void *sddv)
+static void *scsidev_thread (void *sddv)
 {
     struct scsidevdata *sdd = sddv;
 

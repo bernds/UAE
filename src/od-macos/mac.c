@@ -17,7 +17,7 @@
 
 #include "mackbd.h"
 #include "config.h"
-#include "threaddep/penguin.h"
+#include "threaddep/thread.h"
 #include "uae.h"
 #include "amiga.h"
 #include "options.h"

@@ -359,8 +359,8 @@ void serial_open(void)
     if (serdev == 1)
 	return;
 
-    if ((sd = open (sername, O_RDWR|O_NONBLOCK|O_BINARY, 0)) < 0) {
-	fprintf (stdout, "Error: Could not open Device %s\n", sername);
+    if ((sd = open (currprefs.sername, O_RDWR|O_NONBLOCK|O_BINARY, 0)) < 0) {
+	fprintf (stdout, "Error: Could not open Device %s\n", currprefs.sername);
 	return;
     }
 
