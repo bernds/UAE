@@ -60,7 +60,6 @@ Type "configure --help" to get a list of options that configure understands.
 The following are likely to be useful:
   --without-x        : Don't use X11 as target.
   --with-svgalib     : Build a version that uses SVGAlib (Linux only)
-  --with-ggi         : Build a version that uses GGI (Linux only)
   --with-asciiart    : Build a version that uses ASCII "graphics"
   --enable-sound     : If a sound system is found that UAE knows about, sound
                        emulation will be compiled in.

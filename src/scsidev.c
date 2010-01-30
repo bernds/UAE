@@ -23,19 +23,24 @@
 #include "execlib.h"
 #include "native2amiga.h"
 #include "scsidev.h"
+
+/* the new libscg should always have a scsi_close */
+#ifndef SCSI_CLOSE
+#define SCSI_CLOSE
+#endif
+
+typedef int BOOL;
+
+#include "scg/scgcmd.h"
+#include "scg/scsitransp.h"
 #include "scg/scsireg.h"
 
-/* our configure does not distinguish that */
-#ifdef UAE_FILESYS_THREADS
+/* our configure does not have a seperate UAE_SCSIDEV_THREADS */
+#if defined(UAE_FILESYS_THREADS) && !defined(SCSI_IS_NOT_THREAD_SAFE)
 #define UAE_SCSIDEV_THREADS
 #endif
 
 #undef DEBUGME
-
-/* follow the cdrecord style by including the correct code */
-#include "scsi-support.c"
-
-
 
 /****************** generic SCSI stuff stolen from cdrecord and scsitransp.c ***********/
 static int scsierr(SCSI *scgp)
@@ -48,38 +53,12 @@ static int scsierr(SCSI *scgp)
     return 0;
 }
 
-int scsicmd(SCSI *scgp)
-{
-    int f;
-    int ret;
-    register struct scg_cmd *scmd = scgp->scmd;
-
-    f = scsi_fileno(scgp, scgp->scsibus, scgp->target, scgp->lun);
-    scmd->kdebug = scgp->kdebug;
-    if (scmd->timeout == 0 || scmd->timeout < scgp->deftimeout)
-        scmd->timeout = scgp->deftimeout;
-    if (scgp->disre_disable)
-        scmd->flags &= ~SCG_DISRE_ENA;
-    if (scgp->noparity)
-        scmd->flags |= SCG_NOPARITY;
-
-    gettimeofday(scgp->cmdstart, (struct timezone *)0);
-    errno = 0;
-    ret = scsi_send(scgp, f, scmd);
-    scsitimes(scgp);
-    if (ret < 0 && errno && !scgp->scmd->ux_errno) {
-        scgp->scmd->ux_errno = errno;
-    }        
-    ret = scsierr(scgp);
-    return (ret);
-}
-
 static int inquiry (SCSI *scgp, void *bp, int cnt)
 {
     struct scg_cmd *scmd = scgp->scmd;
 
-    fillbytes(bp, cnt, '\0');
-    fillbytes((caddr_t)scmd, sizeof(*scmd), '\0');
+    memset(bp, cnt, '\0');
+    memset((caddr_t)scmd, sizeof(*scmd), '\0');
     scmd->addr = bp;
     scmd->size = cnt;
     scmd->flags = SCG_RECV_DATA|SCG_DISRE_ENA;
@@ -107,35 +86,41 @@ static void print_product(struct scsi_inquiry *ip)
     }
 }
 
-static SCSI *openscsi (char *dev, int bus, int target, int lun)
+/* get integer value from env or return default value, if unset */
+static int getenvint (const char *varname, int def)
 {
-    SCSI *scgp;
-    
-    if(!(scgp = calloc(1, sizeof (*scgp))) ||
-       !(scgp->scmd = calloc(1, sizeof (*scgp->scmd))) ||
-       !(scgp->cmdstart = malloc(sizeof (*scgp->cmdstart))) ||
-       !(scgp->cmdstop = malloc(sizeof (*scgp->cmdstop)))) {
-        return NULL;
-    }
-    /* we don't really know the timeout - should better
-       disable it, if possible */
-    scgp->deftimeout = 80 * 60; /* 80min */
-    scgp->scsibus = bus;
-    scgp->target = target;
-    scgp->lun = lun;
-    return scsi_open (scgp, dev, bus, target, lun) >= 0 ? scgp : NULL;
+    const char *val = getenv (varname);
+    return val ? atoi (val) : def;
 }
 
-#ifdef SCSI_CLOSE
-/* if there is no scsi_close, then we have to keep everything */
+/* wrapper for the underlying combination of scsi_smalloc()/scsi_open() */
+static SCSI *openscsi (int scsibus, int target, int lun)
+{
+    SCSI *scgp = scsi_smalloc ();
+    if (!scgp) {
+        return NULL;
+    }
+
+    scgp->debug = getenvint ("UAE_SCSI_DEBUG", 0);
+    scgp->kdebug = getenvint ("UAE_SCSI_KDEBUG", 0);
+    scgp->silent = getenvint ("UAE_SCSI_SILENT", 1);
+    scgp->scsibus = scsibus;
+    scgp->target = target;
+    scgp->lun = lun;
+
+    if (!scsi_open(scgp, NULL, scsibus, target, lun)) {
+        scsi_sfree (scgp);
+        return NULL;
+    } else {
+        return scgp;
+    } 
+}
+
 static void closescsi (SCSI *scgp)
 {
     scsi_close (scgp);
-    free (scgp->scmd);
-    free (scgp->cmdstart);
-    free (scgp->cmdstop);
+    scsi_sfree (scgp);
 }
-#endif
 
 /********************* start of our own code ************************/
 
@@ -155,6 +140,7 @@ struct scsidevdata {
       (target % 8)
     SCSI *scgp;
     long max_dma;
+    int isatapi;
 #ifdef UAE_SCSIDEV_THREADS
     /* Threading stuff */
     smp_comm_pipe requests;
@@ -187,10 +173,15 @@ static struct scsidevdata *add_scsidev_data (int bus, int target, int lun, int a
         drives[num_drives].target = target;
         drives[num_drives].lun = lun;
         drives[num_drives].aunit = aunit;
-#if !defined(UAE_SCSIDEV_THREADS) || !defined(SCSI_IS_THREAD_SAFE)
+#if !defined(UAE_SCSIDEV_THREADS)
         drives[num_drives].scgp = scgp;
-        drives[num_drives].max_dma = scsi_maxdma (scgp);
+        drives[num_drives].max_dma = scsi_bufsize (scgp, 512 * 1024);
 #endif
+        /* check if this drive is an ATAPI drive */
+        scgp->scsibus = bus;
+        scgp->target = target;
+        scgp->lun = lun;
+        drives[num_drives].isatapi = scsi_isatapi (scgp);
         return &drives[num_drives++];
     }
 
@@ -292,13 +283,7 @@ static void scsidev_do_scsi (struct scsidevdata *sdd, uaecptr request)
         return;
     }
 
-    /* we are limited by the hosts DMA limits */
-    if (scsi_len > sdd->max_dma) {
-        put_byte (request + 31, (uae_u8)-4); /* IOERR_BADLENGTH */
-        return;
-    }
-
-#ifndef SCSI_IS_THREAD_SAFE
+#ifdef SCSI_IS_NOT_THREAD_SAFE
     uae_sem_wait (&scgp_sem);
 #endif
 
@@ -314,15 +299,19 @@ static void scsidev_do_scsi (struct scsidevdata *sdd, uaecptr request)
     scmd->sense_count = 0;
     *(uae_u8 *)&scmd->scb = 0;
 
+    if (scsi_len > (unsigned int)sdd->max_dma) {
+        scgp->debug = 1;
+    } else {
+        scgp->debug = 0;
+    }
+    
     scgp->scsibus = sdd->bus;
     scgp->target  = sdd->target;
     scgp->lun     = sdd->lun;
-    scsicmd (scgp);
 
-    /* replace MODE_SELECT/SENSE_6 if they are not supported */
-    if (scmd->scb.chk &&
-        ((struct scsi_ext_sense *)&scmd->sense)->key == 0x5 &&
-        ((struct scsi_ext_sense *)&scmd->sense)->sense_code == 0x20 && /* INVALID_COMMAND */
+    /* replace MODE_SELECT/SENSE_6 if we access a ATAPI drive,
+       otherwise send it now */
+    if (sdd->isatapi &&
         (scmd->cdb.g0_cdb.cmd == MODE_SELECT_6 ||
          scmd->cdb.g0_cdb.cmd == MODE_SENSE_6)) {
         uae_u8 buffer[256 + 2], *data = scmd->addr, *tmp;
@@ -407,6 +396,8 @@ static void scsidev_do_scsi (struct scsidevdata *sdd, uaecptr request)
                 memcpy (&data[len], tmp, req_len - (tmp - buffer));
             }
         }
+    } else {
+        scsicmd (scgp);
     }
     
     put_word (acmd + 18, scmd->error == SCG_FATAL ? 0 : scsi_cmd_len); /* fake scsi_CmdActual */
@@ -431,8 +422,15 @@ static void scsidev_do_scsi (struct scsidevdata *sdd, uaecptr request)
 
         if (scmd->error != SCG_NO_ERROR ||
             scmd->ux_errno != 0) {
-            put_byte (request + 31, 20); /* io_Error, but not specified */
-            put_long (acmd + 8, 0); /* scsi_Actual */
+            /* we might have been limited by the hosts DMA limits,
+               which is usually indicated by ENOMEM */
+            if (scsi_len > (unsigned int)sdd->max_dma &&
+                scmd->ux_errno == ENOMEM) {
+                put_byte (request + 31, (uae_u8)-4); /* IOERR_BADLENGTH */
+            } else {
+                put_byte (request + 31, 20); /* io_Error, but not specified */
+                put_long (acmd + 8, 0); /* scsi_Actual */
+            }
         } else {
             put_byte (request + 31, 0);
             put_long (acmd + 8, scsi_len - scmd->resid); /* scsi_Actual */
@@ -440,7 +438,7 @@ static void scsidev_do_scsi (struct scsidevdata *sdd, uaecptr request)
     }
     put_word (acmd + 28, sactual);
 
-#ifndef SCSI_IS_THREAD_SAFE
+#ifdef SCSI_IS_NOT_THREAD_SAFE
     uae_sem_post (&scgp_sem);
 #endif
 }
@@ -509,8 +507,8 @@ static void *scsidev_penguin (void *sddv)
     printf ("scsidev_penguin: sdd  = 0x%x ready\n", sdd);
 #endif    
     /* init SCSI */
-    if (!(sdd->scgp = openscsi (NULL, sdd->bus, sdd->target, sdd->lun)) ||
-        (sdd->max_dma = scsi_maxdma (sdd->scgp)) <= 0) {
+    if (!(sdd->scgp = openscsi (sdd->bus, sdd->target, sdd->lun)) ||
+        (sdd->max_dma = scsi_bufsize (sdd->scgp, 512 * 1024)) <= 0) {
         sdd->thread_running = 0;
         uae_sem_post (&sdd->sync_sem);
         return 0;
@@ -561,7 +559,7 @@ static uae_u32 scsidev_init (void)
     }
     
     /* init global SCSI */
-    if (!(scgp = openscsi (NULL, -1, -1, -1))) {
+    if (!(scgp = openscsi (-1, -1, -1))) {
         return 0;
     }
 
@@ -581,11 +579,13 @@ static uae_u32 scsidev_init (void)
             for (scgp->lun=0; scgp->lun < 8; scgp->lun++) {
                 if (!inquiry (scgp, &inq, sizeof(inq))) {
                     int aunit = BTL2UNIT(scgp->scsibus, scgp->target, scgp->lun);
+                    struct scsidevdata *sdd;
                     
                     write_log ("   %2.01d,%d (= %3.d): ", scgp->target, scgp->lun, aunit);
                     print_product (&inq);
+                    sdd = add_scsidev_data (scgp->scsibus, scgp->target, scgp->lun, aunit);
+                    write_log (!sdd ? " - init failed ???" : sdd->isatapi ? " - ATAPI" : " - SCSI");
                     write_log ("\n");
-                    add_scsidev_data (scgp->scsibus, scgp->target, scgp->lun, aunit);
 		}
             }
         }
@@ -715,8 +715,11 @@ void scsidev_reset (void)
         int i;
 
         for (i = 0; i < num_drives; i++) {
-            write_comm_pipe (&drives[i].requests, 0, 1);
-            uae_sem_wait (&drives[i].sync);
+            if (!drives[i].thread_running) {
+                continue;
+            }
+            write_comm_pipe_int (&drives[i].requests, 0, 1);
+            uae_sem_wait (&drives[i].sync_sem);
         }
         num_drives = 0;
     }

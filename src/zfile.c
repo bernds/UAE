@@ -61,7 +61,6 @@ int zfile_close (FILE *f)
     if (l == 0)
 	return fclose (f);
     ret = fclose (l->f);
-    printf ("unlink: `%s'\n", l->name);
     unlink (l->name);
 
     if(!pl)
@@ -77,6 +76,23 @@ int zfile_close (FILE *f)
  * gzip decompression
  */
 static int gunzip (const char *decompress, const char *src, const char *dst)
+{
+    char cmd[1024];
+    char *ext = strrchr (src, '.');
+    if (!dst) 
+        return 1;
+#if defined(AMIGA)
+    sprintf (cmd, "%s -c -d -S %s \"%s\" > \"%s\"", decompress, ext, src, dst);
+#else
+    sprintf (cmd, "%s -c -d \"%s\" > \"%s\"", decompress, src, dst);
+#endif
+    return !system (cmd);
+}
+
+/*
+ * bzip/bzip2 decompression
+ */
+static int bunzip (const char *decompress, const char *src, const char *dst)
 {
     char cmd[1024];
     if (!dst) 
@@ -131,9 +147,9 @@ static int uncompress (const char *name, char *dest)
 	    || strcasecmp (ext, "roz") == 0)
 	    return gunzip ("gzip", name, dest);
 	if (strcasecmp (ext, "bz") == 0)
-	    return gunzip ("bzip", name, dest);
+            return bunzip ("bzip", name, dest);
 	if (strcasecmp (ext, "bz2") == 0)
-	    return gunzip ("bzip2", name, dest);
+            return bunzip ("bzip2", name, dest);
 
 #ifndef __DOS__
 	if (strcasecmp (ext, "lha") == 0
@@ -154,11 +170,11 @@ static int uncompress (const char *name, char *dest)
 
     if (access (strcat (strcpy (nam, name), ".bz"), 0) >= 0
 	|| access (strcat (strcpy (nam, name), ".BZ"), 0) >= 0)
-	return gunzip ("bzip", nam, dest);
+        return bunzip ("bzip", nam, dest);
 
     if (access (strcat (strcpy (nam, name), ".bz2"), 0) >= 0
 	|| access (strcat (strcpy (nam, name), ".BZ2"), 0) >= 0)
-	return gunzip ("bzip2", nam, dest);
+        return bunzip ("bzip2", nam, dest);
 
 #ifndef __DOS__
     if (access (strcat (strcpy (nam, name), ".lha"), 0) >= 0
@@ -206,7 +222,6 @@ FILE *zfile_open (const char *name, const char *mode)
 
     if (! uncompress (name, l->name)) {
 	close (fd);
-	printf ("unlink: `%s'\n", l->name);
 	unlink (l->name);
 	free (l);
 	return NULL;
@@ -217,7 +232,6 @@ FILE *zfile_open (const char *name, const char *mode)
     close (fd);
 
     if (l->f == NULL) {
-	printf ("unlink: `%s'\n", l->name);
 	unlink (l->name);
 	free (l);
 	return NULL;

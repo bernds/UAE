@@ -227,11 +227,8 @@ void CIA_handler(void)
     CIA_calctimers();
 }
 
-void diskindex_handler(void)
+void cia_diskindex(void)
 {
-    eventtab[ev_diskindex].evtime += cycles - eventtab[ev_diskindex].oldcycles;
-    eventtab[ev_diskindex].oldcycles = cycles;
-/*    printf(".\n");*/
     ciabicr |= 0x10;
     RethinkICRB();
 }

@@ -636,18 +636,13 @@ static void dispose_aino (Unit *unit, a_inode **aip, a_inode *aino)
     free (aino);
 }
 
-static void recycle_aino (Unit *unit, a_inode *aino)
+static void recycle_aino (Unit *unit, a_inode *new_aino)
 {
-    if (aino->dir || aino->shlock > 0 || aino->elock || aino == &unit->rootnode)
+    if (new_aino->dir || new_aino->shlock > 0
+	|| new_aino->elock || new_aino == &unit->rootnode)
 	/* Still in use */
 	return;
 
-    /* Chain it into circular list. */
-    aino->next = unit->rootnode.next;
-    aino->prev = &unit->rootnode;
-    aino->prev->next = aino;
-    aino->next->prev = aino;
-    unit->aino_cache_size++;
     if (unit->aino_cache_size > 500) {
 	/* Reap a few. */
 	int i = 0;
@@ -655,7 +650,7 @@ static void recycle_aino (Unit *unit, a_inode *aino)
 	    a_inode **aip;
 	    aip = &unit->rootnode.prev->parent->child;
 	    for (;;) {
-		aino = *aip;
+		a_inode *aino = *aip;
 		if (aino == 0)
 		    break;
 
@@ -679,6 +674,13 @@ static void recycle_aino (Unit *unit, a_inode *aino)
 	}
 #endif
     }
+
+    /* Chain it into circular list. */
+    new_aino->next = unit->rootnode.next;
+    new_aino->prev = &unit->rootnode;
+    new_aino->prev->next = new_aino;
+    new_aino->next->prev = new_aino;
+    unit->aino_cache_size++;
 }
 
 static void update_child_names (Unit *unit, a_inode *a, a_inode *parent)

@@ -175,3 +175,11 @@ STATIC_INLINE int valid_address(uaecptr addr, uae_u32 size)
 {
     return get_mem_bank(addr).check(addr, size);
 }
+
+/* For faster access in custom chip emulation.  */
+extern uae_u32 chipmem_lget (uaecptr) REGPARAM;
+extern uae_u32 chipmem_wget (uaecptr) REGPARAM;
+extern uae_u32 chipmem_bget (uaecptr) REGPARAM;
+extern void chipmem_lput (uaecptr, uae_u32) REGPARAM;
+extern void chipmem_wput (uaecptr, uae_u32) REGPARAM;
+extern void chipmem_bput (uaecptr, uae_u32) REGPARAM;

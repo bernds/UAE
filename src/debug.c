@@ -310,7 +310,7 @@ void debug (void)
 	inptr = input;
 	cmd = next_char (&inptr);
 	switch (cmd) {
-	 case 'c': dumpcia (); dumpcustom (); break;
+	 case 'c': dumpcia (); dumpdisk (); dumpcustom (); break;
 	 case 'r': m68k_dumpstate (&nextpc); break;
 	 case 'M': modulesearch (); break;
 	 case 'C': cheatsearch (&inptr); break; 

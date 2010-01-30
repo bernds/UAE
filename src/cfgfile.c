@@ -313,6 +313,15 @@ static int getintval (char **p, int *result, int delim)
     return 1;
 }
 
+static int set_chipset_mask (struct uae_prefs *p, int val)
+{
+    p->chipset_mask = (val == 0 ? 0
+		       : val == 1 ? CSMASK_ECS_AGNUS
+		       : val == 2 ? CSMASK_ECS_DENISE
+		       : val == 3 ? CSMASK_ECS_DENISE | CSMASK_ECS_AGNUS
+		       : CSMASK_AGA | CSMASK_ECS_DENISE | CSMASK_ECS_AGNUS);
+}
+
 int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 {
     int tmpval;
@@ -400,11 +409,7 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 
     /* Tricky ones... */
     if (cfgfile_strval (option, value, "chipset", &tmpval, csmode, 0)) {
-	p->chipset_mask = (tmpval == 0 ? 0
-			   : tmpval == 1 ? CSMASK_ECS_AGNUS
-			   : tmpval == 2 ? CSMASK_ECS_DENISE
-			   : tmpval == 3 ? CSMASK_ECS_DENISE | CSMASK_ECS_AGNUS
-			   : CSMASK_AGA | CSMASK_ECS_DENISE | CSMASK_ECS_AGNUS);
+	set_chipset_mask (p, tmpval);
 	return 1;
     }
 	
@@ -812,7 +817,7 @@ static void parse_cpu_specs (char *spec)
 /* Returns the number of args used up (0 or 1).  */
 int parse_cmdline_option (char c, char *arg)
 {
-    const char arg_required[] = "0123rKpImWSAJwNCZUFcblOdHR";
+    const char arg_required[] = "0123rKpImWSAJwNCZUFcblOdHRv";
 
     if (strchr (arg_required, c) && ! arg) {
 	fprintf (stderr, "Missing argument for option `-%c'!\n", c);
@@ -820,67 +825,71 @@ int parse_cmdline_option (char c, char *arg)
     }
 
     switch (c) {
-     case 'h': usage (); exit (0);
+    case 'h': usage (); exit (0);
 
-     case '0': strncpy (currprefs.df[0], arg, 255); currprefs.df[0][255] = 0; break;
-     case '1': strncpy (currprefs.df[1], arg, 255); currprefs.df[1][255] = 0; break;
-     case '2': strncpy (currprefs.df[2], arg, 255); currprefs.df[2][255] = 0; break;
-     case '3': strncpy (currprefs.df[3], arg, 255); currprefs.df[3][255] = 0; break;
-     case 'r': strncpy (currprefs.romfile, arg, 255); currprefs.romfile[255] = 0; break;
-     case 'K': strncpy (currprefs.keyfile, arg, 255); currprefs.keyfile[255] = 0; break;
-     case 'p': strncpy (currprefs.prtname, arg, 255); currprefs.prtname[255] = 0; break;
+    case '0': strncpy (currprefs.df[0], arg, 255); currprefs.df[0][255] = 0; break;
+    case '1': strncpy (currprefs.df[1], arg, 255); currprefs.df[1][255] = 0; break;
+    case '2': strncpy (currprefs.df[2], arg, 255); currprefs.df[2][255] = 0; break;
+    case '3': strncpy (currprefs.df[3], arg, 255); currprefs.df[3][255] = 0; break;
+    case 'r': strncpy (currprefs.romfile, arg, 255); currprefs.romfile[255] = 0; break;
+    case 'K': strncpy (currprefs.keyfile, arg, 255); currprefs.keyfile[255] = 0; break;
+    case 'p': strncpy (currprefs.prtname, arg, 255); currprefs.prtname[255] = 0; break;
 	/*     case 'I': strncpy (currprefs.sername, arg, 255); currprefs.sername[255] = 0; currprefs.use_serial = 1; break; */
-     case 'm': case 'M': parse_filesys_spec (c == 'M', arg); break;
-     case 'W': parse_hardfile_spec (arg); break;
-     case 'S': parse_sound_spec (arg); break;
-     case 'R': currprefs.gfx_framerate = atoi (arg); break;
-     case 'A': currprefs.emul_accuracy = atoi (arg); break;
-     case 'x': currprefs.no_xhair = 1; break;
-     case 'i': currprefs.illegal_mem = 1; break;
-     case 'J': parse_joy_spec (arg); break;
-     case 'a': currprefs.automount_uaedev = 0; break;
+    case 'm': case 'M': parse_filesys_spec (c == 'M', arg); break;
+    case 'W': parse_hardfile_spec (arg); break;
+    case 'S': parse_sound_spec (arg); break;
+    case 'R': currprefs.gfx_framerate = atoi (arg); break;
+    case 'A': currprefs.emul_accuracy = atoi (arg); break;
+    case 'x': currprefs.no_xhair = 1; break;
+    case 'i': currprefs.illegal_mem = 1; break;
+    case 'J': parse_joy_spec (arg); break;
+    case 'a': currprefs.automount_uaedev = 0; break;
 
-     case 't': currprefs.test_drawing_speed = 1; break;
-     case 'L': currprefs.x11_use_low_bandwidth = 1; break;
-     case 'T': currprefs.x11_use_mitshm = 1; break;
-     case 'w': currprefs.m68k_speed = atoi (arg); break;
+    case 't': currprefs.test_drawing_speed = 1; break;
+    case 'L': currprefs.x11_use_low_bandwidth = 1; break;
+    case 'T': currprefs.x11_use_mitshm = 1; break;
+    case 'w': currprefs.m68k_speed = atoi (arg); break;
 
 	/* case 'g': currprefs.use_gfxlib = 1; break; */
-     case 'G': currprefs.start_gui = 0; break;
-     case 'D': currprefs.start_debugger = 1; break;
+    case 'G': currprefs.start_gui = 0; break;
+    case 'D': currprefs.start_debugger = 1; break;
 
-     case 'n':
+    case 'n':
 	if (strchr (arg, '3') != 0)
 	    currprefs.blits_32bit_enabled = 1;
 	if (strchr (arg, 'i') != 0)
 	    currprefs.immediate_blits = 1;
 	break;
 
-     case 'C':
+    case 'v':
+	set_chipset_mask (&currprefs, atoi (arg));
+	break;
+
+    case 'C':
 	parse_cpu_specs (arg);
 	break;
 
-     case 'Z':
+    case 'Z':
 	currprefs.z3fastmem_size = atoi (arg) * 0x100000;
 	break;
 
-     case 'U':
+    case 'U':
 	currprefs.gfxmem_size = atoi (arg) * 0x100000;
 	break;
 
-     case 'F':
+    case 'F':
 	currprefs.fastmem_size = atoi (arg) * 0x100000;
 	break;
 
-     case 'b':
+    case 'b':
 	currprefs.bogomem_size = atoi (arg) * 0x40000;
 	break;
 
-     case 'c':
+    case 'c':
 	currprefs.chipmem_size = atoi (arg) * 0x80000;
 	break;
 
-     case 'l':
+    case 'l':
 	if (0 == strcasecmp(arg, "de"))
 	    currprefs.keyboard_lang = KBD_LANG_DE;
 	else if (0 == strcasecmp(arg, "us"))
@@ -895,8 +904,8 @@ int parse_cmdline_option (char c, char *arg)
 	    currprefs.keyboard_lang = KBD_LANG_ES;
 	break;
 
-     case 'O': parse_gfx_specs (arg); break;
-     case 'd':
+    case 'O': parse_gfx_specs (arg); break;
+    case 'd':
 	if (strchr (arg, 'S') != NULL || strchr (arg, 's')) {
 	    write_log ("  Serial on demand.\n");
 	    currprefs.serial_demand = 1;
@@ -908,14 +917,14 @@ int parse_cmdline_option (char c, char *arg)
 
 	break;
 
-     case 'H':
+    case 'H':
 	currprefs.color_mode = atoi (arg);
 	if (currprefs.color_mode < 0) {
 	    fprintf (stderr, "Bad color mode selected. Using default.\n");
 	    currprefs.color_mode = 0;
 	}
 	break;
-     default:
+    default:
 	fprintf (stderr, "Unknown option `-%c'!\n", c);
 	break;
     }

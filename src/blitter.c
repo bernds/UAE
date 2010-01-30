@@ -81,59 +81,62 @@ STATIC_INLINE uae_u8 *blit_xlateptr_desc(uaecptr bltpt, int bytecount)
 static void blitter_dofast(void)
 {
     int i,j;
-    uae_u8 *bltadatpt = 0, *bltbdatpt = 0, *bltcdatpt = 0, *bltddatpt = 0;
+    uaecptr bltadatptr = 0, bltbdatptr = 0, bltcdatptr = 0, bltddatptr = 0;
     uae_u8 mt = bltcon0 & 0xFF;
 
     blit_masktable[0] = blt_info.bltafwm;
     blit_masktable[blt_info.hblitsize - 1] &= blt_info.bltalwm;
 
     if (bltcon0 & 0x800) {
-	bltadatpt = blit_xlateptr(bltapt, (blt_info.hblitsize*2+blt_info.bltamod)*blt_info.vblitsize);
-	bltapt += (blt_info.hblitsize*2+blt_info.bltamod)*blt_info.vblitsize;
+	bltadatptr = bltapt;
+	bltapt += (blt_info.hblitsize*2 + blt_info.bltamod)*blt_info.vblitsize;
     }
     if (bltcon0 & 0x400) {
-	bltbdatpt = blit_xlateptr(bltbpt, (blt_info.hblitsize*2+blt_info.bltbmod)*blt_info.vblitsize);
-	bltbpt += (blt_info.hblitsize*2+blt_info.bltbmod)*blt_info.vblitsize;
+	bltbdatptr = bltbpt;
+	bltbpt += (blt_info.hblitsize*2 + blt_info.bltbmod)*blt_info.vblitsize;
     }
     if (bltcon0 & 0x200) {
-	bltcdatpt = blit_xlateptr(bltcpt, (blt_info.hblitsize*2+blt_info.bltcmod)*blt_info.vblitsize);
-	bltcpt += (blt_info.hblitsize*2+blt_info.bltcmod)*blt_info.vblitsize;
+	bltcdatptr = bltcpt;
+	bltcpt += (blt_info.hblitsize*2 + blt_info.bltcmod)*blt_info.vblitsize;
     }
     if (bltcon0 & 0x100) {
-	bltddatpt = blit_xlateptr(bltdpt, (blt_info.hblitsize*2+blt_info.bltdmod)*blt_info.vblitsize);
-	bltdpt += (blt_info.hblitsize*2+blt_info.bltdmod)*blt_info.vblitsize;
+	bltddatptr = bltdpt;
+	bltdpt += (blt_info.hblitsize*2 + blt_info.bltdmod)*blt_info.vblitsize;
     }
 
     if (blitfunc_dofast[mt] && !blitfill)
-	(*blitfunc_dofast[mt])(bltadatpt,bltbdatpt,bltcdatpt,bltddatpt,&blt_info);
+	(*blitfunc_dofast[mt])(bltadatptr, bltbdatptr, bltcdatptr, bltddatptr, &blt_info);
     else {
 	uae_u32 blitbhold = blt_info.bltbhold;
 	uae_u32 preva = 0, prevb = 0;
-	uae_u16 foo, *dstp = &foo;
+	uaecptr dstp = 0;
 
 	/*if (!blitfill) fprintf(stderr, "minterm %x not present\n",mt); */
 	for (j = 0; j < blt_info.vblitsize; j++) {
 	    blitfc = !!(bltcon1 & 0x4);
 	    for (i = 0; i < blt_info.hblitsize; i++) {
 		uae_u32 bltadat, blitahold;
-		if (bltadatpt) {
-		    bltadat = do_get_mem_word((uae_u16 *)bltadatpt); bltadatpt += 2;
+		if (bltadatptr) {
+		    bltadat = chipmem_wget (bltadatptr);
+		    bltadatptr += 2;
 		} else
 		    bltadat = blt_info.bltadat;
 		bltadat &= blit_masktable[i];
 		blitahold = (((uae_u32)preva << 16) | bltadat) >> blt_info.blitashift;
 		preva = bltadat;
 
-		if (bltbdatpt) {
-		    uae_u16 bltbdat = do_get_mem_word((uae_u16 *)bltbdatpt); bltbdatpt += 2;
+		if (bltbdatptr) {
+		    uae_u16 bltbdat = chipmem_wget (bltbdatptr);
+		    bltbdatptr += 2;
 		    blitbhold = (((uae_u32)prevb << 16) | bltbdat) >> blt_info.blitbshift;
 		    prevb = bltbdat;
 		}
-		if (bltcdatpt) {
-		    blt_info.bltcdat = do_get_mem_word((uae_u16 *)bltcdatpt); bltcdatpt += 2;
+		if (bltcdatptr) {
+		    blt_info.bltcdat = chipmem_wget (bltcdatptr);
+		    bltcdatptr += 2;
 		}
-		do_put_mem_word(dstp, blt_info.bltddat);
-		blt_info.bltddat = blit_func(blitahold, blitbhold, blt_info.bltcdat, mt) & 0xFFFF;
+		if (dstp) chipmem_wput (dstp, blt_info.bltddat);
+		blt_info.bltddat = blit_func (blitahold, blitbhold, blt_info.bltcdat, mt) & 0xFFFF;
 		if (blitfill) {
 		    uae_u16 d = blt_info.bltddat;
 		    int ifemode = blitife ? 2 : 0;
@@ -142,18 +145,19 @@ static void blitter_dofast(void)
 					+ (blit_filltable[d >> 8][ifemode + fc1][0] << 8));
 		    blitfc = blit_filltable[d >> 8][ifemode + fc1][1];
 		}
-		if (blt_info.bltddat) blt_info.blitzero = 0;
-		if (bltddatpt) {
-		    dstp = (uae_u16 *)bltddatpt;
-		    bltddatpt += 2;
+		if (blt_info.bltddat)
+		    blt_info.blitzero = 0;
+		if (bltddatptr) {
+		    dstp = bltddatptr;
+		    bltddatptr += 2;
 		}
 	    }
-	    if (bltadatpt) bltadatpt += blt_info.bltamod;
-	    if (bltbdatpt) bltbdatpt += blt_info.bltbmod;
-	    if (bltcdatpt) bltcdatpt += blt_info.bltcmod;
-	    if (bltddatpt) bltddatpt += blt_info.bltdmod;
+	    if (bltadatptr) bltadatptr += blt_info.bltamod;
+	    if (bltbdatptr) bltbdatptr += blt_info.bltbmod;
+	    if (bltcdatptr) bltcdatptr += blt_info.bltcmod;
+	    if (bltddatptr) bltddatptr += blt_info.bltdmod;
 	}
-	do_put_mem_word(dstp, blt_info.bltddat);
+	if (dstp) chipmem_wput (dstp, blt_info.bltddat);
 	blt_info.bltbhold = blitbhold;
     }
     blit_masktable[0] = 0xFFFF;
@@ -165,57 +169,60 @@ static void blitter_dofast(void)
 static void blitter_dofast_desc(void)
 {
     int i,j;
-    uae_u8 *bltadatpt = 0, *bltbdatpt = 0, *bltcdatpt = 0, *bltddatpt = 0;
+    uaecptr bltadatptr = 0, bltbdatptr = 0, bltcdatptr = 0, bltddatptr = 0;
     uae_u8 mt = bltcon0 & 0xFF;
 
     blit_masktable[0] = blt_info.bltafwm;
     blit_masktable[blt_info.hblitsize - 1] &= blt_info.bltalwm;
 
     if (bltcon0 & 0x800) {
-	bltadatpt = blit_xlateptr_desc(bltapt, (blt_info.hblitsize*2+blt_info.bltamod)*blt_info.vblitsize);
-	bltapt -= (blt_info.hblitsize*2+blt_info.bltamod)*blt_info.vblitsize;
+	bltadatptr = bltapt;
+	bltapt -= (blt_info.hblitsize*2 + blt_info.bltamod)*blt_info.vblitsize;
     }
     if (bltcon0 & 0x400) {
-	bltbdatpt = blit_xlateptr_desc(bltbpt, (blt_info.hblitsize*2+blt_info.bltbmod)*blt_info.vblitsize);
-	bltbpt -= (blt_info.hblitsize*2+blt_info.bltbmod)*blt_info.vblitsize;
+	bltbdatptr = bltbpt;
+	bltbpt -= (blt_info.hblitsize*2 + blt_info.bltbmod)*blt_info.vblitsize;
     }
     if (bltcon0 & 0x200) {
-	bltcdatpt = blit_xlateptr_desc(bltcpt, (blt_info.hblitsize*2+blt_info.bltcmod)*blt_info.vblitsize);
-	bltcpt -= (blt_info.hblitsize*2+blt_info.bltcmod)*blt_info.vblitsize;
+	bltcdatptr = bltcpt;
+	bltcpt -= (blt_info.hblitsize*2 + blt_info.bltcmod)*blt_info.vblitsize;
     }
     if (bltcon0 & 0x100) {
-	bltddatpt = blit_xlateptr_desc(bltdpt, (blt_info.hblitsize*2+blt_info.bltdmod)*blt_info.vblitsize);
-	bltdpt -= (blt_info.hblitsize*2+blt_info.bltdmod)*blt_info.vblitsize;
+	bltddatptr = bltdpt;
+	bltdpt -= (blt_info.hblitsize*2 + blt_info.bltdmod)*blt_info.vblitsize;
     }
     if (blitfunc_dofast_desc[mt] && !blitfill)
-	(*blitfunc_dofast_desc[mt])(bltadatpt,bltbdatpt,bltcdatpt,bltddatpt,&blt_info);
+	(*blitfunc_dofast_desc[mt])(bltadatptr, bltbdatptr, bltcdatptr, bltddatptr, &blt_info);
     else {
 	uae_u32 blitbhold = blt_info.bltbhold;
 	uae_u32 preva = 0, prevb = 0;
-	uae_u16 foo, *dstp = &foo;
+	uaecptr dstp = 0;
 
 /*	if (!blitfill) fprintf(stderr, "minterm %x not present\n",mt);*/
 	for (j = 0; j < blt_info.vblitsize; j++) {
 	    blitfc = !!(bltcon1 & 0x4);
 	    for (i = 0; i < blt_info.hblitsize; i++) {
 		uae_u32 bltadat, blitahold;
-		if (bltadatpt) {
-		    bltadat = do_get_mem_word((uae_u16 *)bltadatpt); bltadatpt -= 2;
+		if (bltadatptr) {
+		    bltadat = chipmem_wget (bltadatptr);
+		    bltadatptr -= 2;
 		} else
 		    bltadat = blt_info.bltadat;
 		bltadat &= blit_masktable[i];
 		blitahold = (((uae_u32)bltadat << 16) | preva) >> blt_info.blitdownashift;
 		preva = bltadat;
-		if (bltbdatpt) {
-		    uae_u16 bltbdat = do_get_mem_word((uae_u16 *)bltbdatpt); bltbdatpt -= 2;
+		if (bltbdatptr) {
+		    uae_u16 bltbdat = chipmem_wget (bltbdatptr);
+		    bltbdatptr -= 2;
 		    blitbhold = (((uae_u32)bltbdat << 16) | prevb) >> blt_info.blitdownbshift;
 		    prevb = bltbdat;
 		}
-		if (bltcdatpt) {
-		    blt_info.bltcdat = do_get_mem_word((uae_u16 *)bltcdatpt); bltcdatpt -= 2;
+		if (bltcdatptr) {
+		    blt_info.bltcdat = chipmem_wget (bltcdatptr);
+		    bltcdatptr -= 2;
 		}
-		do_put_mem_word(dstp, blt_info.bltddat);
-		blt_info.bltddat = blit_func(blitahold, blitbhold, blt_info.bltcdat, mt) & 0xFFFF;
+		if (dstp) chipmem_wput (dstp, blt_info.bltddat);
+		blt_info.bltddat = blit_func (blitahold, blitbhold, blt_info.bltcdat, mt) & 0xFFFF;
 		if (blitfill) {
 		    uae_u16 d = blt_info.bltddat;
 		    int ifemode = blitife ? 2 : 0;
@@ -224,18 +231,19 @@ static void blitter_dofast_desc(void)
 					+ (blit_filltable[d >> 8][ifemode + fc1][0] << 8));
 		    blitfc = blit_filltable[d >> 8][ifemode + fc1][1];
 		}
-		if (blt_info.bltddat) blt_info.blitzero = 0;
-		if (bltddatpt) {
-		    dstp = (uae_u16 *)bltddatpt;
-		    bltddatpt -= 2;
+		if (blt_info.bltddat)
+		    blt_info.blitzero = 0;
+		if (bltddatptr) {
+		    dstp = bltddatptr;
+		    bltddatptr -= 2;
 		}
 	    }
-	    if (bltadatpt) bltadatpt -= blt_info.bltamod;
-	    if (bltbdatpt) bltbdatpt -= blt_info.bltbmod;
-	    if (bltcdatpt) bltcdatpt -= blt_info.bltcmod;
-	    if (bltddatpt) bltddatpt -= blt_info.bltdmod;
+	    if (bltadatptr) bltadatptr -= blt_info.bltamod;
+	    if (bltbdatptr) bltbdatptr -= blt_info.bltbmod;
+	    if (bltcdatptr) bltcdatptr -= blt_info.bltcmod;
+	    if (bltddatptr) bltddatptr -= blt_info.bltdmod;
 	}
-	do_put_mem_word(dstp, blt_info.bltddat);
+	if (dstp) chipmem_wput (dstp, blt_info.bltddat);
 	blt_info.bltbhold = blitbhold;
     }
     blit_masktable[0] = 0xFFFF;
@@ -247,7 +255,8 @@ static void blitter_dofast_desc(void)
 STATIC_INLINE int blitter_read(void)
 {
     if (bltcon0 & 0xe00){
-	if (!dmaen(DMA_BLITTER)) return 1; /* blitter stopped */
+	if (!dmaen(DMA_BLITTER))
+	    return 1;
 	if (bltcon0 & 0x200) blt_info.bltcdat = chipmem_bank.wget(bltcpt);
     }
     bltstate = BLT_work;
@@ -386,8 +395,12 @@ static void blit_init(void)
 	    warn = 0;
 	}
 	blitdesc = bltcon1 & 0x2;
-	if (blitfill && !blitdesc)
-	    write_log ("warning: blitter fill without desc\n");
+	if (blitfill && !blitdesc) {
+	    static int warn = 1;
+	    if (warn)
+	        write_log ("warning: blitter fill without desc (further messages suppressed)\n");
+	    warn = 0;
+	}
     }
 }
 

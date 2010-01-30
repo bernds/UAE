@@ -11,23 +11,7 @@
 #define SMART_UPDATE 1
 #endif
 
-/*
- * This doesn't work very well
- */
-
-#undef EMULATE_AGA
-
-#ifndef EMULATE_AGA
-#define AGA_CHIPSET 0
-#else
-#define AGA_CHIPSET 1
-#endif
-
-#if AGA_CHIPSET == 1
 #define MAX_PLANES 8
-#else
-#define MAX_PLANES 6
-#endif
 
 #define RES_LORES 0
 #define RES_HIRES 1
@@ -35,7 +19,6 @@
 
 /* calculate shift depending on resolution (replaced "decided_hires ? 4 : 8") (TW) */
 #define RES_SHIFT(res) ((res) == RES_LORES ? 8 : (res) == RES_HIRES ? 4 : 2)
-#define RES_ADJUST(res) ((res) == RES_LORES ? 8 : (res) == RES_HIRES ? 4 : 2)
 
 /* We ignore that many lores pixels at the start of the display. These are
  * invisible anyway due to hardware DDF limits. */
@@ -55,18 +38,65 @@ STATIC_INLINE int coord_hw_to_window_x (int x)
 
 extern int framecnt;
 
+
+/* color values in two formats: 12 (OCS/ECS) or 24 (AGA) bit Amiga RGB (color_regs),
+ * and the native color value; both for each Amiga hardware color register. 
+ *
+ * !!! See color_reg_xxx functions below before touching !!!
+ */
 struct color_entry {
-#if AGA_CHIPSET == 0
-    /* Color values in two formats: 12 bit Amiga RGB (color_regs), and
-     * the native color value; both for each Amiga hardware color register. 
-     */
-    /* X86.S expects acolors at the start of the structure. */
-    xcolnr acolors[32];
-    uae_u16 color_regs[32];
-#else
-    uae_u32 color_regs[256];
-#endif
+    uae_u16 color_regs_ecs[32];
+    xcolnr acolors[256];
+    uae_u32 color_regs_aga[256];
 };
+
+/* convert 24 bit AGA Amiga RGB to native color */
+/* warning: ugly and works with little-endian cpu's only */
+#define CONVERT_RGB(c) \
+    ( xbluecolors[((uae_u8*)(&c))[0]] | xgreencolors[((uae_u8*)(&c))[1]] | xredcolors[((uae_u8*)(&c))[2]] )
+
+STATIC_INLINE xcolnr getxcolor (int c)
+{
+    if (currprefs.chipset_mask & CSMASK_AGA)
+	return CONVERT_RGB(c);
+    else
+	return xcolors[c];
+}
+
+/* functions for reading, writing, copying and comparing struct color_entry */
+STATIC_INLINE int color_reg_get (struct color_entry *ce, int c)
+{
+    if (currprefs.chipset_mask & CSMASK_AGA)
+	return ce->color_regs_aga[c];
+    else
+	return ce->color_regs_ecs[c];
+}
+STATIC_INLINE void color_reg_set (struct color_entry *ce, int c, int v)
+{
+    if (currprefs.chipset_mask & CSMASK_AGA)
+	ce->color_regs_aga[c] = v;
+    else
+	ce->color_regs_ecs[c] = v;
+}
+STATIC_INLINE int color_reg_cmp (struct color_entry *ce1, struct color_entry *ce2)
+{
+    if (currprefs.chipset_mask & CSMASK_AGA)
+	return memcmp (ce1->color_regs_aga, ce2->color_regs_aga, sizeof (uae_u32) * 256);
+    else
+	return memcmp (ce1->color_regs_ecs, ce2->color_regs_ecs, sizeof (uae_u16) * 32);    
+}
+/* ugly copy hack, is there better solution? */
+STATIC_INLINE void color_reg_cpy (struct color_entry *dst, struct color_entry *src)
+{
+    if (currprefs.chipset_mask & CSMASK_AGA) {
+	/* copy acolors and color_regs_aga */
+	memcpy (dst->acolors, src->acolors, sizeof(struct color_entry) - sizeof(uae_u16) * 32);
+    } else {
+	/* copy first 32 acolors and color_regs_ecs */
+	memcpy (dst->color_regs_ecs, src->color_regs_ecs,
+		sizeof(struct color_entry) - sizeof(uae_u32) * 256 - sizeof(xcolnr) * (256-32));
+    }
+}
 
 /*
  * The idea behind this code is that at some point during each horizontal
@@ -133,13 +163,11 @@ struct decision {
     int ctable;
 
     uae_u16 bplcon0, bplcon1, bplcon2;
-#if 0 /* We don't need this. */
-    uae_u16 bplcon3;
-#endif
-#if AGA_CHIPSET == 1
-    uae_u16 bplcon4;
-#endif
+    uae_u16 fmode, bplcon4;
 };
+
+extern int fetchmode, prefetch, fetchsize, fetchstart, fetchstart_shift;
+extern void expand_fetchmodes (int, int);
 
 /* Compute the number of bitplanes from a value written to BPLCON0  */
 #define GET_PLANES(x) ((((x) >> 12) & 7) | (((x) & 0x10) >> 1))
@@ -213,5 +241,5 @@ STATIC_INLINE void clear_inhibit_frame (int bit)
 }
 STATIC_INLINE void toggle_inhibit_frame (int bit)
 {
-    inhibit_frame ^= ~(1 << bit);
+    inhibit_frame ^= 1 << bit;
 }

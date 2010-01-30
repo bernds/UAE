@@ -1,3 +1,22 @@
+9A0723 Some SCSI patches by Patrick Ohly (which I got two months ago... oops)
+       Filesystem fixes from Brian.
+       AGA updates from Toni.
+9A0627 Apydia loader fixes from Toni.
+9A0611 Fix bug in filesys.c causing in-use ainos to get discarded.  Thanks
+       to Brian for the analysis.
+9A0608 Added some disk.c changes from Toni and a crude hack of my own to
+       speed up disk accesses done by the Kickstart.
+9A0330 Change blitter not to translate memory addresses to native.  Had to
+       disable 32 bit blits.
+       Floppy code changes (Toni Wilen)
+       Delete GGI port.
+       Fix toggle_inhibit_frame (Brian).
+9A0228 Some WARPUP fixes, and changes to accomodate broken Amiga gzip (Sam
+       Jordan).
+9A0221 Tweak POTGO a bit.  Seems to work with BC Kid now.
+9A0220 Fix off-by-one errors in expansion.c (Toni Wilen).
+       Remove AGA checks in DDFSTRT/DDFSTOP (Toni Wilen).
+       Turn off/restrict some warning messages.
 9A0209 Fix some problems where the blitter nasty flag wouldn't ever get reset.
        cia.c: Set all parallel port related bits to 1 when reading.
 9A0208 gencpu.c: Fix saved PC for division by zero exception (found by Sam

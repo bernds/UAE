@@ -54,7 +54,6 @@ STATIC_INLINE int dmaen (unsigned int dmamask)
 #define SPCFLAG_EXEC 1024
 #define SPCFLAG_MODE_CHANGE 8192
 
-extern int dskdmaen;
 extern uae_u16 adkcon;
 
 extern unsigned int joy0dir, joy1dir;
@@ -112,3 +111,6 @@ extern uae_u32 lorestab_h[256][4];
 
 extern uae_u32 hirestab_l[256][1];
 extern uae_u32 lorestab_l[256][2];
+
+/* AGA mode color lookup tables */
+extern unsigned int xredcolors[256], xgreencolors[256], xbluecolors[256];

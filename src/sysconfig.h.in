@@ -254,9 +254,6 @@
 /* Define if you have the <getopt.h> header file.  */
 #undef HAVE_GETOPT_H
 
-/* Define if you have the <ggi/libggi.h> header file.  */
-#undef HAVE_GGI_LIBGGI_H
-
 /* Define if you have the <libraries/cybergraphics.h> header file.  */
 #undef HAVE_LIBRARIES_CYBERGRAPHICS_H
 

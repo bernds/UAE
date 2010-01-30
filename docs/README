@@ -1,4 +1,4 @@
-This is version 0.8.12 of UAE, the Un*x Amiga Emulator.
+This is version 0.8.13 of UAE, the Un*x Amiga Emulator.
 
 Versions numbered 0.8.x are beta versions, to be used for development only.
 If you are only a user of UAE, you are better off using the latest 0.7.x
@@ -575,12 +575,19 @@ added while the emulator is running.  Reseting it is not sufficient
 either for technical reasons.
 
 The implementation of the uaescsi.device uses cdrecord's libscg as
-interface to the native SCSI system. Many implementations of this
-interface exist, although only the Linux implementation has been
-incorporated into UAE at the moment. Using threads is strongly
-recommended, because some SCSI commands can run for extended periods
-of time and would block the whole emulation during this time without
-threads. Use --enable-threads when starting configure.
+interface to the native SCSI system. The Linux implementation of this
+library used to be included into UAE, but now the library as generated
+by the cdrecord source package (ftp://ftp.fokus.gmd.de/pub/unix/cdrecord/)
+is used. As the library is not distributed seperately, you will have
+to get the whole cdrecord sources, compile it and then make several
+header and lib files available to the compiler if (and only if) building
+UAE with SCSI support. The script "src/install_libscg" copies the files
+required for the libscg in cdrecord 1.8.1.
+
+Using threads is strongly recommended, because some SCSI commands can
+run for extended periods of time and would block the whole emulation
+during this time without threads. Use --enable-threads when starting
+configure.
 
 Depending on the hosts capabilities the uaescsi.device may be limited
 compared to other Amiga SCSI devices. The Linux kernel by default only
@@ -782,6 +789,11 @@ pOS port:
   Samuel Devulder <devulder@info.unicaen.fr>
   Available: Not quite sure yet.
   Sourcecode: Included in the main source. Should compile OK.
+
+OS/2 port:
+  Pressenna Sockalingasamy <deathlok@cww.de>
+  Available: ftp://hobbes.nmsu.edu/pub/os2/apps/emulator/uae2_0810_a1.zip
+  Sourcecode: working on including it
 
 XFree86/OS2 port:
   Krister Bergman <bellman@kuai.se>

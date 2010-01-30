@@ -64,8 +64,6 @@ static int next_lineno;
 static enum nln_how nextline_how;
 static int lof_changed = 0;
 
-static const int dskdelay = 2; /* FIXME: ??? */
-
 static uae_u32 sprtaba[256],sprtabb[256];
 
 /*
@@ -131,10 +129,6 @@ static unsigned int diwstrt, diwstop, diwhigh;
 static int diwhigh_written;
 static unsigned int ddfstrt, ddfstop;
 
-static uae_u32 dskpt;
-static uae_u16 dsklen, dsksync;
-static int dsklength, syncfound;
-
 /* The display and data fetch windows */
 
 enum diw_states
@@ -172,8 +166,6 @@ struct copper {
 static struct copper cop_state;
 static int copper_enabled_thisline;
 static int cop_min_waittime;
-
-static int dskdmaen;
 
 /*
  * Statistics
@@ -302,15 +294,23 @@ STATIC_INLINE uae_u8 *pfield_xlateptr (uaecptr plpt, int bytecount)
 
 STATIC_INLINE void docols (struct color_entry *colentry)
 {
-#if AGA_CHIPSET == 0
     int i;
-    for (i = 0; i < 32; i++) {
-	int v = colentry->color_regs[i];
-	if (v < 0 || v > 4095)
-	  continue;
-	colentry->acolors[i] = xcolors[v];
+
+    if (currprefs.chipset_mask & CSMASK_AGA) {
+        for (i = 0; i < 256; i++) {
+	    int v = color_reg_get (colentry, i);
+	    if(v < 0 || v > 16777215)
+		continue;
+	    colentry->acolors[i] = CONVERT_RGB (v);
+	}
+    } else {
+        for (i = 0; i < 32; i++) {
+	    int v = color_reg_get (colentry, i);
+	    if (v < 0 || v > 4095)
+		continue;
+	    colentry->acolors[i] = xcolors[v];
+	}
     }
-#endif
 }
 
 void notice_new_xcolors (void)
@@ -332,7 +332,7 @@ static void remember_ctable (void)
     if (remembered_color_entry == -1) {
 	/* The colors changed since we last recorded a color map. Record a
 	 * new one. */
-	memcpy (curr_color_tables + next_color_entry, &current_colors, sizeof current_colors);
+	color_reg_cpy (curr_color_tables + next_color_entry, &current_colors);
 	remembered_color_entry = next_color_entry++;
     }
     thisline_decision.ctable = remembered_color_entry;
@@ -347,9 +347,7 @@ static void remember_ctable (void)
 	    changed = 1;
 	    color_src_match = color_dest_match = -1;
 	} else {
-	    color_compare_result = memcmp (&prev_color_tables[oldctable].color_regs,
-					   &current_colors.color_regs,
-					   sizeof current_colors.color_regs) != 0;
+	    color_compare_result = color_reg_cmp (&prev_color_tables[oldctable], &current_colors) != 0;
 	    if (color_compare_result)
 		changed = 1;
 	    color_src_match = oldctable;
@@ -414,18 +412,16 @@ STATIC_INLINE void decide_as_playfield (int startpos, int len)
     /* These are for comparison. */
     thisline_decision.bplcon0 = bplcon0;
     thisline_decision.bplcon2 = bplcon2;
-#if AGA_CHIPSET == 1
     thisline_decision.bplcon4 = bplcon4;
-#endif
+    thisline_decision.fmode = fmode;
 
 #ifdef SMART_UPDATE
     if (line_decisions[next_lineno].plfstrt != thisline_decision.plfstrt
 	|| line_decisions[next_lineno].plflinelen != thisline_decision.plflinelen
 	|| line_decisions[next_lineno].bplcon0 != thisline_decision.bplcon0
 	|| line_decisions[next_lineno].bplcon2 != thisline_decision.bplcon2
-#if AGA_CHIPSET == 1
 	|| line_decisions[next_lineno].bplcon4 != thisline_decision.bplcon4
-#endif
+	|| line_decisions[next_lineno].fmode != thisline_decision.fmode
 	)
 #endif /* SMART_UPDATE */
 	thisline_changed = 1;
@@ -672,7 +668,7 @@ static void record_color_change (int hpos, int regno, unsigned long value)
     /* If the border is changed the first time before the DIW, record the
      * original starting border value. */
     if (regno == 0 && thisline_decision.color0 == 0xFFFFFFFFul && thisline_decision.diwfirstword < 0) {
-	thisline_decision.color0 = current_colors.color_regs[0];
+	thisline_decision.color0 = color_reg_get (&current_colors, 0);
 	if (line_decisions[next_lineno].color0 != value)
 	    thisline_changed = 1;
     }
@@ -990,7 +986,7 @@ static void finish_decisions (void)
 	    remember_ctable_for_border ();
     }
     if (thisline_decision.which == -1 && thisline_decision.color0 == 0xFFFFFFFFul)
-	thisline_decision.color0 = current_colors.color_regs[0];
+	thisline_decision.color0 = color_reg_get (&current_colors, 0);
 
     dip->nr_color_changes = next_color_change - dip->first_color_change;
     dip->nr_sprites = next_sprite_draw - dip->first_sprite_draw;
@@ -1098,12 +1094,49 @@ static void init_hz (void)
     write_log ("Using %s timing\n", isntsc ? "NTSC" : "PAL");
 }
 
-/* Calculate display window and data fetch values from the corresponding
- * hardware registers. */
+void expand_fetchmodes (int fmode, int bplcon0)
+{
+    int res;
+
+    if (bplcon0 & 0x8000)
+	res = 1;
+    else if (bplcon0 & 0x0040)
+	res = 2;
+    else
+	res = 0;
+    switch (fmode & 3) {
+	case 3:
+	    fetchmode = 2;
+	    switch (res) {
+	    case 2: prefetch = 1<<3; fetchsize = 1<<3; fetchstart_shift = 3; break;
+	    case 1: prefetch = 1<<3; fetchsize = 1<<4; fetchstart_shift = 4; break;
+	    case 0: prefetch = 1<<3; fetchsize = 1<<5; fetchstart_shift = 5; break;
+	    }
+	    break;
+	case 2:
+	case 1:
+	    fetchmode = 1;
+	    switch (res) {
+	    case 2: prefetch = 1<<2; fetchsize = 1<<3; fetchstart_shift = 2; break;
+	    case 1: prefetch = 1<<3; fetchsize = 1<<3; fetchstart_shift = 3; break;
+	    case 0: prefetch = 1<<3; fetchsize = 1<<4; fetchstart_shift = 4; break;
+	    }
+	    break;
+	case 0:
+	    fetchmode = 0;
+	    switch (res) {
+	    case 2: prefetch = 1<<1; fetchsize = 1<<3; fetchstart_shift = 1; break;
+	    case 1: prefetch = 1<<2; fetchsize = 1<<3; fetchstart_shift = 2; break;
+	    case 0: prefetch = 1<<3; fetchsize = 1<<3; fetchstart_shift = 3; break;
+	    }
+	    break;
+	}
+    fetchstart = 1 << fetchstart_shift;
+}
+
 static void calcdiw (void)
 {
-    int mask, add, mask2, add2, plfold;
-
+    int fetch;
     int hstrt = diwstrt & 0xFF;
     int hstop = diwstop & 0xFF;
     int vstrt = diwstrt >> 8;
@@ -1147,82 +1180,18 @@ static void calcdiw (void)
 	plflastline = 313;
     }
 #endif
-
     plfstrt = ddfstrt;
     plfstop = ddfstop;
-    /* @@@ Toni... these ones might be wrong for AGA?  */
     if (plfstrt < 0x18) plfstrt = 0x18;
     if (plfstop < 0x18) plfstop = 0x18;
     if (plfstop > 0xD8) plfstop = 0xD8;
+    if (plfstrt > plfstop) plfstrt = plfstop;
 
-    /* This actually seems to be correct now, at least the non-AGA stuff... */
-
-    if ((fmode & 3) == 0) {
-	/* FMODE=0 */
-	mask = ~7;
-	add = 15;
-	mask2 = ~3;
-	add2 = 0;
-    } else if ((fmode & 3) == 3) {
-	/* FMODE=3 */
-	if(bplcon0 & 0x8000) {
-	    mask = ~15;
-	    add = 31;
-	    mask2 = ~7;
-	    add2 = 4;
-	} else {
-	    mask = ~31;
-	    add = 63;
-	    mask2 =  ~15;
-	    add2 = 8;
-	}
-    } else {
-	/* FMODE=1/2 */
-	if(bplcon0 & 0x8000) {
-	    mask = ~15;
-	    add = 31;
-	    mask2 = ~15;
-	    add2 = 4;
-	} else { 
-	    mask = ~15;
-	    add = 31;
-	    mask2 = ~15;
-	    add2 = 8;
-
-	}
-    }
-    /* ugh.. This works in every demo and game I have tested, but can't be correct,
-     * it looks too complex and stupid, does anybody know how this really works? (TW)
-     */
-    plfold = plfstrt;
-    plfstrt &= mask2;
-    plfstrt += add2;
-    /* @@@ This one is different from the pre-AGA version.  It shouldn't make
-     * a difference in OCS modes, though.  */
-    plfstop += plfstrt - plfold;
-    plfstop &= mask2;
-    plfstop += add2;
-    plflinelen = (plfstop-plfstrt+add) & mask;
-
-    if (plfstrt > plfstop)
-	plfstrt = plfstop;
-
-#if 0
-    if (plflinelen > 100 && (bplcon0 & 0x8000))
-	write_log("vpos: %d fmode: %d, hires %d strt1 %d stop1 %d strt2 %d stop2 %d,plflinelen %d\n",
-		  vpos,fmode&3,(bplcon0&0x8000)?1:0,ddfstrt,ddfstop,plfstrt,plfstop,plflinelen);
-#endif
+    expand_fetchmodes (fmode, bplcon0);
+    fetch = fetchsize >> fetchstart_shift;
+    plflinelen = ((((plfstop - plfstrt + fetchstart - 1) >> fetchstart_shift)
+		   + fetch + (fetch - 1)) & ~(fetch - 1) ) << fetchstart_shift;
 }
-
-/*
- * lores,fmode=3 24 184 = 192
- * hires,fmode=3 40 200 = 176
- * hires,fmode=3 40 216 = 192
- * hires,fmode=1 56 200 = 160
- * hires,fmode=1 56 208 = 160
- * lores,fmode=1 48 200 = 176
- * lores,fmode=1 72 168 = 112 
-*/
 
 /* Mousehack stuff */
 
@@ -1326,7 +1295,7 @@ static void do_mouse_hack (void)
 	return;
     }
     switch (mousestate) {
-     case normal_mouse:
+    case normal_mouse:
 	diffx = lastmx - lastsampledmx;
 	diffy = lastmy - lastsampledmy;
 	if (!newmousecounters) {
@@ -1340,14 +1309,14 @@ static void do_mouse_hack (void)
 	lastsampledmx += diffx; lastsampledmy += diffy;
 	break;
 
-     case dont_care_mouse:
+    case dont_care_mouse:
 	diffx = adjust (((lastmx - lastspr0x) * mstepx) >> 16);
 	diffy = adjust (((lastmy - lastspr0y) * mstepy) >> 16);
 	lastspr0x = lastmx; lastspr0y = lastmy;
 	mouse_x += diffx; mouse_y += diffy;
 	break;
 
-     case follow_mouse:
+    case follow_mouse:
 	if (sprvbfl && sprvbfl-- > 1) {
 	    int mousexpos, mouseypos;
 
@@ -1381,7 +1350,7 @@ static void do_mouse_hack (void)
 	}
 	break;
 	
-     default:
+    default:
 	abort ();
     }
 }
@@ -1527,10 +1496,6 @@ static void DMACON (uae_u16 v)
 	copper_enabled_thisline = 0;
 	regs.spcflags &= ~SPCFLAG_COPPER;
 	cop_state.state = COP_stop;
-    }
-
-    if ((dmacon & DMA_DISK) > (oldcon & DMA_DISK)) {
-	DISK_reset_cycles ();
     }
 
     if ((dmacon & DMA_BLITPRI) > (oldcon & DMA_BLITPRI) && bltstate != BLT_done) {
@@ -1751,7 +1716,7 @@ static void DIWHIGH (int hpos, uae_u16 v)
 
 static void DDFSTRT (int hpos, uae_u16 v)
 {
-    v &= (currprefs.chipset_mask & CSMASK_AGA) ? 0x1FC : 0xFC;
+    v &= 0xFC;
     if (ddfstrt == v)
 	return;
     decide_line (hpos);
@@ -1760,7 +1725,7 @@ static void DDFSTRT (int hpos, uae_u16 v)
 }
 static void DDFSTOP (int hpos, uae_u16 v)
 {
-    v &= (currprefs.chipset_mask & CSMASK_AGA) ? 0x1FC : 0xFC;
+    v &= 0xFC;
     if (ddfstop == v)
 	return;
     decide_line (hpos);
@@ -1933,25 +1898,28 @@ static uae_u16 CLXDAT (void)
     clxdat = 0;
     return v;
 }
+
 static void COLOR (int hpos, uae_u16 v, int num)
 {
 
     v &= 0xFFF;
-#if AGA_CHIPSET == 1
-    {
-	/* XXX Broken */
+    if (currprefs.chipset_mask & CSMASK_AGA) {
+
 	int r,g,b;
 	int cr,cg,cb;
 	int colreg;
 	uae_u32 cval;
 
+	/* writing is disabled when RDRAM=1 */
+	if (bplcon2 & 0x0100) return;
+
 	colreg = ((bplcon3 >> 13) & 7) * 32 + num;
 	r = (v & 0xF00) >> 8;
 	g = (v & 0xF0) >> 4;
 	b = (v & 0xF) >> 0;
-	cr = current_colors.color_regs[colreg] >> 16;
-	cg = (current_colors.color_regs[colreg] >> 8) & 0xFF;
-	cb = current_colors.color_regs[colreg] & 0xFF;
+	cr = current_colors.color_regs_aga[colreg] >> 16;
+	cg = (current_colors.color_regs_aga[colreg] >> 8) & 0xFF;
+	cb = current_colors.color_regs_aga[colreg] & 0xFF;
 
 	if (bplcon3 & 0x200) {
 	    cr &= 0xF0; cr |= r;
@@ -1963,124 +1931,23 @@ static void COLOR (int hpos, uae_u16 v, int num)
 	    cb = b + (b << 4);
 	}
 	cval = (cr << 16) | (cg << 8) | cb;
-	if (cval == current_colors.color_regs[colreg])
+	if (cval == current_colors.color_regs_aga[colreg])
 	    return;
 
 	/* Call this with the old table still intact. */
-	record_color_change (hpos, colreg, v);
+	record_color_change (hpos, colreg, cval);
 	remembered_color_entry = -1;
-	current_colors.color_regs[colreg] = cval;
-/*	current_colors.acolors[colreg] = xcolors[v];*/
-    }
-#else
-    {
-	if (current_colors.color_regs[num] == v)
+	current_colors.color_regs_aga[colreg] = cval;
+	current_colors.acolors[colreg] = CONVERT_RGB (cval);
+   } else {
+	if (current_colors.color_regs_ecs[num] == v)
 	    return;
 	/* Call this with the old table still intact. */
 	record_color_change (hpos, num, v);
 	remembered_color_entry = -1;
-	current_colors.color_regs[num] = v;
+	current_colors.color_regs_ecs[num] = v;
 	current_colors.acolors[num] = xcolors[v];
     }
-#endif
-}
-
-static void DSKSYNC (uae_u16 v) { dsksync = v; }
-static void DSKDAT (uae_u16 v) { write_log ("DSKDAT written. Not good.\n"); }
-static void DSKPTH (uae_u16 v) { dskpt = (dskpt & 0xffff) | ((uae_u32)v << 16); }
-static void DSKPTL (uae_u16 v) { dskpt = (dskpt & ~0xffff) | (v); }
-
-static void DSKLEN (uae_u16 v)
-{
-    if (v & 0x8000) {
-	dskdmaen = dskdmaen == 1 ? 2 : 1;
-    } else {
-	dskdmaen = 0;
-	if (eventtab[ev_diskblk].active)
-	    write_log ("warning: Disk DMA aborted!\n");
-	eventtab[ev_diskblk].active = 0;
-	events_schedule();
-    }
-    dsklen = dsklength = v; dsklength &= 0x3fff;
-    if (dskdmaen == 2 && dsksync != 0x4489 && (adkcon & 0x400)) {
-	write_log ("Non-standard sync: %04x len: %x\n", dsksync, dsklength);
-    }
-    if (dskdmaen <= 1)
-	return;
-    
-    if (dsklen & 0x4000) {
-	eventtab[ev_diskblk].active = 1;
-	eventtab[ev_diskblk].oldcycles = cycles;
-	eventtab[ev_diskblk].evtime = 40 + cycles; /* ??? */
-	events_schedule();
-	dskdmaen = 3;
-    } else {
-	 DISK_StartRead ();
-	 syncfound = !(adkcon & 0x400);
-    }
-}
-
-static int update_disk_reads (void)
-{
-    int retval = 0;
-    /* If we get called from DSKBYTR or DSKDATR, we may not actually be
-       reading from disk, so skip the DMA update.  */
-    if (dskdmaen != 2) {
-	DISK_update_reads (0, 0, 0, 0);
-	return 0;
-    }
-    if (dsklength == 0)
-	write_log ("Bug in disk code: dsklength == 0\n");
-    else
-	retval = DISK_update_reads (&dskpt, &dsklength, &syncfound, dsksync);
-
-    if (dsklength == 0) {
-	dskdmaen = -1;
-	/* DISKBLK */
-	INTREQ (0x8002);
-    }
-    return retval;
-}
-
-static void disksync_handler (void)
-{
-    uae_u16 mfm, byte;
-
-    eventtab[ev_disksync].active = 0;
-
-    /* If no DMA, something weird happened.  It's not clear what to do
-       about it.  */
-    if (! dmaen (0x10) || dskdmaen != 2)
-	return;
-
-    /* Likewise... */
-    if (! update_disk_reads ())
-	return;
-    DISK_GetData (&mfm, &byte);
-
-    if (dsksync == mfm)
-	INTREQ (0x9000);
-}
-
-static uae_u16 DSKBYTR (void)
-{
-    uae_u16 v = (dsklen >> 1) & 0x6000;
-    uae_u16 mfm, byte;
-    if (update_disk_reads ())
-	v |= 0x8000;
-    DISK_GetData (&mfm, &byte);
-    v |= byte;
-    if (dsksync == mfm)
-	v |= 0x1000;
-    return v;
-}
-
-static uae_u16 DSKDATR (void)
-{
-    uae_u16 mfm, byte;
-    update_disk_reads ();
-    DISK_GetData (&mfm, &byte);
-    return mfm;
 }
 
 static uae_u16 potgo_value;
@@ -2092,8 +1959,9 @@ static void POTGO (uae_u16 v)
 
 static uae_u16 POTGOR (void)
 {
-    uae_u16 v = (potgo_value | (potgo_value << 1)) & 0xAA00;
-    v |= v >> 1;
+    uae_u16 v = (potgo_value | (potgo_value >> 1)) & 0x5500;
+
+    v |= (~potgo_value & 0xAA00) >> 1;
 
     if (JSEM_ISMOUSE (0, &currprefs)) {
 	if (buttonstate[2])
@@ -2252,18 +2120,19 @@ static void update_copper (int until_hpos)
 	    }
 	    /* Perform moves immediately.  */
 	    if ((cop_state.i1 & 1) == 0) {
-		if (cop_state.i1 < (copcon & 2 ? ((currprefs.chipset_mask & CSMASK_AGA) ? 0 : 0x40u) : 0x80u)) {
+		unsigned int address = cop_state.i1 & 0x1FE;
+		if (address < (copcon & 2 ? ((currprefs.chipset_mask & CSMASK_AGA) ? 0 : 0x40u) : 0x80u)) {
 		    cop_state.state = COP_stop;	
 		    copper_enabled_thisline = 0;
 		    regs.spcflags &= ~SPCFLAG_COPPER;
 		    goto out;
 		}
-		if (cop_state.i1 == 0x88)
+		if (address == 0x88)
 		    cop_state.ip = cop1lc;
-		else if (cop_state.i1 == 0x8A)
+		else if (address == 0x8A)
 		    cop_state.ip = cop2lc;
 		else
-		    custom_wput_1 (old_hpos, cop_state.i1, cop_state.i2);
+		    custom_wput_1 (old_hpos, address, cop_state.i2);
 		/* That could have turned off the copper...  */
 		if (! copper_enabled_thisline)
 		    goto out;
@@ -2449,39 +2318,6 @@ void do_copper (void)
 {
     int hpos = current_hpos ();
     update_copper (hpos);
-}
-
-static void diskblk_handler (void)
-{
-    eventtab[ev_diskblk].active = 0;
-
-    if (dskdmaen != 3) {
-	static int warned = 0;
-	if (!warned)
-	    warned++, write_log ("BUG!\n");
-	return;
-    }
-    if (dmaen (0x10)){
-	if (dsklen & 0x4000) {
-	    if (!chipmem_bank.check (dskpt, 2*dsklength)) {
-		write_log ("warning: Bad disk write DMA pointer\n");
-	    } else {
-		uae_u8 *mfmp = get_real_address (dskpt);
-		int i;
-		DISK_InitWrite();
-
-		for (i = 0; i < dsklength; i++) {
-		    uae_u16 d = (*mfmp << 8) + *(mfmp+1);
-		    mfmwrite[i] = d;
-		    mfmp += 2;
-		}
-		DISK_WriteData(dsklength);
-	    }
-	} else
-	    write_log ("warning: diskblk_handler trying to read!\n");
-	INTREQ(0x9002);
-	dskdmaen = -1;
-    }
 }
 
 static void do_sprites (int currvp, int currhp)
@@ -2763,11 +2599,7 @@ static void hsync_handler (void)
     eventtab[ev_hsync].evtime += cycles - eventtab[ev_hsync].oldcycles;
     eventtab[ev_hsync].oldcycles = cycles;
     CIA_hsync_handler ();
-
-    if (dskdmaen == 2 && dmaen (0x10)) {
-	update_disk_reads ();
-	DISK_search_sync (maxhpos, dsksync);
-    }
+    DISK_update ();
 
     if (currprefs.produce_sound > 0) {
 	int nr;
@@ -2851,12 +2683,8 @@ static void init_eventtab (void)
     eventtab[ev_copper].active = 0;
     eventtab[ev_blitter].handler = blitter_handler;
     eventtab[ev_blitter].active = 0;
-    eventtab[ev_diskblk].handler = diskblk_handler;
-    eventtab[ev_diskblk].active = 0;
-    eventtab[ev_diskindex].handler = diskindex_handler;
-    eventtab[ev_diskindex].active = 0;
-    eventtab[ev_disksync].handler = disksync_handler;
-    eventtab[ev_disksync].active = 0;
+    eventtab[ev_disk].handler = DISK_handler;
+    eventtab[ev_disk].active = 0;
 
     events_schedule ();
 }
@@ -2864,13 +2692,21 @@ static void init_eventtab (void)
 void customreset (void)
 {
     int i;
+    int zero = 0;
 #ifdef HAVE_GETTIMEOFDAY
     struct timeval tv;
 #endif
 
-    for (i = 0; i < sizeof current_colors.color_regs / sizeof *current_colors.color_regs; i++) {
-	current_colors.color_regs[i] = 0;
-	current_colors.acolors[i] = xcolors[0];
+    if (currprefs.chipset_mask & CSMASK_AGA) {
+	for (i = 0; i < 32; i++) {
+	    current_colors.color_regs_ecs[i] = 0;
+	    current_colors.acolors[i] = xcolors[0];
+	}
+    } else {
+        for (i = 0; i < 256; i++) {
+	    current_colors.color_regs_aga[i] = 0;
+	    current_colors.acolors[i] = CONVERT_RGB (zero);
+	}
     }
 
     expamem_reset ();
@@ -2907,7 +2743,7 @@ void customreset (void)
     diwstate = DIW_waiting_start;
     hdiwstate = DIW_waiting_start;
     copcon = 0;
-    dskdmaen = 0;
+    DSKLEN (0, 0);
     cycles = 0;
 
     bplcon4 = 0x11; /* Get AGA chipset into ECS compatibility mode */
@@ -3044,7 +2880,7 @@ uae_u32 REGPARAM2 custom_wget (uaecptr addr)
      case 0x004: return VPOSR();
      case 0x006: return VHPOSR();
 
-     case 0x008: return DSKDATR();
+     case 0x008: return DSKDATR(current_hpos());
 
      case 0x00A: return JOY0DAT();
      case 0x00C: return JOY1DAT();
@@ -3054,7 +2890,7 @@ uae_u32 REGPARAM2 custom_wget (uaecptr addr)
      case 0x012: return POT0DAT();
      case 0x016: return POTGOR();
      case 0x018: return SERDATR();
-     case 0x01A: return DSKBYTR();
+     case 0x01A: return DSKBYTR(current_hpos());
      case 0x01C: return INTENAR();
      case 0x01E: return INTREQR();
      case 0x07C: return DENISEID();
@@ -3080,7 +2916,7 @@ void REGPARAM2 custom_wput_1 (int hpos, uaecptr addr, uae_u32 value)
     switch (addr) {
      case 0x020: DSKPTH (value); break;
      case 0x022: DSKPTL (value); break;
-     case 0x024: DSKLEN (value); break;
+     case 0x024: DSKLEN (value, current_hpos()); break;
      case 0x026: DSKDAT (value); break;
 
      case 0x02A: VPOSW (value); break;

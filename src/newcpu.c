@@ -1127,7 +1127,9 @@ unsigned long REGPARAM2 op_illg (uae_u32 opcode)
 	Exception(0xA,0);
 	return 4;
     }
+#if 0
     write_log ("Illegal instruction: %04x at %08lx\n", opcode, pc);
+#endif
     Exception (4,0);
     return 4;
 }

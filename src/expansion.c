@@ -234,7 +234,7 @@ static void REGPARAM2 expamem_wput (uaecptr addr, uae_u32 value)
 		(*card_map[ecard]) ();
 		write_log ("   Card %d (Zorro%s) done.\n", ecard + 1, expamem_type() == 0xc0 ? "II" : "III");
 		++ecard;
-		if (ecard <= MAX_EXPANSION_BOARDS)
+		if (ecard < MAX_EXPANSION_BOARDS)
 		    (*card_init[ecard]) ();
 		else
 		    expamem_init_clear ();
@@ -260,7 +260,7 @@ static void REGPARAM2 expamem_bput (uaecptr addr, uae_u32 value)
 	    (*card_map[ecard]) ();
 	    write_log ("   Card %d (Zorro%s) done.\n", ecard + 1, expamem_type() == 0xc0 ? "II" : "III");
 	    ++ecard;
-	    if (ecard <= MAX_EXPANSION_BOARDS)
+	    if (ecard < MAX_EXPANSION_BOARDS)
 		(*card_init[ecard]) ();
 	    else
 		expamem_init_clear ();
@@ -276,7 +276,7 @@ static void REGPARAM2 expamem_bput (uaecptr addr, uae_u32 value)
      case 0x4c:
 	write_log ("   Card %d (Zorro %s) had no success.\n", ecard + 1, expamem_type() == 0xc0 ? "II" : "III");
 	++ecard;
-	if (ecard <= MAX_EXPANSION_BOARDS)
+	if (ecard < MAX_EXPANSION_BOARDS)
 	    (*card_init[ecard]) ();
 	else
 	    expamem_init_clear ();

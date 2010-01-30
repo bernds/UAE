@@ -129,7 +129,7 @@ a_inode *fsdb_lookup_aino_aname (a_inode *base, const char *aname)
     for (;;) {
 	char buf[1 + 4 + 257 + 257 + 81];
 	if (fread (buf, 1, sizeof buf, f) < sizeof buf)
-	    return 0;
+	    break;
 	if (buf[0] == 0)
 	    continue;
 	if (same_aname (buf + 5, aname)) {
@@ -149,7 +149,7 @@ a_inode *fsdb_lookup_aino_nname (a_inode *base, const char *nname)
 	return 0;
     for (;;) {
 	if (fread (buf, 1, sizeof buf, f) < sizeof buf)
-	    return 0;
+	    break;
 	if (buf[0] == 0)
 	    continue;
 	if (strcmp (buf + 5 + 257, nname) == 0) {
@@ -169,7 +169,7 @@ int fsdb_used_as_nname (a_inode *base, const char *nname)
 	return 0;
     for (;;) {
 	if (fread (buf, 1, sizeof buf, f) < sizeof buf)
-	    return 0;
+	    break;
 	if (buf[0] == 0)
 	    continue;
 	if (strcmp (buf + 5 + 257, nname) == 0) {
@@ -222,10 +222,10 @@ void fsdb_dir_writeback (a_inode *dir)
 	if (! aino->dirty)
 	    continue;
 	aino->needs_dbentry = needs_dbentry (aino);
-	if (aino->needs_dbentry != aino->has_dbentry)
-	    changes_needed = 1;
-	else if (! aino->needs_dbentry)
+	if (! aino->needs_dbentry)
 	    aino->dirty = 0;
+	else
+	    changes_needed = 1;
     }
     if (! changes_needed)
 	return;

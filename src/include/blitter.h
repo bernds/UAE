@@ -39,7 +39,7 @@ extern void blitter_handler (void);
 extern void build_blitfilltable (void);
 extern void do_blitter (void);
 extern void blitter_done_notify (void);
-typedef void blitter_func(uae_u8 *, uae_u8 *, uae_u8 *, uae_u8 *, struct bltinfo *);
+typedef void blitter_func(uaecptr, uaecptr, uaecptr, uaecptr, struct bltinfo *);
 
 #define BLITTER_MAX_WORDS 2048
 

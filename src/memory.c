@@ -188,12 +188,6 @@ int REGPARAM2 mbres_check (uaecptr addr, uae_u32 size)
 
 uae_u8 *chipmemory;
 
-static uae_u32 chipmem_lget (uaecptr) REGPARAM;
-static uae_u32 chipmem_wget (uaecptr) REGPARAM;
-static uae_u32 chipmem_bget (uaecptr) REGPARAM;
-static void chipmem_lput (uaecptr, uae_u32) REGPARAM;
-static void chipmem_wput (uaecptr, uae_u32) REGPARAM;
-static void chipmem_bput (uaecptr, uae_u32) REGPARAM;
 static int chipmem_check (uaecptr addr, uae_u32 size) REGPARAM;
 static uae_u8 *chipmem_xlate (uaecptr addr) REGPARAM;
 
