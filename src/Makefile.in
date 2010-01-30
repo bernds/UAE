@@ -29,7 +29,7 @@ VPATH = @top_srcdir@/src
 
 .SUFFIXES: .o .c .h .m .i .S .rc .res
 
-.SECONDARY: p2c.c p2c.h cpuemu.c cpustbl.c cputbl.h
+.SECONDARY: cpuemu.c cpustbl.c cputbl.h
 
 INCLUDES=-I. -I@top_srcdir@/src/include/
 
@@ -39,7 +39,7 @@ OBJS = main.o newcpu.o memory.o @CPUOBJS@ custom.o cia.o serial.o blitter.o \
        disk.o audio.o compiler.o uaelib.o drawing.o picasso96.o cpustbl.o \
        uaeexe.o bsdsocket.o missing.o sd-sound.o od-joy.o md-support.o \
        fsusage.o cfgfile.o native2amiga.o fsdb.o fsdb_unix.o \
-       @P2C@ @ASMOBJS@ @GFXOBJS@ @DEBUGOBJS@ @SCSIOBJS@
+       @ASMOBJS@ @GFXOBJS@ @DEBUGOBJS@ @SCSIOBJS@
 
 all: $(TARGET)
 
@@ -75,9 +75,9 @@ uae: $(OBJS)
 
 clean:
 	-rm -f $(OBJS) *.o uae readdisk
-	-rm -f gencpu genblitter blit.h genp2c cpudefs.c cpuopti
+	-rm -f gencpu genblitter blit.h cpudefs.c cpuopti
 	-rm -f cpuemu.c build68k cputmp.s cpufast*.s cpustbl.c cputbl.h
-	-rm -f blitfunc.c blitfunc.h blittable.c p2c.c p2c.h p2c_x86.S
+	-rm -f blitfunc.c blitfunc.h blittable.c
 
 halfclean:
 	-rm -f $(OBJS)
@@ -104,18 +104,9 @@ cpuopti: cpuopti.o
 	$(CC) $(LDFLAGS) -o cpuopti cpuopti.o
 gencpu: gencpu.o readcpu.o cpudefs.o missing.o
 	$(CC) $(LDFLAGS) -o gencpu gencpu.o readcpu.o missing.o cpudefs.o
-genp2c: genp2c.o
-	$(CC) $(LDFLAGS) -o genp2c genp2c.o
 
-custom.o: blit.h p2c.h
-p2c.o: p2c.h
-
-p2c.h: genp2c
-	./genp2c H >p2c.h
-p2c.c: genp2c
-	./genp2c C >p2c.c
-p2c_x86.S: genp2c
-	./genp2c x86 >p2c_x86.S
+custom.o: blit.h
+drawing.o: linetoscr.c
 
 cpudefs.c: build68k @top_srcdir@/src/table68k
 	./build68k <@top_srcdir@/src/table68k >cpudefs.c

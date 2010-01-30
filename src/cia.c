@@ -309,7 +309,7 @@ static uae_u8 ReadCIAA(unsigned int addr)
     unsigned int tmp;
 
     switch(addr & 0xf) {
-     case 0:
+    case 0:
 	if (currprefs.use_serial && (serstat < 0)) /* Only read status when needed */
 	    serstat=serial_readstatus();		/* and only once per frame */
 
@@ -320,43 +320,45 @@ static uae_u8 ReadCIAA(unsigned int addr)
 	if (!(joy1button & 1))
 	    tmp |= 0x80;
 	return tmp;
-     case 1:
-	return ciaaprb;
-     case 2:
+    case 1:
+	/* Returning 0xFF is necessary for Tie Break - otherwise its joystick
+	   code won't work.  */
+	return prtopen ? ciaaprb : 0xFF;
+    case 2:
 	return ciaadra;
-     case 3:
+    case 3:
 	return ciaadrb;
-     case 4:
+    case 4:
 	return ciaata & 0xff;
-     case 5:
+    case 5:
 	return ciaata >> 8;
-     case 6:
+    case 6:
 	return ciaatb & 0xff;
-     case 7:
+    case 7:
 	return ciaatb >> 8;
-     case 8:
+    case 8:
 	if (ciaatlatch) {
 	    ciaatlatch = 0;
 	    return ciaatol & 0xff;
 	} else
 	    return ciaatod & 0xff;
-     case 9:
+    case 9:
 	if (ciaatlatch)
 	    return (ciaatol >> 8) & 0xff;
 	else
 	    return (ciaatod >> 8) & 0xff;
-     case 10:
+    case 10:
 	ciaatlatch = 1;
 	ciaatol = ciaatod; /* ??? only if not already latched? */
 	return (ciaatol >> 16) & 0xff;
-     case 12:
+    case 12:
 	if (ciaasdr == 1) ciaasdr_unread = 2;
 	return ciaasdr;
-     case 13:
+    case 13:
 	tmp = ciaaicr; ciaaicr = 0; RethinkICRA(); return tmp;
-     case 14:
+    case 14:
 	return ciaacra;
-     case 15:
+    case 15:
 	return ciaacrb;
     }
     return 0;
@@ -367,47 +369,49 @@ static uae_u8 ReadCIAB(unsigned int addr)
     unsigned int tmp;
 
     switch(addr & 0xf) {
-     case 0:
+    case 0:
 	if (currprefs.use_serial && serstat < 0) /* Only read status when needed */
 	    serstat=serial_readstatus();	 /* and only once per frame      */
-	return ciabpra;
-     case 1:
+	/* Returning some 1 bits is necessary for Tie Break - otherwise its joystick
+	   code won't work.  */
+	return ciabpra | (prtopen ? 0 : 3);
+    case 1:
 	return ciabprb;
-     case 2:
+    case 2:
 	return ciabdra;
-     case 3:
+    case 3:
 	return ciabdrb;
-     case 4:
+    case 4:
 	return ciabta & 0xff;
-     case 5:
+    case 5:
 	return ciabta >> 8;
-     case 6:
+    case 6:
 	return ciabtb & 0xff;
-     case 7:
+    case 7:
 	return ciabtb >> 8;
-     case 8:
+    case 8:
 	if (ciabtlatch) {
 	    ciabtlatch = 0;
 	    return ciabtol & 0xff;
 	} else
 	    return ciabtod & 0xff;
-     case 9:
+    case 9:
 	if (ciabtlatch)
 	    return (ciabtol >> 8) & 0xff;
 	else
 	    return (ciabtod >> 8) & 0xff;
-     case 10:
+    case 10:
 	ciabtlatch = 1;
 	ciabtol = ciabtod;
 	return (ciabtol >> 16) & 0xff;
-     case 12:
+    case 12:
 	return ciabsdr;
-     case 13:
+    case 13:
 	tmp = ciabicr; ciabicr = 0; RethinkICRB();
 	return tmp;
-     case 14:
+    case 14:
 	return ciabcra;
-     case 15:
+    case 15:
 	return ciabcrb;
     }
     return 0;
@@ -417,7 +421,7 @@ static void WriteCIAA(uae_u16 addr,uae_u8 val)
 {
     int oldled, oldovl;
     switch(addr & 0xf) {
-     case 0:
+    case 0:
 	oldovl = ciaapra & 1;
 	oldled = ciaapra & 2;
 	ciaapra = (ciaapra & ~0x3) | (val & 0x3); LED(ciaapra & 0x2);
@@ -429,7 +433,7 @@ static void WriteCIAA(uae_u16 addr,uae_u8 val)
 	    map_banks(oldovl || ersatzkickfile ? &chipmem_bank : &kickmem_bank, 0, 32);
 	}
 	break;
-     case 1:
+    case 1:
 	ciaaprb = val;
 	if (prtopen==1) {
 #ifndef __DOS__
@@ -464,16 +468,16 @@ static void WriteCIAA(uae_u16 addr,uae_u8 val)
 	}
 	ciaaicr |= 0x10;
 	break;
-     case 2:
+    case 2:
 	ciaadra = val; break;
-     case 3:
+    case 3:
 	ciaadrb = val; break;
-     case 4:
+    case 4:
 	CIA_update();
 	ciaala = (ciaala & 0xff00) | val;
 	CIA_calctimers();
 	break;
-     case 5:
+    case 5:
 	CIA_update();
 	ciaala = (ciaala & 0xff) | (val << 8);
 	if ((ciaacra & 1) == 0)
@@ -484,12 +488,12 @@ static void WriteCIAA(uae_u16 addr,uae_u8 val)
 	}
 	CIA_calctimers();
 	break;
-     case 6:
+    case 6:
 	CIA_update();
 	ciaalb = (ciaalb & 0xff00) | val;
 	CIA_calctimers();
 	break;
-     case 7:
+    case 7:
 	CIA_update();
 	ciaalb = (ciaalb & 0xff) | (val << 8);
 	if ((ciaacrb & 1) == 0)
@@ -500,7 +504,7 @@ static void WriteCIAA(uae_u16 addr,uae_u8 val)
 	}
 	CIA_calctimers();
 	break;
-     case 8:
+    case 8:
 	if (ciaacrb & 0x80) {
 	    ciaaalarm = (ciaaalarm & ~0xff) | val;
 	} else {
@@ -508,7 +512,7 @@ static void WriteCIAA(uae_u16 addr,uae_u8 val)
 	    ciaatodon = 1;
 	}
 	break;
-     case 9:
+    case 9:
 	if (ciaacrb & 0x80) {
 	    ciaaalarm = (ciaaalarm & ~0xff00) | (val << 8);
 	} else {
@@ -516,7 +520,7 @@ static void WriteCIAA(uae_u16 addr,uae_u8 val)
 	    ciaatodon = 0;
 	}
 	break;
-     case 10:
+    case 10:
 	if (ciaacrb & 0x80) {
 	    ciaaalarm = (ciaaalarm & ~0xff0000) | (val << 16);
 	} else {
@@ -524,11 +528,11 @@ static void WriteCIAA(uae_u16 addr,uae_u8 val)
 	    ciaatodon = 0;
 	}
 	break;
-     case 12:
+    case 12:
 	ciaasdr = val; break;
-     case 13:
+    case 13:
 	setclr(&ciaaimask,val); break; /* ??? call RethinkICR() ? */
-     case 14:
+    case 14:
 	CIA_update();
 	ciaacra = val;
 	if (ciaacra & 0x10) {
@@ -540,7 +544,7 @@ static void WriteCIAA(uae_u16 addr,uae_u8 val)
 	}
 	CIA_calctimers();
 	break;
-     case 15:
+    case 15:
 	CIA_update();
 	ciaacrb = val;
 	if (ciaacrb & 0x10) {
@@ -556,25 +560,25 @@ static void WriteCIAB(uae_u16 addr,uae_u8 val)
 {
     int oldval;
     switch(addr & 0xf) {
-     case 0:
+    case 0:
 	if (currprefs.use_serial) {
-	  oldval = ciabpra;
-	  ciabpra  = serial_writestatus(oldval,val);
+	    oldval = ciabpra;
+	    ciabpra  = serial_writestatus(oldval,val);
 	} else
-	  ciabpra  = val;
+	    ciabpra  = val;
 	break;
-     case 1:
+    case 1:
 	ciabprb = val; DISK_select(val); break;
-     case 2:
+    case 2:
 	ciabdra = val; break;
-     case 3:
+    case 3:
 	ciabdrb = val; break;
-     case 4:
+    case 4:
 	CIA_update();
 	ciabla = (ciabla & 0xff00) | val;
 	CIA_calctimers();
 	break;
-     case 5:
+    case 5:
 	CIA_update();
 	ciabla = (ciabla & 0xff) | (val << 8);
 	if ((ciabcra & 1) == 0)
@@ -585,12 +589,12 @@ static void WriteCIAB(uae_u16 addr,uae_u8 val)
 	}
 	CIA_calctimers();
 	break;
-     case 6:
+    case 6:
 	CIA_update();
 	ciablb = (ciablb & 0xff00) | val;
 	CIA_calctimers();
 	break;
-     case 7:
+    case 7:
 	CIA_update();
 	ciablb = (ciablb & 0xff) | (val << 8);
 	if ((ciabcrb & 1) == 0)
@@ -601,7 +605,7 @@ static void WriteCIAB(uae_u16 addr,uae_u8 val)
 	}
 	CIA_calctimers();
 	break;
-     case 8:
+    case 8:
 	if (ciabcrb & 0x80) {
 	    ciabalarm = (ciabalarm & ~0xff) | val;
 	} else {
@@ -609,7 +613,7 @@ static void WriteCIAB(uae_u16 addr,uae_u8 val)
 	    ciabtodon = 1;
 	}
 	break;
-     case 9:
+    case 9:
 	if (ciabcrb & 0x80) {
 	    ciabalarm = (ciabalarm & ~0xff00) | (val << 8);
 	} else {
@@ -617,7 +621,7 @@ static void WriteCIAB(uae_u16 addr,uae_u8 val)
 	    ciabtodon = 0;
 	}
 	break;
-     case 10:
+    case 10:
 	if (ciabcrb & 0x80) {
 	    ciabalarm = (ciabalarm & ~0xff0000) | (val << 16);
 	} else {
@@ -625,13 +629,13 @@ static void WriteCIAB(uae_u16 addr,uae_u8 val)
 	    ciabtodon = 0;
 	}
 	break;
-     case 12:
+    case 12:
 	ciabsdr = val;
 	break;
-     case 13:
+    case 13:
 	setclr(&ciabimask,val);
 	break;
-     case 14:
+    case 14:
 	CIA_update();
 	ciabcra = val;
 	if (ciabcra & 0x10) {
@@ -640,7 +644,7 @@ static void WriteCIAB(uae_u16 addr,uae_u8 val)
 	}
 	CIA_calctimers();
 	break;
-     case 15:
+    case 15:
 	CIA_update();
 	ciabcrb = val;
 	if (ciabcrb & 0x10) {
@@ -765,25 +769,24 @@ uae_u32 REGPARAM2 clock_bget (uaecptr addr)
     time_t t=time(0);
     struct tm *ct;
     ct=localtime(&t);
-    switch (addr & 0x3f)
-    {
-     case 0x03: return ct->tm_sec % 10;
-     case 0x07: return ct->tm_sec / 10;
-     case 0x0b: return ct->tm_min % 10;
-     case 0x0f: return ct->tm_min / 10;
-     case 0x13: return ct->tm_hour % 10;
-     case 0x17: return ct->tm_hour / 10;
-     case 0x1b: return ct->tm_mday % 10;
-     case 0x1f: return ct->tm_mday / 10;
-     case 0x23: return (ct->tm_mon+1) % 10;
-     case 0x27: return (ct->tm_mon+1) / 10;
-     case 0x2b: return ct->tm_year % 10;
-     case 0x2f: return ct->tm_year / 10;
+    switch (addr & 0x3f) {
+    case 0x03: return ct->tm_sec % 10;
+    case 0x07: return ct->tm_sec / 10;
+    case 0x0b: return ct->tm_min % 10;
+    case 0x0f: return ct->tm_min / 10;
+    case 0x13: return ct->tm_hour % 10;
+    case 0x17: return ct->tm_hour / 10;
+    case 0x1b: return ct->tm_mday % 10;
+    case 0x1f: return ct->tm_mday / 10;
+    case 0x23: return (ct->tm_mon+1) % 10;
+    case 0x27: return (ct->tm_mon+1) / 10;
+    case 0x2b: return ct->tm_year % 10;
+    case 0x2f: return ct->tm_year / 10;
 
-     case 0x33: return ct->tm_wday;  /*Hack by -=SR=- */
-     case 0x37: return clock_control_d;
-     case 0x3b: return clock_control_e;
-     case 0x3f: return clock_control_f;
+    case 0x33: return ct->tm_wday;  /*Hack by -=SR=- */
+    case 0x37: return clock_control_d;
+    case 0x3b: return clock_control_e;
+    case 0x3f: return clock_control_f;
     }
     return 0;
 }
@@ -800,10 +803,9 @@ void REGPARAM2 clock_wput (uaecptr addr, uae_u32 value)
 
 void REGPARAM2 clock_bput (uaecptr addr, uae_u32 value)
 {
-    switch (addr & 0x3f)
-    {
-     case 0x37: clock_control_d=value; break;
-     case 0x3b: clock_control_e=value; break;
-     case 0x3f: clock_control_f=value; break;
+    switch (addr & 0x3f) {
+    case 0x37: clock_control_d=value; break;
+    case 0x3b: clock_control_e=value; break;
+    case 0x3f: clock_control_f=value; break;
     }
 }

@@ -98,6 +98,7 @@ extern unsigned long syncbase;
 #define DMA_BLITTER   0x0040
 #define DMA_COPPER    0x0080
 #define DMA_BITPLANE  0x0100
+#define DMA_MASTER    0x0200
 #define DMA_BLITPRI   0x0400
 
 extern unsigned long frametime, timeframes;

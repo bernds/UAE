@@ -47,7 +47,7 @@
 
 extern int lores_factor, lores_shift, sprite_width;
 
-STATIC_INLINE int coord_hw_to_native_x (int x)
+STATIC_INLINE int coord_hw_to_window_x (int x)
 {
     x -= DISPLAY_LEFT_SHIFT;
     return x << lores_shift;
@@ -123,7 +123,11 @@ extern struct draw_info *curr_drawinfo, *prev_drawinfo;
 struct decision {
     unsigned long color0;
     int which;
+
+    /* Data fetching coordinates.  */
     int plfstrt, plflinelen;
+    /* Records the leftmost access of BPL1DAT.  */
+    int plfleft;
     /* Display window: native coordinates, depend on lores state.  */
     int diwfirstword, diwlastword;
     int ctable;
@@ -153,6 +157,8 @@ extern struct decision line_decisions[2 * (MAXVPOS+1) + 1];
 extern struct draw_info line_drawinfo[2][2 * (MAXVPOS+1) + 1];
 
 extern uae_u8 line_data[(MAXVPOS+1) * 2][MAX_PLANES * MAX_WORDS_PER_LINE * 2];
+
+extern uae_u8 *real_bplpt[8];
 
 /* Functions in drawing.c.  */
 extern int coord_native_to_amiga_y (int);

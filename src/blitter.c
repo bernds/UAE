@@ -447,6 +447,7 @@ void do_blitter(void)
     eventtab[ev_blitter].evtime = blit_cycles + cycles;
     events_schedule();
 
+    regs.spcflags &= ~SPCFLAG_BLTNASTY;
     if (dmaen(DMA_BLITPRI))
 	regs.spcflags |= SPCFLAG_BLTNASTY;
 }

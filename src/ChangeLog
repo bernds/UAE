@@ -1,3 +1,17 @@
+9A0209 Fix some problems where the blitter nasty flag wouldn't ever get reset.
+       cia.c: Set all parallel port related bits to 1 when reading.
+9A0208 gencpu.c: Fix saved PC for division by zero exception (found by Sam
+       Jordan).
+9A0131 update_copper: Mask until_hpos properly.
+       Delay values are masked to 3 bit in hires mode (Sam Jordan).
+9A0102 Only delay horizontal copper wait if vertical position matches exactly.
+       Tweak vblank end position for sprites.
+       Calculate playfield borders more accurately for case where we have
+       sprites.
+9A0101 Reintroduce ev_copper; use it sparingly for longer waits within a
+       single line (but _not_ to time reads).
+       Fix a dumb bug in yesterday's changes that screwed up scrolling.
+991231 drawing.c: Cruftectomy.  genp2c.c: Gone.  X86.S: mostly gone.
 991229 Always use NTSC vblank_lastline for sprite purposes.
        Make sprite logic recognize vertical stop even if vertical start has
        not been reached (found by Sam Jordan).

@@ -521,9 +521,7 @@ OSDEP=od-generic
 THREADDEP=td-none
 SOUNDDEP=od-generic
 
-P2C=p2c.o
 FPP_H=fpp-unknown.h
-USE_PENGUINS=no
 USE_THREADS=no
 USE_FILE_SOUND=no
 USE_SCSI_DEVICE=no
@@ -667,15 +665,14 @@ AC_MSG_RESULT($USE_UNDERSCORE)
 rm -f conftest*
 
 AC_ARG_ENABLE(threads,[  --enable-threads        Enable some generally useful thread support],[USE_THREADS=$enableval],[])
-AC_ARG_ENABLE(penguins,[  --enable-penguins       Enable threads that only make sense on SMP machines],[USE_PENGUINS=$enableval],[])
 
 if [[ "x$NEED_THREAD_SUPPORT" = "xyes" ]]; then
-  if [[ "x$USE_THREADS" != "xyes" -a "x$USE_PENGUINS" != "xyes" ]]; then
+  if [[ "x$USE_THREADS" != "xyes" ]]; then
     echo "The gtk+ GUI needs threads; enabling thread support."
   fi
 fi
 
-if [[ "x$USE_THREADS" = "xyes" -o "x$USE_PENGUINS" = "xyes" -o "x$NEED_THREAD_SUPPORT" = "xyes" ]]; then
+if [[ "x$USE_THREADS" = "xyes" -o "x$NEED_THREAD_SUPPORT" = "xyes" ]]; then
   if [[ "x$HAVE_PTHREAD_LIB" = "xyes" ]]; then
     THREADDEP=td-posix
     CFLAGS="$CFLAGS -DSUPPORT_THREADS -D_REENTRANT"
@@ -686,9 +683,6 @@ if [[ "x$USE_THREADS" = "xyes" -o "x$USE_PENGUINS" = "xyes" -o "x$NEED_THREAD_SU
 
     if [[ "x$USE_THREADS" = "xyes" ]]; then    
       CFLAGS="$CFLAGS -DUAE_FILESYS_THREADS"
-    fi
-    if [[ "x$USE_PENGUINS" = "xyes" ]]; then
-      CFLAGS="$CFLAGS -DSUPPORT_PENGUINS"
     fi
 
     if [[ "x$HAVELINUX" = "xno" -o "x$HAVEGLIBC2" = "xno" ]]; then
@@ -750,7 +744,6 @@ if [[ "x$HAVEGCC27" = "xyes" -a "x$HAVEI386" = "xyes" -a "x$DO_PROFILING" = "xno
     ASMOBJS=md-X86.o
 
     CPUOBJS=cpufast.o
-    P2C=p2c_x86.o
   fi
 else if test $uae_cv_prog_cc_watcom = yes; then
   MACHDEP=md-i386-watcom
@@ -996,7 +989,6 @@ AC_SUBST(GFXOBJS)
 AC_SUBST(RESOBJS)
 AC_SUBST(ASMOBJS)
 AC_SUBST(SCSIOBJS)
-AC_SUBST(P2C)
 AC_SUBST(CPUOBJS)
 AC_SUBST(DEBUGOBJS)
 AC_SUBST(SET_MAKE)

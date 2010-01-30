@@ -1098,7 +1098,11 @@ static int kc_decode (KeySym ks)
      case XK_Left: return AK_LF;
      case XK_Right: return AK_RT;
 
+#if 0
      case XK_F11: return AK_BACKSLASH;
+#else
+     case XK_F11: frametime = 0; timeframes = 0; bogusframe = 1; break;
+#endif
 #ifdef XK_Page_Up /* These are missing occasionally */
      case XK_Page_Up: return AK_RAMI;          /* PgUp mapped to right amiga */
      case XK_Page_Down: return AK_LAMI;        /* PgDn mapped to left amiga */

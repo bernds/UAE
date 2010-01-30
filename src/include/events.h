@@ -26,7 +26,7 @@ struct ev
 };
 
 enum {
-    ev_hsync, ev_cia, ev_blitter, ev_diskblk, ev_diskindex, ev_disksync,
+    ev_hsync, ev_copper, ev_cia, ev_blitter, ev_diskblk, ev_diskindex, ev_disksync,
     ev_max
 };
 

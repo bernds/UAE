@@ -97,22 +97,30 @@ static int ntscmode = 0;
 /* This is but an educated guess. It seems to be correct, but this stuff
  * isn't documented well. */
 enum sprstate { SPR_stop, SPR_restart, SPR_waiting_start, SPR_waiting_stop };
-static enum sprstate sprst[8];
-static int spron[8];
-static uaecptr sprpt[8];
-static int sprxpos[8], sprvstart[8], sprvstop[8];
+
+struct sprite {
+    uaecptr pt;
+    int on;
+    int xpos;
+    int vstart;
+    int vstop;
+    int armed;
+    enum sprstate state;
+};
+
+static struct sprite spr[8];
+
+static int sprite_vblank_endline = VBLANK_ENDLINE_NTSC + 2;
 
 static unsigned int sprdata[MAX_SPRITES], sprdatb[MAX_SPRITES], sprctl[MAX_SPRITES], sprpos[MAX_SPRITES];
-static int sprarmed[MAX_SPRITES], sprite_last_drawn_at[MAX_SPRITES];
+static int sprite_last_drawn_at[MAX_SPRITES];
 static int last_sprite_point, nr_armed;
 
 static uae_u32 bpl1dat, bpl2dat, bpl3dat, bpl4dat, bpl5dat, bpl6dat, bpl7dat, bpl8dat;
 static uae_s16 bpl1mod, bpl2mod;
 
 static uaecptr bplpt[8];
-#ifndef SMART_UPDATE
-static char *real_bplpt[8];
-#endif
+uae_u8 *real_bplpt[8];
 
 /*static int blitcount[256];  blitter debug */
 
@@ -145,7 +153,7 @@ int clx_sprmask;
 
 enum copper_states {
     COP_stop,
-    COP_rdelay1, COP_read1, COP_read2,
+    COP_read1, COP_read2,
     COP_bltwait,
     COP_wait
 };
@@ -156,12 +164,14 @@ struct copper {
     enum copper_states state;
     /* Instruction pointer.  */
     uaecptr ip;
-    int hpos, vpos, count;
+    int hpos, vpos;
     unsigned int ignore_next;
-    unsigned int vcmp, hcmp;
+    int vcmp, hcmp;
 };
 
 static struct copper cop_state;
+static int copper_enabled_thisline;
+static int cop_min_waittime;
 
 static int dskdmaen;
 
@@ -538,7 +548,7 @@ STATIC_INLINE void post_decide_line (int hpos)
 	MARK_LINE_CHANGED; /* Play safe. */
 	return;
     }
-    
+
     if (thisline_decision.which != -1)
 	return;
 
@@ -744,9 +754,9 @@ static void decide_plane (int hpos)
 	uae_u8 *dataptr = line_data[next_lineno];
 	for (i = 0; i < decided_nr_planes; i++, dataptr += MAX_WORDS_PER_LINE*2) {
 	    uaecptr pt = bplpt[i];
-	    uae_u8 *real_ptr = pfield_xlateptr(pt, bytecount);
+	    uae_u8 *real_ptr = pfield_xlateptr (pt, bytecount);
 	    if (real_ptr == NULL)
-		real_ptr = pfield_xlateptr(0, 0);
+		real_ptr = pfield_xlateptr (0, 0);
 #ifdef SMART_UPDATE
 #if 1
 	    if (thisline_changed)
@@ -897,10 +907,10 @@ static void decide_sprites (int hpos)
 
     count = 0;
     for (i = 0; i < 8; i++) {
-	int sprxp = sprxpos[i];
+	int sprxp = spr[i].xpos;
 	int j, bestp;
 
-	if (!sprarmed[i] || sprxp < 0 || sprxp > point || last_sprite_point >= sprxp)
+	if (! spr[i].armed || sprxp < 0 || sprxp > point || last_sprite_point >= sprxp)
 	    continue;
 	if ((thisline_decision.diwfirstword >= 0 && sprxp + sprite_width < thisline_decision.diwfirstword)
 	    || (thisline_decision.diwlastword >= 0 && sprxp > thisline_decision.diwlastword))
@@ -1001,6 +1011,8 @@ static void finish_decisions (void)
 			   prev_sprite_positions + dip_old->first_sprite_draw,
 			   dip->nr_sprites * sizeof *curr_sprite_positions) != 0)))
 	changed = 1;
+    if (thisline_decision.plfleft != line_decisions[next_lineno].plfleft)
+	changed = 1;
 
     if (changed) {
 	thisline_changed = 1;
@@ -1019,6 +1031,8 @@ static void reset_decisions (void)
     decided_bpl1mod = bpl1mod;
     decided_bpl2mod = bpl2mod;
     decided_nr_planes = -1;
+
+    thisline_decision.plfleft = -1;
 
     /* decided_res shouldn't be touched before it's initialized by decide_line(). */
     thisline_decision.diwfirstword = -1;
@@ -1106,8 +1120,8 @@ static void calcdiw (void)
 	    vstop |= 0x100;
     }
 
-    diwfirstword = coord_hw_to_native_x (hstrt - 1);
-    diwlastword = coord_hw_to_native_x (hstop - 1);
+    diwfirstword = coord_hw_to_window_x (hstrt - 1);
+    diwlastword = coord_hw_to_window_x (hstop - 1);
 
     if (diwlastword > max_diwlastword)
 	diwlastword = max_diwlastword;
@@ -1141,8 +1155,6 @@ static void calcdiw (void)
     if (plfstop < 0x18) plfstop = 0x18;
     if (plfstop > 0xD8) plfstop = 0xD8;
 
-    /* ! If the masking operation is changed, the pfield_doline code could break
-     * on some systems (alignment) */
     /* This actually seems to be correct now, at least the non-AGA stuff... */
 
     if ((fmode & 3) == 0) {
@@ -1452,14 +1464,20 @@ STATIC_INLINE void COP2LCL (uae_u16 v) { cop2lc = (cop2lc & ~0xffff) | (v & 0xff
 
 static void start_copper (void)
 {
+    int was_active = eventtab[ev_copper].active;
+    eventtab[ev_copper].active = 0;
+    if (was_active)
+	events_schedule ();
+
     cop_state.ignore_next = 0;
     cop_state.state = COP_read1;
     cop_state.vpos = vpos;
     cop_state.hpos = current_hpos () & ~1;
-    cop_state.count = cop_state.hpos + 2;
 
-    if (dmaen (DMA_COPPER))
+    if (dmaen (DMA_COPPER)) {
+	copper_enabled_thisline = 1;
 	regs.spcflags |= SPCFLAG_COPPER;
+    }
 }
 
 static void COPJMP1 (uae_u16 a)
@@ -1491,16 +1509,22 @@ static void DMACON (uae_u16 v)
 
     /* FIXME? Maybe we need to think a bit more about the master DMA enable
      * bit in these cases. */
+    if ((dmacon & DMA_COPPER) != (oldcon & DMA_COPPER)) {
+	if (eventtab[ev_copper].active)
+	    need_resched = 1;
+	eventtab[ev_copper].active = 0;
+    }
     if ((dmacon & DMA_COPPER) > (oldcon & DMA_COPPER)) {
 	cop_state.ip = cop1lc;
 	cop_state.ignore_next = 0;
 	cop_state.state = COP_read1;
 	cop_state.vpos = vpos;
 	cop_state.hpos = current_hpos () & ~1;
-	cop_state.count = (current_hpos () & ~1) + 2;
+	copper_enabled_thisline = 1;
 	regs.spcflags |= SPCFLAG_COPPER;
     }
     if (! (dmacon & DMA_COPPER)) {
+	copper_enabled_thisline = 0;
 	regs.spcflags &= ~SPCFLAG_COPPER;
 	cop_state.state = COP_stop;
     }
@@ -1508,7 +1532,7 @@ static void DMACON (uae_u16 v)
     if ((dmacon & DMA_DISK) > (oldcon & DMA_DISK)) {
 	DISK_reset_cycles ();
     }
-	
+
     if ((dmacon & DMA_BLITPRI) > (oldcon & DMA_BLITPRI) && bltstate != BLT_done) {
 	static int count = 0;
 	if (!count) {
@@ -1517,7 +1541,7 @@ static void DMACON (uae_u16 v)
 	}
 	regs.spcflags |= SPCFLAG_BLTNASTY;
     }
-    if (! (dmacon & DMA_BLITPRI))
+    if ((dmacon & (DMA_BLITPRI | DMA_BLITTER | DMA_MASTER)) != (DMA_BLITPRI | DMA_BLITTER | DMA_MASTER))
 	regs.spcflags &= ~SPCFLAG_BLTNASTY;
 
     update_audio ();
@@ -1678,8 +1702,13 @@ static void BPL2MOD (int hpos, uae_u16 v)
     decide_modulos (hpos);
 }
 
+STATIC_INLINE void BPL1DAT (uae_u16 v)
+{
+    bpl1dat = v;
+    if (thisline_decision.plfleft == -1)
+	thisline_decision.plfleft = current_hpos ();
+}
 /* We could do as well without those... */
-STATIC_INLINE void BPL1DAT (uae_u16 v) { bpl1dat = v; }
 STATIC_INLINE void BPL2DAT (uae_u16 v) { bpl2dat = v; }
 STATIC_INLINE void BPL3DAT (uae_u16 v) { bpl3dat = v; }
 STATIC_INLINE void BPL4DAT (uae_u16 v) { bpl4dat = v; }
@@ -1838,32 +1867,32 @@ STATIC_INLINE void SPRxCTL_1 (uae_u16 v, int num)
 {
     int sprxp;
     sprctl[num] = v;
-    nr_armed -= sprarmed[num];
-    sprarmed[num] = 0;
+    nr_armed -= spr[num].armed;
+    spr[num].armed = 0;
     if (sprpos[num] == 0 && v == 0) {
-	sprst[num] = SPR_stop;
-	spron[num] = 0;
+	spr[num].state = SPR_stop;
+	spr[num].on = 0;
     } else
-	sprst[num] = SPR_waiting_start;
+	spr[num].state = SPR_waiting_start;
 
-    sprxp = coord_hw_to_native_x ((sprpos[num] & 0xFF) * 2 + (v & 1));
-    sprxpos[num] = sprxp;
-    sprvstart[num] = (sprpos[num] >> 8) | ((sprctl[num] << 6) & 0x100);
-    sprvstop[num] = (sprctl[num] >> 8) | ((sprctl[num] << 7) & 0x100);
+    sprxp = coord_hw_to_window_x ((sprpos[num] & 0xFF) * 2 + (v & 1));
+    spr[num].xpos = sprxp;
+    spr[num].vstart = (sprpos[num] >> 8) | ((sprctl[num] << 6) & 0x100);
+    spr[num].vstop = (sprctl[num] >> 8) | ((sprctl[num] << 7) & 0x100);
 }
 STATIC_INLINE void SPRxPOS_1 (uae_u16 v, int num)
 {
     int sprxp;
     sprpos[num] = v;
-    sprxp = coord_hw_to_native_x ((v & 0xFF) * 2 + (sprctl[num] & 1));
-    sprxpos[num] = sprxp;
-    sprvstart[num] = (sprpos[num] >> 8) | ((sprctl[num] << 6) & 0x100);
+    sprxp = coord_hw_to_window_x ((v & 0xFF) * 2 + (sprctl[num] & 1));
+    spr[num].xpos = sprxp;
+    spr[num].vstart = (sprpos[num] >> 8) | ((sprctl[num] << 6) & 0x100);
 }
 STATIC_INLINE void SPRxDATA_1 (uae_u16 v, int num)
 {
     sprdata[num] = v;
-    nr_armed += 1 - sprarmed[num];
-    sprarmed[num] = 1;
+    nr_armed += 1 - spr[num].armed;
+    spr[num].armed = 1;
 }
 STATIC_INLINE void SPRxDATB_1 (uae_u16 v, int num)
 {
@@ -1876,22 +1905,22 @@ static void SPRxPOS (int hpos, uae_u16 v, int num) { decide_sprites (hpos); SPRx
 static void SPRxPTH (int hpos, uae_u16 v, int num)
 {
     decide_sprites (hpos);
-    sprpt[num] &= 0xffff;
-    sprpt[num] |= (uae_u32)v << 16;
+    spr[num].pt &= 0xffff;
+    spr[num].pt |= (uae_u32)v << 16;
 
-    if (sprst[num] == SPR_stop || vpos < VBLANK_ENDLINE_NTSC)
-	sprst[num] = SPR_restart;
-    spron[num] = 1;
+    if (spr[num].state == SPR_stop || vpos < sprite_vblank_endline)
+	spr[num].state = SPR_restart;
+    spr[num].on = 1;
 }
 static void SPRxPTL (int hpos, uae_u16 v, int num)
 {
     decide_sprites (hpos);
-    sprpt[num] &= ~0xffff;
-    sprpt[num] |= v;
+    spr[num].pt &= ~0xffff;
+    spr[num].pt |= v;
 
-    if (sprst[num] == SPR_stop || vpos < VBLANK_ENDLINE_NTSC)
-	sprst[num] = SPR_restart;
-    spron[num] = 1;
+    if (spr[num].state == SPR_stop || vpos < sprite_vblank_endline)
+	spr[num].state = SPR_restart;
+    spr[num].on = 1;
 }
 static void CLXCON (uae_u16 v)
 {
@@ -2121,10 +2150,6 @@ static void JOYTEST (uae_u16 v)
     }
 }
 
-/*
- * Here starts the copper code. Can you believe it used to be worse?
- */
-
 /* Determine which cycles are available for the copper in a display
  * with a agiven number of planes.  */
 static int cycles_for_plane[9][8] = {
@@ -2169,78 +2194,85 @@ STATIC_INLINE int copper_cant_read (enum diw_states diw, int hpos, int planes)
     return t;
 }
 
+STATIC_INLINE int dangerous_reg (int reg)
+{
+    /* Safe:
+     * Bitplane pointers, control registers, modulos and data.
+     * Sprite pointers, control registers, and data.
+     * Color registers.  */
+    if (reg >= 0xE0 && reg < 0x1C0)
+	return 0;
+    return 1;
+}
+
 static void update_copper (int until_hpos)
 {
-    unsigned int vp, hp;
+    int vp = vpos & (((cop_state.i2 >> 8) & 0x7F) | 0x80);
     int c_hpos = cop_state.hpos;
 
-    vp = vpos & (((cop_state.i2 >> 8) & 0x7F) | 0x80);
-    hp = cop_state.count & (cop_state.i2 & 0xFE);
+    if (eventtab[ev_copper].active)
+	abort ();
+
+    if (cop_state.state == COP_wait && vp < cop_state.vcmp)
+	abort ();
+
+    until_hpos &= ~1;
+
+    if (until_hpos > (maxhpos & ~1))
+	until_hpos = maxhpos & ~1;
 
     for (;;) {
-	if (c_hpos >= (maxhpos & ~1)
-	    || c_hpos > until_hpos
-	    || cop_state.state == COP_stop
-	    || (regs.spcflags & SPCFLAG_COPPER) == 0)
+	int old_hpos = c_hpos;
+	int hp;
+
+	if (c_hpos > until_hpos)
 	    break;
 
 	/* So we know about the vertical DIW.  */
 	decide_line (c_hpos);
 
+	c_hpos += 2;
+	if (copper_cant_read (diwstate, old_hpos, corrected_nr_planes_from_bplcon0))
+	    continue;
+
 	switch (cop_state.state) {
-	case COP_stop:
-	    abort ();
-
-	case COP_rdelay1:
-	    cop_state.state = COP_read1;
-	    break;
-
 	case COP_read1:
-	    if (copper_cant_read (diwstate, c_hpos, corrected_nr_planes_from_bplcon0))
-		break;
-
 	    cop_state.i1 = chipmem_bank.wget (cop_state.ip);
 	    cop_state.ip += 2;
 	    cop_state.state = COP_read2;
 	    break;
 
 	case COP_read2:
-	    if (copper_cant_read (diwstate, c_hpos, corrected_nr_planes_from_bplcon0))
-		break;
-
 	    cop_state.i2 = chipmem_bank.wget (cop_state.ip);
 	    cop_state.ip += 2;
+	    cop_state.state = COP_read1;
 	    if (cop_state.ignore_next) {
 		cop_state.ignore_next = 0;
-		cop_state.state = COP_read1;
 		break;
 	    }
 	    /* Perform moves immediately.  */
 	    if ((cop_state.i1 & 1) == 0) {
-		cop_state.state = COP_read1;
 		if (cop_state.i1 < (copcon & 2 ? ((currprefs.chipset_mask & CSMASK_AGA) ? 0 : 0x40u) : 0x80u)) {
-		    cop_state.state = COP_stop;
-		    break;
+		    cop_state.state = COP_stop;	
+		    copper_enabled_thisline = 0;
+		    regs.spcflags &= ~SPCFLAG_COPPER;
+		    goto out;
 		}
-		switch (cop_state.i1) {
-		 case 0x088:
+		if (cop_state.i1 == 0x88)
 		    cop_state.ip = cop1lc;
-		    cop_state.state = COP_read1;
-		    break;
-		 case 0x08A:
+		else if (cop_state.i1 == 0x8A)
 		    cop_state.ip = cop2lc;
-		    cop_state.state = COP_read1;
-		    break;
-		 default:
-		    custom_wput_1 (c_hpos, cop_state.i1, cop_state.i2);
-		    break;
-		}
+		else
+		    custom_wput_1 (old_hpos, cop_state.i1, cop_state.i2);
+		/* That could have turned off the copper...  */
+		if (! copper_enabled_thisline)
+		    goto out;
 		break;
 	    }
 
 	    vp = vpos & (((cop_state.i2 >> 8) & 0x7F) | 0x80);
-	    hp = cop_state.count & (cop_state.i2 & 0xFE);
-	    cop_state.vcmp = ((cop_state.i1 & (cop_state.i2 | 0x8000)) >> 8);
+	    hp = c_hpos & (cop_state.i2 & 0xFE);
+	    cop_state.vcmp = (cop_state.i1 & (cop_state.i2 | 0x8000)) >> 8;
 	    cop_state.hcmp = (cop_state.i1 & cop_state.i2 & 0xFE);
 
 	    if ((cop_state.i2 & 1) == 1) {
@@ -2248,77 +2280,167 @@ static void update_copper (int until_hpos)
 		if ((vp > cop_state.vcmp || (vp == cop_state.vcmp && hp >= cop_state.hcmp))
 		    && ((cop_state.i2 & 0x8000) != 0 || ! (DMACONR() & 0x4000)))
 		    cop_state.ignore_next = 1;
-		cop_state.state = COP_read1;
 		break;
 	    }
 	    cop_state.state = COP_wait;
 	    if (cop_state.i1 == 0xFFFF && cop_state.i2 == 0xFFFE) {
 		cop_state.state = COP_stop;
+		copper_enabled_thisline = 0;
+		regs.spcflags &= ~SPCFLAG_COPPER;
+		goto out;
+	    }
+	    if (vp < cop_state.vcmp) {
+		copper_enabled_thisline = 0;
+		regs.spcflags &= ~SPCFLAG_COPPER;
+		goto out;
+	    }
+	    if (vp > cop_state.vcmp)
 		break;
+
+	    /* Only enable shortcuts if there's no masking going on.  */
+	    if (0 && (cop_state.i2 & 0xFE) == 0xFE) {
+		int time_remaining = until_hpos - c_hpos;
+
+		/* Compute minimum number of cycles to wait.  */
+		cop_min_waittime = cop_state.hcmp - hp - 4;
+		if (cop_min_waittime <= 2 || time_remaining <= 0)
+		    break;
+		if (cop_min_waittime < time_remaining) {
+		    c_hpos += cop_min_waittime;
+		    break;
+		}
+		c_hpos += time_remaining;
+		cop_min_waittime -= time_remaining;
+		if (cop_min_waittime >= 8) {
+		    regs.spcflags &= ~SPCFLAG_COPPER;
+		    eventtab[ev_copper].active = 1;
+		    eventtab[ev_copper].oldcycles = cycles;
+		    eventtab[ev_copper].evtime = cycles + cop_min_waittime;
+		    events_schedule ();
+		    goto out;
+		}
 	    }
 	    break;
 
 	case COP_wait:
-	    if (vp < cop_state.vcmp) {
-		regs.spcflags &= ~SPCFLAG_COPPER;
-		continue;
-	    }
-	    if (copper_cant_read (diwstate, c_hpos, corrected_nr_planes_from_bplcon0))
-		break;
+	    if (vp < cop_state.vcmp)
+		abort ();
 
-	    hp = cop_state.count & (cop_state.i2 & 0xFE);
+	    hp = c_hpos & (cop_state.i2 & 0xFE);
 	    if (vp == cop_state.vcmp && hp < cop_state.hcmp)
 		break;
-	    /* Now we know that the comparisons were successful.  */
-	    if ((cop_state.i2 & 0x8000) == 0x8000 || ! (DMACONR() & 0x4000))
-		cop_state.state = COP_read1;
-	    else {
+
+	    /* Now we know that the comparisons were successful.  We might still
+	       have to wait for the blitter though.  */
+	    if ((cop_state.i2 & 0x8000) == 0 && (DMACONR() & 0x4000)) {
 		/* We need to wait for the blitter.  */
 		cop_state.state = COP_bltwait;
+		copper_enabled_thisline = 0;
 		regs.spcflags &= ~SPCFLAG_COPPER;
-		continue;
+		goto out;
 	    }
+
+	    cop_state.state = COP_read1;
 	    break;
 
 	 default:
-	    /* Delay cycles.  */
-	    break;	    
+	    abort ();
 	}
-
-	if (corrected_nr_planes_from_bplcon0 < 8 || ! copper_in_playfield (diwstate, c_hpos))
-	    cop_state.count += 2;
-	c_hpos += 2;
     }
+
+  out:
     cop_state.hpos = c_hpos;
+#if 0
+    /* The future, Conan?  */
+    if (cop_state.state == COP_read1 || cop_state.state == COP_read2) {
+	int ip = cop_state.ip;
+	int word = cop_state.i1;
+
+	if (eventtab[ev_copper].active /* || ! (regs.spcflags & SPCFLAG_COPPER) */)
+	    abort ();
+
+	if (cop_state.state == COP_read2) {
+	    ip += 2;
+	    c_hpos += 2;
+	    goto inner;
+	}
+	while (c_hpos < (maxhpos & ~1)) {
+	    word = chipmem_bank.wget (ip);
+	    ip += 4;
+	    c_hpos += 4;
+	  inner:
+	    if ((word & 1) || dangerous_reg (word))
+		break;
+	}
+	cop_min_waittime = c_hpos - cop_state.hpos;
+	if (cop_min_waittime >= 8) {
+	    regs.spcflags &= ~SPCFLAG_COPPER;
+	    eventtab[ev_copper].active = 1;
+	    eventtab[ev_copper].oldcycles = cycles;
+	    eventtab[ev_copper].evtime = cycles + cop_min_waittime;
+	    events_schedule ();
+	}
+    }
+#endif
 }
 
 static void compute_spcflag_copper (void)
 {
-    unsigned long v = 0;
-    int vp;
-    switch (cop_state.state) {
-    case COP_rdelay1:
-    case COP_read1:
-    case COP_read2:
-	if (dmaen (DMA_COPPER))
-	    v = SPCFLAG_COPPER;
-	break;
-    case COP_wait:
-	vp = vpos & (((cop_state.i2 >> 8) & 0x7F) | 0x80);
-	if (vp >= cop_state.vcmp)
-	    v = SPCFLAG_COPPER;
-	break;
-    case COP_bltwait:
-	break;
-    }
+    copper_enabled_thisline = 0;
     regs.spcflags &= ~SPCFLAG_COPPER;
-    regs.spcflags |= v;
+    if (! dmaen (DMA_COPPER) || cop_state.state == COP_stop || cop_state.state == COP_bltwait)
+	return;
+
+    if (cop_state.state == COP_wait) {
+	int vp = vpos & (((cop_state.i2 >> 8) & 0x7F) | 0x80);
+
+	if (vp < cop_state.vcmp)
+	    return;
+	copper_enabled_thisline = 1;
+
+	if (0 && vp == cop_state.vcmp) {
+	    int hp = (cop_state.hpos + 2) & (cop_state.i2 & 0xFE);
+	    cop_min_waittime = cop_state.hcmp - hp - 4;
+
+	    /* If possible, compute a minimum waiting time, and set the event
+	       timer if it's sufficiently large to be worthwhile.  */
+	    if ((cop_state.i2 & 0xFE) == 0xFE && cop_min_waittime >= 8) {
+		eventtab[ev_copper].active = 1;
+		eventtab[ev_copper].oldcycles = cycles;
+		eventtab[ev_copper].evtime = cycles + cop_min_waittime;
+		events_schedule ();
+		return;
+	    }
+	}
+    }
+
+    copper_enabled_thisline = 1;
+    regs.spcflags |= SPCFLAG_COPPER;
+}
+
+static void copper_handler (void)
+{
+    /* This will take effect immediately, within the same cycle.  */
+    regs.spcflags |= SPCFLAG_COPPER;
+
+    if (! copper_enabled_thisline)
+	abort ();
+
+    if (cop_state.state == COP_wait) {
+	cop_state.hpos += cop_min_waittime;
+	if (cop_state.hpos > current_hpos ())
+	    abort ();
+    }
+
+    eventtab[ev_copper].active = 0;
 }
 
 void blitter_done_notify (void)
 {
     if (cop_state.state != COP_bltwait)
 	return;
+
+    copper_enabled_thisline = 1;
     regs.spcflags |= SPCFLAG_COPPER;
     cop_state.state = COP_wait;
 }
@@ -2386,7 +2508,9 @@ static void do_sprites (int currvp, int currhp)
      * solution below is correct. */
     /* Another update: seems like we have to use the NTSC value here (see Sanity Turmoil
      * demo).  */
-    if (currvp < VBLANK_ENDLINE_NTSC)
+    /* Maximum for Sanity Turmoil: 27.
+       Minimum for Sanity Arte: 22.  */
+    if (currvp < sprite_vblank_endline)
 	return;
 #endif
 
@@ -2401,25 +2525,25 @@ static void do_sprites (int currvp, int currhp)
     for (i = 0; i < maxspr; i++) {
 	int fetch = 0;
 
-	if (spron[i] == 0)
+	if (spr[i].on == 0)
 	    continue;
 
-	if (sprst[i] == SPR_restart) {
+	if (spr[i].state == SPR_restart) {
 	    fetch = 2;
-	    spron[i] = 1;
-	} else if ((sprst[i] == SPR_waiting_start && sprvstart[i] == vpos) || sprst[i] == SPR_waiting_stop) {
+	    spr[i].on = 1;
+	} else if ((spr[i].state == SPR_waiting_start && spr[i].vstart == vpos) || spr[i].state == SPR_waiting_stop) {
 	    fetch = 1;
-	    sprst[i] = SPR_waiting_stop;
+	    spr[i].state = SPR_waiting_stop;
 	}
-	if ((sprst[i] == SPR_waiting_stop || sprst[i] == SPR_waiting_start) && sprvstop[i] == vpos) {
+	if ((spr[i].state == SPR_waiting_stop || spr[i].state == SPR_waiting_start) && spr[i].vstop == vpos) {
 	    fetch = 2;
-	    sprst[i] = SPR_waiting_start;
+	    spr[i].state = SPR_waiting_start;
 	}
 
 	if (fetch && dmaen (DMA_SPRITE)) {
-	    uae_u16 data1 = chipmem_bank.wget (sprpt[i]);
-	    uae_u16 data2 = chipmem_bank.wget (sprpt[i] + 2);
-	    sprpt[i] += 4;
+	    uae_u16 data1 = chipmem_bank.wget (spr[i].pt);
+	    uae_u16 data2 = chipmem_bank.wget (spr[i].pt + 2);
+	    spr[i].pt += 4;
 
 	    if (fetch == 1) {
 		/* Hack for X mouse auto-calibration */
@@ -2444,8 +2568,8 @@ static void init_sprites (void)
 
     for (i = 0; i < 8; i++) {
 	/* ???? */
-	sprst[i] = SPR_stop;
-	spron[i] = 0;
+	spr[i].state = SPR_stop;
+	spr[i].on = 0;
     }
 
     memset (sprpos, 0, sizeof sprpos);
@@ -2574,10 +2698,7 @@ static void vsync_handler (void)
     cop_state.state = COP_read1;
     cop_state.vpos = 0;
     cop_state.hpos = 0;
-    cop_state.count = 2;
     cop_state.ignore_next = 0;
-    if (dmaen (DMA_COPPER))
-	regs.spcflags |= SPCFLAG_COPPER;
 
     init_hardware_frame ();
 
@@ -2624,7 +2745,16 @@ static void vsync_handler (void)
 
 static void hsync_handler (void)
 {
-    update_copper (maxhpos);
+    int copper_was_active = eventtab[ev_copper].active;
+    if (copper_was_active) {
+	/* Could happen if horizontal wait position is too large.  */
+	eventtab[ev_copper].active = 0;
+	if (cop_state.state != COP_wait)
+	    copper_was_active = 0;
+    }
+    if (copper_enabled_thisline && ! copper_was_active)
+	update_copper (maxhpos);
+
     finish_decisions ();
     do_modulos (current_hpos ());
 
@@ -2700,7 +2830,6 @@ static void hsync_handler (void)
     }
     /* See if there's a chance of a copper wait ending this line.  */
     cop_state.hpos = 0;
-    cop_state.count = 2;
     compute_spcflag_copper ();
 }
 
@@ -2718,6 +2847,8 @@ static void init_eventtab (void)
     eventtab[ev_hsync].evtime = maxhpos + cycles;
     eventtab[ev_hsync].active = 1;
 
+    eventtab[ev_copper].handler = copper_handler;
+    eventtab[ev_copper].active = 0;
     eventtab[ev_blitter].handler = blitter_handler;
     eventtab[ev_blitter].active = 0;
     eventtab[ev_diskblk].handler = diskblk_handler;
@@ -2766,7 +2897,8 @@ void customreset (void)
     clx_sprmask = 0xFF;
     clxdat = 0;
 
-    memset (sprarmed, 0, sizeof sprarmed);
+    /* Clear the armed flags of all sprites.  */
+    memset (spr, 0, sizeof spr);
     nr_armed = 0;
 
     dmacon = intena = 0;
@@ -3111,7 +3243,10 @@ void REGPARAM2 custom_wput_1 (int hpos, uaecptr addr, uae_u32 value)
 void REGPARAM2 custom_wput (uaecptr addr, uae_u32 value)
 {
     int hpos = current_hpos ();
-    update_copper (hpos);
+    /* Need to let the copper advance to the current position, but only if it
+       isn't in a waiting state.  */
+    if (copper_enabled_thisline && ! eventtab[ev_copper].active)
+	update_copper (hpos);
     custom_wput_1 (hpos, addr, value);
 }
 
