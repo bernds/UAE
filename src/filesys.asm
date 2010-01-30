@@ -169,7 +169,7 @@ make_dev: ; IN: A0 param_packet, D6: unit_no, D7: boot, A4: expansionbase
 	move.w #$FFFC,d0 ; filesys base
 	bsr.w getrtbase
 	move.l (a0),a5
-	move.w #$FF28,d0 ; fill in unit-dependent info, return 1 if hardfile.
+	move.w #$FF28,d0 ; fill in unit-dependent info (filesys_dev_storeinfo)
 	bsr.w getrtbase
 	move.l a0,a1
 	move.l (sp)+,a0
@@ -181,9 +181,12 @@ make_dev: ; IN: A0 param_packet, D6: unit_no, D7: boot, A4: expansionbase
 	bne.w general_ret
 
 	move.l a4,a6
+	move.l a0,-(sp)
 	jsr -144(a6) ; MakeDosNode()
+	move.l (sp)+,a0		;  parmpacket
+	move.l a0,a1
 	move.l d0,a3 ; devicenode
-	move.w #$FF20,d0 ; record in ui.startup
+	move.w #$FF20,d0 ; record in ui.startup (filesys_dev_remember)
 	bsr.w getrtbase
 	jsr (a0)
 	moveq.l #0,d0
@@ -191,7 +194,9 @@ make_dev: ; IN: A0 param_packet, D6: unit_no, D7: boot, A4: expansionbase
 	move.l d0,16(a3)         ; dn_Handler
 	move.l d0,32(a3)         ; dn_SegList
 
-	tst.l d3
+	move.l d3,d0
+	move.b 79(a1),d3 ; bootpri
+	tst.l d0
 	bne.b MKDV_doboot
 
 MKDV_is_filesys:
@@ -200,7 +205,8 @@ MKDV_is_filesys:
 	move.l a1,d0
 	lsr.l  #2,d0
 	move.l d0,32(a3)        ; dn_SegList
-	move.l #-1,36(a3)       ; dn_GlobalVec
+	moveq.l #-1,d0
+	move.l d0,36(a3)       ; dn_GlobalVec
 
 MKDV_doboot:
 	tst.l d7
@@ -215,8 +221,8 @@ MKDV_doboot:
 	move.l d0,(a1)
 	move.l d0,4(a1)
 	move.w d0,14(a1)
-	move.w #$10FF,d0
-	sub.b  d6,d0
+	move.w #$1000,d0
+	or.b d3,d0
 	move.w d0,8(a1)
 	move.l $104(a5),10(a1) ; filesys_configdev
 	move.l a3,16(a1)        ; devicenode

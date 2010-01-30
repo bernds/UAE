@@ -161,6 +161,13 @@ static uae_u32 uae_puts (TrapContext *dummy)
     return 0;
 }
 
+/* Used to keep the m68k emulation sane when we hit a call to
+ * default_xlate.  */
+static void m68k_infinite_loop (void)
+{
+    m68k_setpc (0xF0FFC0);
+}
+
 static void rtarea_init_mem (void)
 {
     rtarea = mapped_malloc (0x10000, "rtarea");
@@ -170,6 +177,7 @@ static void rtarea_init_mem (void)
     }
     rtarea_bank.baseaddr = rtarea;
 }
+
 
 void rtarea_init (void)
 {
@@ -202,6 +210,9 @@ void rtarea_init (void)
     org (RTAREA_BASE + 0xFF10);
     calltrap (deftrap2 (uae_puts, TRAPFLAG_NO_RETVAL, ""));
     dw (RTS);
+
+    org (RTAREA_BASE + 0xFFC0);
+    calltrap (deftrap2 (m68k_infinite_loop, TRAPFLAG_NO_RETVAL, ""));
 
     org (a);
 

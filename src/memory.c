@@ -33,11 +33,18 @@ uae_u32 allocated_fastmem;
 uae_u32 allocated_bogomem;
 uae_u32 allocated_gfxmem;
 uae_u32 allocated_z3fastmem;
-uae_u32 allocated_a3000mem;
+uae_u32 allocated_a3000lmem;
+uae_u32 allocated_a3000hmem;
 
-static long chip_filepos;
-static long bogo_filepos;
-static long rom_filepos;
+static long chip_filepos, bogo_filepos, a3000lmem_filepos, a3000hmem_filepos;
+
+/* Set if we notice during initialization that settings changed,
+   and we must clear all memory to prevent bogus contents from confusing
+   the Kickstart.  */
+static int need_hardreset;
+
+/* The address space setting used during the last reset.  */
+static int last_address_space_24;
 
 addrbank *mem_banks[65536];
 
@@ -76,7 +83,8 @@ __inline__ void byteput (uaecptr addr, uae_u32 b)
 }
 #endif
 
-uae_u32 chipmem_mask, kickmem_mask, extendedkickmem_mask, bogomem_mask, a3000mem_mask;
+uae_u32 chipmem_mask, kickmem_mask, extendedkickmem_mask, bogomem_mask;
+uae_u32 a3000lmem_mask, a3000hmem_mask;
 
 static int illegal_count;
 /* A dummy bank that only contains zeros */
@@ -161,68 +169,6 @@ int REGPARAM2 dummy_check (uaecptr addr, uae_u32 size)
 	    write_log ("Illegal check at %08lx\n", addr);
 	}
     }
-
-    return 0;
-}
-
-/* A3000 "motherboard resources" bank.  */
-static uae_u32 mbres_lget (uaecptr) REGPARAM;
-static uae_u32 mbres_wget (uaecptr) REGPARAM;
-static uae_u32 mbres_bget (uaecptr) REGPARAM;
-static void mbres_lput (uaecptr, uae_u32) REGPARAM;
-static void mbres_wput (uaecptr, uae_u32) REGPARAM;
-static void mbres_bput (uaecptr, uae_u32) REGPARAM;
-static int mbres_check (uaecptr addr, uae_u32 size) REGPARAM;
-
-static int mbres_val = 0;
-
-uae_u32 REGPARAM2 mbres_lget (uaecptr addr)
-{
-    if (currprefs.illegal_mem)
-	write_log ("Illegal lget at %08lx\n", addr);
-
-    return 0;
-}
-
-uae_u32 REGPARAM2 mbres_wget (uaecptr addr)
-{
-    if (currprefs.illegal_mem)
-	write_log ("Illegal wget at %08lx\n", addr);
-
-    return 0;
-}
-
-uae_u32 REGPARAM2 mbres_bget (uaecptr addr)
-{
-    if (currprefs.illegal_mem)
-	write_log ("Illegal bget at %08lx\n", addr);
-
-    return (addr & 0xFFFF) == 3 ? mbres_val : 0;
-}
-
-void REGPARAM2 mbres_lput (uaecptr addr, uae_u32 l)
-{
-    if (currprefs.illegal_mem)
-	write_log ("Illegal lput at %08lx\n", addr);
-}
-void REGPARAM2 mbres_wput (uaecptr addr, uae_u32 w)
-{
-    if (currprefs.illegal_mem)
-	write_log ("Illegal wput at %08lx\n", addr);
-}
-void REGPARAM2 mbres_bput (uaecptr addr, uae_u32 b)
-{
-    if (currprefs.illegal_mem)
-	write_log ("Illegal bput at %08lx\n", addr);
-
-    if ((addr & 0xFFFF) == 3)
-	mbres_val = b;
-}
-
-int REGPARAM2 mbres_check (uaecptr addr, uae_u32 size)
-{
-    if (currprefs.illegal_mem)
-	write_log ("Illegal check at %08lx\n", addr);
 
     return 0;
 }
@@ -379,81 +325,137 @@ uae_u8 REGPARAM2 *bogomem_xlate (uaecptr addr)
     return bogomemory + addr;
 }
 
-/* A3000 motherboard fast memory */
+/* A3000 motherboard fastmemory.  */
+static uae_u8 *a3000lmemory, *a3000hmemory;
+uae_u32 a3000lmem_start, a3000hmem_start;
 
-static uae_u8 *a3000memory;
+static uae_u32 a3000lmem_lget (uaecptr) REGPARAM;
+static uae_u32 a3000lmem_wget (uaecptr) REGPARAM;
+static uae_u32 a3000lmem_bget (uaecptr) REGPARAM;
+static void a3000lmem_lput (uaecptr, uae_u32) REGPARAM;
+static void a3000lmem_wput (uaecptr, uae_u32) REGPARAM;
+static void a3000lmem_bput (uaecptr, uae_u32) REGPARAM;
+static int a3000lmem_check (uaecptr addr, uae_u32 size) REGPARAM;
 
-static uae_u32 a3000mem_lget (uaecptr) REGPARAM;
-static uae_u32 a3000mem_wget (uaecptr) REGPARAM;
-static uae_u32 a3000mem_bget (uaecptr) REGPARAM;
-static void a3000mem_lput (uaecptr, uae_u32) REGPARAM;
-static void a3000mem_wput (uaecptr, uae_u32) REGPARAM;
-static void a3000mem_bput (uaecptr, uae_u32) REGPARAM;
-static int a3000mem_check (uaecptr addr, uae_u32 size) REGPARAM;
-static uae_u8 *a3000mem_xlate (uaecptr addr) REGPARAM;
-
-uae_u32 REGPARAM2 a3000mem_lget (uaecptr addr)
+static uae_u32 REGPARAM2 a3000lmem_lget (uaecptr addr)
 {
     uae_u32 *m;
-    addr -= a3000mem_start & a3000mem_mask;
-    addr &= a3000mem_mask;
-    m = (uae_u32 *)(a3000memory + addr);
+    addr &= a3000lmem_mask;
+    m = (uae_u32 *)(a3000lmemory + addr);
     return do_get_mem_long (m);
 }
 
-uae_u32 REGPARAM2 a3000mem_wget (uaecptr addr)
+static uae_u32 REGPARAM2 a3000lmem_wget (uaecptr addr)
 {
     uae_u16 *m;
-    addr -= a3000mem_start & a3000mem_mask;
-    addr &= a3000mem_mask;
-    m = (uae_u16 *)(a3000memory + addr);
+    addr &= a3000lmem_mask;
+    m = (uae_u16 *)(a3000lmemory + addr);
     return do_get_mem_word (m);
 }
 
-uae_u32 REGPARAM2 a3000mem_bget (uaecptr addr)
+static uae_u32 REGPARAM2 a3000lmem_bget (uaecptr addr)
 {
-    addr -= a3000mem_start & a3000mem_mask;
-    addr &= a3000mem_mask;
-    return a3000memory[addr];
+    addr &= a3000lmem_mask;
+    return a3000lmemory[addr];
 }
 
-void REGPARAM2 a3000mem_lput (uaecptr addr, uae_u32 l)
+static void REGPARAM2 a3000lmem_lput (uaecptr addr, uae_u32 l)
 {
     uae_u32 *m;
-    addr -= a3000mem_start & a3000mem_mask;
-    addr &= a3000mem_mask;
-    m = (uae_u32 *)(a3000memory + addr);
+    addr &= a3000lmem_mask;
+    m = (uae_u32 *)(a3000lmemory + addr);
     do_put_mem_long (m, l);
 }
 
-void REGPARAM2 a3000mem_wput (uaecptr addr, uae_u32 w)
+static void REGPARAM2 a3000lmem_wput (uaecptr addr, uae_u32 w)
 {
     uae_u16 *m;
-    addr -= a3000mem_start & a3000mem_mask;
-    addr &= a3000mem_mask;
-    m = (uae_u16 *)(a3000memory + addr);
+    addr &= a3000lmem_mask;
+    m = (uae_u16 *)(a3000lmemory + addr);
     do_put_mem_word (m, w);
 }
 
-void REGPARAM2 a3000mem_bput (uaecptr addr, uae_u32 b)
+static void REGPARAM2 a3000lmem_bput (uaecptr addr, uae_u32 b)
 {
-    addr -= a3000mem_start & a3000mem_mask;
-    addr &= a3000mem_mask;
-    a3000memory[addr] = b;
+    addr &= a3000lmem_mask;
+    a3000lmemory[addr] = b;
 }
 
-int REGPARAM2 a3000mem_check (uaecptr addr, uae_u32 size)
+static int REGPARAM2 a3000lmem_check (uaecptr addr, uae_u32 size)
 {
-    addr -= a3000mem_start & a3000mem_mask;
-    addr &= a3000mem_mask;
-    return (addr + size) <= allocated_a3000mem;
+    addr &= a3000lmem_mask;
+    return (addr + size) <= allocated_a3000lmem;
 }
 
-uae_u8 REGPARAM2 *a3000mem_xlate (uaecptr addr)
+static uae_u8 *REGPARAM2 a3000lmem_xlate (uaecptr addr)
 {
-    addr -= a3000mem_start & a3000mem_mask;
-    addr &= a3000mem_mask;
-    return a3000memory + addr;
+    addr &= a3000lmem_mask;
+    return a3000lmemory + addr;
+}
+
+static uae_u32 a3000hmem_lget (uaecptr) REGPARAM;
+static uae_u32 a3000hmem_wget (uaecptr) REGPARAM;
+static uae_u32 a3000hmem_bget (uaecptr) REGPARAM;
+static void a3000hmem_lput (uaecptr, uae_u32) REGPARAM;
+static void a3000hmem_wput (uaecptr, uae_u32) REGPARAM;
+static void a3000hmem_bput (uaecptr, uae_u32) REGPARAM;
+static int a3000hmem_check (uaecptr addr, uae_u32 size) REGPARAM;
+static uae_u8 *a3000hmem_xlate (uaecptr addr) REGPARAM;
+
+static uae_u32 REGPARAM2 a3000hmem_lget (uaecptr addr)
+{
+    uae_u32 *m;
+    addr &= a3000hmem_mask;
+    m = (uae_u32 *)(a3000hmemory + addr);
+    return do_get_mem_long (m);
+}
+
+static uae_u32 REGPARAM2 a3000hmem_wget (uaecptr addr)
+{
+    uae_u16 *m;
+    addr &= a3000hmem_mask;
+    m = (uae_u16 *)(a3000hmemory + addr);
+    return do_get_mem_word (m);
+}
+
+static uae_u32 REGPARAM2 a3000hmem_bget (uaecptr addr)
+{
+    addr &= a3000hmem_mask;
+    return a3000hmemory[addr];
+}
+
+static void REGPARAM2 a3000hmem_lput (uaecptr addr, uae_u32 l)
+{
+    uae_u32 *m;
+    addr &= a3000hmem_mask;
+    m = (uae_u32 *)(a3000hmemory + addr);
+    do_put_mem_long (m, l);
+}
+
+static void REGPARAM2 a3000hmem_wput (uaecptr addr, uae_u32 w)
+{
+    uae_u16 *m;
+    addr &= a3000hmem_mask;
+    m = (uae_u16 *)(a3000hmemory + addr);
+    do_put_mem_word (m, w);
+}
+
+static void REGPARAM2 a3000hmem_bput (uaecptr addr, uae_u32 b)
+{
+    addr &= a3000hmem_mask;
+    a3000hmemory[addr] = b;
+}
+
+static int REGPARAM2 a3000hmem_check (uaecptr addr, uae_u32 size)
+{
+    addr &= a3000hmem_mask;
+    return (addr + size) <= allocated_a3000hmem;
+}
+
+static uae_u8 *REGPARAM2 a3000hmem_xlate (uaecptr addr)
+{
+    addr &= a3000hmem_mask;
+    return a3000hmemory + addr;
 }
 
 /* Kick memory */
@@ -673,7 +675,11 @@ uae_u8 REGPARAM2 *default_xlate (uaecptr a)
 {
     write_log ("Your Amiga program just did something terribly stupid\n");
     uae_reset (1);
-    return kickmem_xlate (get_long (0xF80000));	/* So we don't crash. */
+
+    set_special (SPCFLAG_RESTORE_SANITY);
+    /* rtarea_bank has an infinite loop in m68k space, which we use to avoid a
+     * crash. */
+    return rtarea_bank.xlateaddr (0xF0FFC0);
 }
 
 /* Address banks */
@@ -682,12 +688,6 @@ addrbank dummy_bank = {
     dummy_lget, dummy_wget, dummy_bget,
     dummy_lput, dummy_wput, dummy_bput,
     default_xlate, dummy_check, NULL
-};
-
-addrbank mbres_bank = {
-    mbres_lget, mbres_wget, mbres_bget,
-    mbres_lput, mbres_wput, mbres_bput,
-    default_xlate, mbres_check, NULL
 };
 
 addrbank chipmem_bank = {
@@ -702,10 +702,16 @@ addrbank bogomem_bank = {
     bogomem_xlate, bogomem_check, NULL
 };
 
-addrbank a3000mem_bank = {
-    a3000mem_lget, a3000mem_wget, a3000mem_bget,
-    a3000mem_lput, a3000mem_wput, a3000mem_bput,
-    a3000mem_xlate, a3000mem_check, NULL
+addrbank a3000lmem_bank = {
+    a3000lmem_lget, a3000lmem_wget, a3000lmem_bget,
+    a3000lmem_lput, a3000lmem_wput, a3000lmem_bput,
+    a3000lmem_xlate, a3000lmem_check, NULL,
+};
+
+addrbank a3000hmem_bank = {
+    a3000hmem_lget, a3000hmem_wget, a3000hmem_bget,
+    a3000hmem_lput, a3000hmem_wput, a3000hmem_bput,
+    a3000hmem_xlate, a3000hmem_check, NULL,
 };
 
 addrbank kickmem_bank = {
@@ -766,7 +772,7 @@ static int read_kickstart (struct zfile *f, uae_u8 *mem, int size, int dochecksu
     zfile_fclose (f);
 
     if (cr)
-	if (!decode_cloanto_rom (mem, size, i))
+	if (!decode_cloanto_rom (mem, size, i, 0))
 	    return 0;
     if (dochecksum && i >= 262144)
 	kickstart_checksum (mem, size);
@@ -811,9 +817,118 @@ static int load_extendedkickstart (void)
 }
 
 
+static void kickstart_fix_checksum (uae_u8 *mem, int size)
+{
+    uae_u32 cksum = 0, prevck = 0;
+    int i, ch = size == 524288 ? 0x7ffe8 : 0x3e;
+
+    mem[ch] = 0;
+    mem[ch + 1] = 0;
+    mem[ch + 2] = 0;
+    mem[ch + 3] = 0;
+    for (i = 0; i < size; i+=4) {
+	uae_u32 data = (mem[i] << 24) | (mem[i + 1] << 16) | (mem[i + 2] << 8) | mem[i + 3];
+	cksum += data;
+	if (cksum < prevck)
+	    cksum++;
+	prevck = cksum;
+    }
+    cksum ^= 0xffffffff;
+    mem[ch++] = cksum >> 24;
+    mem[ch++] = cksum >> 16;
+    mem[ch++] = cksum >> 8;
+    mem[ch++] = cksum >> 0;
+}
+
+static int patch_shapeshifter (uae_u8 *kickmemory)
+{
+    /* Patch Kickstart ROM for ShapeShifter - from Christian Bauer.
+     * Changes 'lea $400,a0' and 'lea $1000,a0' to 'lea $3000,a0' for
+     * ShapeShifter compatability.
+    */
+    int i, patched = 0;
+    uae_u8 kickshift1[] = { 0x41, 0xf8, 0x04, 0x00 };
+    uae_u8 kickshift2[] = { 0x41, 0xf8, 0x10, 0x00 };
+    uae_u8 kickshift3[] = { 0x43, 0xf8, 0x04, 0x00 };
+
+    for (i = 0x200; i < 0x300; i++) {
+	if (!memcmp (kickmemory + i, kickshift1, sizeof (kickshift1)) ||
+	!memcmp (kickmemory + i, kickshift2, sizeof (kickshift2)) ||
+	!memcmp (kickmemory + i, kickshift3, sizeof (kickshift3))) {
+	    kickmemory[i + 2] = 0x30;
+	    write_log ("Kickstart KickShifted @%04.4X\n", i);
+	    patched++;
+	}
+    }
+    return patched;
+}
+
+/* disable incompatible drivers */
+static int patch_residents (uae_u8 *kickmemory, int size)
+{
+    int i, j, patched = 0;
+    char *residents[] = {
+	"NCR scsi.device", 
+	"scsi.device", "carddisk.device", "card.resource"
+    };
+    uaecptr base = size == 524288 ? 0xf80000 : 0xfc0000;
+
+    for (i = 0; i < size - 100; i++) {
+	if (kickmemory[i] == 0x4a && kickmemory[i + 1] == 0xfc) {
+	    uaecptr addr;
+	    addr = (kickmemory[i + 2] << 24) | (kickmemory[i + 3] << 16) | (kickmemory[i + 4] << 8) | (kickmemory[i + 5] << 0);
+	    if (addr != i + base)
+		continue;
+	    addr = (kickmemory[i + 14] << 24) | (kickmemory[i + 15] << 16) | (kickmemory[i + 16] << 8) | (kickmemory[i + 17] << 0);
+	    if (addr >= base && addr < base + size) {
+		j = 0;
+		while (residents[j]) {
+		    if (!memcmp (residents[j], kickmemory + addr - base, strlen (residents[j]) + 1)) {
+			write_log ("KSPatcher: '%s' at %08.8X disabled\n", residents[j], i + base);
+			kickmemory[i] = 0x4b; /* destroy RTC_MATCHWORD */
+			patched++;
+			break;
+		    }
+		    j++;
+		}
+	    }
+	}
+    }
+    return patched;
+}
+
+static void patch_kick(void)
+{
+    int patched = 0;
+    if (kickmem_size >= 524288 && currprefs.kickshifter)
+	patched += patch_shapeshifter (kickmemory);
+    patched += patch_residents (kickmemory, kickmem_size);
+    if (extendedkickmemory) {
+	patched += patch_residents (extendedkickmemory, extendedkickmem_size);
+	if (patched)
+	    kickstart_fix_checksum (extendedkickmemory, extendedkickmem_size);
+    }
+    if (patched)
+	kickstart_fix_checksum (kickmemory, kickmem_size);
+}
+
 static int load_kickstart (void)
 {
-    struct zfile *f = zfile_open (currprefs.romfile, "rb");
+    struct zfile *f = NULL;
+    int i;
+
+    if (currprefs.rom_crc32) {
+	for (i = 0;; i++) {
+	    struct romlist *rl = romlist_from_idx (i, ROMTYPE_KICK, 1);
+	    if (!rl)
+		break;
+	    if (rl->rd->crc32 == currprefs.rom_crc32) {
+		f = zfile_open (rl->path, "rb");
+		break;
+	    }
+	}
+    } else
+	f = zfile_open (currprefs.romfile, "rb");
 
     if (f == NULL) {
 #if defined (AMIGA)||defined (__POS__)
@@ -835,26 +950,6 @@ static int load_kickstart (void)
   chk_sum:
 #endif
 
-    if (currprefs.kickshifter) {
-	/* Patch Kickstart ROM for ShapeShifter - from Christian Bauer.
-	   Changes 'lea $400,a0' to 'lea $2000,a0' for ShapeShifter compatability.
-	   NOTE: lea is 0x41f8, so we should do this better with a search for
-	   0x41f80400 --> 0x41f82000
-	*/
-	if (kickmemory[0x24a] == 0x04 && kickmemory[0x24b] == 0x00) {	/* Kick 3.0 */
-	    kickmemory[0x24a] = 0x20;
-	    kickmemory[0x7ffea] -= 0x1c;
-	    write_log ("Kickstart KickShifted\n");
-	} else if (kickmemory[0x26e] == 0x04 && kickmemory[0x26f] == 0x00) {	/* Kick 3.1 */
-	    kickmemory[0x26e] = 0x20;
-	    kickmemory[0x7ffea] -= 0x1c;
-	    write_log ("Kickstart KickShifted\n");
-	} else if (kickmemory[0x24e] == 0x04 && kickmemory[0x24f] == 0x00) {	/* Kick 2.04 */
-	    kickmemory[0x24e] = 0x20;
-	    kickmemory[0x7ffea] -= 0x1c;
-	    write_log ("Kickstart KickShifted\n");
-	}
-    }
     return 1;
 }
 
@@ -1044,7 +1139,7 @@ static void allocate_memory (void)
 	    write_log ("Fatal error: out of memory for chipmem.\n");
 	    allocated_chipmem = 0;
 	} else
-	    do_put_mem_long ((uae_u32 *)(chipmemory + 4), 0);
+	    need_hardreset = 1;
     }
 
     if (allocated_bogomem != currprefs.bogomem_size) {
@@ -1062,39 +1157,64 @@ static void allocate_memory (void)
 		allocated_bogomem = 0;
 	    }
 	}
+	need_hardreset = 1;
     }
-    if (allocated_a3000mem != currprefs.a3000mem_size) {
-	if (a3000memory)
-	    mapped_free (a3000memory);
-	a3000memory = 0;
 
-	allocated_a3000mem = currprefs.a3000mem_size;
-	a3000mem_mask = allocated_a3000mem - 1;
+    if (allocated_a3000lmem != currprefs.mbresmem_low_size) {
+	if (a3000lmemory)
+	    mapped_free (a3000lmemory);
+	a3000lmemory = 0;
 
-	if (allocated_a3000mem) {
-	    a3000memory = mapped_malloc (allocated_a3000mem, "a3000");
-	    if (a3000memory == 0) {
-		write_log ("Out of memory for a3000mem.\n");
-		allocated_a3000mem = 0;
+	allocated_a3000lmem = currprefs.mbresmem_low_size;
+	a3000lmem_mask = allocated_a3000lmem - 1;
+	a3000lmem_start = 0x08000000 - allocated_a3000lmem;
+	if (allocated_a3000lmem) {
+	    a3000lmemory = mapped_malloc (allocated_a3000lmem, "ramsey_low");
+	    if (a3000lmemory == 0) {
+		write_log ("Out of memory for a3000lowmem.\n");
+		allocated_a3000lmem = 0;
 	    }
 	}
+	need_hardreset = 1;
+    }
+
+    if (allocated_a3000hmem != currprefs.mbresmem_high_size) {
+	if (a3000hmemory)
+	    mapped_free (a3000hmemory);
+	a3000hmemory = 0;
+
+	allocated_a3000hmem = currprefs.mbresmem_high_size;
+	a3000hmem_mask = allocated_a3000hmem - 1;
+	a3000hmem_start = 0x08000000;
+	if (allocated_a3000hmem) {
+	    a3000hmemory = mapped_malloc (allocated_a3000hmem, "ramsey_high");
+	    if (a3000hmemory == 0) {
+		write_log ("Out of memory for a3000highmem.\n");
+		allocated_a3000hmem = 0;
+	    }
+	}
+	need_hardreset = 1;
     }
 
     if (savestate_state == STATE_RESTORE) {
-	zfile_fseek (savestate_file, chip_filepos, SEEK_SET);
-	zfile_fread (chipmemory, 1, allocated_chipmem, savestate_file);
+	restore_ram (chip_filepos, chipmemory);
 	if (allocated_bogomem > 0) {
-	    zfile_fseek (savestate_file, bogo_filepos, SEEK_SET);
-	    zfile_fread (bogomemory, 1, allocated_bogomem, savestate_file);
+	    restore_ram (bogo_filepos, bogomemory);
 	}
+	if (allocated_a3000lmem > 0)
+	    restore_ram (a3000lmem_filepos, a3000lmemory);
+	if (allocated_a3000hmem > 0)
+	    restore_ram (a3000hmem_filepos, a3000hmemory);
     }
     chipmem_bank.baseaddr = chipmemory;
     bogomem_bank.baseaddr = bogomemory;
+    a3000lmem_bank.baseaddr = a3000lmemory;
+    a3000hmem_bank.baseaddr = a3000hmemory;
 }
 
 void memory_reset (void)
 {
-    int i, custom_start;
+    int i, bnk, bnk_end;
 
 #ifdef NATMEM_OFFSET
     delete_shmmaps (0, 0xFFFF0000);
@@ -1103,47 +1223,58 @@ void memory_reset (void)
 
     currprefs.chipmem_size = changed_prefs.chipmem_size;
     currprefs.bogomem_size = changed_prefs.bogomem_size;
-    currprefs.a3000mem_size = changed_prefs.a3000mem_size;
+    currprefs.mbresmem_low_size = changed_prefs.mbresmem_low_size;
+    currprefs.mbresmem_high_size = changed_prefs.mbresmem_high_size;
 
+    if (last_address_space_24 != currprefs.address_space_24)
+	need_hardreset = 1;
+
+    need_hardreset = 0;
+    last_address_space_24 = currprefs.address_space_24;
     allocate_memory ();
 
-    if (strcmp (currprefs.romfile, changed_prefs.romfile) != 0 || strcmp (currprefs.keyfile, changed_prefs.keyfile) != 0) {
+    if (currprefs.rom_crc32 != changed_prefs.rom_crc32
+	|| strcmp (currprefs.romfile, changed_prefs.romfile) != 0
+	|| strcmp (currprefs.keyfile, changed_prefs.keyfile) != 0)
+    {
 	ersatzkickfile = 0;
+	currprefs.rom_crc32 = changed_prefs.rom_crc32;
 	memcpy (currprefs.romfile, changed_prefs.romfile, sizeof currprefs.romfile);
 	memcpy (currprefs.keyfile, changed_prefs.keyfile, sizeof currprefs.keyfile);
-	/* Clear out whatever data remains across a reset.  */
-	memset (chipmemory, 0, allocated_chipmem);
+	need_hardreset = 1;
 	if (!load_kickstart ()) {
 	    init_ersatz_rom (kickmemory);
 	    ersatzkickfile = 1;
 	}
+	patch_kick ();
     }
     /* Map the chipmem into all of the lower 8MB */
     i = allocated_chipmem > 0x200000 ? (allocated_chipmem >> 16) : 32;
     map_banks (&chipmem_bank, 0x00, i, allocated_chipmem);
 
-    custom_start = 0xC0;
-
-    map_banks (&custom_bank, custom_start, 0xE0 - custom_start, 0);
+    map_banks (&custom_bank, 0xC0, 0xE0 - 0xC0, 0);
     map_banks (&cia_bank, 0xA0, 32, 0);
     map_banks (&clock_bank, 0xDC, 1, 0);
 
-    /* @@@ Does anyone have a clue what should be in the 0x200000 - 0xA00000
-     * range on an Amiga without expansion memory?  */
-    custom_start = allocated_chipmem >> 16;
-    if (custom_start < 0x20)
-	custom_start = 0x20;
-    map_banks (&dummy_bank, custom_start, 0xA0 - custom_start, 0);
-    /*map_banks (&mbres_bank, 0xDE, 1); */
+    /* map "nothing" to 0x200000 - 0x9FFFFF (0xBEFFFF if PCMCIA or AGA) */
+    bnk = allocated_chipmem >> 16;
+    if (bnk < 0x20)
+	bnk = 0x20;
+    bnk_end = (currprefs.chipset_mask & CSMASK_AGA) ? 0xBF : 0xA0;
+    map_banks (&dummy_bank, bnk, bnk_end - bnk, 0);
 
     if (bogomemory != 0) {
 	int t = allocated_bogomem >> 16;
 	if (t > 0x1C)
 	    t = 0x1C;
+	if (t > 0x10 && ((currprefs.chipset_mask & CSMASK_AGA) || currprefs.cpu_model >= 68020))
+	    t = 0x10;
 	map_banks (&bogomem_bank, 0xC0, t, allocated_bogomem);
     }
-    if (a3000memory != 0)
-	map_banks (&a3000mem_bank, a3000mem_start >> 16, allocated_a3000mem >> 16, allocated_a3000mem);
+    if (a3000lmemory != 0)
+	map_banks (&a3000lmem_bank, a3000lmem_start >> 16, allocated_a3000lmem >> 16, 0);
+    if (a3000hmemory != 0)
+	map_banks (&a3000hmem_bank, a3000hmem_start >> 16, allocated_a3000hmem >> 16, 0);
 
     map_banks (&rtarea_bank, RTAREA_BASE >> 16, 1, 0);
 
@@ -1163,17 +1294,20 @@ void memory_reset (void)
 	if (cloanto_rom)
 	    map_banks (&kickmem_bank, 0xE0, 8, 0);
     }
+
+    if (need_hardreset)
+	memory_hardreset ();
 }
 
 void memory_init (void)
 {
     allocated_chipmem = 0;
     allocated_bogomem = 0;
-    allocated_a3000mem = 0;
     kickmemory = 0;
     extendedkickmemory = 0;
     chipmemory = 0;
-    a3000memory = 0;
+    allocated_a3000lmem = allocated_a3000hmem = 0;
+    a3000lmemory = a3000hmemory = 0;
     bogomemory = 0;
 
     kickmemory = mapped_malloc (kickmem_size, "kick");
@@ -1194,8 +1328,10 @@ void memory_init (void)
 
 void memory_cleanup (void)
 {
-    if (a3000memory)
-	mapped_free (a3000memory);
+    if (a3000lmemory)
+	mapped_free (a3000lmemory);
+    if (a3000hmemory)
+	mapped_free (a3000hmemory);
     if (bogomemory)
 	mapped_free (bogomemory);
     if (kickmemory)
@@ -1205,11 +1341,26 @@ void memory_cleanup (void)
     if (chipmemory)
 	mapped_free (chipmemory);
 
-    a3000memory = 0;
+    a3000lmemory = a3000hmemory = 0;
     bogomemory = 0;
     kickmemory = 0;
     a1000_bootrom = 0;
     chipmemory = 0;
+}
+
+void memory_hardreset (void)
+{
+    if (savestate_state == STATE_RESTORE)
+	return;
+    if (chipmemory)
+	memset (chipmemory, 0, allocated_chipmem);
+    if (bogomemory)
+	memset (bogomemory, 0, allocated_bogomem);
+    if (a3000lmemory)
+	memset (a3000lmemory, 0, allocated_a3000lmem);
+    if (a3000hmemory)
+	memset (a3000hmemory, 0, allocated_a3000hmem);
+    expansion_clear ();
 }
 
 void map_banks (addrbank *bank, int start, int size, int realsize)
@@ -1250,6 +1401,7 @@ void map_banks (addrbank *bank, int start, int size, int realsize)
 	}
 	return;
     }
+    /* Already in currprefs, since we get called after m68k_reset.  */
     if (currprefs.address_space_24)
 	endhioffs = 0x10000;
     for (hioffs = 0; hioffs < endhioffs; hioffs += 0x100) {
@@ -1283,6 +1435,18 @@ uae_u8 *save_bram (int *len)
     return bogomemory;
 }
 
+uae_u8 *save_a3000lram (int *len)
+{
+    *len = allocated_a3000lmem;
+    return a3000lmemory;
+}
+
+uae_u8 *save_a3000hram (int *len)
+{
+    *len = allocated_a3000hmem;
+    return a3000hmemory;
+}
+
 void restore_cram (int len, long filepos)
 {
     chip_filepos = filepos;
@@ -1295,10 +1459,23 @@ void restore_bram (int len, long filepos)
     changed_prefs.bogomem_size = len;
 }
 
+void restore_a3000lram (int len, size_t filepos)
+{
+    a3000lmem_filepos = filepos;
+    changed_prefs.mbresmem_low_size = len;
+}
+
+void restore_a3000hram (int len, size_t filepos)
+{
+    a3000hmem_filepos = filepos;
+    changed_prefs.mbresmem_high_size = len;
+}
+
 const uae_u8 *restore_rom (const uae_u8 *src)
 {
     struct romdata *rom;
     uae_u32 crc32;
+    char *romname;
     int i;
 
     restore_u32 ();
@@ -1308,7 +1485,8 @@ const uae_u8 *restore_rom (const uae_u8 *src)
     crc32 = restore_u32 ();
 
     rom = getromdatabycrc (crc32);
-    /* @@@ */
+    if (rom)
+	changed_prefs.rom_crc32 = crc32;
 
     return src;
 }

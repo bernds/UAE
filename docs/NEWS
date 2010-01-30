@@ -4,11 +4,21 @@ for the full picture, make a diff between releases.
 
 User-visible changes in 0.8.27:
   - Better CPU type selection; now supports 68030, 68882, and more CPU/FPU
-    combinations.
+    combinations.  68060 is nominally supported but I've not got it to work.
   - Enhancements in stereo mixing support (configurable stereo separation and
     mixing delay).
   - UAE now gives up processor cycles when the emulated CPU encounters a STOP
-    instruction, even if configured for maximum CPU speed.
+    instruction, even if configured for maximum CPU speed ("idle on stop").
+  - Many improvements in the GTK user interface:
+    * Can now mount and change hardfiles.
+    * The ROM path is scanned at startup, and identified ROMs can be chosen
+      by name from a list.
+    * Default hardware configurations are provided so that e.g. a plain A500
+      config can be set with just a few clicks.
+  - On Unix systems, a system ROM directory is defined (typically
+    "/usr/share/uae/roms") where ROMs can be installed.  This directory will
+    be scanned at startup.
+  - Mounted filesystems/hardfiles now support adjustable boot priorities.
 
 User-visible changes in 0.8.26:
   - Compiles with modern gcc versions

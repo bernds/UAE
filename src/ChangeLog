@@ -1,3 +1,31 @@
+A10819 Changes in gtkui.c not to use obsolete GtkCList; everything replaced
+       with GtkTreeView.
+       Add preset hardware configurations; install them in a location based
+       on $(datadir); scan them at startup & present a list of them in the
+       GUI.
+       Merge from WinUAE: a few small blitter changes, memory savestate restore
+       changes, changed A3000 mbres memory support.
+       Save & restore rom_crc32 option.
+       Boot priority support.
+       Support mounting disk files as harddisks.
+A10818 Scan rom path for ROMs and key files on startup.  Present the list
+       of found ROMs in a combobox in the GUI.  Try all keys in the keyring
+       when trying to load a Cloanto ROM.
+       Robustify the default_xlate handling.
+       Clear Z3 memory info before restoring a saved state.  Update GUI after
+       state restore.  Restore correct ROM from CRC32 value.  Add SHA1
+       functions.
+       Reorder regstruct members as per E-UAE.
+       Don't clear memory on kickstart change when restoring state.
+       Update m68k state restore code from WinUAE.
+       Add an install target to the toplevel Makefile.
+       Further GUI cleanup; add hardfile entry dialogs.
+       Minor merge from WinUAE's gencpu.c, primarily prefetch and cycle
+       counting stuff.
+       Enforce a minimum buffer time in (some of) the sound drivers.
+       Merge WinUAE's "anti" interpolation.
+       Update minimum required GTK version in configure.
+       Define a system ROM path and scan it at startup.
 A10817 Move ROM management to a separate file.  Add CRC16 functions.
        Slight adjustment to zfile API (close->fclose).
        Drive type enum moved to options.h.

@@ -2,10 +2,36 @@
 # Top-level Makefile for UAE
 #
 
+SHELL=@SHELL@
+INSTALL=@INSTALL@
+INSTALL_PROGRAM=@INSTALL_PROGRAM@
+
+prefix          = @prefix@
+datarootdir     = @datarootdir@
+datadir         = @datadir@
+exec_prefix     = @exec_prefix@
+bindir          = @bindir@
+libdir          = @libdir@
+sysconfdir      = @sysconfdir@
+top_srcdir	= @top_srcdir@
+
+mkinstalldirs=$(SHELL) $(top_srcdir)/mkinstalldirs
+
+CONFIGS = a500 a500-expanded a500plus a1200 a4000 poweruser
+
 all:
 	cd src && $(MAKE)
 	cp src/uae .
 	cp src/readdisk .
+
+install:
+	$(mkinstalldirs) $(DESTDIR)$(bindir)
+	$(mkinstalldirs) $(DESTDIR)$(datadir)/uae/roms
+	$(mkinstalldirs) $(DESTDIR)$(datadir)/uae/configs
+	for x in $(CONFIGS); do \
+		$(INSTALL) $(top_srcdir)/configs/$$x.uae $(DESTDIR)$(datadir)/uae/configs; \
+	done
+	$(INSTALL_PROGRAM) uae $(DESTDIR)$(bindir)
 
 clean:
 	cd src && $(MAKE) clean

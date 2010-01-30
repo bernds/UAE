@@ -49,6 +49,7 @@
 #include "memory.h"
 #include "zfile.h"
 #include "savestate.h"
+#include "gui.h"
 
 int savestate_state;
 
@@ -66,6 +67,11 @@ void save_u32_func (uae_u8 **dstp, uae_u32 v)
     *dst++ = (uae_u8)(v >> 8);
     *dst++ = (uae_u8)(v >> 0);
     *dstp = dst;
+}
+void save_u64_func (uae_u8 **dstp, uae_u64 v)
+{
+    save_u32_func (dstp, (uae_u32)(v >> 32));
+    save_u32_func (dstp, (uae_u32)v);
 }
 void save_u16_func (uae_u8 **dstp, uae_u16 v)
 {
@@ -95,6 +101,15 @@ uae_u32 restore_u32_func (const uae_u8 **dstp)
     const uae_u8 *dst = *dstp;
     v = (dst[0] << 24) | (dst[1] << 16) | (dst[2] << 8) | (dst[3]);
     *dstp = dst + 4;
+    return v;
+}
+uae_u64 restore_u64_func (const uae_u8 **dstp)
+{
+    uae_u64 v;
+
+    v = restore_u32_func (dstp);
+    v <<= 32;
+    v |= restore_u32_func (dstp);
     return v;
 }
 uae_u16 restore_u16_func (const uae_u8 **dstp)
@@ -182,13 +197,16 @@ static uae_u8 *restore_chunk (struct zfile *f, char *name, long *len, long *file
     src = tmp;
     flags = restore_u32 ();
 
-    *filepos = zfile_ftell (f);
+    *filepos = zfile_ftell (f) - 4 - 4;
+
     /* chunk data.  RAM contents will be loaded during the reset phase,
        no need to malloc multiple megabytes here.  */
     if (strcmp (name, "CRAM") != 0
 	&& strcmp (name, "BRAM") != 0
 	&& strcmp (name, "FRAM") != 0
-	&& strcmp (name, "ZRAM") != 0)
+	&& strcmp (name, "ZRAM") != 0
+	&& strcmp (name, "A3K1") != 0
+	&& strcmp (name, "A3K2") != 0)
     {
 	mem = malloc (len2);
 	zfile_fread (mem, 1, len2, f);
@@ -204,30 +222,20 @@ static uae_u8 *restore_chunk (struct zfile *f, char *name, long *len, long *file
     return mem;
 }
 
-#if 0
 void restore_ram (size_t filepos, uae_u8 *memory)
 {
     uae_u8 tmp[8];
     uae_u8 *src = tmp;
-    int size, fullize;
+    int size, fullsize;
     uae_u32 flags;
 
     zfile_fseek (savestate_file, filepos, SEEK_SET);
-    zfile_fread (tmp, 1, sizeof (tmp), savestate_file);
+    zfile_fread (tmp, 1, sizeof(tmp), savestate_file);
     size = restore_u32 ();
     flags = restore_u32 ();
     size -= 4 + 4 + 4;
-    if (flags & 1) {
-	zfile_fread (tmp, 1, 4, savestate_file);
-	src = tmp;
-	fullsize = restore_u32 ();
-	size -= 4;
-	zfile_zuncompress (memory, fullsize, savestate_file, size);
-    } else {
-	zfile_fread (memory, 1, size, savestate_file);
-    }
+    zfile_fread (memory, 1, size, savestate_file);
 }
-#endif
 
 static void restore_header (const uae_u8 *src)
 {
@@ -270,6 +278,10 @@ void restore_state (const char *filename)
     changed_prefs.bogomem_size = 0;
     changed_prefs.chipmem_size = 0;
     changed_prefs.fastmem_size = 0;
+    changed_prefs.gfxmem_size = 0;
+    changed_prefs.z3fastmem_size = 0;
+    changed_prefs.mbresmem_low_size = 0;
+    changed_prefs.mbresmem_high_size = 0;
     savestate_state = STATE_RESTORE;
     for (;;) {
 	chunk = restore_chunk (f, name, &len, &filepos);
@@ -279,9 +291,14 @@ void restore_state (const char *filename)
 	if (!strcmp (name, "CRAM")) {
 	    restore_cram (len, filepos);
 	    continue;
-	}
-	else if (!strcmp (name, "BRAM")) {
+	} else if (!strcmp (name, "BRAM")) {
 	    restore_bram (len, filepos);
+	    continue;
+	} else if (!strcmp (name, "A3K1")) {
+	    restore_a3000lram (len, filepos);
+	    continue;
+	} else if (!strcmp (name, "A3K2")) {
+	    restore_a3000hram (len, filepos);
 	    continue;
 	} else if (!strcmp (name, "FRAM")) {
 	    restore_fram (len, filepos);
@@ -350,6 +367,7 @@ void restore_state (const char *filename)
 		       name, len, end - chunk);
 	free (chunk);
     }
+    gui_update ();
     return;
 
     error:
@@ -453,6 +471,10 @@ void save_state (const char *filename, const char *description)
     save_chunk (f, dst, len, "CRAM");
     dst = save_bram (&len);
     save_chunk (f, dst, len, "BRAM");
+    dst = save_a3000lram (&len);
+    save_chunk (f, dst, len, "A3K1");
+    dst = save_a3000hram (&len);
+    save_chunk (f, dst, len, "A3K2");
     dst = save_fram (&len);
     save_chunk (f, dst, len, "FRAM");
     dst = save_zram (&len);

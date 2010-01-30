@@ -95,20 +95,21 @@ static void generate_func(void)
 	if (c_is_on) printf("uae_u32 srcc = b->bltcdat;\n");
 	printf("uae_u32 dstd=0;\n");
 	printf("uaecptr dstp = 0;\n");
+	printf("int dodst = 0;\n");
 	printf("for (j = 0; j < b->vblitsize; j++) {\n");
 	printf("\tfor (i = 0; i < b->hblitsize; i++) {\n\t\tuae_u32 bltadat, srca;\n\n");
 	if (c_is_on) printf("\t\tif (ptc) { srcc = chipmem_wget (ptc); ptc += 2; }\n");
-	if (b_is_on) printf("\t\tif (ptb) {\n\t\t\tuae_u32 bltbdat = chipmem_wget (ptb); ptb += 2;\n");
+	if (b_is_on) printf("\t\tif (ptb) {\n\t\t\tuae_u32 bltbdat; blt_info.bltbdat = bltbdat = chipmem_wget (ptb); ptb += 2;\n");
 	if (b_is_on) printf("\t\t\tsrcb = (((uae_u32)prevb << 16) | bltbdat) >> b->blitbshift;\n");
 	if (b_is_on) printf("\t\t\tprevb = bltbdat;\n\t\t}\n");
-	if (a_is_on) printf("\t\tif (pta) { bltadat = chipmem_wget (pta); pta += 2; } else { bltadat = blt_info.bltadat; }\n");
+	if (a_is_on) printf("\t\tif (pta) { blt_info.bltadat = bltadat = chipmem_wget (pta); pta += 2; } else { bltadat = blt_info.bltadat; }\n");
 	if (a_is_on) printf("\t\tbltadat &= blit_masktable[i];\n");
 	if (a_is_on) printf("\t\tsrca = (((uae_u32)preva << 16) | bltadat) >> b->blitashift;\n");
 	if (a_is_on) printf("\t\tpreva = bltadat;\n");
-	printf("\t\tif (dstp) chipmem_wput (dstp, dstd);\n");
+	printf("\t\tif (dodst) chipmem_wput (dstp, dstd);\n");
 	printf("\t\tdstd = (%s) & 0xFFFF;\n", blitops[blttbl[i]].s);
 	printf("\t\ttotald |= dstd;\n");
-	printf("\t\tif (ptd) { dstp = ptd; ptd += 2; }\n");
+	printf("\t\tif (ptd) { dodst = 1; dstp = ptd; ptd += 2; }\n");
 	printf("\t}\n");
 	if (a_is_on) printf("\tif (pta) pta += b->bltamod;\n");
 	if (b_is_on) printf("\tif (ptb) ptb += b->bltbmod;\n");
@@ -172,20 +173,21 @@ static void generate_func(void)
 	if (c_is_on) printf("uae_u32 srcc = b->bltcdat;\n");
 	printf("uae_u32 dstd=0;\n");
 	printf("uaecptr dstp = 0;\n");
+	printf("int dodst = 0;\n");
 	printf("for (j = 0; j < b->vblitsize; j++) {\n");
 	printf("\tfor (i = 0; i < b->hblitsize; i++) {\n\t\tuae_u32 bltadat, srca;\n");
 	if (c_is_on) printf("\t\tif (ptc) { srcc = chipmem_wget (ptc); ptc -= 2; }\n");
-	if (b_is_on) printf("\t\tif (ptb) {\n\t\t\tuae_u32 bltbdat = chipmem_wget (ptb); ptb -= 2;\n");
+	if (b_is_on) printf("\t\tif (ptb) {\n\t\t\tuae_u32 bltbdat; blt_info.bltbdat = bltbdat = chipmem_wget (ptb); ptb -= 2;\n");
 	if (b_is_on) printf("\t\t\tsrcb = ((bltbdat << 16) | prevb) >> b->blitdownbshift;\n");
 	if (b_is_on) printf("\t\t\tprevb = bltbdat;\n\t\t}\n");
-	if (a_is_on) printf("\t\tif (pta) { bltadat = chipmem_wget (pta); pta -= 2; } else { bltadat = blt_info.bltadat; }\n");
+	if (a_is_on) printf("\t\tif (pta) { blt_info.bltadat = bltadat = chipmem_wget (pta); pta -= 2; } else { bltadat = blt_info.bltadat; }\n");
 	if (a_is_on) printf("\t\tbltadat &= blit_masktable[i];\n");
 	if (a_is_on) printf("\t\tsrca = (((uae_u32)bltadat << 16) | preva) >> b->blitdownashift;\n");
 	if (a_is_on) printf("\t\tpreva = bltadat;\n");
-	printf("\t\tif (dstp) chipmem_wput (dstp, dstd);\n");
+	printf("\t\tif (dodst) chipmem_wput (dstp, dstd);\n");
 	printf("\t\tdstd = (%s) & 0xFFFF;\n", blitops[blttbl[i]].s);
 	printf("\t\ttotald |= dstd;\n");
-	printf("\t\tif (ptd) { dstp = ptd; ptd -= 2; }\n");
+	printf("\t\tif (ptd) { dodst = 1; dstp = ptd; ptd -= 2; }\n");
 	printf("\t}\n");
 	if (a_is_on) printf("\tif (pta) pta -= b->bltamod;\n");
 	if (b_is_on) printf("\tif (ptb) ptb -= b->bltbmod;\n");
@@ -194,7 +196,7 @@ static void generate_func(void)
 	printf("}\n");
 	if (b_is_on) printf("b->bltbhold = srcb;\n");
 	if (c_is_on) printf("b->bltcdat = srcc;\n");
-	printf("\t\tif (dstp) chipmem_wput (dstp, dstd);\n");
+	printf("\t\tif (dodst) chipmem_wput (dstp, dstd);\n");
 #if 0
 	printf("}\n");
 #endif
@@ -214,7 +216,7 @@ static void generate_table(void)
     printf("#include \"memory.h\"\n");
     printf("#include \"blitter.h\"\n");
     printf("#include \"blitfunc.h\"\n\n");
-    printf("blitter_func *blitfunc_dofast[256] = {\n");
+    printf("blitter_func *const blitfunc_dofast[256] = {\n");
     for (i = 0; i < 256; i++) {
 	if (index < sizeof(blttbl) && i == blttbl[index]) {
 	    printf("blitdofast_%x",i);
@@ -227,7 +229,7 @@ static void generate_table(void)
     printf("};\n\n");
 
     index = 0;
-    printf("blitter_func *blitfunc_dofast_desc[256] = {\n");
+    printf("blitter_func *const blitfunc_dofast_desc[256] = {\n");
     for (i = 0; i < 256; i++) {
 	if (index < sizeof(blttbl) && i == blttbl[index]) {
 	    printf("blitdofast_desc_%x",i);

@@ -847,9 +847,10 @@ void Exception_normal (int nr, uaecptr oldpc)
 kludge_me_do:
     newpc = get_long (regs.vbr + 4 * nr);
     if (newpc & 1) {
-	if (nr == 2 || nr == 3)
+	if (nr == 2 || nr == 3) {
 	    uae_reset (1); /* there is nothing else we can do.. */
-	else
+	    set_special (SPCFLAG_RESTORE_SANITY);
+	} else
 	    exception3 (regs.ir, m68k_getpc (), newpc);
 	return;
     }
@@ -1305,11 +1306,12 @@ void m68k_reset (void)
     if (savestate_state == STATE_RESTORE) {
 	m68k_setpc (regs.pc);
 	/* MakeFromSR() must not swap stack pointer */
+	regs.m = (regs.sr >> 12) & 1;
 	regs.s = (regs.sr >> 13) & 1;
 	MakeFromSR();
 	/* set stack pointer */
 	if (regs.s)
-	    m68k_areg (regs, 7) = regs.isp;
+	    m68k_areg (regs, 7) = regs.m ? regs.msp : regs.isp;
 	else
 	    m68k_areg (regs, 7) = regs.usp;
 	return;
@@ -1637,6 +1639,10 @@ static void do_trace (void)
 
 static int do_specialties (int cycles)
 {
+    if (regs.spcflags & SPCFLAG_RESTORE_SANITY) {
+	m68k_setpc (0xF0FFC0);
+	unset_special (SPCFLAG_RESTORE_SANITY);
+    }
     if (regs.spcflags & SPCFLAG_COPPER)
 	do_copper ();
 
@@ -1945,28 +1951,17 @@ void m68k_dumpstate (FILE *f, uaecptr *nextpc)
 /* CPU save/restore code */
 
 #define CPUTYPE_EC 1
+#define PREFETCH_VALID 2
+#define M68KSPEED_SAVED 0x8000000
+#define DEFAULT_SAVE_FLAGS (M68KSPEED_SAVED | PREFETCH_VALID)
 #define CPUMODE_HALT 1
 
 const uae_u8 *restore_cpu (const uae_u8 *src)
 {
-    int i,model,flags;
+    int i, model, flags;
     uae_u32 l;
 
-    model = restore_u32();
-    switch (model) {
-    case 68000:
-	changed_prefs.cpu_model = 68000;
-	break;
-    case 68010:
-	changed_prefs.cpu_model = 68010;
-	break;
-    case 68020:
-	changed_prefs.cpu_model = 68020;
-	break;
-    default:
-	write_log ("Unknown cpu type %d\n", model);
-	break;
-    }
+    changed_prefs.cpu_model = model = restore_u32();
 
     flags = restore_u32();
     changed_prefs.address_space_24 = 0;
@@ -1996,18 +1991,46 @@ const uae_u8 *restore_cpu (const uae_u8 *src)
 	regs.cacr = restore_u32 ();
 	regs.msp = restore_u32 ();
     }
+    if (model >= 68030) {
+	regs.crp_030 = restore_u64 ();
+	regs.srp_030 = restore_u64 ();
+	regs.tt0_030 = restore_u32 ();
+	regs.tt1_030 = restore_u32 ();
+	regs.tc_030 = restore_u32 ();
+	regs.mmusr_030 = restore_u16 ();
+    }
+    if (model >= 68040) {
+	regs.itt0 = restore_u32 ();
+	regs.itt1 = restore_u32 ();
+	regs.dtt0 = restore_u32 ();
+	regs.dtt1 = restore_u32 ();
+	regs.tcr = restore_u32 ();
+	regs.urp = restore_u32 ();
+	regs.srp = restore_u32 ();
+    }
+    if (model >= 68060) {
+	regs.buscr = restore_u32 ();
+	regs.pcr = restore_u32 ();
+    }
+    if (flags & M68KSPEED_SAVED) {
+	int khz = restore_u32 ();
+	restore_u32 ();
+	if (khz > 0 && khz < 800000)
+	    currprefs.m68k_speed = changed_prefs.m68k_speed = 0;
+    }
+
+    if (!(flags & PREFETCH_VALID))
+	fill_prefetch_slow ();
     write_log ("CPU %d%s%03d, PC=%08.8X\n",
-	       model/1000, flags & 1 ? "EC" : "", model % 1000, regs.pc);
+	       model / 1000, flags & 1 ? "EC" : "", model % 1000, regs.pc);
 
     return src;
 }
 
-static int cpumodel[] = { 68000, 68010, 68020, 68020 };
-
 uae_u8 *save_cpu (int *len, uae_u8 *dstptr)
 {
-    uae_u8 *dstbak,*dst;
-    int model,i;
+    uae_u8 *dstbak, *dst;
+    int model, i, khz;
 
     if (dstptr)
 	dstbak = dst = dstptr;
@@ -2015,8 +2038,8 @@ uae_u8 *save_cpu (int *len, uae_u8 *dstptr)
 	dstbak = dst = malloc(4+4+15*4+4+4+4+4+2+4+4+4+4+4+4+4);
     model = currprefs.cpu_model;
     save_u32 (model);					/* MODEL */
-    save_u32 (currprefs.address_space_24 ? 1 : 0);	/* FLAGS */
-    for(i = 0;i < 15; i++) save_u32 (regs.regs[i]);	/* D0-D7 A0-A6 */
+    save_u32 (DEFAULT_SAVE_FLAGS | (currprefs.address_space_24 ? 1 : 0));	/* FLAGS */
+    for (i = 0;i < 15; i++) save_u32 (regs.regs[i]);	/* D0-D7 A0-A6 */
     save_u32 (m68k_getpc ());				/* PC */
     save_u16 (regs.irc);				/* prefetch */
     save_u16 (regs.ir);					/* instruction prefetch */
@@ -2025,16 +2048,45 @@ uae_u8 *save_cpu (int *len, uae_u8 *dstptr)
     save_u32 (regs.s ? regs.regs[15] : regs.isp);	/* ISP */
     save_u16 (regs.sr);				/* SR/CCR */
     save_u32 (regs.stopped ? CPUMODE_HALT : 0);	/* flags */
-    if(model >= 68010) {
+    if (model >= 68010) {
 	save_u32 (regs.dfc);				/* DFC */
 	save_u32 (regs.sfc);				/* SFC */
 	save_u32 (regs.vbr);				/* VBR */
     }
-    if(model >= 68020) {
+    if (model >= 68020) {
 	save_u32 (regs.caar);				/* CAAR */
 	save_u32 (regs.cacr);				/* CACR */
 	save_u32 (regs.msp);				/* MSP */
     }
+    if (model >= 68030) {
+	save_u64 (regs.crp_030);                        /* CRP */
+	save_u64 (regs.srp_030);                        /* SRP */
+	save_u32 (regs.tt0_030);                        /* TT0/AC0 */
+	save_u32 (regs.tt1_030);                        /* TT1/AC1 */
+	save_u32 (regs.tc_030);                         /* TCR */
+	save_u16 (regs.mmusr_030);                      /* MMUSR/ACUSR */
+    }
+    if (model >= 68040) {
+	save_u32 (regs.itt0);                           /* ITT0 */
+	save_u32 (regs.itt1);                           /* ITT1 */
+	save_u32 (regs.dtt0);                           /* DTT0 */
+	save_u32 (regs.dtt1);                           /* DTT1 */
+	save_u32 (regs.tcr);                            /* TCR */
+	save_u32 (regs.urp);                            /* URP */
+	save_u32 (regs.srp);                            /* SRP */
+    }
+    if (model >= 68060) {
+	save_u32 (regs.buscr);                          /* BUSCR */
+	save_u32 (regs.pcr);                            /* PCR */
+    }
+    khz = -1;
+    if (currprefs.m68k_speed == 0) {
+	khz = currprefs.ntscmode ? 715909 : 709379;
+	if (currprefs.cpu_model >= 68020)
+	    khz *= 2;
+    }
+    save_u32 (khz); // clock rate in KHz: -1 = fastest possible
+    save_u32 (0); // spare
     *len = dst - dstbak;
     return dstbak;
 }

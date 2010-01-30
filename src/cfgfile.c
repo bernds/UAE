@@ -16,10 +16,12 @@
 #include "threaddep/thread.h"
 #include "uae.h"
 #include "autoconf.h"
+#include "filesys.h"
 #include "events.h"
 #include "custom.h"
 #include "audio.h"
 #include "inputdevice.h"
+#include "romlist.h"
 
 #define cfgfile_write fprintf
 
@@ -114,7 +116,7 @@ static const char *soundmode[] = { "none", "interrupts", "normal", "exact", 0 };
 static const char *centermode1[] = { "none", "simple", "smart", 0 };
 static const char *centermode2[] = { "false", "true", "smart", 0 };
 static const char *stereomode[] = { "mono", "stereo", "mixed", 0 };
-static const char *interpolmode[] = { "none", "rh", "crux", "sinc", 0 };
+static const char *interpolmode[] = { "none", "rh", "crux", "sinc", "anti", 0 };
 static const char *collmode[] = { "none", "sprites", "playfields", "full", 0 };
 
 static const char *obsolete[] = {
@@ -189,6 +191,8 @@ void save_options (FILE *f, struct uae_prefs *p)
     str = cfgfile_subst_path (p->path_rom, UNEXPANDED, p->romfile);
     cfgfile_write (f, "kickstart_rom_file=%s\n", str);
     free (str);
+    if (currprefs.rom_crc32)
+	cfgfile_write (f, "kickstart_rom_crc=0x%x\n", currprefs.rom_crc32);
     str = cfgfile_subst_path (p->path_rom, UNEXPANDED, p->romextfile);
     cfgfile_write (f, "kickstart_ext_rom_file=%s\n", str);
     free (str);
@@ -201,6 +205,7 @@ void save_options (FILE *f, struct uae_prefs *p)
 	str = cfgfile_subst_path (p->path_floppy, UNEXPANDED, p->df[i]);
 	cfgfile_write (f, "floppy%d=%s\n", i, str);
 	free (str);
+	cfgfile_write (f, "floppy%dtype=%d\n", i, p->dfxtype[i]);
     }
     cfgfile_write (f, "nr_floppies=%d\n", p->nr_floppies);
     cfgfile_write (f, "parallel_on_demand=%s\n", p->parallel_demand ? "true" : "false");
@@ -255,7 +260,8 @@ void save_options (FILE *f, struct uae_prefs *p)
     cfgfile_write (f, "collision_level=%s\n", collmode[p->collision_level]);
 
     cfgfile_write (f, "fastmem_size=%d\n", p->fastmem_size / 0x100000);
-    cfgfile_write (f, "a3000mem_size=%d\n", p->a3000mem_size / 0x100000);
+    cfgfile_write (f, "a3000mem_size=%d\n", p->mbresmem_low_size / 0x100000);
+    cfgfile_write (f, "mbresmem_size=%d\n", p->mbresmem_high_size / 0x100000);
     cfgfile_write (f, "z3mem_size=%d\n", p->z3fastmem_size / 0x100000);
     cfgfile_write (f, "bogomem_size=%d\n", p->bogomem_size / 0x40000);
     cfgfile_write (f, "gfxcard_size=%d\n", p->gfxmem_size / 0x100000);
@@ -307,10 +313,24 @@ int cfgfile_intval (const char *option, const char *value, const char *name, int
     char *endptr;
     if (strcmp (option, name) != 0)
 	return 0;
-    /* I guess octal isn't popular enough to worry about here...  */
     if (value[0] == '0' && value[1] == 'x')
-	value += 2, base = 16;
+	base = 16;
     *location = strtol (value, &endptr, base) * scale;
+
+    if (*endptr != '\0' || *value == '\0')
+	write_log ("Option `%s' requires a numeric argument.\n", option);
+    return 1;
+}
+
+int cfgfile_uintval (const char *option, const char *value, const char *name, unsigned int *location, int scale)
+{
+    int base = 10;
+    char *endptr;
+    if (strcmp (option, name) != 0)
+	return 0;
+    if (value[0] == '0' && value[1] == 'x')
+	base = 16;
+    *location = strtoul (value, &endptr, base) * scale;
 
     if (*endptr != '\0' || *value == '\0')
 	write_log ("Option `%s' requires a numeric argument.\n", option);
@@ -532,7 +552,7 @@ static int cfgfile_parse_host (struct uae_prefs *p, char *option, char *value)
     if (strcmp (option, "filesystem") == 0
 	|| strcmp (option, "hardfile") == 0)
     {
-	int secs, heads, reserved, bs, ro;
+	int secs, heads, reserved, bs, ro, pri;
 	char *aname, *root;
 	char *tmpp = strchr (value, ',');
 	char *str;
@@ -570,11 +590,11 @@ static int cfgfile_parse_host (struct uae_prefs *p, char *option, char *value)
 	    aname = 0;
 	}
 	str = cfgfile_subst_path (UNEXPANDED, p->path_hardfile, root);
-	tmpp = add_filesys_unit (p->mountinfo, aname, str, ro, secs,
-				 heads, reserved, bs);
+	tmpp = add_filesys_unit (p->mountinfo, NULL, aname, str, ro, secs,
+				 heads, reserved, bs, -1);
 	free (str);
 	if (tmpp)
-	    write_log ("Error: %s\n", tmpp);
+	    gui_message (tmpp);
 	return 1;
 
       invalid_fs:
@@ -588,6 +608,7 @@ static int cfgfile_parse_host (struct uae_prefs *p, char *option, char *value)
 static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *value)
 {
     int tmpval, dummy, i;
+    unsigned int crc32;
 
     if (cfgfile_yesno (option, value, "immediate_blits", &p->immediate_blits)
 	|| cfgfile_yesno (option, value, "kickshifter", &p->kickshifter)
@@ -597,18 +618,42 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	|| cfgfile_yesno (option, value, "serial_on_demand", &p->serial_demand))
 	return 1;
     
-    if (cfgfile_intval (option, value, "fastmem_size", &p->fastmem_size, 0x100000)
-	|| cfgfile_intval (option, value, "a3000mem_size", &p->a3000mem_size, 0x100000)
-	|| cfgfile_intval (option, value, "z3mem_size", &p->z3fastmem_size, 0x100000)
-	|| cfgfile_intval (option, value, "bogomem_size", &p->bogomem_size, 0x40000)
-	|| cfgfile_intval (option, value, "gfxcard_size", &p->gfxmem_size, 0x100000)
-	|| cfgfile_intval (option, value, "chipmem_size", &p->chipmem_size, 0x80000)
-	|| cfgfile_intval (option, value, "nr_floppies", &p->nr_floppies, 1))
+    if (cfgfile_uintval (option, value, "fastmem_size", &p->fastmem_size, 0x100000)
+	|| cfgfile_uintval (option, value, "a3000mem_size", &p->mbresmem_low_size, 0x100000)
+	|| cfgfile_uintval (option, value, "mbresmem_size", &p->mbresmem_high_size, 0x100000)
+	|| cfgfile_uintval (option, value, "z3mem_size", &p->z3fastmem_size, 0x100000)
+	|| cfgfile_uintval (option, value, "bogomem_size", &p->bogomem_size, 0x40000)
+	|| cfgfile_uintval (option, value, "gfxcard_size", &p->gfxmem_size, 0x100000)
+	|| cfgfile_uintval (option, value, "chipmem_size", &p->chipmem_size, 0x80000)
+	|| cfgfile_uintval (option, value, "kickstart_rom_crc", &p->rom_crc32, 1)
+	|| cfgfile_intval (option, value, "nr_floppies", &p->nr_floppies, 1)
+	|| cfgfile_intval (option, value, "floppy0type", &p->dfxtype[0], 1)
+	|| cfgfile_intval (option, value, "floppy1type", &p->dfxtype[1], 1)
+	|| cfgfile_intval (option, value, "floppy2type", &p->dfxtype[2], 1)
+	|| cfgfile_intval (option, value, "floppy3type", &p->dfxtype[3], 1))
 	return 1;
 
+    /* Default configurations want to allow multiple possible ROMs.  For these,
+     * we have the following option, which validates the CRC32 against the list
+     * of available ROMs.
+     * Config files should sort these entries so that the most desired ROM appears
+     * last.  */
+    if (cfgfile_uintval (option, value, "kickstart_rom_crc_attempt", &crc32, 1)) {
+	for (i = 0;; i++) {
+	    struct romlist *rl = romlist_from_idx (i, ROMTYPE_KICK, 1);
+	    if (!rl)
+		break;
+	    if (rl->rd->crc32 == crc32) {
+		p->rom_crc32 = crc32;
+		break;
+	    }
+	}
+	return 1;
+    }
+    
     if (cfgfile_strval (option, value, "collision_level", &p->collision_level, collmode, 0))
 	return 1;
-    
+
     if (cfgfile_string (option, value, "floppy0", p->df[0], 256)
 	|| cfgfile_string (option, value, "floppy1", p->df[1], 256)
 	|| cfgfile_string (option, value, "floppy2", p->df[2], 256)
@@ -655,7 +700,6 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	    p->fpu_model = 68060;
 	    break;
 	}
-	printf ("%d %d\n", p->cpu_model, p->fpu_model);
 	return 1;
     }
 
@@ -940,7 +984,7 @@ static void parse_filesys_spec (struct uae_prefs *p, int readonly, char *spec)
 		*tmp = '/';
 	}
 #endif
-	s2 = add_filesys_unit (p->mountinfo, buf, s2, readonly, 0, 0, 0, 0);
+	s2 = add_filesys_unit (p->mountinfo, NULL, buf, s2, readonly, 0, 0, 0, 0, -1);
 	if (s2)
 	    fprintf (stderr, "%s\n", s2);
     } else {
@@ -969,7 +1013,7 @@ static void parse_hardfile_spec (struct uae_prefs *p, char *spec)
     if (x4 == NULL)
 	goto argh;
     *x4++ = '\0';
-    x4 = add_filesys_unit (p->mountinfo, 0, x4, 0, atoi (x0), atoi (x1), atoi (x2), atoi (x3));
+    x4 = add_filesys_unit (p->mountinfo, NULL, 0, x4, 0, atoi (x0), atoi (x1), atoi (x2), atoi (x3), -1);
     if (x4)
 	fprintf (stderr, "%s\n", x4);
 

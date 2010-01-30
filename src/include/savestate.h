@@ -10,21 +10,25 @@
 /* functions to save byte,word or long word
  * independent of CPU's endianess */
 
-extern void save_u16_func (uae_u8 **, uae_u16);
+extern void save_u64_func (uae_u8 **, uae_u64);
 extern void save_u32_func (uae_u8 **, uae_u32);
+extern void save_u16_func (uae_u8 **, uae_u16);
 extern void save_u8_func (uae_u8 **, uae_u8);
 
-extern uae_u16 restore_u16_func (const uae_u8 **);
+extern uae_u64 restore_u64_func (const uae_u8 **);
 extern uae_u32 restore_u32_func (const uae_u8 **);
+extern uae_u16 restore_u16_func (const uae_u8 **);
 extern uae_u8 restore_u8_func (const uae_u8 **);
 
 extern void save_string_func (uae_u8 **, const char*);
 extern char *restore_string_func (const uae_u8 **);
 
+#define save_u64(x) save_u64_func (&dst, (x))
 #define save_u32(x) save_u32_func (&dst, (x))
 #define save_u16(x) save_u16_func (&dst, (x))
 #define save_u8(x) save_u8_func (&dst, (x))
 
+#define restore_u64() restore_u64_func (&src)
 #define restore_u32() restore_u32_func (&src)
 #define restore_u16() restore_u16_func (&src)
 #define restore_u8() restore_u8_func (&src)
@@ -72,10 +76,17 @@ extern void restore_cram (int, long);
 extern void restore_bram (int, long);
 extern void restore_fram (int, long);
 extern void restore_zram (int, long);
+extern void restore_a3000lram (int, size_t);
+extern void restore_a3000hram (int, size_t);
+
+extern void restore_ram (size_t, uae_u8 *);
+
 extern uae_u8 *save_cram (int *);
 extern uae_u8 *save_bram (int *);
 extern uae_u8 *save_fram (int *);
 extern uae_u8 *save_zram (int *);
+extern uae_u8 *save_a3000lram (int *);
+extern uae_u8 *save_a3000hram (int *);
 
 extern const uae_u8 *restore_rom (const uae_u8 *);
 extern uae_u8 *save_rom (int, int *, uae_u8 *);

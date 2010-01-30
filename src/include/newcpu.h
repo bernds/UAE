@@ -72,6 +72,14 @@ typedef double fptype;
 extern struct regstruct
 {
     uae_u32 regs[16];
+
+    uae_u32 pc;
+    uae_u8 *pc_p;
+    uae_u8 *pc_oldp;
+
+    uae_u16 irc, ir;
+    uae_u32 spcflags;
+
     uaecptr usp,isp,msp;
     uae_u16 sr;
     flagtype t1;
@@ -81,10 +89,6 @@ extern struct regstruct
     flagtype x;
     flagtype stopped;
     int intmask;
-
-    uae_u32 pc;
-    uae_u8 *pc_p;
-    uae_u8 *pc_oldp;
 
     uae_u32 vbr,sfc,dfc;
 
@@ -109,10 +113,8 @@ extern struct regstruct
 
     uae_u32 pcr;
     
-    uae_u32 spcflags;
     uae_u32 kick_mask;
     uae_u32 address_space_mask;
-    uae_u16 irc, ir;
 
     uae_u8 panic;
     uae_u32 panic_pc, panic_addr;

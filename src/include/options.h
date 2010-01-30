@@ -18,6 +18,14 @@ struct strlist {
     char *str;
 };
 
+struct config_list {
+    const char *filename;
+    const char *description;
+};
+
+extern struct config_list *predef_configs;
+extern int n_predef_configs;
+
 /* maximum number native input devices supported (single type) */
 #define MAX_INPUT_DEVICES 6
 /* maximum number of native input device's buttons and axles supported */
@@ -92,6 +100,7 @@ struct uae_prefs {
 
     char df[4][256];
     char romfile[256];
+    unsigned int rom_crc32;
     char romextfile[256];
     char keyfile[256];
     char prtname[256];
@@ -110,7 +119,8 @@ struct uae_prefs {
     uae_u32 fastmem_size;
     uae_u32 chipmem_size;
     uae_u32 bogomem_size;
-    uae_u32 a3000mem_size;
+    uae_u32 mbresmem_low_size;
+    uae_u32 mbresmem_high_size;
     uae_u32 gfxmem_size;
 
     int kickshifter;
@@ -159,6 +169,7 @@ extern void discard_prefs (struct uae_prefs *);
 extern int parse_cmdline_option (struct uae_prefs *, char, char *);
 
 extern int cfgfile_yesno (const char *option, const char *value, const char *name, int *location);
+extern int cfgfile_uintval (const char *option, const char *value, const char *name, unsigned int *location, int scale);
 extern int cfgfile_intval (const char *option, const char *value, const char *name, int *location, int scale);
 extern int cfgfile_strval (const char *option, const char *value, const char *name, int *location, const char *table[], int more);
 extern int cfgfile_string (const char *option, const char *value, const char *name, char *location, int maxsz);

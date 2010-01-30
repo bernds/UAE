@@ -264,6 +264,7 @@ extern int canbang;
 
 extern uae_u8 *mapped_malloc (size_t, char *);
 extern void mapped_free (uae_u8 *);
+extern void memory_hardreset (void);
 
 uaecptr strcpyha_safe (uaecptr dst, const char *src);
 uaecptr strncpyha_safe (uaecptr dst, const char *src, int size);

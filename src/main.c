@@ -36,6 +36,7 @@
 #include "uaeexe.h"
 #include "native2amiga.h"
 #include "scsidev.h"
+#include "romlist.h"
 
 #ifdef USE_SDL
 #include "SDL.h"
@@ -73,6 +74,78 @@ char *colormodes[] = { "256 colors", "32768 colors", "65536 colors",
     "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
     "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""
 };
+
+struct config_list *predef_configs;
+int n_predef_configs;
+int predef_configs_space;
+
+static void scan_configs (const char *path)
+{
+    DIR *dir;
+    int pathlen = strlen (path);
+    int bufsz = pathlen + 256;
+    char *buffer;
+    uae_u8 *data;
+
+    predef_configs_space = 20;
+    predef_configs = malloc (sizeof (struct uae_prefs) * 20);
+    n_predef_configs = 0;
+
+    dir = opendir (path);
+    if (!dir)
+	return;
+
+    buffer = malloc (bufsz);
+    if (!buffer)
+	goto out;
+    data = malloc (1024 * 1024);
+    if (!data)
+	goto out1;
+
+    strcpy (buffer, path);
+    buffer[pathlen++] = '/';
+    buffer[pathlen] = '\0';
+    for (;;) {
+	struct uae_prefs p;
+	struct zfile *f;
+	struct dirent *ent = readdir (dir);
+	int len;
+	struct romdata *rd;
+	long size;
+
+	if (!ent)
+	    break;
+
+	len = strlen (ent->d_name);
+	if (len + pathlen + 1 >= bufsz) {
+	    bufsz = len + pathlen + 200;
+	    buffer = realloc (buffer, bufsz);
+	    if (!buffer) {
+		goto out;
+	    }
+	}
+	strcpy (buffer + pathlen, ent->d_name);
+
+	if (n_predef_configs >= predef_configs_space) {
+	    predef_configs_space += 20;
+	    predef_configs = realloc (predef_configs,
+				      sizeof (struct uae_prefs) * predef_configs_space);
+	}
+	default_prefs (&p);
+	strcpy (p.description, "");
+	cfgfile_load (&p, buffer);
+	if (strlen (p.description) > 0) {
+	    predef_configs[n_predef_configs].filename = strdup (buffer);
+	    predef_configs[n_predef_configs++].description = strdup (p.description);
+	}
+    }
+
+    free (data);
+  out1:
+    free (buffer);
+  out:
+    closedir (dir);
+}
 
 void discard_prefs (struct uae_prefs *p)
 {
@@ -155,6 +228,7 @@ void default_prefs (struct uae_prefs *p)
     strcpy (p->romfile, "kick.rom");
     strcpy (p->keyfile, "");
     strcpy (p->prtname, DEFPRTNAME);
+    p->rom_crc32 = 0;
 
     strcpy (p->path_rom, "./");
     strcpy (p->path_floppy, "./");
@@ -163,19 +237,24 @@ void default_prefs (struct uae_prefs *p)
     strcpy (p->prtname, "");
     strcpy (p->sername, "");
 
+    p->nr_floppies = 2;
+    p->dfxtype[0] = DRV_35_DD;
+    p->dfxtype[1] = DRV_35_DD;
+    p->dfxtype[2] = DRV_NONE;
+    p->dfxtype[3] = DRV_NONE;
+
     p->m68k_speed = 0;
     p->cpu_model = 68020;
     p->fpu_model = 0;
     p->address_space_24 = 0;
 
     p->fastmem_size = 0x00000000;
-    p->a3000mem_size = 0x00000000;
+    p->mbresmem_low_size = 0x00000000;
+    p->mbresmem_high_size = 0x00000000;
     p->z3fastmem_size = 0x00000000;
     p->chipmem_size = 0x00200000;
     p->bogomem_size = 0x00000000;
     p->gfxmem_size = 0x00000000;
-
-    p->nr_floppies = 4;
 
     p->mountinfo = alloc_mountinfo ();
     inputdevice_default_prefs (p);
@@ -468,6 +547,10 @@ void real_main (int argc, char **argv)
 
     default_prefs (&currprefs);
 
+#ifdef SYSTEM_CFGDIR
+    scan_configs (SYSTEM_CFGDIR);
+#endif
+
     if (! graphics_setup ()) {
 	exit (1);
     }
@@ -506,6 +589,10 @@ void real_main (int argc, char **argv)
     fixup_prefs (&currprefs);
     changed_prefs = currprefs;
 
+#ifdef SYSTEM_ROMDIR
+    scan_roms (SYSTEM_ROMDIR, ROMLOC_SYSTEM);
+#endif
+    scan_roms (currprefs.path_rom, ROMLOC_USER);
     /* Install resident module to get 8MB chipmem, if requested */
     rtarea_setup ();
 

@@ -237,8 +237,17 @@ static void open_sound (void)
     }
 
     buffer_time = currprefs.sound_maxbsiz * 1000;
+
+    tmp = 1 << exact_log2 (currprefs.sound_maxbsiz);
+    while (buffer_time / (rate * 2 * channels) < 6)
+	buffer_time *= 2;
+    if (buffer_time != currprefs.sound_maxbsiz * 1000) {
+	fprintf (stderr, "Increasing sound buffer size to sane minimum of %d bytes.\n",
+		 buffer_time / 1000);
+    }
     if (buffer_time < 1000 || buffer_time > 500000)
 	buffer_time = 100000;
+
 
     if ((err = snd_pcm_hw_params_malloc (&hw_params)) < 0) {
 	write_log ("Cannot allocate hardware parameter structure: %s.\n", snd_strerror (err));

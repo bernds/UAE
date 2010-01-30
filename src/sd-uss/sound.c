@@ -123,12 +123,8 @@ static void open_sound (void)
 
     if (currprefs.sound_maxbsiz < 128 || currprefs.sound_maxbsiz > 16384) {
 	fprintf (stderr, "Sound buffer size %d out of range.\n", currprefs.sound_maxbsiz);
-	currprefs.sound_maxbsiz = 8192;
+	currprefs.sound_maxbsiz = 1024;
     }
-
-    tmp = 0x00040000 + exact_log2 (currprefs.sound_maxbsiz);
-    ioctl (sound_fd, SNDCTL_DSP_SETFRAGMENT, &tmp);
-    ioctl (sound_fd, SNDCTL_DSP_GETBLKSIZE, &sndbufsize);
 
     dspbits = 16;
     ioctl (sound_fd, SNDCTL_DSP_SAMPLESIZE, &dspbits);
@@ -149,6 +145,17 @@ static void open_sound (void)
 	fprintf (stderr, "Can't use sound with desired frequency %d\n", currprefs.sound_freq);
 	goto out_err;
     }
+
+    tmp = 1 << exact_log2 (currprefs.sound_maxbsiz);
+    while (tmp * 1000 / (rate * 2 * (currprefs.sound_stereo ? 2 : 1)) < 6)
+	tmp *= 2;
+    if (tmp != currprefs.sound_maxbsiz) {
+	fprintf (stderr, "Increasing sound buffer size to sane minimum of %d bytes.\n",
+		 tmp);
+    }
+    tmp = 0x00040000 + exact_log2 (tmp);
+    ioctl (sound_fd, SNDCTL_DSP_SETFRAGMENT, &tmp);
+    ioctl (sound_fd, SNDCTL_DSP_GETBLKSIZE, &sndbufsize);
 
     obtainedfreq = rate;
 

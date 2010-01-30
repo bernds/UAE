@@ -1,0 +1,48 @@
+config_description=A4000 with a lot of fastmem (3.1 ROM, 68040, AGA)
+config_version=0.8.25
+# A1200 3.0
+kickstart_rom_crc_attempt=0x6c9b07d2
+# A500 3.1
+kickstart_rom_crc_attempt=0xfc24ae0d
+# A1200 3.1
+kickstart_rom_crc_attempt=0x1483a091
+# A4000 (Cloanto)
+kickstart_rom_crc_attempt=0x43b6dd22
+# A4000 3.X Cloanto
+kickstart_rom_crc_attempt=0x08b69382
+# A4000T
+kickstart_rom_crc_attempt=0x75932c3a
+# A4000
+kickstart_rom_crc_attempt=0xd6bae334
+
+kickstart_ext_rom_file=
+flash_file=
+cart_file=
+kickshifter=false
+floppy0type=0
+floppy0sound=1
+floppy1type=0
+floppy1sound=1
+floppy2type=-1
+floppy2sound=1
+floppy3type=-1
+floppy3sound=1
+nr_floppies=2
+floppy_speed=100
+maprom=0x0
+immediate_blits=false
+ntsc=false
+show_leds=false
+chipset=aga
+collision_level=playfields
+fastmem_size=0
+a3000mem_size=0
+z3mem_size=0
+bogomem_size=0
+gfxcard_size=0
+chipmem_size=4
+cpu_speed=max
+cpu_type=68040
+fpu_type=68040
+cpu_cycle_exact=false
+blitter_cycle_exact=false

@@ -56,6 +56,7 @@ struct audio_channel_data {
     int vol;
     int *voltbl;
     uae_u16 dat, nextdat, len;
+    int sample_accum, sample_accum_time;
     int sinc_output_state;
     sinc_queue_t sinc_queue[SINC_QUEUE_LENGTH];
     int sinc_queue_length;
@@ -134,6 +135,31 @@ STATIC_INLINE void put_sound_word_left (uae_u32 w)
 }
 
 #define DO_CHANNEL(v, c) do { (v) &= audio_channel[c].adk_mask; data += v; } while (0);
+
+static void anti_prehandler (unsigned long best_evtime)
+{
+    int i, output;
+    struct audio_channel_data *acd;
+
+    /* Handle accumulator antialiasiation */
+    for (i = 0; i < 4; i++) {
+	acd = &audio_channel[i];
+	output = (acd->current_sample * acd->vol) & acd->adk_mask;
+	acd->sample_accum += output * best_evtime;
+	acd->sample_accum_time += best_evtime;
+    }
+}
+
+STATIC_INLINE void samplexx_anti_handler (int *datasp)
+{
+    int i;
+    for (i = 0; i < 4; i++) {
+	datasp[i] = audio_channel[i].sample_accum_time ? (audio_channel[i].sample_accum / audio_channel[i].sample_accum_time) : 0;
+	audio_channel[i].sample_accum = 0;
+	audio_channel[i].sample_accum_time = 0;
+
+    }
+}
 
 static void sinc_prehandler (unsigned long best_evtime)
 {
@@ -245,6 +271,19 @@ void sample16_handler (void)
 	FINISH_DATA (data, 16, 2);
 	PUT_SOUND_WORD (data);
     }
+    check_sound_buffers ();
+}
+
+/* This interpolator examines sample points when Paula switches the output
+ * voltage and computes the average of Paula's output */
+static void sample16i_anti_handler (void)
+{
+    int datas[4], data1;
+
+    samplexx_anti_handler (datas);
+    data1 = datas[0] + datas[3] + datas[1] + datas[2];
+    FINISH_DATA (data1, 16, 2);
+    PUT_SOUND_WORD (data1);
     check_sound_buffers ();
 }
 
@@ -373,6 +412,20 @@ static void sample16i_crux_handler (void)
 }
 
 #ifdef HAVE_STEREO_SUPPORT
+static void sample16si_anti_handler (void)
+{
+    int datas[4], data1, data2;
+
+    samplexx_anti_handler (datas);
+    data1 = datas[0] + datas[3];
+    data2 = datas[1] + datas[2];
+    FINISH_DATA (data1, 16, 1);
+    put_sound_word_right (data1);
+    FINISH_DATA (data2, 16, 1);
+    put_sound_word_left (data2);
+    check_sound_buffers ();
+}
+
 static void sample16si_sinc_handler (void)
 {
     int datas[4], data1, data2;
@@ -581,6 +634,9 @@ void switch_audio_interpol (void)
     } else if (currprefs.sound_interpol == 2) {
 	changed_prefs.sound_interpol = 3;
 	write_log ("Interpol on: sinc\n");
+    } else if (currprefs.sound_interpol == 3) {
+	changed_prefs.sound_interpol = 4;
+	write_log ("Interpol on: anti\n");
     } else {
 	changed_prefs.sound_interpol = 0;
 	write_log ("Interpol off\n");
@@ -861,22 +917,30 @@ void check_prefs_changed_audio (void)
     if (sample_handler == sample16_handler
 	|| sample_handler == sample16i_crux_handler
 	|| sample_handler == sample16i_rh_handler
-	|| sample_handler == sample16i_sinc_handler) {
+	|| sample_handler == sample16i_sinc_handler
+	|| sample_handler == sample16i_anti_handler)
+    {
 	sample_handler = (currprefs.sound_interpol == 0 ? sample16_handler
 			  : currprefs.sound_interpol == 1 ? sample16i_rh_handler
 			  : currprefs.sound_interpol == 2 ? sample16i_crux_handler
-			  : sample16i_sinc_handler);
+			  : currprefs.sound_interpol == 3 ? sample16i_sinc_handler
+			  : sample16i_anti_handler);
     } else if (sample_handler == sample16s_handler
 	       || sample_handler == sample16si_crux_handler
 	       || sample_handler == sample16si_rh_handler
-	       || sample_handler == sample16si_sinc_handler)
+	       || sample_handler == sample16si_sinc_handler
+	       || sample_handler == sample16si_anti_handler)
 	sample_handler = (currprefs.sound_interpol == 0 ? sample16s_handler
 			  : currprefs.sound_interpol == 1 ? sample16si_rh_handler
 			  : currprefs.sound_interpol == 2 ? sample16si_crux_handler
-			  : sample16si_sinc_handler);
+			  : currprefs.sound_interpol == 3 ? sample16si_sinc_handler
+			  : sample16si_anti_handler);
     sample_prehandler = NULL;
-    if (sample_handler == sample16si_sinc_handler || sample_handler == sample16i_sinc_handler)
+    if (currprefs.sound_interpol == 3) {
 	sample_prehandler = sinc_prehandler;
+    } else if (currprefs.sound_interpol == 4) {
+	sample_prehandler = anti_prehandler;
+    }
 }
 
 void update_audio (void)

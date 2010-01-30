@@ -17,7 +17,6 @@
 #include "memory.h"
 #include "autoconf.h"
 #include "picasso96.h"
-#include "zfile.h"
 #include "savestate.h"
 
 #define MAX_EXPANSION_BOARDS	8
@@ -816,18 +815,27 @@ static void allocate_expamem (void)
 
     if (savestate_state == STATE_RESTORE) {
 	if (allocated_fastmem > 0) {
-	    zfile_fseek (savestate_file, fast_filepos, SEEK_SET);
-	    zfile_fread (fastmemory, 1, allocated_fastmem, savestate_file);
+	    restore_ram (fast_filepos, fastmemory);
 	    map_banks (&fastmem_bank, fastmem_start >> 16, currprefs.fastmem_size >> 16,
 		       allocated_fastmem);
 	}
 	if (allocated_z3fastmem > 0) {
-	    zfile_fseek (savestate_file, z3_filepos, SEEK_SET);
-	    zfile_fread (z3fastmem, 1, allocated_z3fastmem, savestate_file);
+	    restore_ram (z3_filepos, z3fastmem);
 	    map_banks (&z3fastmem_bank, z3fastmem_start >> 16, currprefs.z3fastmem_size >> 16,
 		       allocated_z3fastmem);
 	}
     }
+}
+
+int need_uae_boot_rom (void)
+{
+    if (nr_units (currprefs.mountinfo) > 0)
+	return 1;
+    if (currprefs.socket_emu)
+	return 1;
+    if (currprefs.gfxmem_size)
+	return 1;
+    return 0;
 }
 
 void expamem_reset (void)
@@ -912,6 +920,16 @@ void expansion_cleanup (void)
     z3fastmem = 0;
     gfxmemory = 0;
     filesysory = 0;
+}
+
+void expansion_clear(void)
+{
+    if (fastmemory)
+	memset (fastmemory, 0, allocated_fastmem);
+    if (z3fastmem)
+	memset (z3fastmem, 0, allocated_z3fastmem > 0x800000 ? 0x800000 : allocated_z3fastmem);
+    if (gfxmemory)
+	memset (gfxmemory, 0, allocated_gfxmem);
 }
 
 /* State save/restore code.  */

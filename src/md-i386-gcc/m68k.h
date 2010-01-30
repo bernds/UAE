@@ -6,27 +6,6 @@
   * Copyright 1996 Bernd Schmidt
   */
 
-#if 0
-struct flag_struct {
-    unsigned int c:1; /* first byte */
-    int :5;
-    unsigned int z:1;
-    unsigned int n:1;
-    int :3;           /* second, third & fourth byte */
-    unsigned int v:1;
-    int :20;
-    unsigned int x:1; /* fifth */
-    int :31;
-};
-
-#define ZFLG (regflags.z)
-#define NFLG (regflags.n)
-#define CFLG (regflags.c)
-#define VFLG (regflags.v)
-#define XFLG (regflags.x)
-
-#else
-
 struct flag_struct {
     unsigned int cznv;
     unsigned int x;
@@ -54,8 +33,6 @@ struct flag_struct {
 
 #define COPY_CARRY (regflags.x = regflags.cznv)
 
-
-#endif
 
 extern struct flag_struct regflags __asm__ ("regflags");
 

@@ -61,6 +61,7 @@ STATIC_INLINE int dmaen (unsigned int dmamask)
 #define SPCFLAG_BLTNASTY 512
 #define SPCFLAG_EXEC 1024
 #define SPCFLAG_MODE_CHANGE 8192
+#define SPCFLAG_RESTORE_SANITY 16384
 
 extern uae_u16 adkcon;
 

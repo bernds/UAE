@@ -15,6 +15,7 @@ dnl Checks for programs.
 AC_PROG_CC
 
 AC_PROG_CPP
+AC_PROG_INSTALL
 AC_PROG_MAKE_SET
 AC_PATH_PROG(MAKEDEPPRG, makedepend, not-found)
 AC_PATH_PROG(FILEPRG, file, not-found)
@@ -416,12 +417,12 @@ if [[ "x$WANT_VIDMODE" = "xyes" ]]; then
 fi
 
 #GTK_PACKAGES="gtk+-2.0"
-#GTK_REQUIRED_VERSION=2.1.3
+#GTK_REQUIRED_VERSION=2.4.0
 #PKG_CHECK_MODULES(DEPS, $GTK_PACKAGES >= $GTK_REQUIRED_VERSION)
 #GTK_CFLAGS=`$PKG_CONFIG --cflags $ATK_PACKAGES $GTK_PACKAGES $LIBGNOMECANVAS_PACKAGES`
 #GTK_LIBS=`$PKG_CONFIG --libs $ATK_PACKAGES $GTK_PACKAGES $LIBGNOMECANVAS_PACKAGES`
 
-AM_PATH_GTK_2_0
+AM_PATH_GTK_2_0(2.4.0)
 
 dnl See if we can at least compile SHM support
 
@@ -605,7 +606,7 @@ if [[ "x$WANT_UI" != "xno" ]]; then
 dnl      GUIOBJS="gtkui.o chipsetspeedpanel.o chipsettypepanel.o chooserwidget.o"
 dnl      GUIOBJS="$GUIOBJS cpuspeedpanel.o cputypepanel.o floppyfileentry.o led.o util.o"
       GUIDEP=gui-gtk
-      GUIOBJS_IN="gtkui.o chooserwidget.o util.o"
+      GUIOBJS_IN="gtkui.o util.o"
     fi
   else 
     if [[ "x$WANT_UI" = "xyes" ]]; then

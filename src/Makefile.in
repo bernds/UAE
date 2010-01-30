@@ -7,7 +7,9 @@ CC        = @CC@
 WRC       = @WRCPRG@
 CPP       = @CPP@
 LDFLAGS   = @LDFLAGS@
-CFLAGS    = @CFLAGS@ -D__inline__=@ac_cv_c_inline@
+CFLAGS    = @CFLAGS@ -D__inline__=@ac_cv_c_inline@ \
+		-DSYSTEM_ROMDIR=\"$(datadir)/uae/roms\" \
+		-DSYSTEM_CFGDIR=\"$(datadir)/uae/configs\"
 X_CFLAGS  = @X_CFLAGS@ @GTK_CFLAGS@ -DSHM_SUPPORT_LINKS=@SHM_SUPPORT_LINKS@
 TARGET    = @TARGET@
 LIBRARIES = @LIBRARIES@ @LIBS@ @GTK_LIBS@
@@ -20,6 +22,8 @@ INSTALL         = @INSTALL@
 INSTALL_PROGRAM = @INSTALL_PROGRAM@
 INSTALL_DATA    = @INSTALL_DATA@
 prefix          = @prefix@
+datarootdir     = @datarootdir@
+datadir         = @datadir@
 exec_prefix     = @exec_prefix@
 bindir          = @bindir@
 libdir          = @libdir@

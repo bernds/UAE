@@ -44,6 +44,6 @@ typedef void blitter_func(uaecptr, uaecptr, uaecptr, uaecptr, struct bltinfo *);
 
 #define BLITTER_MAX_WORDS 2048
 
-extern blitter_func *blitfunc_dofast[256];
-extern blitter_func *blitfunc_dofast_desc[256];
+extern blitter_func *const blitfunc_dofast[256];
+extern blitter_func *const blitfunc_dofast_desc[256];
 extern uae_u32 blit_masktable[BLITTER_MAX_WORDS];
