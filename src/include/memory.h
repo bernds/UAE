@@ -257,6 +257,9 @@ extern void chipmem_lput (uaecptr, uae_u32) REGPARAM;
 extern void chipmem_wput (uaecptr, uae_u32) REGPARAM;
 extern void chipmem_bput (uaecptr, uae_u32) REGPARAM;
 
+extern uae_u32 chipmem_agnus_wget (uaecptr) REGPARAM;
+extern void chipmem_agnus_wput (uaecptr, uae_u32) REGPARAM;
+
 #ifdef NATMEM_OFFSET
 
 typedef struct shmpiece_reg {

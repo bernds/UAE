@@ -29,7 +29,7 @@ static char running = 0;
  * to launch the command asynchronously. Please note also that the
  * remote cli works better if you've got the fifo-handler installed.
  */
-int uaeexe (char *cmd)
+int uaeexe (const char *cmd)
 {
     struct uae_xcmd *nw;
 
@@ -87,7 +87,7 @@ static char *get_cmd (void)
 /*
  * helper function
  */
-#define ARG(x) (get_long (m68k_areg (regs, 7) + 4*(x+1)))
+#define ARG(x) (get_long (m68k_areg (regs, 7) + 4 * (x + 1)))
 static uae_u32 uaeexe_server (TrapContext *dummy)
 {
     int len;

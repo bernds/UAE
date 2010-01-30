@@ -28,10 +28,6 @@
 #include "disk.h"
 #include "autoconf.h"
 
-#define console_out printf
-#define console_flush() fflush (stdout)
-#define console_get(BUF, COUNT) fgets (BUF, COUNT, stdin)
-
 static int debugger_active;
 static uaecptr skipaddr_start, skipaddr_end;
 static int skipaddr_doskip;

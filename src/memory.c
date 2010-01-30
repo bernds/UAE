@@ -84,8 +84,9 @@ __inline__ void byteput (uaecptr addr, uae_u32 b)
 }
 #endif
 
-uae_u32 chipmem_mask, kickmem_mask, extendedkickmem_mask, bogomem_mask;
-uae_u32 a3000lmem_mask, a3000hmem_mask;
+static uae_u32 chipmem_mask, chipmem_full_mask;
+static uae_u32 kickmem_mask, extendedkickmem_mask, bogomem_mask;
+static uae_u32 a3000lmem_mask, a3000hmem_mask;
 
 static int illegal_count;
 /* A dummy bank that only contains zeros */
@@ -143,6 +144,7 @@ void REGPARAM2 dummy_lput (uaecptr addr, uae_u32 l)
 	}
     }
 }
+
 void REGPARAM2 dummy_wput (uaecptr addr, uae_u32 w)
 {
     if (currprefs.illegal_mem) {
@@ -152,6 +154,7 @@ void REGPARAM2 dummy_wput (uaecptr addr, uae_u32 w)
 	}
     }
 }
+
 void REGPARAM2 dummy_bput (uaecptr addr, uae_u32 b)
 {
     if (currprefs.illegal_mem) {
@@ -233,6 +236,26 @@ void REGPARAM2 chipmem_bput (uaecptr addr, uae_u32 b)
     addr -= chipmem_start & chipmem_mask;
     addr &= chipmem_mask;
     chipmemory[addr] = b;
+}
+
+uae_u32 REGPARAM2 chipmem_agnus_wget (uaecptr addr)
+{
+    uae_u16 *m;
+
+    addr &= chipmem_full_mask;
+    m = (uae_u16 *)(chipmemory + addr);
+    return do_get_mem_word (m);
+}
+
+void REGPARAM2 chipmem_agnus_wput (uaecptr addr, uae_u32 w)
+{
+    uae_u16 *m;
+
+    addr &= chipmem_full_mask;
+    if (addr >= allocated_chipmem)
+	return;
+    m = (uae_u16 *)(chipmemory + addr);
+    do_put_mem_word (m, w);
 }
 
 int REGPARAM2 chipmem_check (uaecptr addr, uae_u32 size)
@@ -1160,20 +1183,30 @@ static void init_mem_banks (void)
 static void allocate_memory (void)
 {
     if (allocated_chipmem != currprefs.chipmem_size) {
+	int memsize;
 	if (chipmemory)
 	    mapped_free (chipmemory);
 	chipmemory = 0;
 
-	allocated_chipmem = currprefs.chipmem_size;
+	memsize = allocated_chipmem = currprefs.chipmem_size;
 	chipmem_mask = allocated_chipmem - 1;
 
-	chipmemory = mapped_malloc (allocated_chipmem, "chip");
+	if (memsize < 0x100000)
+	    memsize = 0x100000;
+	chipmemory = mapped_malloc (memsize, "chip");
 	if (chipmemory == 0) {
 	    write_log ("Fatal error: out of memory for chipmem.\n");
 	    allocated_chipmem = 0;
-	} else
+	} else {
 	    need_hardreset = 1;
+	    if (memsize != allocated_chipmem)
+		memset (chipmemory + allocated_chipmem, 0xff, memsize - allocated_chipmem);
+	}
     }
+
+    chipmem_full_mask = allocated_chipmem - 1;
+    if ((currprefs.chipset_mask & CSMASK_ECS_AGNUS) && allocated_chipmem < 0x100000)
+	chipmem_full_mask = 0x100000 - 1;
 
     if (allocated_bogomem != currprefs.bogomem_size) {
 	if (bogomemory)
@@ -1272,6 +1305,7 @@ void memory_reset (void)
     currprefs.bogomem_size = changed_prefs.bogomem_size;
     currprefs.mbresmem_low_size = changed_prefs.mbresmem_low_size;
     currprefs.mbresmem_high_size = changed_prefs.mbresmem_high_size;
+    currprefs.chipset_mask = changed_prefs.chipset_mask;
     currprefs.cs_a1000ram = changed_prefs.cs_a1000ram;
     currprefs.cs_fatgaryrev = changed_prefs.cs_fatgaryrev;
     currprefs.cs_ramseyrev = changed_prefs.cs_ramseyrev;

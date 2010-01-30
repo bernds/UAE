@@ -76,11 +76,14 @@ static uae_u32 cop1lc,cop2lc,copcon;
 
 int maxhpos = MAXHPOS_PAL;
 int maxvpos = MAXVPOS_PAL;
-int minfirstline = MINFIRSTLINE_PAL;
-int vblank_endline = VBLANK_ENDLINE_PAL;
+int minfirstline = VBLANK_ENDLINE_PAL;
 int vblank_hz = VBLANK_HZ_PAL;
 static int fmode;
 static unsigned int beamcon0, new_beamcon0;
+uae_u16 vtotal = MAXVPOS_PAL, htotal = MAXHPOS_PAL;
+static uae_u16 hsstop, hbstrt, hbstop, vsstop, vbstrt, vbstop, hsstrt, vsstrt, hcenter;
+
+#define HSYNCTIME (maxhpos * CYCLE_UNIT)
 
 #define MAX_SPRITES 8
 
@@ -97,7 +100,7 @@ struct sprite {
     enum sprstate state;
 };
 
-static struct sprite spr[8];
+static struct sprite spr[MAX_SPRITES];
 
 static int sprite_vblank_endline = 25;
 
@@ -134,7 +137,7 @@ int plffirstline, plflastline, plfstrt, plfstop;
 static int last_diw_pix_hpos, last_ddf_pix_hpos, last_decide_line_hpos;
 static int last_fetch_hpos, last_sprite_hpos;
 int diwfirstword, diwlastword;
-static enum diw_states diwstate, hdiwstate;
+static enum diw_states diwstate, hdiwstate, ddfstate;
 
 /* Sprite collisions */
 static unsigned int clxdat, clxcon, clxcon2, clxcon_bpl_enable, clxcon_bpl_match;
@@ -527,15 +530,15 @@ static int fetchstart, fetchstart_shift, fetchstart_mask;
 static int fm_maxplane, fm_maxplane_shift;
 
 /* The corresponding values, by fetchmode and display resolution.  */
-static const unsigned int fetchunits[] = { 8,8,8,0, 16,8,8,0, 32,16,8,0 };
-static const unsigned int fetchstarts[] = { 3,2,1,0, 4,3,2,0, 5,4,3,0 };
-static const unsigned int fm_maxplanes[] = { 3,2,1,0, 3,3,2,0, 3,3,3,0 };
+static const int fetchunits[] = { 8,8,8,0, 16,8,8,0, 32,16,8,0 };
+static const int fetchstarts[] = { 3,2,1,0, 4,3,2,0, 5,4,3,0 };
+static const int fm_maxplanes[] = { 3,2,1,0, 3,3,2,0, 3,3,3,0 };
 
-static uae_u8 cycle_diagram_table[3][3][9][32];
-static uae_u8 cycle_diagram_free_cycles[3][3][9];
-static uae_u8 cycle_diagram_total_cycles[3][3][9];
-static uae_u8 *curr_diagram;
-static uae_u8 cycle_sequences[3 * 8] = { 2,1,2,1,2,1,2,1, 4,2,3,1,4,2,3,1, 8,4,6,2,7,3,5,1 };
+static int cycle_diagram_table[3][3][9][32];
+static int cycle_diagram_free_cycles[3][3][9];
+static int cycle_diagram_total_cycles[3][3][9];
+static int *curr_diagram;
+static const int cycle_sequences[3 * 8] = { 2,1,2,1,2,1,2,1, 4,2,3,1,4,2,3,1, 8,4,6,2,7,3,5,1 };
 
 static void debug_cycle_diagram (void)
 {
@@ -565,7 +568,7 @@ static void create_cycle_diagram_table (void)
 {
     int fm, res, cycle, planes, v;
     int fetch_start, max_planes, freecycles;
-    uae_u8 *cycle_sequence;
+    const int *cycle_sequence;
 
     for (fm = 0; fm <= 2; fm++) {
 	for (res = 0; res <= 2; res++) {
@@ -710,7 +713,7 @@ STATIC_INLINE void fetch (int nr, int fm)
     p = bplpt[nr] + bpl_off[nr];
     switch (fm) {
     case 0:
-	fetched[nr] = chipmem_wget (p);
+	fetched[nr] = chipmem_agnus_wget (p);
 	bplpt[nr] += 2;
 	break;
     case 1:
@@ -1149,6 +1152,7 @@ static void finish_final_fetch (int i, int fm)
     if (thisline_decision.plfleft == -1)
 	return;
 
+    ddfstate = DIW_waiting_start;
     i += flush_plane_data (fm);
     thisline_decision.plfright = i;
     thisline_decision.plflinelen = out_offs;
@@ -1348,6 +1352,53 @@ STATIC_INLINE void decide_fetch (int hpos)
     last_fetch_hpos = hpos;
 }
 
+static void start_bpl_dma (int hstart)
+{
+    fetch_state = fetch_started;
+    fetch_cycle = 0;
+    last_fetch_hpos = hstart;
+    out_nbits = 0;
+    out_offs = 0;
+    toscr_nbits = 0;
+
+    ddfstate = DIW_waiting_stop;
+    compute_toscr_delay (last_fetch_hpos);
+
+    /* If someone already wrote BPL1DAT, clear the area between that point and
+       the real fetch start.  */
+    if (!nodraw ()) {
+	if (thisline_decision.plfleft != -1) {
+	    out_nbits = (plfstrt - thisline_decision.plfleft) << (1 + toscr_res);
+	    out_offs = out_nbits >> 5;
+	    out_nbits &= 31;
+	}
+	update_toscr_planes ();
+    }
+}
+
+/* this may turn on datafetch if program turns dma on during the ddf */
+static void maybe_start_bpl_dma (int hpos)
+{
+    /* OCS: BPL DMA never restarts if DMA is turned on during DDF
+     * ECS/AGA: BPL DMA restarts but only if DMA was turned off
+       outside of DDF or during current line, otherwise display
+       processing jumps immediately to "DDFSTOP passed"-condition */
+    if (!(currprefs.chipset_mask & CSMASK_ECS_AGNUS))
+	return;
+    if (fetch_state != fetch_not_started)
+	return;
+    if (diwstate != DIW_waiting_stop)
+	return;
+    if (hpos <= plfstrt)
+	return;
+    if (hpos > plfstop - fetchunit)
+	return;
+    if (ddfstate != DIW_waiting_start)
+	passed_plfstop = 1;
+
+    start_bpl_dma (hpos);
+}
+
 /* This function is responsible for turning on datafetch if necessary.  */
 STATIC_INLINE void decide_line (int hpos)
 {
@@ -1372,25 +1423,8 @@ STATIC_INLINE void decide_line (int hpos)
 	if (dmaen (DMA_BITPLANE)
 	    && diwstate == DIW_waiting_stop)
 	{
-	    fetch_state = fetch_started;
-	    fetch_cycle = 0;
-	    last_fetch_hpos = plfstrt;
-	    out_nbits = 0;
-	    out_offs = 0;
-	    toscr_nbits = 0;
+	    start_bpl_dma (plfstrt);
 
-	    compute_toscr_delay (last_fetch_hpos);
-
-	    /* If someone already wrote BPL1DAT, clear the area between that point and
-	       the real fetch start.  */
-	    if (!nodraw ()) {
-		if (thisline_decision.plfleft != -1) {
-		    out_nbits = (plfstrt - thisline_decision.plfleft) << (1 + toscr_res);
-		    out_offs = out_nbits >> 5;
-		    out_nbits &= 31;
-		}
-		update_toscr_planes ();
-	    }
 	    estimate_last_fetch_cycle (plfstrt);
 	    last_decide_line_hpos = hpos;
 	    do_sprites (plfstrt);
@@ -1476,7 +1510,7 @@ static void do_sprite_collisions (void)
     int first = curr_drawinfo[next_lineno].first_sprite_entry;
     int i;
     unsigned int collision_mask = clxmask[clxcon >> 12];
-    int bplres = GET_RES (bplcon0);
+    int bplres = GET_RES_NOSH (bplcon0);
     hwres_t ddf_left = thisline_decision.plfleft * 2 << bplres;
     hwres_t hw_diwlast = coord_window_to_diw_x (thisline_decision.diwlastword);
     hwres_t hw_diwfirst = coord_window_to_diw_x (thisline_decision.diwfirstword);
@@ -1894,6 +1928,18 @@ static void reset_decisions (void)
     last_fetch_hpos = -1;
 }
 
+static void dumpsync (void)
+{
+    static int cnt = 10;
+    if (cnt < 0)
+	return;
+    cnt--;
+    write_log ("BEAMCON0=%04.4X VTOTAL=%04.4X HTOTAL=%04.4X\n", new_beamcon0, vtotal, htotal);
+    write_log ("HSSTOP=%04.4X HBSTRT=%04.4X HBSTOP=%04.4X\n", hsstop, hbstrt, hbstop);
+    write_log ("VSSTOP=%04.4X VBSTRT=%04.4X VBSTOP=%04.4X\n", vsstop, vbstrt, vbstop);
+    write_log ("HSSTRT=%04.4X VSSTRT=%04.4X HCENTER=%04.4X\n", hsstrt, vsstrt, hcenter);
+}
+
 /* set PAL or NTSC timing variables */
 
 static void init_hz (void)
@@ -1906,19 +1952,39 @@ static void init_hz (void)
     if (!isntsc) {
 	maxvpos = MAXVPOS_PAL;
 	maxhpos = MAXHPOS_PAL;
-	minfirstline = MINFIRSTLINE_PAL;
-	vblank_endline = VBLANK_ENDLINE_PAL;
+	minfirstline = VBLANK_ENDLINE_PAL;
 	vblank_hz = VBLANK_HZ_PAL;
+	sprite_vblank_endline = VBLANK_SPRITE_PAL;
     } else {
 	maxvpos = MAXVPOS_NTSC;
 	maxhpos = MAXHPOS_NTSC;
-	minfirstline = MINFIRSTLINE_NTSC;
-	vblank_endline = VBLANK_ENDLINE_NTSC;
+	minfirstline = VBLANK_ENDLINE_NTSC;
 	vblank_hz = VBLANK_HZ_NTSC;
+	sprite_vblank_endline = VBLANK_SPRITE_NTSC;
     }
+    if (beamcon0 & 0x80) {
+	if (vtotal >= MAXVPOS)
+	    vtotal = MAXVPOS - 1;
+	maxvpos = vtotal + 1;
+	if (htotal >= MAXHPOS)
+	    htotal = MAXHPOS - 1;
+	maxhpos = htotal + 1;
+	vblank_hz = 227 * 312 * 50 / (maxvpos * maxhpos);
+	minfirstline = vsstop;
+	if (minfirstline < 2)
+	    minfirstline = 2;
+	if (minfirstline >= maxvpos)
+	    minfirstline = maxvpos - 1;
+	sprite_vblank_endline = minfirstline - 2;
+	dumpsync ();
+    }
+    eventtab[ev_hsync].oldcycles = get_cycles ();
+    eventtab[ev_hsync].evtime = get_cycles() + HSYNCTIME;
+    events_schedule ();
     compute_vsynctime ();
 
-    write_log ("Using %s timing\n", isntsc ? "NTSC" : "PAL");
+    write_log ("%s mode, %dHz (h=%d v=%d)\n",
+	       isntsc ? "NTSC" : "PAL", vblank_hz, maxhpos, maxvpos);
 }
 
 static void calcdiw (void)
@@ -1998,23 +2064,28 @@ STATIC_INLINE uae_u16 DENISEID (void)
 	return 0xFC;
     return 0xFFFF;
 }
+
 STATIC_INLINE uae_u16 DMACONR (void)
 {
     return (dmacon | (bltstate==BLT_done ? 0 : 0x4000)
 	    | (blt_info.blitzero ? 0x2000 : 0));
 }
+
 STATIC_INLINE uae_u16 INTENAR (void)
 {
     return intena;
 }
+
 uae_u16 INTREQR (void)
 {
     return intreq;
 }
+
 STATIC_INLINE uae_u16 ADKCONR (void)
 {
     return adkcon;
 }
+
 STATIC_INLINE uae_u16 VPOSR (void)
 {
     unsigned int csbit = currprefs.ntscmode ? 0x1000 : 0;
@@ -2022,6 +2093,7 @@ STATIC_INLINE uae_u16 VPOSR (void)
     csbit |= (currprefs.chipset_mask & CSMASK_ECS_AGNUS) ? 0x2000 : 0;
     return (vpos >> 8) | lof | csbit;
 }
+
 static void VPOSW (uae_u16 v)
 {
     if (lof != (v & 0x8000))
@@ -2183,8 +2255,23 @@ static void ADKCON (uae_u16 v)
 
 static void BEAMCON0 (uae_u16 v)
 {
-    if (currprefs.chipset_mask & CSMASK_ECS_AGNUS)
-	new_beamcon0 = v & 0x20;
+    if (currprefs.chipset_mask & CSMASK_ECS_AGNUS) {
+	if (!(currprefs.chipset_mask & CSMASK_ECS_DENISE))
+	    v &= 0x20;
+	if (v != new_beamcon0) {
+	    new_beamcon0 = v;
+	    if (v & ~0x20)
+		write_log ("warning: %04.4X written to BEAMCON0\n", v);
+	}
+    }
+}
+
+static void varsync (void)
+{
+    if (!(currprefs.chipset_mask & CSMASK_ECS_DENISE))
+	return;
+    if (!(beamcon0 & 0x80))
+	return;
 }
 
 static void BPLxPTH (int hpos, uae_u16 v, int num)
@@ -2861,7 +2948,7 @@ static void update_copper (int until_hpos)
 
 	case COP_read1_wr_in2:
 	case COP_read1:
-	    cop_state.i1 = chipmem_wget (cop_state.ip);
+	    cop_state.i1 = chipmem_agnus_wget (cop_state.ip);
 	    cop_state.ip += 2;
 	    cop_state.state = cop_state.state == COP_read1 ? COP_read2 : COP_read2_wr_in2;
 	    break;
@@ -2870,7 +2957,7 @@ static void update_copper (int until_hpos)
 	    abort ();
 
 	case COP_read2:
-	    cop_state.i2 = chipmem_wget (cop_state.ip);
+	    cop_state.i2 = chipmem_agnus_wget (cop_state.ip);
 	    cop_state.ip += 2;
 	    if (cop_state.ignore_next) {
 		cop_state.ignore_next = 0;
@@ -3032,7 +3119,7 @@ STATIC_INLINE uae_u16 sprite_fetch (struct sprite *s, int dma)
 {
     uae_u16 data = last_custom_value;
     if (dma)
-	data = last_custom_value = chipmem_wget (s->pt);
+	data = last_custom_value = chipmem_agnus_wget (s->pt);
     s->pt += 2;
     return data;
 }
@@ -3206,8 +3293,8 @@ static void init_hardware_frame (void)
     nextline_how = nln_normal;
     diwstate = DIW_waiting_start;
     hdiwstate = DIW_waiting_start;
+    ddfstate = DIW_waiting_start;
 }
-
 void init_hardware_for_drawing_frame (void)
 {
     adjust_array_sizes ();
@@ -3410,7 +3497,7 @@ void init_eventtab (void)
 
     eventtab[ev_cia].handler = CIA_handler;
     eventtab[ev_hsync].handler = hsync_handler;
-    eventtab[ev_hsync].evtime = maxhpos * CYCLE_UNIT + get_cycles ();
+    eventtab[ev_hsync].evtime = HSYNCTIME + get_cycles ();
     eventtab[ev_hsync].active = 1;
 
     eventtab[ev_copper].handler = copper_handler;
@@ -3437,7 +3524,6 @@ void customreset (void)
     handle_events ();
 
     if (! savestate_state) {
-	currprefs.chipset_mask = changed_prefs.chipset_mask;
 	if ((currprefs.chipset_mask & CSMASK_AGA) == 0) {
 	    for (i = 0; i < 32; i++) {
 		current_colors.color_regs_ecs[i] = 0;
@@ -3500,6 +3586,7 @@ void customreset (void)
     hdiwstate = DIW_waiting_start;
     currcycle = 0;
 
+    currprefs.ntscmode = changed_prefs.ntscmode;
     new_beamcon0 = currprefs.ntscmode ? 0x00 : 0x20;
     init_hz ();
 
@@ -3513,14 +3600,7 @@ void customreset (void)
     init_sprites ();
 
     init_hardware_frame ();
-    reset_drawing ();
-
-#ifdef PICASSO96
-    InitPicasso96 ();
-    picasso_on = 0;
-    picasso_requested_on = 0;
-    gfx_set_picasso_state (0);
-#endif
+    init_drawing_at_reset ();
 
     reset_decisions ();
 
@@ -3584,19 +3664,19 @@ void customreset (void)
 
 void dumpcustom (void)
 {
-    write_log ("DMACON: %x INTENA: %x INTREQ: %x VPOS: %x HPOS: %x\n", DMACONR(),
-	       (unsigned int)intena, (unsigned int)intreq, (unsigned int)vpos, (unsigned int)current_hpos());
-    write_log ("COP1LC: %08lx, COP2LC: %08lx COPPTR: %08lx\n", (unsigned long)cop1lc, (unsigned long)cop2lc, cop_state.ip);
-    write_log ("DIWSTRT: %04x DIWSTOP: %04x DDFSTRT: %04x DDFSTOP: %04x\n",
-	       (unsigned int)diwstrt, (unsigned int)diwstop, (unsigned int)ddfstrt, (unsigned int)ddfstop);
-    write_log ("BPLCON 0: %04x 1: %04x 2: %04x 3: %04x 4: %04x\n", bplcon0, bplcon1, bplcon2, bplcon3, bplcon4);
+    console_out ("DMACON: %x INTENA: %x INTREQ: %x VPOS: %x HPOS: %x\n", DMACONR(),
+		 (unsigned int)intena, (unsigned int)intreq, (unsigned int)vpos, (unsigned int)current_hpos());
+    console_out ("COP1LC: %08lx, COP2LC: %08lx COPPTR: %08lx\n", (unsigned long)cop1lc, (unsigned long)cop2lc, cop_state.ip);
+    console_out ("DIWSTRT: %04x DIWSTOP: %04x DDFSTRT: %04x DDFSTOP: %04x\n",
+		 (unsigned int)diwstrt, (unsigned int)diwstop, (unsigned int)ddfstrt, (unsigned int)ddfstop);
+    console_out ("BPLCON 0: %04x 1: %04x 2: %04x 3: %04x 4: %04x\n", bplcon0, bplcon1, bplcon2, bplcon3, bplcon4);
     if (timeframes) {
-	write_log ("Average frame time: %f ms [frames: %d time: %d]\n",
-		   (double)frametime / timeframes, timeframes, frametime);
+	console_out ("Average frame time: %f ms [frames: %d time: %d]\n",
+		     (double)frametime / timeframes, timeframes, frametime);
 	if (total_skipped)
-	    write_log ("Skipped frames: %d\n", total_skipped);
+	    console_out ("Skipped frames: %d\n", total_skipped);
     }
-    /*for (i=0; i<256; i++) if (blitcount[i]) write_log ("minterm %x = %d\n",i,blitcount[i]);  blitter debug */
+    /*for (i=0; i<256; i++) if (blitcount[i]) console_out ("minterm %x = %d\n",i,blitcount[i]);  blitter debug */
 }
 
 static void gen_custom_tables (void)
@@ -3741,166 +3821,180 @@ void REGPARAM2 custom_wput_1 (int hpos, uaecptr addr, uae_u32 value)
     addr &= 0x1FE;
     last_custom_value = value;
     switch (addr) {
-     case 0x020: DSKPTH (value); break;
-     case 0x022: DSKPTL (value); break;
-     case 0x024: DSKLEN (value, hpos); break;
-     case 0x026: DSKDAT (value); break;
+    case 0x020: DSKPTH (value); break;
+    case 0x022: DSKPTL (value); break;
+    case 0x024: DSKLEN (value, hpos); break;
+    case 0x026: DSKDAT (value); break;
 
-     case 0x02A: VPOSW (value); break;
-     case 0x02E: COPCON (value); break;
-     case 0x030: SERDAT (value); break;
-     case 0x032: SERPER (value); break;
-     case 0x034: POTGO (value); break;
-     case 0x040: BLTCON0 (value); break;
-     case 0x042: BLTCON1 (value); break;
+    case 0x02A: VPOSW (value); break;
+    case 0x02E: COPCON (value); break;
+    case 0x030: SERDAT (value); break;
+    case 0x032: SERPER (value); break;
+    case 0x034: POTGO (value); break;
+    case 0x040: BLTCON0 (value); break;
+    case 0x042: BLTCON1 (value); break;
 
-     case 0x044: BLTAFWM (value); break;
-     case 0x046: BLTALWM (value); break;
+    case 0x044: BLTAFWM (value); break;
+    case 0x046: BLTALWM (value); break;
 
-     case 0x050: BLTAPTH (value); break;
-     case 0x052: BLTAPTL (value); break;
-     case 0x04C: BLTBPTH (value); break;
-     case 0x04E: BLTBPTL (value); break;
-     case 0x048: BLTCPTH (value); break;
-     case 0x04A: BLTCPTL (value); break;
-     case 0x054: BLTDPTH (value); break;
-     case 0x056: BLTDPTL (value); break;
+    case 0x050: BLTAPTH (value); break;
+    case 0x052: BLTAPTL (value); break;
+    case 0x04C: BLTBPTH (value); break;
+    case 0x04E: BLTBPTL (value); break;
+    case 0x048: BLTCPTH (value); break;
+    case 0x04A: BLTCPTL (value); break;
+    case 0x054: BLTDPTH (value); break;
+    case 0x056: BLTDPTL (value); break;
 
-     case 0x058: BLTSIZE (value); break;
+    case 0x058: BLTSIZE (value); break;
 
-     case 0x064: BLTAMOD (value); break;
-     case 0x062: BLTBMOD (value); break;
-     case 0x060: BLTCMOD (value); break;
-     case 0x066: BLTDMOD (value); break;
+    case 0x064: BLTAMOD (value); break;
+    case 0x062: BLTBMOD (value); break;
+    case 0x060: BLTCMOD (value); break;
+    case 0x066: BLTDMOD (value); break;
 
-     case 0x070: BLTCDAT (value); break;
-     case 0x072: BLTBDAT (value); break;
-     case 0x074: BLTADAT (value); break;
+    case 0x070: BLTCDAT (value); break;
+    case 0x072: BLTBDAT (value); break;
+    case 0x074: BLTADAT (value); break;
 
-     case 0x07E: DSKSYNC (value); break;
+    case 0x07E: DSKSYNC (value); break;
 
-     case 0x080: COP1LCH (value); break;
-     case 0x082: COP1LCL (value); break;
-     case 0x084: COP2LCH (value); break;
-     case 0x086: COP2LCL (value); break;
+    case 0x080: COP1LCH (value); break;
+    case 0x082: COP1LCL (value); break;
+    case 0x084: COP2LCH (value); break;
+    case 0x086: COP2LCL (value); break;
 
-     case 0x088: COPJMP (1); break;
-     case 0x08A: COPJMP (2); break;
+    case 0x088: COPJMP (1); break;
+    case 0x08A: COPJMP (2); break;
 
-     case 0x08E: DIWSTRT (hpos, value); break;
-     case 0x090: DIWSTOP (hpos, value); break;
-     case 0x092: DDFSTRT (hpos, value); break;
-     case 0x094: DDFSTOP (hpos, value); break;
+    case 0x08E: DIWSTRT (hpos, value); break;
+    case 0x090: DIWSTOP (hpos, value); break;
+    case 0x092: DDFSTRT (hpos, value); break;
+    case 0x094: DDFSTOP (hpos, value); break;
 
-     case 0x096: DMACON (hpos, value); break;
-     case 0x098: CLXCON (value); break;
-     case 0x09A: INTENA (value); break;
-     case 0x09C: INTREQ (value); break;
-     case 0x09E: ADKCON (value); break;
+    case 0x096: DMACON (hpos, value); break;
+    case 0x098: CLXCON (value); break;
+    case 0x09A: INTENA (value); break;
+    case 0x09C: INTREQ (value); break;
+    case 0x09E: ADKCON (value); break;
 
-     case 0x0A0: AUDxLCH (0, value); break;
-     case 0x0A2: AUDxLCL (0, value); break;
-     case 0x0A4: AUDxLEN (0, value); break;
-     case 0x0A6: AUDxPER (0, value); break;
-     case 0x0A8: AUDxVOL (0, value); break;
-     case 0x0AA: AUDxDAT (0, value); break;
+    case 0x0A0: AUDxLCH (0, value); break;
+    case 0x0A2: AUDxLCL (0, value); break;
+    case 0x0A4: AUDxLEN (0, value); break;
+    case 0x0A6: AUDxPER (0, value); break;
+    case 0x0A8: AUDxVOL (0, value); break;
+    case 0x0AA: AUDxDAT (0, value); break;
 
-     case 0x0B0: AUDxLCH (1, value); break;
-     case 0x0B2: AUDxLCL (1, value); break;
-     case 0x0B4: AUDxLEN (1, value); break;
-     case 0x0B6: AUDxPER (1, value); break;
-     case 0x0B8: AUDxVOL (1, value); break;
-     case 0x0BA: AUDxDAT (1, value); break;
+    case 0x0B0: AUDxLCH (1, value); break;
+    case 0x0B2: AUDxLCL (1, value); break;
+    case 0x0B4: AUDxLEN (1, value); break;
+    case 0x0B6: AUDxPER (1, value); break;
+    case 0x0B8: AUDxVOL (1, value); break;
+    case 0x0BA: AUDxDAT (1, value); break;
 
-     case 0x0C0: AUDxLCH (2, value); break;
-     case 0x0C2: AUDxLCL (2, value); break;
-     case 0x0C4: AUDxLEN (2, value); break;
-     case 0x0C6: AUDxPER (2, value); break;
-     case 0x0C8: AUDxVOL (2, value); break;
-     case 0x0CA: AUDxDAT (2, value); break;
+    case 0x0C0: AUDxLCH (2, value); break;
+    case 0x0C2: AUDxLCL (2, value); break;
+    case 0x0C4: AUDxLEN (2, value); break;
+    case 0x0C6: AUDxPER (2, value); break;
+    case 0x0C8: AUDxVOL (2, value); break;
+    case 0x0CA: AUDxDAT (2, value); break;
 
-     case 0x0D0: AUDxLCH (3, value); break;
-     case 0x0D2: AUDxLCL (3, value); break;
-     case 0x0D4: AUDxLEN (3, value); break;
-     case 0x0D6: AUDxPER (3, value); break;
-     case 0x0D8: AUDxVOL (3, value); break;
-     case 0x0DA: AUDxDAT (3, value); break;
+    case 0x0D0: AUDxLCH (3, value); break;
+    case 0x0D2: AUDxLCL (3, value); break;
+    case 0x0D4: AUDxLEN (3, value); break;
+    case 0x0D6: AUDxPER (3, value); break;
+    case 0x0D8: AUDxVOL (3, value); break;
+    case 0x0DA: AUDxDAT (3, value); break;
 
-     case 0x0E0: BPLxPTH (hpos, value, 0); break;
-     case 0x0E2: BPLxPTL (hpos, value, 0); break;
-     case 0x0E4: BPLxPTH (hpos, value, 1); break;
-     case 0x0E6: BPLxPTL (hpos, value, 1); break;
-     case 0x0E8: BPLxPTH (hpos, value, 2); break;
-     case 0x0EA: BPLxPTL (hpos, value, 2); break;
-     case 0x0EC: BPLxPTH (hpos, value, 3); break;
-     case 0x0EE: BPLxPTL (hpos, value, 3); break;
-     case 0x0F0: BPLxPTH (hpos, value, 4); break;
-     case 0x0F2: BPLxPTL (hpos, value, 4); break;
-     case 0x0F4: BPLxPTH (hpos, value, 5); break;
-     case 0x0F6: BPLxPTL (hpos, value, 5); break;
-     case 0x0F8: BPLxPTH (hpos, value, 6); break;
-     case 0x0FA: BPLxPTL (hpos, value, 6); break;
-     case 0x0FC: BPLxPTH (hpos, value, 7); break;
-     case 0x0FE: BPLxPTL (hpos, value, 7); break;
+    case 0x0E0: BPLxPTH (hpos, value, 0); break;
+    case 0x0E2: BPLxPTL (hpos, value, 0); break;
+    case 0x0E4: BPLxPTH (hpos, value, 1); break;
+    case 0x0E6: BPLxPTL (hpos, value, 1); break;
+    case 0x0E8: BPLxPTH (hpos, value, 2); break;
+    case 0x0EA: BPLxPTL (hpos, value, 2); break;
+    case 0x0EC: BPLxPTH (hpos, value, 3); break;
+    case 0x0EE: BPLxPTL (hpos, value, 3); break;
+    case 0x0F0: BPLxPTH (hpos, value, 4); break;
+    case 0x0F2: BPLxPTL (hpos, value, 4); break;
+    case 0x0F4: BPLxPTH (hpos, value, 5); break;
+    case 0x0F6: BPLxPTL (hpos, value, 5); break;
+    case 0x0F8: BPLxPTH (hpos, value, 6); break;
+    case 0x0FA: BPLxPTL (hpos, value, 6); break;
+    case 0x0FC: BPLxPTH (hpos, value, 7); break;
+    case 0x0FE: BPLxPTL (hpos, value, 7); break;
 
-     case 0x100: BPLCON0 (hpos, value); break;
-     case 0x102: BPLCON1 (hpos, value); break;
-     case 0x104: BPLCON2 (hpos, value); break;
-     case 0x106: BPLCON3 (hpos, value); break;
+    case 0x100: BPLCON0 (hpos, value); break;
+    case 0x102: BPLCON1 (hpos, value); break;
+    case 0x104: BPLCON2 (hpos, value); break;
+    case 0x106: BPLCON3 (hpos, value); break;
 
-     case 0x108: BPL1MOD (hpos, value); break;
-     case 0x10A: BPL2MOD (hpos, value); break;
-     case 0x10E: CLXCON2 (value); break;
+    case 0x108: BPL1MOD (hpos, value); break;
+    case 0x10A: BPL2MOD (hpos, value); break;
+    case 0x10E: CLXCON2 (value); break;
 
-     case 0x110: BPL1DAT (hpos, value); break;
-     case 0x112: BPL2DAT (value); break;
-     case 0x114: BPL3DAT (value); break;
-     case 0x116: BPL4DAT (value); break;
-     case 0x118: BPL5DAT (value); break;
-     case 0x11A: BPL6DAT (value); break;
-     case 0x11C: BPL7DAT (value); break;
-     case 0x11E: BPL8DAT (value); break;
+    case 0x110: BPL1DAT (hpos, value); break;
+    case 0x112: BPL2DAT (value); break;
+    case 0x114: BPL3DAT (value); break;
+    case 0x116: BPL4DAT (value); break;
+    case 0x118: BPL5DAT (value); break;
+    case 0x11A: BPL6DAT (value); break;
+    case 0x11C: BPL7DAT (value); break;
+    case 0x11E: BPL8DAT (value); break;
 
-     case 0x180: case 0x182: case 0x184: case 0x186: case 0x188: case 0x18A:
-     case 0x18C: case 0x18E: case 0x190: case 0x192: case 0x194: case 0x196:
-     case 0x198: case 0x19A: case 0x19C: case 0x19E: case 0x1A0: case 0x1A2:
-     case 0x1A4: case 0x1A6: case 0x1A8: case 0x1AA: case 0x1AC: case 0x1AE:
-     case 0x1B0: case 0x1B2: case 0x1B4: case 0x1B6: case 0x1B8: case 0x1BA:
-     case 0x1BC: case 0x1BE:
+    case 0x180: case 0x182: case 0x184: case 0x186: case 0x188: case 0x18A:
+    case 0x18C: case 0x18E: case 0x190: case 0x192: case 0x194: case 0x196:
+    case 0x198: case 0x19A: case 0x19C: case 0x19E: case 0x1A0: case 0x1A2:
+    case 0x1A4: case 0x1A6: case 0x1A8: case 0x1AA: case 0x1AC: case 0x1AE:
+    case 0x1B0: case 0x1B2: case 0x1B4: case 0x1B6: case 0x1B8: case 0x1BA:
+    case 0x1BC: case 0x1BE:
 	COLOR_WRITE (hpos, value & 0xFFF, (addr & 0x3E) / 2);
 	break;
-     case 0x120: case 0x124: case 0x128: case 0x12C:
-     case 0x130: case 0x134: case 0x138: case 0x13C:
+    case 0x120: case 0x124: case 0x128: case 0x12C:
+    case 0x130: case 0x134: case 0x138: case 0x13C:
 	SPRxPTH (hpos, value, (addr - 0x120) / 4);
 	break;
-     case 0x122: case 0x126: case 0x12A: case 0x12E:
-     case 0x132: case 0x136: case 0x13A: case 0x13E:
+    case 0x122: case 0x126: case 0x12A: case 0x12E:
+    case 0x132: case 0x136: case 0x13A: case 0x13E:
 	SPRxPTL (hpos, value, (addr - 0x122) / 4);
 	break;
-     case 0x140: case 0x148: case 0x150: case 0x158:
-     case 0x160: case 0x168: case 0x170: case 0x178:
+    case 0x140: case 0x148: case 0x150: case 0x158:
+    case 0x160: case 0x168: case 0x170: case 0x178:
 	SPRxPOS (hpos, value, (addr - 0x140) / 8);
 	break;
-     case 0x142: case 0x14A: case 0x152: case 0x15A:
-     case 0x162: case 0x16A: case 0x172: case 0x17A:
+    case 0x142: case 0x14A: case 0x152: case 0x15A:
+    case 0x162: case 0x16A: case 0x172: case 0x17A:
 	SPRxCTL (hpos, value, (addr - 0x142) / 8);
 	break;
-     case 0x144: case 0x14C: case 0x154: case 0x15C:
-     case 0x164: case 0x16C: case 0x174: case 0x17C:
+    case 0x144: case 0x14C: case 0x154: case 0x15C:
+    case 0x164: case 0x16C: case 0x174: case 0x17C:
 	SPRxDATA (hpos, value, (addr - 0x144) / 8);
 	break;
-     case 0x146: case 0x14E: case 0x156: case 0x15E:
-     case 0x166: case 0x16E: case 0x176: case 0x17E:
+    case 0x146: case 0x14E: case 0x156: case 0x15E:
+    case 0x166: case 0x16E: case 0x176: case 0x17E:
 	SPRxDATB (hpos, value, (addr - 0x146) / 8);
 	break;
 
-     case 0x36: JOYTEST (value); break;
-     case 0x5A: BLTCON0L (value); break;
-     case 0x5C: BLTSIZV (value); break;
-     case 0x5E: BLTSIZH (value); break;
-     case 0x1E4: DIWHIGH (hpos, value); break;
-     case 0x10C: BPLCON4 (hpos, value); break;
-     case 0x1FC: FMODE (value); break;
+    case 0x36: JOYTEST (value); break;
+    case 0x5A: BLTCON0L (value); break;
+    case 0x5C: BLTSIZV (value); break;
+    case 0x5E: BLTSIZH (value); break;
+    case 0x1E4: DIWHIGH (hpos, value); break;
+    case 0x10C: BPLCON4 (hpos, value); break;
+
+    case 0x1DC: BEAMCON0 (value); break;
+    case 0x1C0: if (htotal != value) { htotal = value; varsync (); } break;
+    case 0x1C2: if (hsstop != value) { hsstop = value; varsync (); } break;
+    case 0x1C4: if (hbstrt != value) { hbstrt = value; varsync (); } break;
+    case 0x1C6: if (hbstop != value) { hbstop = value; varsync (); } break;
+    case 0x1C8: if (vtotal != value) { vtotal = value; varsync (); } break;
+    case 0x1CA: if (vsstop != value) { vsstop = value; varsync (); } break;
+    case 0x1CC: if (vbstrt < value || vbstrt > value + 1) { vbstrt = value; varsync (); } break;
+    case 0x1CE: if (vbstop < value || vbstop > value + 1) { vbstop = value; varsync (); } break;
+    case 0x1DE: if (hsstrt != value) { hsstrt = value; varsync (); } break;
+    case 0x1E0: if (vsstrt != value) { vsstrt = value; varsync (); } break;
+    case 0x1E2: if (hcenter != value) { hcenter = value; varsync (); } break;
+
+    case 0x1FC: FMODE (value); break;
     }
 }
 
@@ -4039,14 +4133,14 @@ const uae_u8 *restore_custom (const uae_u8 *src)
 	RW;			/*     BPLXDAT */
     for(i = 0; i < 32; i++)
 	current_colors.color_regs_ecs[i] = RW; /* 180 COLORxx */
-    RW;				/* 1C0 ? */
-    RW;				/* 1C2 ? */
-    RW;				/* 1C4 ? */
-    RW;				/* 1C6 ? */
-    RW;				/* 1C8 ? */
-    RW;				/* 1CA ? */
-    RW;				/* 1CC ? */
-    RW;				/* 1CE ? */
+    htotal = RW;		/* 1C0 HTOTAL */
+    hsstop = RW;		/* 1C2 HSTOP ? */
+    hbstrt = RW;		/* 1C4 HBSTRT ? */
+    hbstop = RW;		/* 1C6 HBSTOP ? */
+    vtotal = RW;		/* 1C8 VTOTAL */
+    vsstop = RW;		/* 1CA VSSTOP */
+    vbstrt = RW;		/* 1CC VBSTRT */
+    vbstop = RW;		/* 1CE VBSTOP */
     RW;				/* 1D0 ? */
     RW;				/* 1D2 ? */
     RW;				/* 1D4 ? */
@@ -4054,10 +4148,12 @@ const uae_u8 *restore_custom (const uae_u8 *src)
     RW;				/* 1D8 ? */
     RW;				/* 1DA ? */
     new_beamcon0 = RW;		/* 1DC BEAMCON0 */
-    RW;				/* 1DE ? */
-    RW;				/* 1E0 ? */
-    RW;				/* 1E2 ? */
-    RW;				/* 1E4 ? */
+    hsstrt = RW;		/* 1DE HSSTRT */
+    vsstrt = RW;		/* 1E0 VSSTT  */
+    hcenter = RW;		/* 1E2 HCENTER */
+    diwhigh = RW;		/* 1E4 DIWHIGH */
+    diwhigh_written = (diwhigh & 0x8000) ? 1 : 0;
+    diwhigh &= 0x7fff;
     RW;				/* 1E6 ? */
     RW;				/* 1E8 ? */
     RW;				/* 1EA ? */
@@ -4070,7 +4166,7 @@ const uae_u8 *restore_custom (const uae_u8 *src)
     RW;				/* 1F8 ? */
     RW;				/* 1FA ? */
     fmode = RW;			/* 1FC FMODE */
-    RW;				/* 1FE ? */
+    last_custom_value = RW;	/* 1FE ? */
 
     DISK_restore_custom (dskpt, dsklen, dskdatr, dskbytr);
 
@@ -4186,14 +4282,14 @@ uae_u8 *save_custom (int *len, uae_u8 *dstptr, int full)
 	SW (0);			/* 110 BPLxDAT */
     for ( i = 0; i < 32; i++)
 	SW (current_colors.color_regs_ecs[i]); /* 180-1BE COLORxx */
-    SW (0);			/* 1C0 */
-    SW (0);			/* 1C2 */
-    SW (0);			/* 1C4 */
-    SW (0);			/* 1C6 */
-    SW (0);			/* 1C8 */
-    SW (0);			/* 1CA */
-    SW (0);			/* 1CC */
-    SW (0);			/* 1CE */
+    SW (htotal);		/* 1C0 HTOTAL */
+    SW (hsstop);		/* 1C2 HSTOP*/
+    SW (hbstrt);		/* 1C4 HBSTRT */
+    SW (hbstop);		/* 1C6 HBSTOP */
+    SW (vtotal);		/* 1C8 VTOTAL */
+    SW (vsstop);		/* 1CA VSSTOP */
+    SW (vbstrt);		/* 1CC VBSTRT */
+    SW (vbstop);		/* 1CE VBSTOP */
     SW (0);			/* 1D0 */
     SW (0);			/* 1D2 */
     SW (0);			/* 1D4 */
@@ -4201,10 +4297,10 @@ uae_u8 *save_custom (int *len, uae_u8 *dstptr, int full)
     SW (0);			/* 1D8 */
     SW (0);			/* 1DA */
     SW (beamcon0);		/* 1DC BEAMCON0 */
-    SW (0);			/* 1DE */
-    SW (0);			/* 1E0 */
-    SW (0);			/* 1E2 */
-    SW (0);			/* 1E4 */
+    SW (hsstrt);		/* 1DE HSSTRT */
+    SW (vsstrt);		/* 1E0 VSSTRT */
+    SW (hcenter);		/* 1E2 HCENTER */
+    SW (diwhigh | (diwhigh_written ? 0x8000 : 0)); /* 1E4 DIWHIGH */
     SW (0);			/* 1E6 */
     SW (0);			/* 1E8 */
     SW (0);			/* 1EA */
@@ -4217,7 +4313,7 @@ uae_u8 *save_custom (int *len, uae_u8 *dstptr, int full)
     SW (0);			/* 1F8 */
     SW (0);			/* 1FA */
     SW (fmode);			/* 1FC FMODE */
-    SW (0xffff);		/* 1FE */
+    SW (last_custom_value);	/* 1FE */
 
     *len = dst - dstbak;
     return dstbak;
@@ -4295,7 +4391,4 @@ void check_prefs_changed_custom (void)
     currprefs.immediate_blits = changed_prefs.immediate_blits;
     currprefs.blits_32bit_enabled = changed_prefs.blits_32bit_enabled;
     currprefs.collision_level = changed_prefs.collision_level;
-    if (currprefs.leds_on_screen && !changed_prefs.leds_on_screen)
-	notice_screen_contents_lost ();
-    currprefs.leds_on_screen = changed_prefs.leds_on_screen;
 }

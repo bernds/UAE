@@ -677,7 +677,7 @@ static void recycle_aino (Unit *unit, a_inode *new_aino)
 	int i = 0;
 	while (i < 50) {
 	    a_inode *parent = unit->rootnode.prev->parent;
-	    a_inode **aip;
+	    a_inode **aip, *old_prev;
 	    aip = &parent->child;
 
 	    if (! parent->locked_children) {
@@ -704,13 +704,15 @@ static void recycle_aino (Unit *unit, a_inode *new_aino)
 	    /* In the previous loop, we went through all children of one
 	       parent.  Re-arrange the recycled list so that we'll find a
 	       different parent the next time around.  */
+	    old_prev = unit->rootnode.prev;
 	    do {
 		unit->rootnode.next->prev = unit->rootnode.prev;
 		unit->rootnode.prev->next = unit->rootnode.next;
 		unit->rootnode.next = unit->rootnode.prev;
 		unit->rootnode.prev = unit->rootnode.prev->prev;
 		unit->rootnode.prev->next = unit->rootnode.next->prev = &unit->rootnode;
-	    } while (unit->rootnode.prev->parent == parent);
+	    } while (unit->rootnode.prev != old_prev
+		     && unit->rootnode.prev->parent == parent);
 	}
 #if 0
 	{

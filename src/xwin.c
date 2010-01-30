@@ -131,7 +131,6 @@ static int dga_colormap_installed;
 
 static int need_dither;
 
-static int screen_is_picasso;
 static char picasso_invalid_lines[1201];
 static int picasso_has_invalid_lines;
 static int picasso_invalid_start, picasso_invalid_stop;
@@ -244,9 +243,30 @@ static void get_image (int w, int h, struct disp_info *dispi)
 static XF86VidModeModeInfo **allmodes;
 static int vidmodecount;
 
+static int sortfn (const void *a, const void *b)
+{
+    XF86VidModeInfo **ppa = a, *ppb = b;
+    XF86VidModeInfo *pa = *ppa, *pb = *ppb;
+    if (pa->hdisplay != pb->hdisplay)
+	return pa->hdisplay - pb->hdisplay;
+    return pa->vdisplay - pb->vdisplay;
+}
+
 static int get_vidmodes (void)
 {
-    return XF86VidModeGetAllModeLines (display, screen, &vidmodecount, &allmodes);
+    int i;
+    
+    if (!XF86VidModeGetAllModeLines (display, screen, &vidmodecount, &allmodes))
+	return 0;
+
+    qsort (allmodes, vidmodecount, sizeof *allmode, sortfn);
+
+    gfx_fullscreen_modes = sizeof (struct uae_rect) * vidmodecount;
+    n_fullscreen_modes = vidmodecount;
+    for (i = 0; i < vidmodecount; i++) {
+	gfx_fullscreen_modes[i].w = allmodes[i].hdisplay;
+	gfx_fullscreen_modes[i].h = allmodes[i].vdisplay;
+    }
 }
 #endif
 
@@ -707,14 +727,13 @@ static void reset_cursor (void)
     }
 }
 
-static void graphics_subinit (void)
+int graphics_subinit (void)
 {
     int i, j;
     XSetWindowAttributes wattr;
     XClassHint classhint;
     XWMHints *hints;
     unsigned long valuemask;
-
 
     if (screen_is_picasso) {
 	// Set height, width for Picasso gfx
@@ -843,6 +862,10 @@ static void graphics_subinit (void)
     inwindow = 0;
     inputdevice_release_all_keys ();
     reset_hotkeys ();
+
+    XWarpPointer (display, None, mywin, 0, 0, 0, 0,
+		  current_width / 2, current_height / 2);
+    return 1;
 }
 
 static int get_best_visual (XVisualInfo *vi)
@@ -922,8 +945,8 @@ int graphics_init (void)
 
     write_log ("Using %d bit visual, %d bits per pixel\n", bitdepth, bit_unit);
 
-    fixup_prefs_dimensions (&currprefs.gfx_w);
-    fixup_prefs_dimensions (&currprefs.gfx_f);
+    fixup_prefs_dimensions (&currprefs.gfx_w, gfx_windowed_modes, n_windowed_modes);
+    fixup_prefs_dimensions (&currprefs.gfx_f, gfx_fullscreen_modes, n_fullscreen_modes);
 
     cmap = XCreateColormap (display, rootwin, vis, AllocNone);
     cmap2 = XCreateColormap (display, rootwin, vis, AllocNone);
@@ -936,8 +959,10 @@ int graphics_init (void)
 	gfxvidinfo.pixbytes = 2;
 	currprefs.x11_use_low_bandwidth = 0;
 	need_dither = 1;
+	picasso_vidinfo.pixbytes = 1 /* ??? */;
     } else {
 	gfxvidinfo.pixbytes = bit_unit >> 3;
+	picasso_vidinfo.pixbytes = bit_unit >> 3;
     }
 
     if (! init_colors ())
@@ -969,7 +994,7 @@ static void destroy_dinfo (struct disp_info *dinfo)
     dinfo->ximg = NULL;
 }
 
-static void graphics_subshutdown (void)
+void graphics_subshutdown (int final)
 {
     XSync (display, 0);
 #ifdef USE_DGA_EXTENSION
@@ -996,7 +1021,7 @@ void graphics_leave (void)
     if (! x11_init_ok)
 	return;
 
-    graphics_subshutdown ();
+    graphics_subshutdown (1);
 
     if (autorepeatoff)
 	XAutoRepeatOn (display);
@@ -1208,52 +1233,6 @@ void handle_events (void)
     }
 }
 
-int check_prefs_changed_gfx (void)
-{
-    int a_changed = 0, p_changed = 0;
-
-    if (!screen_is_picasso) {
-	if (!dgamode
-	    && memcmp (&changed_prefs.gfx_w, &currprefs.gfx_w, sizeof (struct gfx_params)) != 0)
-	{
-	    a_changed = 1;
-	    fixup_prefs_dimensions (&changed_prefs.gfx_w);
-	    currprefs.gfx_w = changed_prefs.gfx_w;
-    } else if (dgamode
-	       && memcmp (&changed_prefs.gfx_f, &currprefs.gfx_f, sizeof (struct gfx_params)) != 0)
-	{
-	    a_changed = 1;
-	    fixup_prefs_dimensions (&changed_prefs.gfx_f);
-	currprefs.gfx_f = changed_prefs.gfx_f;
-	}
-	if (changed_prefs.gfx_afullscreen != currprefs.gfx_afullscreen) {
-	    a_changed = 1;
-	}
-    } else if (changed_prefs.gfx_pfullscreen != currprefs.gfx_pfullscreen) {
-	p_changed = 1;
-    }
-
-    currprefs.gfx_afullscreen = changed_prefs.gfx_afullscreen;
-    currprefs.gfx_pfullscreen = changed_prefs.gfx_pfullscreen;
-
-    if (!a_changed && !p_changed)
-	return 0;
-
-    gui_update_gfx ();
-
-    graphics_subinit ();
-
-    if (! inwindow)
-	XWarpPointer (display, None, mywin, 0, 0, 0, 0,
-		      current_width / 2, current_height / 2);
-
-    notice_screen_contents_lost ();
-    init_row_map ();
-    if (screen_is_picasso)
-	picasso_enablescreen (1);
-    return 0;
-}
-
 int debuggable (void)
 {
     return 1;
@@ -1463,61 +1442,6 @@ int DX_FillResolutions (uae_u16 *ppixel_format)
     }
 
     return count;
-}
-
-static void set_window_for_picasso (void)
-{
-    if (current_width == picasso_vidinfo.width && current_height == picasso_vidinfo.height)
-	return;
-
-    graphics_subshutdown ();
-    current_width = picasso_vidinfo.width;
-    current_height = picasso_vidinfo.height;
-#if 0 && defined USE_DGA_EXTENSION && defined USE_VIDMODE_EXTENSION
-    if (dgamode && vidmodeavail)
-	switch_to_best_mode ();
-#endif
-    graphics_subinit ();
-}
-
-void gfx_set_picasso_modeinfo (int w, int h, int depth, int rgbfmt)
-{
-    if (screen_is_picasso
-	&& picasso_vidinfo.width == w
-	&& picasso_vidinfo.height == h)
-	return;
-
-    picasso_vidinfo.width = w;
-    picasso_vidinfo.height = h;
-    picasso_vidinfo.depth = depth;
-    picasso_vidinfo.pixbytes = bit_unit >> 3;
-
-    if (screen_is_picasso)
-	set_window_for_picasso ();
-}
-
-void gfx_set_picasso_baseaddr (uaecptr a)
-{
-}
-
-void gfx_set_picasso_state (int on)
-{
-    if (on == screen_is_picasso)
-	return;
-    graphics_subshutdown ();
-    screen_is_picasso = on;
-    if (on) {
-	current_width = picasso_vidinfo.width;
-	current_height = picasso_vidinfo.height;
-	graphics_subinit ();
-    } else {
-	current_width = gfxvidinfo.width;
-	current_height = gfxvidinfo.height;
-	graphics_subinit ();
-	reset_drawing ();
-    }
-    if (on)
-	DX_SetPalette_real (0, 256);
 }
 
 uae_u8 *gfx_lock_picasso (void)

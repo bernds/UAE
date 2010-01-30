@@ -73,6 +73,7 @@ struct gfx_params {
     int correct_aspect;
     int xcenter;
     int ycenter;
+    int leds_on_screen;
 };
 
 struct uae_prefs {
@@ -118,7 +119,6 @@ struct uae_prefs {
     unsigned int chipset_mask;
     int ntscmode;
     int collision_level;
-    int leds_on_screen;
 
     int cs_rtc;
     int cs_ide;

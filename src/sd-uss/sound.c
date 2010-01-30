@@ -32,7 +32,7 @@ static smp_comm_pipe to_sound_pipe;
 static uae_sem_t sound_comm_sem;
 
 static int sound_fd;
-static int have_sound = 0;
+static int have_sound = 0, have_thread = 0;
 static int dont_block;
 static unsigned long formats;
 
@@ -67,9 +67,11 @@ void close_sound (void)
     if (have_sound)
 	close (sound_fd);
 
-    write_comm_pipe_int (&to_sound_pipe, 1, 1);
-    uae_sem_wait (&sound_comm_sem);
-    uae_sem_destroy (&sound_comm_sem);
+    if (have_thread) {
+	write_comm_pipe_int (&to_sound_pipe, 1, 1);
+	uae_sem_wait (&sound_comm_sem);
+	uae_sem_destroy (&sound_comm_sem);
+    }
 }
 
 /* Try to determine whether sound is available.  This is only for GUI purposes.  */
@@ -222,6 +224,7 @@ static void init_sound_thread (void)
     init_comm_pipe (&to_sound_pipe, 20, 1);
     uae_sem_init (&sound_comm_sem, 0, 0);
     uae_start_thread (sound_thread, NULL, &tid);
+    have_thread = 1;
 }
 
 int init_sound (void)

@@ -1,4 +1,20 @@
+A10828 Disallow mousehack utility to start if we have a bootrom.
+       NTSC toggle in the GTK UI.  Some ntsc/varsync changes merged from
+       WinUAE.  Also merged chipmem_agnus functions and a couple more minor
+       changes.
+       Fix a theoretical infinite loop in filesystem cache recycling.
 A10826 Screenmode now configurable in the gui.  So is the bootrom.
+       leds_on_screen is now separately configurable for windowed and
+       fullscreen.  There are fullscreen toggles in the graphics page.
+       Move some common code out of the graphics drivers and into drawing.c
+       and picasso96.c.
+       Merge from WinUAE: Tolerate more res_shift values for AGA.
+       Fix some botched if statements in configure.
+       Ignore comment lines when loading a config file.
+       Silence keyboard init to avoid multiple messages when scanning config
+       files.
+       Be slightly more conservative about freeing stuff in some of the sound
+       drivers.
 A10825 Merge mousehack in ROM from WinUAE, minus the crazy startup logic.
        Merge a stripped-down gayle.c from WinUAE, just enough to get the A4000
        Kickstart working properly.  GUI changes to take ROM requirements into

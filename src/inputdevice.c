@@ -527,14 +527,12 @@ static void mousehack_setpos (int mousexpos, int mouseypos)
     uae_u8 *p;
     if (!uae_boot_rom)
 	return;
-#if 1
     p = rtarea + get_long (RTAREA_BASE + 40) + 12;
     p[0] = mousexpos >> 8;
     p[1] = mousexpos;
     p[2] = mouseypos >> 8;
     p[3] = mouseypos;
     //write_log ("%dx%d\n", mousexpos, mouseypos);
-#endif
 }
 
 static void new_mousehack_helper (void)
@@ -580,7 +578,7 @@ uae_u32 mousehack_helper (TrapContext *dummy)
 
     switch (m68k_dreg (regs, 0)) {
     case 0:
-	return ievent_alive ? -1 : needmousehack ();
+	return ievent_alive ? -1 : !uae_boot_rom && needmousehack ();
     case 1:
 	ievent_alive = 10;
 	if (!mousehack_allowed ())

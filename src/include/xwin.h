@@ -18,6 +18,8 @@ extern int newmousecounters;
 extern int graphics_setup (void);
 extern int graphics_init (void);
 extern void graphics_leave (void);
+extern void graphics_subshutdown (int final);
+extern int graphics_subinit (void);
 extern void handle_events (void);
 extern void setup_brkhandler (void);
 

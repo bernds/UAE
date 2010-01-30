@@ -42,8 +42,7 @@
 #define SINC_QUEUE_LENGTH (SINC_QUEUE_MAX_AGE / MIN_ALLOWED_PERIOD + NUMBER_OF_CPU_UPDATES_ALLOWED)
 
 typedef struct {
-    int age;
-    int output;
+    int age, output;
 } sinc_queue_t;
 
 struct audio_channel_data {
@@ -88,12 +87,12 @@ void init_sound_table16 (void)
 typedef uae_s8 sample8_t;
 #define DO_CHANNEL_1(v, c) do { (v) *= audio_channel[c].vol; } while (0)
 #define SBASEVAL16(logn) ((logn) == 1 ? SOUND16_BASE_VAL >> 1 : SOUND16_BASE_VAL)
-#define FINISH_DATA(data,b,logn) do { if (14 - (b) + (logn) > 0) (data) >>= 14 - (b) + (logn); else (data) <<= (b) - 14 - (logn); } while (0);
+#define FINISH_DATA(data, b, logn) do { if (14 - (b) + (logn) > 0) (data) >>= 14 - (b) + (logn); else (data) <<= (b) - 14 - (logn); } while (0);
 #else
 typedef uae_u8 sample8_t;
 #define DO_CHANNEL_1(v, c) do { (v) = audio_channel[c].voltbl[(v)]; } while (0)
 #define SBASEVAL16(logn) SOUND16_BASE_VAL
-#define FINISH_DATA(data,b,logn)
+#define FINISH_DATA(data, b, logn)
 #endif
 
 static uae_u32 right_word_saved[SOUND_MAX_DELAY_BUFFER];
@@ -124,7 +123,7 @@ enum {
 
 /* Amiga has two separate filtering circuits per channel, a static RC filter
  * on A500 and the LED filter. This code emulates both.
- * 
+ *
  * The Amiga filtering circuitry depends on Amiga model. Older Amigas seem
  * to have a 6 dB/oct RC filter with cutoff frequency such that the -6 dB
  * point for filter is reached at 6 kHz, while newer Amigas have no filtering.
@@ -145,10 +144,9 @@ static int filter(int input, struct filter_state *fs)
 
     input = (uae_s16)input;
     switch (sound_use_filter) {
-    
     case FILTER_NONE:
 	return input;
-    case FILTER_MODEL_A500: 
+    case FILTER_MODEL_A500:
 	fs->rc1 = a500e_filter1_a0 * input + (1 - a500e_filter1_a0) * fs->rc1 + DENORMAL_OFFSET;
 	fs->rc2 = a500e_filter2_a0 * fs->rc1 + (1-a500e_filter2_a0) * fs->rc2;
 	normal_output = fs->rc2;
@@ -159,7 +157,7 @@ static int filter(int input, struct filter_state *fs)
 
 	led_output = fs->rc5;
 	break;
-	
+
     case FILTER_MODEL_A1200:
 	normal_output = input;
 
@@ -169,10 +167,9 @@ static int filter(int input, struct filter_state *fs)
 
 	led_output = fs->rc4;
 	break;
-
     }
 
-    if (led_filter_on) 
+    if (led_filter_on)
 	o = led_output;
     else
 	o = normal_output;
@@ -794,14 +791,10 @@ void schedule_audio (void)
 void update_sound (unsigned int freq)
 {
     if (obtainedfreq) {
-	if (0 /*is_vsync ()*/) {
-	    if (currprefs.ntscmode)
-		scaled_sample_evtime = (unsigned long)(MAXHPOS_NTSC * MAXVPOS_NTSC * freq * CYCLE_UNIT + obtainedfreq - 1) / obtainedfreq;
-	    else
-		scaled_sample_evtime = (unsigned long)(MAXHPOS_PAL * MAXVPOS_PAL * freq * CYCLE_UNIT + obtainedfreq - 1) / obtainedfreq;
-	} else {
-	    scaled_sample_evtime = (unsigned long)(312.0 * 50 * CYCLE_UNIT / (obtainedfreq  / 227.0));
-	}
+	if (currprefs.ntscmode)
+	    scaled_sample_evtime = (unsigned long)(MAXHPOS_NTSC * MAXVPOS_NTSC * freq * CYCLE_UNIT + obtainedfreq - 1) / obtainedfreq;
+	else
+	    scaled_sample_evtime = (unsigned long)(MAXHPOS_PAL * MAXVPOS_PAL * freq * CYCLE_UNIT + obtainedfreq - 1) / obtainedfreq;
     }
 }
 
@@ -823,7 +816,7 @@ static void audio_handler (unsigned int nr)
 	INTREQ(0x8000 | (0x80 << nr));
 	if (cdp->wlen != 1)
 	    cdp->wlen = (cdp->wlen - 1) & 0xFFFF;
-	cdp->nextdat = chipmem_wget (cdp->pt);
+	cdp->nextdat = chipmem_agnus_wget (cdp->pt);
 
 	cdp->pt += 2;
 	break;
@@ -886,7 +879,7 @@ static void audio_handler (unsigned int nr)
 
 	cdp->evtime = cdp->per;
 
-	if ((INTREQR() & (0x80 << nr)) && !cdp->dmaen) {
+	if ((INTREQR () & (0x80 << nr)) && !cdp->dmaen) {
 	    cdp->state = 0;
 	    cdp->evtime = MAX_EV;
 	    cdp->last_sample = 0;
@@ -1182,7 +1175,7 @@ void audio_hsync (int dmaaction)
 
 	if (cdp->data_written == 2) {
 	    cdp->data_written = 0;
-	    cdp->nextdat = chipmem_wget (cdp->pt);
+	    cdp->nextdat = chipmem_agnus_wget (cdp->pt);
 	    cdp->pt += 2;
 	    if (cdp->state == 2 || cdp->state == 3) {
 		if (cdp->wlen == 1) {
@@ -1206,9 +1199,9 @@ void AUDxDAT (int nr, uae_u16 v)
     update_audio ();
 
     cdp->dat = v;
-    if (cdp->state == 0 && !(INTREQR() & (0x80 << nr))) {
+    if (cdp->state == 0 && !(INTREQR () & (0x80 << nr))) {
 	cdp->state = 2;
-	INTREQ(0x8000 | (0x80 << nr));
+	INTREQ (0x8000 | (0x80 << nr));
 	/* data_written = 2 ???? */
 	cdp->evtime = cdp->per;
 	schedule_audio ();

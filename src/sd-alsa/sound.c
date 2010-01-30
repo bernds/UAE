@@ -33,7 +33,7 @@ static uae_sem_t sound_comm_sem;
 static char alsa_device[256] = "default";
 static int alsa_verbose = 0;
 
-static int have_sound = 0;
+static int have_sound = 0, have_thread = 0;
 static int dont_block;
 
 static int which_buffer;
@@ -114,9 +114,12 @@ void close_sound (void)
 	snd_pcm_close (alsa_playback_handle);
 	alsa_playback_handle = 0;
     }
-    write_comm_pipe_int (&to_sound_pipe, 1, 1);
-    uae_sem_wait (&sound_comm_sem);
-    uae_sem_destroy (&sound_comm_sem);
+    if (have_thread) {
+	write_comm_pipe_int (&to_sound_pipe, 1, 1);
+	uae_sem_wait (&sound_comm_sem);
+	uae_sem_destroy (&sound_comm_sem);
+	have_thread = 0;
+    }
 }
 
 static int open_sound_device (void)
@@ -238,7 +241,6 @@ static void open_sound (void)
 
     buffer_time = currprefs.sound_maxbsiz * 1000;
 
-    tmp = 1 << exact_log2 (currprefs.sound_maxbsiz);
     while (buffer_time / (rate * 2 * channels) < 6)
 	buffer_time *= 2;
     if (buffer_time != currprefs.sound_maxbsiz * 1000) {
@@ -378,6 +380,7 @@ static void init_sound_thread (void)
     init_comm_pipe (&to_sound_pipe, 20, 1);
     uae_sem_init (&sound_comm_sem, 0, 0);
     uae_start_thread (sound_thread, NULL, &tid);
+    have_thread = 1;
 }
 
 int init_sound (void)

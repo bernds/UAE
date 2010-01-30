@@ -187,7 +187,6 @@ void default_prefs (struct uae_prefs *p)
 
     p->start_gui = 1;
     p->start_debugger = 0;
-    p->leds_on_screen = 1;
 
     p->unknown_lines = 0;
     /* Note to porters: please don't change any of these options! UAE is supposed
@@ -223,6 +222,8 @@ void default_prefs (struct uae_prefs *p)
     p->gfx_w.xcenter = 0;
     p->gfx_w.ycenter = 0;
     p->gfx_f = p->gfx_w;
+    p->gfx_w.leds_on_screen = 0;
+    p->gfx_f.leds_on_screen = 1;
     p->gfx_afullscreen = 0;
     p->gfx_pfullscreen = 0;
     p->color_mode = 0;
@@ -311,6 +312,7 @@ int fixup_prefs_dimensions (struct gfx_params *p, struct uae_rect *modes, int n_
 	    return i;
 	}
     }
+    return n_modes - 1;
 }
 
 void fixup_cpu (struct uae_prefs *p)
@@ -660,6 +662,7 @@ void real_main (int argc, char **argv)
     gui_update ();
 
     if (graphics_init ()) {
+	reset_drawing ();
 	setup_brkhandler ();
 	if (currprefs.start_debugger && debuggable ())
 	    activate_debugger ();

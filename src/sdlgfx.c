@@ -52,13 +52,10 @@ static SDL_Surface *screen;
 static int x_size_table[MAX_SCREEN_MODES] = { 320, 320, 320, 320, 640, 640, 640, 800, 1024, 1152, 1280 };
 static int y_size_table[MAX_SCREEN_MODES] = { 200, 240, 256, 400, 350, 480, 512, 600, 768,  864,  1024 };
 
-static int sdlgfx_init_ok;
-
 static int red_bits, green_bits, blue_bits;
 static int red_shift, green_shift, blue_shift;
 
 #ifdef PICASSO96
-static int screen_is_picasso;
 static char picasso_invalid_lines[1201];
 static int picasso_has_invalid_lines;
 static int picasso_invalid_start, picasso_invalid_stop;
@@ -79,7 +76,7 @@ static SDL_Color p96Colors[256];
 #endif
 static int ncolors;
 
-static int fullscreen;
+static int fullscreen, prev_fullscreen;
 static int mousegrab;
 
 static int is_hwsurface;
@@ -245,12 +242,12 @@ static int find_best_mode (int *width, int *height, int depth, int *try_fs)
 	}
 
 	/* If we didn't find a mode, use the largest supported mode */
-	if (i < 0)
-	    i = 0;
+	if (i == n_fullscreen_modes)
+	    i = n_fullscreen_modes - 1;
 
 	*width  = gfx_fullscreen_modes[i].w;
 	*height = gfx_fullscreen_modes[i].h;
-	found   = 1;
+	found = 1;
 
 	write_log ("SDLGFX: Using mode (%dx%d)\n", *width, *height);
     }
@@ -349,8 +346,11 @@ static void find_screen_modes (struct SDL_PixelFormat *vfmt)
 
 	/* Filter list of modes SDL gave us and ignore duplicates */
 	for (i = 0; modes[i]; i++)
-	    if (modes[i]->w != w || modes[i]->h != h)
+	    if (modes[i]->w != w || modes[i]->h != h) {
 		count++;
+		h = modes[i]->h;
+		w = modes[i]->w;
+	    }
 
 	gfx_fullscreen_modes = malloc (sizeof (struct uae_rect) * count);
 	n_fullscreen_modes = count;
@@ -367,10 +367,7 @@ static void find_screen_modes (struct SDL_PixelFormat *vfmt)
 		write_log ("SDLGFX: Found screenmode: %dx%d.\n", w, h);
 	    }
 	}
-    } else
-	count = (long) modes;
-
-    return count;
+    }
 }
 
 /**
@@ -448,14 +445,13 @@ int graphics_setup (void)
 	find_screen_modes (info->vfmt);
 
 	result = 1;
-	sdlgfx_init_ok = 1;
     } else
 	write_log ("SDLGFX: initialization failed - %s\n", SDL_GetError());
 
     return result;
 }
 
-static int graphics_subinit (void)
+int graphics_subinit (void)
 {
     Uint32 uiSDLVidModFlags = 0;
 
@@ -482,6 +478,12 @@ static int graphics_subinit (void)
     if (!screen_is_picasso) {
 	gfxvidinfo.width  = current_width;
 	gfxvidinfo.height = current_height;
+    }
+
+    if (!fullscreen && prev_fullscreen) {
+	struct uae_rect *biggest = gfx_fullscreen_modes + n_fullscreen_modes - 1;
+	/* Try switching back to the previous screenmode.  */
+	SDL_SetVideoMode (biggest->w, biggest->h, bitdepth, SDL_FULLSCREEN);
     }
 
     if (bitdepth == 8)
@@ -543,6 +545,8 @@ static int graphics_subinit (void)
 	inputdevice_release_all_keys ();
 	reset_hotkeys ();
 
+	bit_unit = display->format->BytesPerPixel * 8;
+
 #ifdef PICASSO96
 	if (!screen_is_picasso) {
 #endif
@@ -561,20 +565,18 @@ static int graphics_subinit (void)
 		gfxvidinfo.maxblocklines = gfxvidinfo.height;
 	    }
 	    gfxvidinfo.linemem		= 0;
-	    gfxvidinfo.pixbytes		= display->format->BytesPerPixel;
-	    bit_unit			= display->format->BytesPerPixel * 8;
+	    gfxvidinfo.pixbytes		= bit_unit >> 3;
 	    gfxvidinfo.rowbytes		= display->pitch;
 
 
 	    SDL_SetColors (display, arSDLColors, 0, 256);
-
-	    reset_drawing ();
 
 	    /* Force recalculation of row maps - if we're locking */
 	    old_pixels = (void *)-1;
 #ifdef PICASSO96
 	} else {
 	    /* Initialize structure for Picasso96 video modes */
+	    picasso_vidinfo.pixbytes    = bit_unit >> 3;
 	    picasso_vidinfo.rowbytes	= display->pitch;
 	    picasso_vidinfo.extra_mem	= 1;
 	    picasso_vidinfo.depth	= bitdepth;
@@ -617,7 +619,7 @@ int graphics_init (void)
     return success;
 }
 
-static void graphics_subshutdown (int final)
+void graphics_subshutdown (int final)
 {
     DEBUG_LOG ("Function: graphics_subshutdown\n");
 
@@ -629,7 +631,10 @@ static void graphics_subshutdown (int final)
        by reinitializing SDL.  */
     SDL_QuitSubSystem (SDL_INIT_VIDEO);
     SDL_InitSubSystem (SDL_INIT_VIDEO);
-    if (fullscreen) {
+
+    prev_fullscreen = fullscreen;
+
+    if (final && prev_fullscreen) {
 	struct uae_rect *biggest = gfx_fullscreen_modes + n_fullscreen_modes - 1;
 	/* Try switching back to the previous screenmode.  */
 	SDL_SetVideoMode (biggest->w, biggest->h, bitdepth, SDL_FULLSCREEN);
@@ -763,53 +768,6 @@ void handle_events (void)
 static void switch_keymaps (void)
 {
     set_default_hotkeys (get_default_cooked_hotkeys ());
-}
-
-int check_prefs_changed_gfx (void)
-{
-    int a_changed = 0, p_changed = 0;
-
-    if (!screen_is_picasso) {
-	if (!fullscreen
-	    && memcmp (&changed_prefs.gfx_w, &currprefs.gfx_w, sizeof (struct gfx_params)) != 0)
-	{
-	    a_changed = 1;
-	    fixup_prefs_dimensions (&changed_prefs.gfx_w, gfx_windowed_modes, n_windowed_modes);
-	    currprefs.gfx_w = changed_prefs.gfx_w;
-	} else if (fullscreen
-		   && memcmp (&changed_prefs.gfx_f, &currprefs.gfx_f, sizeof (struct gfx_params)) != 0)
-	{
-	    a_changed = 1;
-	    fixup_prefs_dimensions (&changed_prefs.gfx_f, gfx_fullscreen_modes, n_fullscreen_modes);
-	    currprefs.gfx_f = changed_prefs.gfx_f;
-	}
-	if (changed_prefs.gfx_afullscreen != currprefs.gfx_afullscreen) {
-	    a_changed = 1;
-	}
-    } else if (changed_prefs.gfx_pfullscreen != currprefs.gfx_pfullscreen) {
-	p_changed = 1;
-    }
-
-    currprefs.gfx_afullscreen = changed_prefs.gfx_afullscreen;
-    currprefs.gfx_pfullscreen = changed_prefs.gfx_pfullscreen;
-
-    if (!a_changed && !p_changed)
-	return 0;
-
-    DEBUG_LOG ("Function: check_prefs_changed_gfx\n");
-
-    graphics_subshutdown (0);
-
-    gui_update_gfx ();
-
-    graphics_subinit ();
-
-    notice_screen_contents_lost ();
-    init_row_map ();
-    if (screen_is_picasso)
-	picasso_enablescreen (1);
-
-    return 0;
 }
 
 int debuggable (void)
@@ -1003,55 +961,6 @@ int DX_FillResolutions (uae_u16 *ppixel_format)
     return count;
 }
 
-static void set_window_for_picasso (void)
-{
-    DEBUG_LOG ("Function: set_window_for_picasso\n");
-#if 0
-    if (current_width == picasso_vidinfo.width && current_height == picasso_vidinfo.height)
-	return;
-#endif
-
-    graphics_subshutdown (0);
-    graphics_subinit ();
-}
-
-void gfx_set_picasso_modeinfo (int w, int h, int depth, int rgbfmt)
-{
-    DEBUG_LOG ("Function: gfx_set_picasso_modeinfo w: %i h: %i depth: %i rgbfmt: %i\n", w, h, depth, rgbfmt);
-
-    if (screen_is_picasso
-	&& picasso_vidinfo.width == w
-	&& picasso_vidinfo.height == h)
-	return;
-
-    picasso_vidinfo.width = w;
-    picasso_vidinfo.height = h;
-    picasso_vidinfo.depth = depth;
-    picasso_vidinfo.pixbytes = bit_unit >> 3;
-    if (screen_is_picasso)
-	set_window_for_picasso ();
-}
-
-void gfx_set_picasso_baseaddr (uaecptr a)
-{
-}
-
-void gfx_set_picasso_state (int on)
-{
-    DEBUG_LOG ("Function: gfx_set_picasso_state: %d\n", on);
-
-    if (on == screen_is_picasso)
-	return;
-
-    graphics_subshutdown (0);
-    screen_is_picasso = on;
-
-    graphics_subinit ();
-
-    if (on)
-	DX_SetPalette (0, 256);
-}
-
 uae_u8 *gfx_lock_picasso (void)
 {
     DEBUG_LOG ("Function: gfx_lock_picasso\n");
@@ -1094,11 +1003,6 @@ void toggle_mousegrab (void)
 	    }
 	}
     }
-}
-
-void screenshot (int mode)
-{
-   write_log ("Screenshot not supported yet\n");
 }
 
 /*

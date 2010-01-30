@@ -91,7 +91,64 @@ static int set_panning_called = 0;
    SetPanning call.  */
 static uaecptr oldscr;
 
+int screen_is_picasso;
+
 static uae_u32 p2ctab[256][2];
+
+/*
+ * Screen handling.
+ */
+
+static void set_window_for_picasso (void)
+{
+    P96TRACE (("Function: set_window_for_picasso\n"));
+#if 0
+    if (current_width == picasso_vidinfo.width && current_height == picasso_vidinfo.height)
+	return;
+#endif
+
+    graphics_subshutdown (0);
+    graphics_subinit ();
+
+    DX_SetPalette (0, 256);
+}
+
+void gfx_set_picasso_modeinfo (int w, int h, int depth, int rgbfmt)
+{
+    P96TRACE (("Function: gfx_set_picasso_modeinfo w: %i h: %i depth: %i rgbfmt: %i\n", w, h, depth, rgbfmt));
+
+    if (screen_is_picasso
+	&& picasso_vidinfo.width == w
+	&& picasso_vidinfo.height == h)
+	return;
+
+    picasso_vidinfo.width = w;
+    picasso_vidinfo.height = h;
+    picasso_vidinfo.depth = depth;
+    if (screen_is_picasso)
+	set_window_for_picasso ();
+}
+
+void gfx_set_picasso_baseaddr (uaecptr a)
+{
+}
+
+void gfx_set_picasso_state (int on)
+{
+    P96TRACE (("Function: gfx_set_picasso_state: %d\n", on));
+
+    if (on == screen_is_picasso)
+	return;
+
+    graphics_subshutdown (0);
+    screen_is_picasso = on;
+    graphics_subinit ();
+
+    if (on)
+	DX_SetPalette (0, 256);
+    else
+	reset_drawing ();
+}
 
 /*
  * Debugging dumps

@@ -76,8 +76,8 @@ extern uae_u16 INTREQR (void);
 
 /* maximums for statically allocated tables */
 
-#define MAXHPOS 227
-#define MAXVPOS 312
+#define MAXHPOS 256
+#define MAXVPOS 576
 
 /* PAL/NTSC values */
 
@@ -89,10 +89,10 @@ extern uae_u16 INTREQR (void);
 #define MAXHPOS_NTSC 227
 #define MAXVPOS_PAL 312
 #define MAXVPOS_NTSC 262
-#define MINFIRSTLINE_PAL 21
-#define MINFIRSTLINE_NTSC 18
-#define VBLANK_ENDLINE_PAL 29
-#define VBLANK_ENDLINE_NTSC 24
+#define VBLANK_ENDLINE_PAL 27
+#define VBLANK_ENDLINE_NTSC 28
+#define VBLANK_SPRITE_PAL 25
+#define VBLANK_SPRITE_NTSC 20
 #define VBLANK_HZ_PAL 50
 #define VBLANK_HZ_NTSC 60
 

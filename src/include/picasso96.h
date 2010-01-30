@@ -546,6 +546,8 @@ struct picasso_vidbuf_description {
 
 extern struct picasso_vidbuf_description picasso_vidinfo;
 
+extern int screen_is_picasso;
+
 extern void gfx_set_picasso_modeinfo (int w, int h, int d, int rgbfmt);
 extern void gfx_set_picasso_baseaddr (uaecptr);
 extern void gfx_set_picasso_state (int on);

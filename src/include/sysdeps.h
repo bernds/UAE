@@ -378,9 +378,15 @@ extern void write_log (const char *, ...) __attribute__ ((format (printf, 1, 2))
 extern void write_log (const char *, ...);
 #endif
 
+#if 0
 extern void console_out (const char *, ...);
 extern void console_flush (void);
 extern int console_get (char *, int);
+#else
+#define console_out printf
+#define console_flush() fflush (stdout)
+#define console_get(BUF, COUNT) fgets (BUF, COUNT, stdin)
+#endif
 
 #ifndef O_BINARY
 #define O_BINARY 0

@@ -22,6 +22,7 @@
 #include "audio.h"
 #include "inputdevice.h"
 #include "romlist.h"
+#include "gui.h"
 
 #define cfgfile_write fprintf
 
@@ -161,7 +162,7 @@ char *cfgfile_subst_path (const char *path, const char *subst, const char *file)
     return my_strdup (file);
 }
 
-static void write_gfx_params (FILE *f, struct gfx_params *p, char *suffix)
+static void write_gfx_params (FILE *f, const struct gfx_params *p, const char *suffix)
 {
     cfgfile_write (f, "gfx_width_%s=%d\n", suffix, p->width);
     cfgfile_write (f, "gfx_height_%s=%d\n", suffix, p->height);
@@ -170,6 +171,7 @@ static void write_gfx_params (FILE *f, struct gfx_params *p, char *suffix)
     cfgfile_write (f, "gfx_correct_aspect_%s=%s\n", suffix, p->correct_aspect ? "true" : "false");
     cfgfile_write (f, "gfx_center_horizontal_%s=%s\n", suffix, centermode1[p->xcenter]);
     cfgfile_write (f, "gfx_center_vertical_%s=%s\n", suffix, centermode1[p->ycenter]);
+    cfgfile_write (f, "gfx_show_leds_%s=%s\n", suffix, p->leds_on_screen ? "true" : "false");
 }
 
 void save_options (FILE *f, const struct uae_prefs *p)
@@ -251,7 +253,6 @@ void save_options (FILE *f, const struct uae_prefs *p)
 
     cfgfile_write (f, "immediate_blits=%s\n", p->immediate_blits ? "true" : "false");
     cfgfile_write (f, "ntsc=%s\n", p->ntscmode ? "true" : "false");
-    cfgfile_write (f, "show_leds=%s\n", p->leds_on_screen ? "true" : "false");
     if (p->chipset_mask & CSMASK_AGA)
 	cfgfile_write (f, "chipset=aga\n");
     else if ((p->chipset_mask & CSMASK_ECS_AGNUS) && (p->chipset_mask & CSMASK_ECS_AGNUS))
@@ -283,19 +284,21 @@ void save_options (FILE *f, const struct uae_prefs *p)
 	cfgfile_write (f, "cpu_speed=%s\n", p->m68k_speed == -1 ? "max" : "real");
 
     for (i = 0; cpumode[i] != NULL; i++)
-	if (mode_to_cpumodel[i] == p->cpu_model && mode_to_fpumodel[i] == p->fpu_model)
+	if (mode_to_cpumodel[i] == p->cpu_model && mode_to_fpumodel[i] == p->fpu_model) {
 	    cfgfile_write (f, "cpu_type=%s\n", cpumode[i]);
+	    break;
+	}
 
     cfgfile_write (f, "log_illegal_mem=%s\n", p->illegal_mem ? "true" : "false");
 
     cfgfile_write (f, "kbd_lang=%s\n", (p->keyboard_lang == KBD_LANG_DE ? "de"
-				  : p->keyboard_lang == KBD_LANG_DK ? "dk"
-				  : p->keyboard_lang == KBD_LANG_ES ? "es"
-				  : p->keyboard_lang == KBD_LANG_US ? "us"
-				  : p->keyboard_lang == KBD_LANG_SE ? "se"
-				  : p->keyboard_lang == KBD_LANG_FR ? "fr"
-				  : p->keyboard_lang == KBD_LANG_IT ? "it"
-				  : "FOO"));
+					: p->keyboard_lang == KBD_LANG_DK ? "dk"
+					: p->keyboard_lang == KBD_LANG_ES ? "es"
+					: p->keyboard_lang == KBD_LANG_US ? "us"
+					: p->keyboard_lang == KBD_LANG_SE ? "se"
+					: p->keyboard_lang == KBD_LANG_FR ? "fr"
+					: p->keyboard_lang == KBD_LANG_IT ? "it"
+					: "FOO"));
 
     write_filesys_config (p->mountinfo, UNEXPANDED, p->path_hardfile, f);
 
@@ -438,14 +441,22 @@ static int cfgfile_parse_host (struct uae_prefs *p, char *option, char *value)
 
     if (cfgfile_yesno (option, value, "use_debugger", &p->start_debugger)
 	|| cfgfile_yesno (option, value, "bsdsocket_emu", &p->socket_emu)
+
 	|| (cfgfile_yesno (option, value, "gfx_lores", &p->gfx_w.lores)
 	    && cfgfile_yesno (option, value, "gfx_lores", &p->gfx_f.lores))
 	|| cfgfile_yesno (option, value, "gfx_lores_windowed", &p->gfx_w.lores)
 	|| cfgfile_yesno (option, value, "gfx_lores_fullscreen", &p->gfx_f.lores)
+
 	|| (cfgfile_yesno (option, value, "gfx_correct_aspect", &p->gfx_w.correct_aspect)
 	    && cfgfile_yesno (option, value, "gfx_correct_aspect", &p->gfx_f.correct_aspect))
 	|| cfgfile_yesno (option, value, "gfx_correct_aspect_windowed", &p->gfx_w.correct_aspect)
 	|| cfgfile_yesno (option, value, "gfx_correct_aspect_fullscreen", &p->gfx_f.correct_aspect)
+
+	|| (cfgfile_yesno (option, value, "show_leds", &p->gfx_w.leds_on_screen)
+	    && cfgfile_yesno (option, value, "show_leds", &p->gfx_f.leds_on_screen))
+	|| cfgfile_yesno (option, value, "gfx_show_leds_windowed", &p->gfx_w.leds_on_screen)
+	|| cfgfile_yesno (option, value, "gfx_show_leds_fullscreen", &p->gfx_f.leds_on_screen)
+
 	|| cfgfile_yesno (option, value, "gfx_fullscreen_amiga", &p->gfx_afullscreen)
 	|| cfgfile_yesno (option, value, "gfx_fullscreen_picasso", &p->gfx_pfullscreen)
 	|| cfgfile_yesno (option, value, "log_illegal_mem", &p->illegal_mem))
@@ -812,11 +823,13 @@ int cfgfile_load (struct uae_prefs *p, const char *filename)
     while (fgets (line, 256, fh) != 0) {
 	int len = strlen (line);
 	/* Delete trailing whitespace.  */
-	while (len > 0 && strcspn (line + len - 1, "\t \r\n") == 0) {
+	while (len > 0 && strcspn (line + len - 1, "\t \r\n") == 0)
 	    line[--len] = '\0';
-	}
-	if (strlen (line) > 0)
+	if (strlen (line) > 0) {
+	    if (line[0] == '#' || line[0] == ';')
+		continue;
 	    cfgfile_parse_line (p, line);
+	}
     }
     fclose (fh);
 
@@ -1054,6 +1067,8 @@ static void parse_cpu_specs (struct uae_prefs *p, char *spec)
     lvl = *spec++ - '0';
     p->fpu_model = 0;
     p->cpu_model = lvl * 10 + 68000;
+    if (p->cpu_model >= 68040)
+	p->fpu_model = p->cpu_model;
     p->address_space_24 = p->cpu_model < 68020;
     while (*spec != '\0') {
 	switch (*spec) {
