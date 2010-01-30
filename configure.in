@@ -469,7 +469,7 @@ else
     AC_MSG_RESULT(X11)
     TARGET=x11
     TARGETDEP=t-x11.h
-    GFXOBJS=xwin.o
+    GFXOBJS="xwin.o x11keys.o"
 
     LIBRARIES="$X_LIBS $X_PRE_LIBS"
     dnl If we still think we want DGA, set it up.
@@ -534,6 +534,11 @@ if [[ "x$WANT_UI" != "xno" ]]; then
       echo "Using gtk+ GUI."
       NEED_THREAD_SUPPORT=yes
       DDITIONAL_CFLAGS="$ADDITIONAL_CFLAGS -DUSING_GTK_GUI"
+dnl      GUIOBJS="gtkui.o chipsetspeedpanel.o chipsettypepanel.o chooserwidget.o"
+dnl      GUIOBJS="$GUIOBJS cpuspeedpanel.o cputypepanel.o floppyfileentry.o led.o util.o"
+dnl      for x in $GUIOBJS; do
+dnl	ln -s $abssrcdir/src/gui-gtk/`echo $x |sed s,'\.o$,.c,'` src
+dnl      done
       GUIOBJS=gtkui.o
     fi
   else 

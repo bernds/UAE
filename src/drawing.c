@@ -447,7 +447,7 @@ STATIC_INLINE void fill_line (void)
     start = (int *)(((char *)xlinebuffer) + (visible_left_border << shift));
     val = colors_for_drawing.acolors[0];
     if (gfxvidinfo.pixbytes == 2)
-        val |= val << 16;
+	val |= val << 16;
     for (; nints > 0; nints -= 8, start += 8) {
 	*start = val;
 	*(start+1) = val;
@@ -500,10 +500,10 @@ static void pfield_do_linetoscr (int start, int stop)
 	    case 2: src_pixel = linetoscr_16_shrink1_aga (src_pixel, start, stop); break;
 	    case 4: src_pixel = linetoscr_32_shrink1_aga (src_pixel, start, stop); break;
 	    }
-        else
+	else
 	    abort ();
     } else {
-        if (res_shift == 0)
+	if (res_shift == 0)
 	    switch (gfxvidinfo.pixbytes) {
 	    case 1: src_pixel = linetoscr_8 (src_pixel, start, stop); break;
 	    case 2: src_pixel = linetoscr_16 (src_pixel, start, stop); break;
@@ -584,7 +584,7 @@ static void init_ham_decoding (void)
 	    }
 	} else if (bplplanecnt == 6) { /* AGA mode HAM6 */
 	    while (unpainted_amiga-- > 0) {
-    		int pv = pixdata.apixels[ham_decode_pixel++];
+		int pv = pixdata.apixels[ham_decode_pixel++];
 		switch (pv & 0x30) {
 		case 0x00: ham_lastcolor = colors_for_drawing.color_regs_aga[pv]; break;
 		case 0x10: ham_lastcolor &= 0xFFFF00; ham_lastcolor |= (pv & 0xF) << 4; break;
@@ -594,7 +594,7 @@ static void init_ham_decoding (void)
 	    }
 	}
     } else {
-        if (bplplanecnt == 6) { /* OCS/ECS mode HAM6 */
+	if (bplplanecnt == 6) { /* OCS/ECS mode HAM6 */
 	    while (unpainted_amiga-- > 0) {
 		int pv = pixdata.apixels[ham_decode_pixel++];
 		switch (pv & 0x30) {
@@ -647,9 +647,9 @@ static void decode_ham (int pix, int stoppos)
 	    }
 	}
     } else {
-        if (bplplanecnt == 6) { /* OCS/ECS mode HAM6 */
+	if (bplplanecnt == 6) { /* OCS/ECS mode HAM6 */
 	    while (todraw_amiga-- > 0) {
-    		int pv = pixdata.apixels[ham_decode_pixel];
+		int pv = pixdata.apixels[ham_decode_pixel];
 		switch (pv & 0x30) {
 		case 0x00: ham_lastcolor = colors_for_drawing.color_regs_ecs[pv]; break;
 		case 0x10: ham_lastcolor &= 0xFF0; ham_lastcolor |= (pv & 0xF); break;
@@ -749,7 +749,7 @@ STATIC_INLINE void draw_sprites_1 (struct sprite_entry *e, int ham, int dualpf,
 	    /* Shift highest priority sprite pair down to bit zero.  */
 	    v >>= offs * 2;
 	    v &= 15;
- 
+
 	    if (has_attach && (stbuf[pos] & (1 << offs))) {
 		col = v;
 		if (aga)
@@ -810,7 +810,7 @@ STATIC_INLINE void draw_sprites_1 (struct sprite_entry *e, int ham, int dualpf,
 	window_pos += 1 << doubling;
     }
 }
-  
+
 /* See comments above.  Do not touch if you don't know what's going on.
  * (We do _not_ want the following to be inlined themselves).  */
 /* lores bitplane, lores sprites */
@@ -1131,7 +1131,7 @@ static void adjust_drawing_colors (int ctable, int need_full)
 	    color_match_type = color_match_full;
 	} else {
 	    memcpy (colors_for_drawing.acolors, curr_color_tables[ctable].acolors,
-	        sizeof colors_for_drawing.acolors);
+		sizeof colors_for_drawing.acolors);
 	    color_match_type = color_match_acolors;
 	}
 	drawing_color_matches = ctable;
@@ -1551,7 +1551,7 @@ static void write_tdnumber (int x, int y, int num)
 {
     int j;
     uae_u8 *numptr;
-    
+
     numptr = numbers + num * TD_NUM_WIDTH + NUMBERS_NUM * TD_NUM_WIDTH * y;
     for (j = 0; j < TD_NUM_WIDTH; j++) {
 	if (*numptr == 'x')
@@ -1567,9 +1567,9 @@ static void draw_status_line (int line)
     int x_start, y, j, led;
 
     if (td_pos & TD_RIGHT)
-        x_start = gfxvidinfo.width - TD_PADX - 5 * TD_WIDTH;
+	x_start = gfxvidinfo.width - TD_PADX - 5 * TD_WIDTH;
     else
-        x_start = TD_PADX;
+	x_start = TD_PADX;
 
     y = line - (gfxvidinfo.height - TD_TOTAL_HEIGHT);
     xlinebuffer = gfxvidinfo.linemem;
@@ -1590,8 +1590,8 @@ static void draw_status_line (int line)
 		num1 = -1;
 		num2 = track / 10;
 		num3 = track % 10;
-	        on = gui_data.drive_motor[pled];
-	        if (gui_data.drive_writing[pled])
+		on = gui_data.drive_motor[pled];
+		if (gui_data.drive_writing[pled])
 		    on_rgb = 0xc00;
 	    }
 	    /*side = gui_data.drive_side;*/
@@ -1604,7 +1604,7 @@ static void draw_status_line (int line)
 	c = xcolors[on ? on_rgb : off_rgb];
 
 	x = x_start + pos * TD_WIDTH;
-	for (j = 0; j < TD_LED_WIDTH; j++) 
+	for (j = 0; j < TD_LED_WIDTH; j++)
 	    putpixel (x + j, c);
 
 	if (y >= TD_PADY && y - TD_PADY < TD_NUM_HEIGHT) {
@@ -1615,7 +1615,7 @@ static void draw_status_line (int line)
 		    write_tdnumber (x + offs, y - TD_PADY, num1);
 		    offs += TD_NUM_WIDTH;
 		}
-	        write_tdnumber (x + offs, y - TD_PADY, num2);
+		write_tdnumber (x + offs, y - TD_PADY, num2);
 		write_tdnumber (x + offs + TD_NUM_WIDTH, y - TD_PADY, num3);
 		if (num4 > 0)
 		    write_tdnumber (x + offs + 2 * TD_NUM_WIDTH, y - TD_PADY, num4);
@@ -1664,7 +1664,6 @@ void finish_drawing_frame (void)
 	    do_flush_line (line);
 	}
     }
-
     do_flush_screen (first_drawn_line, last_drawn_line);
 }
 
@@ -1732,7 +1731,7 @@ void vsync_handle_redraw (int long_frame, int lof_changed)
 	    savestate_state = 0;
 	} else if (savestate_state == STATE_DORESTORE) {
 	    savestate_state = STATE_RESTORE;
-	    uae_reset ();
+	    uae_reset (0);
 	}
 
 	if (quit_program < 0) {

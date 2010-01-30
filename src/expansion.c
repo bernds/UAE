@@ -1,4 +1,4 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
   *
   * AutoConfig (tm) Expansions (ZorroII/III)
@@ -134,7 +134,7 @@ static int ecard = 0;
 /* Please note: ZorroIII implementation seems to work different
  * than described in the HRM. This claims that ZorroIII config
  * address is 0xff000000 while the ZorroII config space starts
- * at 0x00e80000. In reality, both, Z2 and Z3 cards are 
+ * at 0x00e80000. In reality, both, Z2 and Z3 cards are
  * configured in the ZorroII config space. Kickstart 3.1 doesn't
  * even do a single read or write access to the ZorroIII space.
  * The original Amiga include files tell the same as the HRM.
@@ -143,7 +143,7 @@ static int ecard = 0;
  * to a ZorroIII card on a real Amiga. This is not implemented
  * yet.
  *  -- Stefan
- * 
+ *
  * Surprising that 0xFF000000 isn't used. Maybe it depends on the
  * ROM. Anyway, the HRM says that Z3 cards may appear in Z2 config
  * space, so what we are doing here is correct.
@@ -599,7 +599,7 @@ static void expamem_init_fastcard (void)
 
 /* ********************************************************** */
 
-/* 
+/*
  * Filesystem device
  */
 
@@ -621,9 +621,9 @@ static void expamem_init_filesys (void)
 {
     /* struct DiagArea - the size has to be large enough to store several device ROMTags */
     uae_u8 diagarea[] = { 0x90, 0x00, /* da_Config, da_Flags */
-                          0x02, 0x00, /* da_Size */
-                          0x01, 0x00, /* da_DiagPoint */
-                          0x01, 0x06  /* da_BootPoint */
+			  0x02, 0x00, /* da_Size */
+			  0x01, 0x00, /* da_DiagPoint */
+			  0x01, 0x06  /* da_BootPoint */
     };
 
     expamem_init_clear();
@@ -780,39 +780,49 @@ static void allocate_expamem (void)
 	    }
 	}
     }
-    if (allocated_z3fastmem != currprefs.z3fastmem_size) {
+    if (currprefs.address_space_24) {
 	if (z3fastmem)
 	    mapped_free (z3fastmem);
 	z3fastmem = 0;
-
-	allocated_z3fastmem = currprefs.z3fastmem_size;
-	z3fastmem_mask = allocated_z3fastmem - 1;
-
-	if (allocated_z3fastmem) {
-	    z3fastmem = mapped_malloc (allocated_z3fastmem, "z3");
-	    if (z3fastmem == 0) {
-		write_log ("Out of memory for 32 bit fast memory.\n");
-		allocated_z3fastmem = 0;
-	    }
-	}
-    }
-    if (allocated_gfxmem != currprefs.gfxmem_size) {
+	allocated_z3fastmem = 0;
 	if (gfxmemory)
 	    mapped_free (gfxmemory);
 	gfxmemory = 0;
+	allocated_gfxmem = 0;
+    } else {
+	if (allocated_z3fastmem != currprefs.z3fastmem_size) {
+	    if (z3fastmem)
+		mapped_free (z3fastmem);
+	    z3fastmem = 0;
 
-	allocated_gfxmem = currprefs.gfxmem_size;
-	gfxmem_mask = allocated_gfxmem - 1;
+	    allocated_z3fastmem = currprefs.z3fastmem_size;
+	    z3fastmem_mask = allocated_z3fastmem - 1;
 
-	if (allocated_gfxmem) {
-	    gfxmemory = mapped_malloc (allocated_gfxmem, "gfx");
-	    if (gfxmemory == 0) {
-		write_log ("Out of memory for graphics card memory\n");
-		allocated_gfxmem = 0;
+	    if (allocated_z3fastmem) {
+		z3fastmem = mapped_malloc (allocated_z3fastmem, "z3");
+		if (z3fastmem == 0) {
+		    write_log ("Out of memory for 32 bit fast memory.\n");
+		    allocated_z3fastmem = 0;
+		}
+	    }
+	}
+	if (allocated_gfxmem != currprefs.gfxmem_size) {
+	    if (gfxmemory)
+		mapped_free (gfxmemory);
+	    gfxmemory = 0;
+
+	    allocated_gfxmem = currprefs.gfxmem_size;
+	    gfxmem_mask = allocated_gfxmem - 1;
+
+	    if (allocated_gfxmem) {
+		gfxmemory = mapped_malloc (allocated_gfxmem, "gfx");
+		if (gfxmemory == 0) {
+		    write_log ("Out of memory for graphics card memory\n");
+		    allocated_gfxmem = 0;
+		}
 	    }
 	}
     }
-
     z3fastmem_bank.baseaddr = z3fastmem;
     fastmem_bank.baseaddr = fastmemory;
 
@@ -898,7 +908,6 @@ void expansion_init (void)
 	exit (0);
     }
     filesys_bank.baseaddr = (uae_u8*)filesysory;
-
 }
 
 void expansion_cleanup (void)
@@ -943,9 +952,12 @@ void restore_zram (int len, long filepos)
     changed_prefs.z3fastmem_size = len;
 }
 
-uae_u8 *save_expansion (int *len)
+uae_u8 *save_expansion (int *len, uae_u8 *dstptr)
 {
-    static uae_u8 t[20], *dst = t;
+    static uae_u8 t[20];
+    uae_u8 *dst = t, *dstbak = t;
+    if (dstptr)
+	dst = dstbak = dstptr;
     save_u32 (fastmem_start);
     save_u32 (z3fastmem_start);
     *len = 8;

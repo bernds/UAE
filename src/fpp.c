@@ -27,7 +27,7 @@
 
 #define FFLAG_Z   0x4000
 #define FFLAG_N   0x0100
-#define FFLAG_NAN 0x0400 
+#define FFLAG_NAN 0x0400
 
 #define MAKE_FPSR(r)  regs.fp_result=(r)
 
@@ -54,7 +54,7 @@ static __inline__ uae_s32 toint(fptype src)
     return src; /* Should never be reached */
 }
 
-static uae_u32 get_fpsr (void) 
+static uae_u32 get_fpsr (void)
 {
     uae_u32 answer = regs.fpsr & 0x00ffffff;
 #ifdef HAVE_ISNAN
@@ -75,7 +75,7 @@ static uae_u32 get_fpsr (void)
     return answer;
 }
 
-STATIC_INLINE void set_fpsr (uae_u32 x) 
+STATIC_INLINE void set_fpsr (uae_u32 x)
 {
     regs.fpsr = x;
 
@@ -334,7 +334,7 @@ STATIC_INLINE int put_fp_value (fptype value, uae_u32 opcode, uae_u16 extra)
     reg = opcode & 7;
     size = (extra >> 10) & 7;
     ad = -1;
-    
+
     switch (mode) {
     case 0:
 	switch (size) {
@@ -574,9 +574,9 @@ STATIC_INLINE int fpp_cond (uae_u32 opcode, int contition)
 	return NotANumber || Z || !N;
     case 0x1c:
 #if 0
-        return NotANumber || (Z && N); /* This is wrong, compare 0x0c */
+	return NotANumber || (Z && N); /* This is wrong, compare 0x0c */
 #else
-        return NotANumber || (N && !Z);  
+	return NotANumber || (N && !Z);
 #endif
     case 0x1d:
 	return NotANumber || Z || N;
@@ -1123,7 +1123,7 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 	case 0x00:		/* FMOVE */
 	case 0x40:  /* Explicit rounding. This is just a quick fix. Same
 		     * for all other cases that have three choices */
-	case 0x44:   
+	case 0x44:
 	    regs.fp[reg] = src;
 	    /* Brian King was here.  <ea> to register needs FPSR updated.
 	     * See page 3-73 in Motorola 68K programmers reference manual.
@@ -1134,7 +1134,7 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 	    break;
 	case 0x01:		/* FINT */
 	    /* need to take the current rounding mode into account */
- 	    regs.fp[reg] = toint(src);
+	    regs.fp[reg] = toint(src);
 	    break;
 	case 0x02:		/* FSINH */
 	    regs.fp[reg] = sinh (src);

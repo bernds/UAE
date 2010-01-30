@@ -1,8 +1,8 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Support for Digital Unix/MME
-  * 
+  *
   * Copyright 1997 Marcus Sundberg
   */
 #define SOUND_NUMBUF 8

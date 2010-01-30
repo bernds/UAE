@@ -4,7 +4,7 @@
   * Call Amiga Exec functions outside the main UAE thread.
   *
   * Copyright 1999 Patrick Ohly
-  * 
+  *
   * Uses the EXTER interrupt that is setup in filesys.c
   * and needs thread support.
   */
@@ -67,7 +67,7 @@ void uae_Signal(uaecptr task, uae_u32 mask)
     write_comm_pipe_int (&native2amiga_pending, 0, 0);
     write_comm_pipe_u32 (&native2amiga_pending, task, 0);
     write_comm_pipe_int (&native2amiga_pending, mask, 1);
-    
+
     uae_int_requested = 1;
 }
 #endif

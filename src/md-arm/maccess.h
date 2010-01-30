@@ -1,6 +1,6 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Memory access functions
   *
   * Copyright 1996 Bernd Schmidt
@@ -9,14 +9,14 @@
 static __inline__ ULONG do_get_mem_long(ULONG *a)
 {
     UBYTE *b = (UBYTE *)a;
-    
+
     return (*b << 24) | (*(b+1) << 16) | (*(b+2) << 8) | (*(b+3));
 }
 
 static __inline__ UWORD do_get_mem_word(UWORD *a)
 {
     UBYTE *b = (UBYTE *)a;
-    
+
     return (*b << 8) | (*(b+1));
 }
 
@@ -28,9 +28,9 @@ static __inline__ UBYTE do_get_mem_byte(UBYTE *a)
 static __inline__ void do_put_mem_long(ULONG *a, ULONG v)
 {
     UBYTE *b = (UBYTE *)a;
-    
+
     *b = v >> 24;
-    *(b+1) = v >> 16;    
+    *(b+1) = v >> 16;
     *(b+2) = v >> 8;
     *(b+3) = v;
 }
@@ -38,7 +38,7 @@ static __inline__ void do_put_mem_long(ULONG *a, ULONG v)
 static __inline__ void do_put_mem_word(UWORD *a, UWORD v)
 {
     UBYTE *b = (UBYTE *)a;
-    
+
     *b = v >> 8;
     *(b+1) = v;
 }

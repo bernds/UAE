@@ -25,7 +25,7 @@
 #include "disk.h"
 #include "debug.h"
 #include "xwin.h"
-#include "joystick.h"
+#include "inputdevice.h"
 #include "keybuf.h"
 #include "gui.h"
 #include "zfile.h"
@@ -94,6 +94,7 @@ void default_prefs (struct uae_prefs *p)
 
     p->start_gui = 1;
     p->start_debugger = 0;
+    p->leds_on_screen = 1;
 
     p->unknown_lines = 0;
     /* Note to porters: please don't change any of these options! UAE is supposed
@@ -104,8 +105,9 @@ void default_prefs (struct uae_prefs *p)
     p->serial_demand = 0;
     p->parallel_demand = 0;
 
-    p->jport0 = 2;
-    p->jport1 = 0;
+    p->jport0 = JSEM_MICE;
+    p->jport1 = JSEM_JOYS;
+
     p->keyboard_lang = KBD_LANG_US;
     p->emul_accuracy = 2;
     p->test_drawing_speed = 0;
@@ -178,6 +180,7 @@ void default_prefs (struct uae_prefs *p)
     p->nr_floppies = 4;
 
     p->mountinfo = alloc_mountinfo ();
+    inputdevice_default_prefs (p);
 }
 
 void fixup_prefs_dimensions (struct uae_prefs *prefs)
@@ -253,7 +256,7 @@ static void fix_options (void)
 	err = 1;
     }
 #endif
-  
+
     if (currprefs.produce_sound < 0 || currprefs.produce_sound > 3) {
 	write_log ("Bad value for -S parameter: enable value must be within 0..3\n");
 	currprefs.produce_sound = 0;
@@ -296,34 +299,19 @@ static void fix_options (void)
 
 int quit_program = 0;
 
-void uae_reset (void)
+void uae_reset (int hardreset)
 {
-    if (quit_program == 0)
+    if (quit_program == 0) {
 	quit_program = -2;
+	if (hardreset)
+	    quit_program = -3;
+    }
 }
 
 void uae_quit (void)
 {
     if (quit_program != -1)
 	quit_program = -1;
-}
-
-const char *gameport_state (int nr)
-{
-    if (JSEM_ISJOY0 (nr, &currprefs) && nr_joysticks > 0)
-	return "using joystick #0";
-    else if (JSEM_ISJOY1 (nr, &currprefs) && nr_joysticks > 1)
-	return "using joystick #1";
-    else if (JSEM_ISMOUSE (nr, &currprefs))
-	return "using mouse";
-    else if (JSEM_ISNUMPAD (nr, &currprefs))
-	return "using numeric pad as joystick";
-    else if (JSEM_ISCURSOR (nr, &currprefs))
-	return "using cursor keys as joystick";
-    else if (JSEM_ISSOMEWHEREELSE (nr, &currprefs))
-	return "using T/F/H/B/Alt as joystick";
-
-    return "not connected";
 }
 
 #ifndef DONT_PARSE_CMDLINE
@@ -418,15 +406,20 @@ void reset_all_systems (void)
 
 void do_start_program (void)
 {
+    if (quit_program == -1)
+	return;
+    inputdevice_updateconfig (&currprefs);
+
     /* Do a reset on startup. Whether this is elegant is debatable. */
-    quit_program = 2;
+    if (quit_program >= 0)
+	quit_program = 2;
     m68k_go (1);
 }
 
 void do_leave_program (void)
 {
     graphics_leave ();
-    close_joystick ();
+    inputdevice_close ();
     close_sound ();
     dump_counts ();
     serial_exit ();
@@ -459,7 +452,7 @@ void real_main (int argc, char **argv)
 #endif
 
     default_prefs (&currprefs);
-    
+
     if (! graphics_setup ()) {
 	exit (1);
     }
@@ -476,7 +469,7 @@ void real_main (int argc, char **argv)
 	write_log ("Sound driver unavailable: Sound output disabled\n");
 	currprefs.produce_sound = 0;
     }
-    init_joystick ();
+    inputdevice_init ();
 
     changed_prefs = currprefs;
     no_gui = ! currprefs.start_gui;

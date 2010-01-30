@@ -1,8 +1,8 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Support for Linux/USS sound
-  * 
+  *
   * Copyright 1997 Bernd Schmidt
   */
 
@@ -146,6 +146,6 @@ int init_sound (void)
     printf ("Sound driver found and configured for %d bits at %d Hz, buffer is %d bytes\n",
 	    dspbits, rate, sndbufsize);
     sndbufpt = sndbuffer;
-    
+
     return 1;
 }

@@ -33,11 +33,11 @@
  /* Usage :
   *
   * save:
-  * 
+  *
   * set savestate_state = STATE_DOSAVE, savestate_filename = "..."
   *
   * restore:
-  * 
+  *
   * set savestate_state = STATE_DORESTORE, savestate_filename = "..."
   *
   */
@@ -127,7 +127,7 @@ char *restore_string_func (uae_u8 **dstp)
 	*top++ = v;
     } while(v);
     *dstp = dst;
-    return to; 
+    return to;
 }
 
 /* read and write IFF-style hunks */
@@ -204,6 +204,31 @@ static uae_u8 *restore_chunk (FILE *f, char *name, long *len, long *filepos)
     return mem;
 }
 
+#if 0
+void restore_ram (long filepos, uae_u8 *memory)
+{
+    uae_u8 tmp[8];
+    uae_u8 *src = tmp;
+    int size, fullize;
+    uae_u32 flags;
+
+    zfile_fseek (savestate_file, filepos, SEEK_SET);
+    zfile_fread (tmp, 1, sizeof(tmp), savestate_file);
+    size = restore_u32();
+    flags = restore_u32();
+    size -= 4 + 4 + 4;
+    if (flags & 1) {
+	zfile_fread (tmp, 1, 4, savestate_file);
+	src = tmp;
+	fullsize = restore_u32();
+	size -= 4;
+	zfile_zuncompress (memory, fullsize, savestate_file, size);
+    } else {
+	zfile_fread (memory, 1, size, savestate_file);
+    }
+}
+#endif
+
 static void restore_header (uae_u8 *src)
 {
     char *emuname, *emuversion, *description;
@@ -242,6 +267,9 @@ void restore_state (char *filename)
     savestate_file = f;
     restore_header (chunk);
     free (chunk);
+    changed_prefs.bogomem_size = 0;
+    changed_prefs.chipmem_size = 0;
+    changed_prefs.fastmem_size = 0;
     savestate_state = STATE_RESTORE;
     for (;;) {
 	chunk = restore_chunk (f, name, &len, &filepos);
@@ -268,21 +296,21 @@ void restore_state (char *filename)
 	else if (!strcmp (name, "AGAC"))
 	    end = restore_custom_agacolors (chunk);
 	else if (!strcmp (name, "SPR0"))
-	    end = restore_custom_sprite (chunk, 0);
+	    end = restore_custom_sprite (0, chunk);
 	else if (!strcmp (name, "SPR1"))
-	    end = restore_custom_sprite (chunk, 1);
+	    end = restore_custom_sprite (1, chunk);
 	else if (!strcmp (name, "SPR2"))
-	    end = restore_custom_sprite (chunk, 2);
+	    end = restore_custom_sprite (2, chunk);
 	else if (!strcmp (name, "SPR3"))
-	    end = restore_custom_sprite (chunk, 3);
+	    end = restore_custom_sprite (3, chunk);
 	else if (!strcmp (name, "SPR4"))
-	    end = restore_custom_sprite (chunk, 4);
+	    end = restore_custom_sprite (4, chunk);
 	else if (!strcmp (name, "SPR5"))
-	    end = restore_custom_sprite (chunk, 5);
+	    end = restore_custom_sprite (5, chunk);
 	else if (!strcmp (name, "SPR6"))
-	    end = restore_custom_sprite (chunk, 6);
+	    end = restore_custom_sprite (6, chunk);
 	else if (!strcmp (name, "SPR7"))
-	    end = restore_custom_sprite (chunk, 7);
+	    end = restore_custom_sprite (7, chunk);
 	else if (!strcmp (name, "CIAA"))
 	    end = restore_cia (0, chunk);
 	else if (!strcmp (name, "CIAB"))
@@ -290,13 +318,13 @@ void restore_state (char *filename)
 	else if (!strcmp (name, "CHIP"))
 	    end = restore_custom (chunk);
 	else if (!strcmp (name, "AUD0"))
-	    end = restore_audio (chunk, 0);
+	    end = restore_audio (0, chunk);
 	else if (!strcmp (name, "AUD1"))
-	    end = restore_audio (chunk, 1);
+	    end = restore_audio (1, chunk);
 	else if (!strcmp (name, "AUD2"))
-	    end = restore_audio (chunk, 2);
+	    end = restore_audio (2, chunk);
 	else if (!strcmp (name, "AUD3"))
-	    end = restore_audio (chunk, 3);
+	    end = restore_audio (3, chunk);
 #if 0
 	else if (!strcmp (name, "BLIT"))
 	    end = restore_custom_blitter (chunk);
@@ -365,20 +393,20 @@ void save_state (char *filename, char *description)
     save_string (description);
     save_chunk (f, header, dst-header, "ASF ");
 
-    dst = save_cpu (&len);
+    dst = save_cpu (&len, 0);
     save_chunk (f, dst, len, "CPU ");
     free (dst);
 
     strcpy(name, "DSKx");
     for (i = 0; i < 4; i++) {
-	dst = save_disk (i, &len);
+	dst = save_disk (i, &len, 0);
 	if (dst) {
 	    name[3] = i + '0';
 	    save_chunk (f, dst, len, name);
 	    free (dst);
 	}
     }
-    dst = save_floppy (&len);
+    dst = save_floppy (&len, 0);
     save_chunk (f, dst, len, "DISK");
     free (dst);
 
@@ -392,13 +420,13 @@ void save_state (char *filename, char *description)
     free (dst);
 #endif
 
-    dst = save_custom_agacolors (&len);
+    dst = save_custom_agacolors (&len, 0);
     save_chunk (f, dst, len, "AGAC");
     free (dst);
 
     strcpy (name, "SPRx");
     for (i = 0; i < 8; i++) {
-	dst = save_custom_sprite (&len, i);
+	dst = save_custom_sprite (i, &len);
 	name[3] = i + '0';
 	save_chunk (f, dst, len, name);
 	free (dst);
@@ -406,21 +434,21 @@ void save_state (char *filename, char *description)
 
     strcpy (name, "AUDx");
     for (i = 0; i < 4; i++) {
-	dst = save_audio (&len, i);
+	dst = save_audio (i, &len);
 	name[3] = i + '0';
 	save_chunk (f, dst, len, name);
 	free (dst);
     }
 
-    dst = save_cia (0, &len);
+    dst = save_cia (0, &len, 0);
     save_chunk (f, dst, len, "CIAA");
     free (dst);
 
-    dst = save_cia (1, &len);
+    dst = save_cia (1, &len, 0);
     save_chunk (f, dst, len, "CIAB");
     free (dst);
 
-    dst = save_expansion (&len);
+    dst = save_expansion (&len, 0);
     save_chunk (f, dst, len, "EXPA");
     dst = save_cram (&len);
     save_chunk (f, dst, len, "CRAM");
@@ -431,13 +459,13 @@ void save_state (char *filename, char *description)
     dst = save_zram (&len);
     save_chunk (f, dst, len, "ZRAM");
 
-    dst = save_rom (1, &len);
+    dst = save_rom (1, &len, 0);
     do {
 	if (!dst)
 	    break;
 	save_chunk (f, dst, len, "ROM ");
 	free (dst);
-    } while ((dst = save_rom (0, &len)));
+    } while ((dst = save_rom (0, &len, 0)));
 
     fwrite ("END ", 1, 4, f);
     fwrite ("\0\0\0\08", 1, 4, f);
@@ -460,230 +488,230 @@ version 0.7
 
 HUNK HEADER (beginning of every hunk)
 
-        hunk name (4 ascii-characters)
-        hunk size (including header)
-        hunk flags             
+	hunk name (4 ascii-characters)
+	hunk size (including header)
+	hunk flags
 
-        bit 0 = chunk contents are compressed with zlib (maybe RAM chunks only?)
+	bit 0 = chunk contents are compressed with zlib (maybe RAM chunks only?)
 
 HEADER
 
-        "ASF " (AmigaStateFile)
-        
+	"ASF " (AmigaStateFile)
+
 	statefile version
-        emulator name ("uae", "fellow" etc..)
-        emulator version string (example: "0.8.15")
-        free user writable comment string
+	emulator name ("uae", "fellow" etc..)
+	emulator version string (example: "0.8.15")
+	free user writable comment string
 
 CPU
 
-         "CPU "
+	 "CPU "
 
-        CPU model               4 (68000,68010 etc..)
-        CPU typeflags           bit 0=EC-model or not
-        D0-D7                   8*4=32
-        A0-A6                   7*4=32
-        PC                      4
-        prefetch address        4
-        prefetch data           4
-        USP                     4
-        ISP                     4
-        SR/CCR                  2
-        flags                   4 (bit 0=CPU was HALTed)
+	CPU model               4 (68000,68010 etc..)
+	CPU typeflags           bit 0=EC-model or not
+	D0-D7                   8*4=32
+	A0-A6                   7*4=32
+	PC                      4
+	prefetch address        4
+	prefetch data           4
+	USP                     4
+	ISP                     4
+	SR/CCR                  2
+	flags                   4 (bit 0=CPU was HALTed)
 
-        CPU specific registers
+	CPU specific registers
 
-        68000: SR/CCR is last saved register
-        68010: save also DFC,SFC and VBR
-        68020: all 68010 registers and CAAR,CACR and MSP
-        etc..
+	68000: SR/CCR is last saved register
+	68010: save also DFC,SFC and VBR
+	68020: all 68010 registers and CAAR,CACR and MSP
+	etc..
 
-        DFC                     4 (010+)
-        SFC                     4 (010+)
-        VBR                     4 (010+)
+	DFC                     4 (010+)
+	SFC                     4 (010+)
+	VBR                     4 (010+)
 
-        CAAR                    4 (020-030)
-        CACR                    4 (020+)
-        MSP                     4 (020+)
+	CAAR                    4 (020-030)
+	CACR                    4 (020+)
+	MSP                     4 (020+)
 
 MMU (when and if MMU is supported in future..)
 
-        MMU model               4 (68851,68030,68040)
+	MMU model               4 (68851,68030,68040)
 
-        // 68040 fields
+	// 68040 fields
 
-        ITT0                    4
-        ITT1                    4
-        DTT0                    4
-        DTT1                    4
-        URP                     4
-        SRP                     4
-        MMUSR                   4
-        TC                      2
+	ITT0                    4
+	ITT1                    4
+	DTT0                    4
+	DTT1                    4
+	URP                     4
+	SRP                     4
+	MMUSR                   4
+	TC                      2
 
-		
+
 FPU (only if used)
 
 	"FPU "
 
-        FPU model               4 (68881 or 68882)
-        FPU typeflags           4 (keep zero)
+	FPU model               4 (68881 or 68882)
+	FPU typeflags           4 (keep zero)
 
-        FP0-FP7                 4+2 (80 bits)
-        FPCR                    4
-        FPSR                    4
-        FPIAR                   4
+	FP0-FP7                 4+2 (80 bits)
+	FPCR                    4
+	FPSR                    4
+	FPIAR                   4
 
 CUSTOM CHIPS
 
-        "CHIP"
+	"CHIP"
 
-        chipset flags   4      OCS=0,ECSAGNUS=1,ECSDENISE=2,AGA=4
-                               ECSAGNUS and ECSDENISE can be combined
+	chipset flags   4      OCS=0,ECSAGNUS=1,ECSDENISE=2,AGA=4
+			       ECSAGNUS and ECSDENISE can be combined
 
-        DFF000-DFF1FF   352    (0x120 - 0x17f and 0x0a0 - 0xdf excluded)
+	DFF000-DFF1FF   352    (0x120 - 0x17f and 0x0a0 - 0xdf excluded)
 
-        sprite registers (0x120 - 0x17f) saved with SPRx chunks
-        audio registers (0x0a0 - 0xdf) saved with AUDx chunks
+	sprite registers (0x120 - 0x17f) saved with SPRx chunks
+	audio registers (0x0a0 - 0xdf) saved with AUDx chunks
 
 AGA COLORS
 
-        "AGAC"
+	"AGAC"
 
-        AGA color               8 banks * 32 registers *
-        registers               LONG (XRGB) = 1024
+	AGA color               8 banks * 32 registers *
+	registers               LONG (XRGB) = 1024
 
 SPRITE
 
-        "SPR0" - "SPR7"
+	"SPR0" - "SPR7"
 
 
-        SPRxPT                  4
-        SPRxPOS                 2
-        SPRxCTL                 2
-        SPRxDATA                2
-        SPRxDATB                2
-        AGA sprite DATA/DATB    3 * 2 * 2
-        sprite "armed" status   1
+	SPRxPT                  4
+	SPRxPOS                 2
+	SPRxCTL                 2
+	SPRxDATA                2
+	SPRxDATB                2
+	AGA sprite DATA/DATB    3 * 2 * 2
+	sprite "armed" status   1
 
-        sprites maybe armed in non-DMA mode
-        use bit 0 only, other bits are reserved
+	sprites maybe armed in non-DMA mode
+	use bit 0 only, other bits are reserved
 
 
 AUDIO
-        "AUD0" "AUD1" "AUD2" "AUD3"
+	"AUD0" "AUD1" "AUD2" "AUD3"
 
-        audio state             1
-        machine mode
-        AUDxVOL                 1
+	audio state             1
+	machine mode
+	AUDxVOL                 1
 	irq?                    1
 	data_written?           1
-        internal AUDxLEN        2
-        AUDxLEN                 2
+	internal AUDxLEN        2
+	AUDxLEN                 2
 	internal AUDxPER        2
 	AUDxPER                 2
-        internal AUDxLC         4
+	internal AUDxLC         4
 	AUDxLC                  4
 	evtime?                 4
 
 BLITTER
 
-        "BLIT"
+	"BLIT"
 
-        internal blitter state
+	internal blitter state
 
-        blitter running         1
-        anything else?
+	blitter running         1
+	anything else?
 
 CIA
 
-        "CIAA" and "CIAB"
+	"CIAA" and "CIAB"
 
-        BFE001-BFEF01   16*1 (CIAA)
-        BFD000-BFDF00   16*1 (CIAB)
+	BFE001-BFEF01   16*1 (CIAA)
+	BFD000-BFDF00   16*1 (CIAB)
 
-        internal registers
+	internal registers
 
-        IRQ mask (ICR)  1 BYTE
-        timer latches   2 timers * 2 BYTES (LO/HI)
-        latched tod     3 BYTES (LO/MED/HI)
-        alarm           3 BYTES (LO/MED/HI)
-        flags           1 BYTE
-                        bit 0=tod latched (read)
-                        bit 1=tod stopped (write)
+	IRQ mask (ICR)  1 BYTE
+	timer latches   2 timers * 2 BYTES (LO/HI)
+	latched tod     3 BYTES (LO/MED/HI)
+	alarm           3 BYTES (LO/MED/HI)
+	flags           1 BYTE
+			bit 0=tod latched (read)
+			bit 1=tod stopped (write)
 	div10 counter	1 BYTE
 
 FLOPPY DRIVES
 
-        "DSK0" "DSK1" "DSK2" "DSK3"
+	"DSK0" "DSK1" "DSK2" "DSK3"
 
-        drive state
+	drive state
 
-        drive ID-word           4
-        state                   1 (bit 0: motor on, bit 1: drive disabled)
-        rw-head track           1
-        dskready                1
-        id-mode                 1 (ID mode bit number 0-31)
-        floppy information
+	drive ID-word           4
+	state                   1 (bit 0: motor on, bit 1: drive disabled)
+	rw-head track           1
+	dskready                1
+	id-mode                 1 (ID mode bit number 0-31)
+	floppy information
 
-        bits from               4
-        beginning of track
-        CRC of disk-image       4 (used during restore to check if image
-                                  is correct)
-        disk-image              null-terminated
-        file name
+	bits from               4
+	beginning of track
+	CRC of disk-image       4 (used during restore to check if image
+				  is correct)
+	disk-image              null-terminated
+	file name
 
 INTERNAL FLOPPY CONTROLLER STATUS
 
-        "DISK"
+	"DISK"
 
-        current DMA word        2
-        DMA word bit offset     1
-        WORDSYNC found          1 (no=0,yes=1)
-        hpos of next bit        1
-        DSKLENGTH status        0=off,1=written once,2=written twice
+	current DMA word        2
+	DMA word bit offset     1
+	WORDSYNC found          1 (no=0,yes=1)
+	hpos of next bit        1
+	DSKLENGTH status        0=off,1=written once,2=written twice
 
-RAM SPACE 
+RAM SPACE
 
-        "xRAM" (CRAM = chip, BRAM = bogo, FRAM = fast, ZFRAM = Z3)
+	"xRAM" (CRAM = chip, BRAM = bogo, FRAM = fast, ZFRAM = Z3)
 
-        start address           4 ("bank"=chip/slow/fast etc..)
-        of RAM "bank"
-        RAM "bank" size         4
-        RAM flags               4
-        RAM "bank" contents
+	start address           4 ("bank"=chip/slow/fast etc..)
+	of RAM "bank"
+	RAM "bank" size         4
+	RAM flags               4
+	RAM "bank" contents
 
 ROM SPACE
 
-        "ROM "
+	"ROM "
 
-        ROM start               4
-        address
-        size of ROM             4
-        ROM type                4 KICK=0
-        ROM flags               4
-        ROM version             2
-        ROM revision            2
-        ROM CRC                 4 see below
-        ROM-image               null terminated, see below
-        ID-string
-        ROM contents            (Not mandatory, use hunk size to check if
-                                this hunk contains ROM data or not)
+	ROM start               4
+	address
+	size of ROM             4
+	ROM type                4 KICK=0
+	ROM flags               4
+	ROM version             2
+	ROM revision            2
+	ROM CRC                 4 see below
+	ROM-image               null terminated, see below
+	ID-string
+	ROM contents            (Not mandatory, use hunk size to check if
+				this hunk contains ROM data or not)
 
-        Kickstart ROM:
-         ID-string is "Kickstart x.x"
-         ROM version: version in high word and revision in low word
-         Kickstart ROM version and revision can be found from ROM start
-         + 12 (version) and +14 (revision)
+	Kickstart ROM:
+	 ID-string is "Kickstart x.x"
+	 ROM version: version in high word and revision in low word
+	 Kickstart ROM version and revision can be found from ROM start
+	 + 12 (version) and +14 (revision)
 
-        ROM version and CRC is only meant for emulator to automatically
-        find correct image from its ROM-directory during state restore.
+	ROM version and CRC is only meant for emulator to automatically
+	find correct image from its ROM-directory during state restore.
 
-        Usually saving ROM contents is not good idea.
+	Usually saving ROM contents is not good idea.
 
 
 END
-        hunk "END " ends, remember hunk size 8!
+	hunk "END " ends, remember hunk size 8!
 
 
 EMULATOR SPECIFIC HUNKS

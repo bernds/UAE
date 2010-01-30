@@ -19,6 +19,9 @@
 #include "autoconf.h"
 #include "events.h"
 #include "custom.h"
+#include "inputdevice.h"
+
+#define cfgfile_write fprintf
 
 /* @@@ need to get rid of this... just cut part of the manual and print that
  * as a help text.  */
@@ -94,7 +97,6 @@ static const char *cpumode[] = {
     "68000", "68000", "68010", "68010", "68ec020", "68020", "68ec020/68881", "68020/68881",
     "68040", "68040", 0
 };
-static const char *portmode[] = { "joy0", "joy1", "mouse", "kbd1", "kbd2", "kbd3", 0 };
 static const char *colormode1[] = { "8bit", "15bit", "16bit", "8bit_dither", "4bit_dither", "32bit", 0 };
 static const char *colormode2[] = { "8", "15", "16", "8d", "4d", "32", 0 };
 static const char *soundmode[] = { "none", "interrupts", "normal", "exact", 0 };
@@ -142,101 +144,114 @@ void save_options (FILE *f, struct uae_prefs *p)
     char *str;
     int i;
 
-    fprintf (f, "config_description=%s\n", p->description);
+    cfgfile_write (f, "config_description=%s\n", p->description);
 
     for (sl = p->unknown_lines; sl; sl = sl->next)
-	fprintf (f, "%s\n", sl->str);
+	cfgfile_write (f, "%s\n", sl->str);
 
-    fprintf (f, "%s.rom_path=%s\n", TARGET_NAME, p->path_rom);
-    fprintf (f, "%s.floppy_path=%s\n", TARGET_NAME, p->path_floppy);
-    fprintf (f, "%s.hardfile_path=%s\n", TARGET_NAME, p->path_hardfile);
+    cfgfile_write (f, "%s.rom_path=%s\n", TARGET_NAME, p->path_rom);
+    cfgfile_write (f, "%s.floppy_path=%s\n", TARGET_NAME, p->path_floppy);
+    cfgfile_write (f, "%s.hardfile_path=%s\n", TARGET_NAME, p->path_hardfile);
 
     target_save_options (f, p);
 
-    fprintf (f, "use_gui=%s\n", guimode1[p->start_gui]);
-    fprintf (f, "use_debugger=%s\n", p->start_debugger ? "true" : "false");
+    cfgfile_write (f, "use_gui=%s\n", guimode1[p->start_gui]);
+    cfgfile_write (f, "use_debugger=%s\n", p->start_debugger ? "true" : "false");
     str = cfgfile_subst_path (p->path_rom, UNEXPANDED, p->romfile);
-    fprintf (f, "kickstart_rom_file=%s\n", str);
+    cfgfile_write (f, "kickstart_rom_file=%s\n", str);
     free (str);
     str = cfgfile_subst_path (p->path_rom, UNEXPANDED, p->romextfile);
-    fprintf (f, "kickstart_ext_rom_file=%s\n", str);
+    cfgfile_write (f, "kickstart_ext_rom_file=%s\n", str);
     free (str);
     str = cfgfile_subst_path (p->path_rom, UNEXPANDED, p->keyfile);
-    fprintf (f, "kickstart_key_file=%s\n", str);
+    cfgfile_write (f, "kickstart_key_file=%s\n", str);
     free (str);
-    fprintf (f, "kickshifter=%s\n", p->kickshifter ? "true" : "false");
+    cfgfile_write (f, "kickshifter=%s\n", p->kickshifter ? "true" : "false");
 
     for (i = 0; i < 4; i++) {
 	str = cfgfile_subst_path (p->path_floppy, UNEXPANDED, p->df[i]);
-	fprintf (f, "floppy%d=%s\n", i, str);
+	cfgfile_write (f, "floppy%d=%s\n", i, str);
 	free (str);
     }
-    fprintf (f, "nr_floppies=%d\n", p->nr_floppies);
-    fprintf (f, "parallel_on_demand=%s\n", p->parallel_demand ? "true" : "false");
-    fprintf (f, "serial_on_demand=%s\n", p->serial_demand ? "true" : "false");
+    cfgfile_write (f, "nr_floppies=%d\n", p->nr_floppies);
+    cfgfile_write (f, "parallel_on_demand=%s\n", p->parallel_demand ? "true" : "false");
+    cfgfile_write (f, "serial_on_demand=%s\n", p->serial_demand ? "true" : "false");
 
-    fprintf (f, "sound_output=%s\n", soundmode[p->produce_sound]);
-    fprintf (f, "sound_channels=%s\n", stereomode1[p->sound_stereo + p->mixed_stereo]);
-    fprintf (f, "sound_bits=%d\n", p->sound_bits);
-    fprintf (f, "sound_min_buff=%d\n", p->sound_minbsiz);
-    fprintf (f, "sound_max_buff=%d\n", p->sound_maxbsiz);
-    fprintf (f, "sound_frequency=%d\n", p->sound_freq);
-    fprintf (f, "sound_interpol=%s\n", interpolmode[p->sound_interpol]);
+    cfgfile_write (f, "sound_output=%s\n", soundmode[p->produce_sound]);
+    cfgfile_write (f, "sound_channels=%s\n", stereomode1[p->sound_stereo + p->mixed_stereo]);
+    cfgfile_write (f, "sound_bits=%d\n", p->sound_bits);
+    cfgfile_write (f, "sound_min_buff=%d\n", p->sound_minbsiz);
+    cfgfile_write (f, "sound_max_buff=%d\n", p->sound_maxbsiz);
+    cfgfile_write (f, "sound_frequency=%d\n", p->sound_freq);
+    cfgfile_write (f, "sound_interpol=%s\n", interpolmode[p->sound_interpol]);
 
-    fprintf (f, "sound_pri_time=%d\n", p->sound_pri_time);
-    fprintf (f, "sound_pri_cutoff=%d\n", p->sound_pri_cutoff);
+    cfgfile_write (f, "sound_pri_time=%d\n", p->sound_pri_time);
+    cfgfile_write (f, "sound_pri_cutoff=%d\n", p->sound_pri_cutoff);
 
-    fprintf (f, "joyport0=%s\n", portmode[p->jport0]);
-    fprintf (f, "joyport1=%s\n", portmode[p->jport1]);
+    for (i = 0; i < 2; i++) {
+	int v = i == 0 ? p->jport0 : p->jport1;
+	char tmp1[100], tmp2[50];
+	if (v < JSEM_JOYS) {
+	    sprintf (tmp2, "kbd%d", v + 1);
+	} else if (v < JSEM_MICE) {
+	    sprintf (tmp2, "joy%d", v - JSEM_JOYS);
+	} else {
+	    strcpy (tmp2, "mouse");
+	    if (v - JSEM_MICE > 0)
+		sprintf (tmp2, "mouse%d", v - JSEM_MICE);
+	}
+	sprintf (tmp1, "joyport%d=%s\n", i, tmp2);
+	cfgfile_write (f, tmp1);
+    }
 
-    fprintf (f, "bsdsocket_emu=%s\n", p->socket_emu ? "true" : "false");
+    cfgfile_write (f, "bsdsocket_emu=%s\n", p->socket_emu ? "true" : "false");
 
-    fprintf (f, "gfx_framerate=%d\n", p->gfx_framerate);
-    fprintf (f, "gfx_width=%d\n", p->gfx_width);
-    fprintf (f, "gfx_height=%d\n", p->gfx_height);
-    fprintf (f, "gfx_lores=%s\n", p->gfx_lores ? "true" : "false");
-    fprintf (f, "gfx_linemode=%s\n", linemode1[p->gfx_linedbl]);
-    fprintf (f, "gfx_correct_aspect=%s\n", p->gfx_correct_aspect ? "true" : "false");
-    fprintf (f, "gfx_fullscreen_amiga=%s\n", p->gfx_afullscreen ? "true" : "false");
-    fprintf (f, "gfx_fullscreen_picasso=%s\n", p->gfx_pfullscreen ? "true" : "false");
-    fprintf (f, "gfx_center_horizontal=%s\n", centermode1[p->gfx_xcenter]);
-    fprintf (f, "gfx_center_vertical=%s\n", centermode1[p->gfx_ycenter]);
-    fprintf (f, "gfx_colour_mode=%s\n", colormode1[p->color_mode]);
+    cfgfile_write (f, "gfx_framerate=%d\n", p->gfx_framerate);
+    cfgfile_write (f, "gfx_width=%d\n", p->gfx_width);
+    cfgfile_write (f, "gfx_height=%d\n", p->gfx_height);
+    cfgfile_write (f, "gfx_lores=%s\n", p->gfx_lores ? "true" : "false");
+    cfgfile_write (f, "gfx_linemode=%s\n", linemode1[p->gfx_linedbl]);
+    cfgfile_write (f, "gfx_correct_aspect=%s\n", p->gfx_correct_aspect ? "true" : "false");
+    cfgfile_write (f, "gfx_fullscreen_amiga=%s\n", p->gfx_afullscreen ? "true" : "false");
+    cfgfile_write (f, "gfx_fullscreen_picasso=%s\n", p->gfx_pfullscreen ? "true" : "false");
+    cfgfile_write (f, "gfx_center_horizontal=%s\n", centermode1[p->gfx_xcenter]);
+    cfgfile_write (f, "gfx_center_vertical=%s\n", centermode1[p->gfx_ycenter]);
+    cfgfile_write (f, "gfx_colour_mode=%s\n", colormode1[p->color_mode]);
 
-    fprintf (f, "immediate_blits=%s\n", p->immediate_blits ? "true" : "false");
-    fprintf (f, "ntsc=%s\n", p->ntscmode ? "true" : "false");
-    fprintf (f, "show_leds=%s\n", p->leds_on_screen ? "true" : "false");
+    cfgfile_write (f, "immediate_blits=%s\n", p->immediate_blits ? "true" : "false");
+    cfgfile_write (f, "ntsc=%s\n", p->ntscmode ? "true" : "false");
+    cfgfile_write (f, "show_leds=%s\n", p->leds_on_screen ? "true" : "false");
     if (p->chipset_mask & CSMASK_AGA)
-	fprintf (f, "chipset=aga\n");
+	cfgfile_write (f, "chipset=aga\n");
     else if ((p->chipset_mask & CSMASK_ECS_AGNUS) && (p->chipset_mask & CSMASK_ECS_AGNUS))
-	fprintf (f, "chipset=ecs\n");
+	cfgfile_write (f, "chipset=ecs\n");
     else if (p->chipset_mask & CSMASK_ECS_AGNUS)
-	fprintf (f, "chipset=ecs_agnus\n");
+	cfgfile_write (f, "chipset=ecs_agnus\n");
     else if (p->chipset_mask & CSMASK_ECS_DENISE)
-	fprintf (f, "chipset=ecs_denise\n");
+	cfgfile_write (f, "chipset=ecs_denise\n");
     else
-	fprintf (f, "chipset=ocs\n");
-    fprintf (f, "collision_level=%s\n", collmode[p->collision_level]);
+	cfgfile_write (f, "chipset=ocs\n");
+    cfgfile_write (f, "collision_level=%s\n", collmode[p->collision_level]);
 
-    fprintf (f, "fastmem_size=%d\n", p->fastmem_size / 0x100000);
-    fprintf (f, "a3000mem_size=%d\n", p->a3000mem_size / 0x100000);
-    fprintf (f, "z3mem_size=%d\n", p->z3fastmem_size / 0x100000);
-    fprintf (f, "bogomem_size=%d\n", p->bogomem_size / 0x40000);
-    fprintf (f, "gfxcard_size=%d\n", p->gfxmem_size / 0x100000);
-    fprintf (f, "chipmem_size=%d\n", p->chipmem_size / 0x80000);
+    cfgfile_write (f, "fastmem_size=%d\n", p->fastmem_size / 0x100000);
+    cfgfile_write (f, "a3000mem_size=%d\n", p->a3000mem_size / 0x100000);
+    cfgfile_write (f, "z3mem_size=%d\n", p->z3fastmem_size / 0x100000);
+    cfgfile_write (f, "bogomem_size=%d\n", p->bogomem_size / 0x40000);
+    cfgfile_write (f, "gfxcard_size=%d\n", p->gfxmem_size / 0x100000);
+    cfgfile_write (f, "chipmem_size=%d\n", p->chipmem_size / 0x80000);
 
     if (p->m68k_speed > 0)
-	fprintf (f, "finegrain_cpu_speed=%d\n", p->m68k_speed);
+	cfgfile_write (f, "finegrain_cpu_speed=%d\n", p->m68k_speed);
     else
-	fprintf (f, "cpu_speed=%s\n", p->m68k_speed == -1 ? "max" : "real");
+	cfgfile_write (f, "cpu_speed=%s\n", p->m68k_speed == -1 ? "max" : "real");
 
-    fprintf (f, "cpu_type=%s\n", cpumode[p->cpu_level * 2 + !p->address_space_24]);
-    fprintf (f, "cpu_compatible=%s\n", p->cpu_compatible ? "true" : "false");
+    cfgfile_write (f, "cpu_type=%s\n", cpumode[p->cpu_level * 2 + !p->address_space_24]);
+    cfgfile_write (f, "cpu_compatible=%s\n", p->cpu_compatible ? "true" : "false");
 
-    fprintf (f, "accuracy=%d\n", p->emul_accuracy);
-    fprintf (f, "log_illegal_mem=%s\n", p->illegal_mem ? "true" : "false");
+    cfgfile_write (f, "accuracy=%d\n", p->emul_accuracy);
+    cfgfile_write (f, "log_illegal_mem=%s\n", p->illegal_mem ? "true" : "false");
 
-    fprintf (f, "kbd_lang=%s\n", (p->keyboard_lang == KBD_LANG_DE ? "de"
+    cfgfile_write (f, "kbd_lang=%s\n", (p->keyboard_lang == KBD_LANG_DE ? "de"
 				  : p->keyboard_lang == KBD_LANG_DK ? "dk"
 				  : p->keyboard_lang == KBD_LANG_ES ? "es"
 				  : p->keyboard_lang == KBD_LANG_US ? "us"
@@ -401,8 +416,6 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	return 1;
     if (cfgfile_strval (option, value, "sound_output", &p->produce_sound, soundmode, 0)
 	|| cfgfile_strval (option, value, "sound_interpol", &p->sound_interpol, interpolmode, 0)
-	|| cfgfile_strval (option, value, "joyport0", &p->jport0, portmode, 0)
-	|| cfgfile_strval (option, value, "joyport1", &p->jport1, portmode, 0)
 	|| cfgfile_strval (option, value, "use_gui", &p->start_gui, guimode1, 1)
 	|| cfgfile_strval (option, value, "use_gui", &p->start_gui, guimode2, 1)
 	|| cfgfile_strval (option, value, "use_gui", &p->start_gui, guimode3, 0)
@@ -418,6 +431,38 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	|| cfgfile_strval (option, value, "gfx_color_mode", &p->color_mode, colormode1, 1)
 	|| cfgfile_strval (option, value, "gfx_color_mode", &p->color_mode, colormode2, 0))
 	return 1;
+
+    if (strcmp (option, "joyport0") == 0 || strcmp (option, "joyport1") == 0) {
+	int port = strcmp (option, "joyport0") == 0 ? 0 : 1;
+	int start = -1;
+	char *pp = 0;
+	if (strncmp (value, "kbd", 3) == 0) {
+	    start = JSEM_KBDLAYOUT;
+	    pp = value + 3;
+	} else if (strncmp (value, "joy", 3) == 0) {
+	    start = JSEM_JOYS;
+	    pp = value + 3;
+	} else if (strncmp (value, "mouse", 5) == 0) {
+	    start = JSEM_MICE;
+	    pp = value + 5;
+	}
+	if (pp) {
+	    int v = atol (pp);
+	    if (start >= 0) {
+		if (start == JSEM_KBDLAYOUT)
+		    v--;
+		if (v >= 0) {
+		    start += v;
+		    if (port)
+			p->jport1 = start;
+		    else
+			p->jport0 = start;
+		}
+	    }
+	}
+	return 1;
+    }
+
     if (cfgfile_string (option, value, "floppy0", p->df[0], 256)
 	|| cfgfile_string (option, value, "floppy1", p->df[1], 256)
 	|| cfgfile_string (option, value, "floppy2", p->df[2], 256)
@@ -459,7 +504,7 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	return 1;
     }
     if (cfgfile_intval (option, value, "cpu_speed", &p->m68k_speed, 1)) {
-        p->m68k_speed *= CYCLE_UNIT;
+	p->m68k_speed *= CYCLE_UNIT;
 	return 1;
     }
     if (cfgfile_intval (option, value, "finegrain_cpu_speed", &p->m68k_speed, 1)) {
@@ -654,7 +699,7 @@ void cfgfile_show_usage (void)
    because the new way of doing things is painful for me (it requires me
    to type a couple hundred characters when invoking UAE).  The following
    is far less annoying to use.  */
-static void parse_gfx_specs (char *spec)
+static void parse_gfx_specs (struct uae_prefs *p, char *spec)
 {
     char *x0 = my_strdup (spec);
     char *x1, *x2;
@@ -667,21 +712,21 @@ static void parse_gfx_specs (char *spec)
 	goto argh;
     *x1++ = 0; *x2++ = 0;
 
-    currprefs.gfx_width = atoi (x0);
-    currprefs.gfx_height = atoi (x1);
-    currprefs.gfx_lores = strchr (x2, 'l') != 0;
-    currprefs.gfx_xcenter = strchr (x2, 'x') != 0 ? 1 : strchr (x2, 'X') != 0 ? 2 : 0;
-    currprefs.gfx_ycenter = strchr (x2, 'y') != 0 ? 1 : strchr (x2, 'Y') != 0 ? 2 : 0;
-    currprefs.gfx_linedbl = strchr (x2, 'd') != 0;
-    currprefs.gfx_linedbl += 2 * (strchr (x2, 'D') != 0);
-    currprefs.gfx_afullscreen = strchr (x2, 'a') != 0;
-    currprefs.gfx_pfullscreen = strchr (x2, 'p') != 0;
-    currprefs.gfx_correct_aspect = strchr (x2, 'c') != 0;
+    p->gfx_width = atoi (x0);
+    p->gfx_height = atoi (x1);
+    p->gfx_lores = strchr (x2, 'l') != 0;
+    p->gfx_xcenter = strchr (x2, 'x') != 0 ? 1 : strchr (x2, 'X') != 0 ? 2 : 0;
+    p->gfx_ycenter = strchr (x2, 'y') != 0 ? 1 : strchr (x2, 'Y') != 0 ? 2 : 0;
+    p->gfx_linedbl = strchr (x2, 'd') != 0;
+    p->gfx_linedbl += 2 * (strchr (x2, 'D') != 0);
+    p->gfx_afullscreen = strchr (x2, 'a') != 0;
+    p->gfx_pfullscreen = strchr (x2, 'p') != 0;
+    p->gfx_correct_aspect = strchr (x2, 'c') != 0;
 
-    if (currprefs.gfx_linedbl == 3) {
+    if (p->gfx_linedbl == 3) {
 	fprintf (stderr, "You can't use both 'd' and 'D' modifiers in the display mode specification.\n");
     }
-    
+
     free (x0);
     return;
 
@@ -692,7 +737,7 @@ static void parse_gfx_specs (char *spec)
     free (x0);
 }
 
-static void parse_sound_spec (char *spec)
+static void parse_sound_spec (struct uae_prefs *p, char *spec)
 {
     char *x0 = my_strdup (spec);
     char *x1, *x2 = NULL, *x3 = NULL, *x4 = NULL, *x5 = NULL;
@@ -714,52 +759,52 @@ static void parse_sound_spec (char *spec)
 	    }
 	}
     }
-    currprefs.produce_sound = atoi (x0);
+    p->produce_sound = atoi (x0);
     if (x1) {
-	currprefs.mixed_stereo = 0;
+	p->mixed_stereo = 0;
 	if (*x1 == 'S')
-	    currprefs.sound_stereo = currprefs.mixed_stereo = 1;
+	    p->sound_stereo = p->mixed_stereo = 1;
 	else if (*x1 == 's')
-	    currprefs.sound_stereo = 1;
+	    p->sound_stereo = 1;
 	else
-	    currprefs.sound_stereo = 0;
+	    p->sound_stereo = 0;
     }
     if (x2)
-	currprefs.sound_bits = atoi (x2);
+	p->sound_bits = atoi (x2);
     if (x3)
-	currprefs.sound_freq = atoi (x3);
+	p->sound_freq = atoi (x3);
     if (x4)
-	currprefs.sound_maxbsiz = currprefs.sound_minbsiz = atoi (x4);
+	p->sound_maxbsiz = p->sound_minbsiz = atoi (x4);
     if (x5)
-	currprefs.sound_minbsiz = atoi (x5);
+	p->sound_minbsiz = atoi (x5);
     free (x0);
     return;
 }
 
 
-static void parse_joy_spec (char *spec)
+static void parse_joy_spec (struct uae_prefs *p, char *spec)
 {
     int v0 = 2, v1 = 0;
     if (strlen(spec) != 2)
 	goto bad;
 
     switch (spec[0]) {
-     case '0': v0 = 0; break;
-     case '1': v0 = 1; break;
-     case 'M': case 'm': v0 = 2; break;
-     case 'A': case 'a': v0 = 3; break;
-     case 'B': case 'b': v0 = 4; break;
-     case 'C': case 'c': v0 = 5; break;
+     case '0': v0 = JSEM_JOYS; break;
+     case '1': v0 = JSEM_JOYS + 1; break;
+     case 'M': case 'm': v0 = JSEM_MICE; break;
+     case 'A': case 'a': v0 = JSEM_KBDLAYOUT; break;
+     case 'B': case 'b': v0 = JSEM_KBDLAYOUT + 1; break;
+     case 'C': case 'c': v0 = JSEM_KBDLAYOUT + 2; break;
      default: goto bad;
     }
 
     switch (spec[1]) {
-     case '0': v1 = 0; break;
-     case '1': v1 = 1; break;
-     case 'M': case 'm': v1 = 2; break;
-     case 'A': case 'a': v1 = 3; break;
-     case 'B': case 'b': v1 = 4; break;
-     case 'C': case 'c': v1 = 5; break;
+     case '0': v1 = JSEM_JOYS; break;
+     case '1': v1 = JSEM_JOYS + 1; break;
+     case 'M': case 'm': v1 = JSEM_MICE; break;
+     case 'A': case 'a': v1 = JSEM_KBDLAYOUT; break;
+     case 'B': case 'b': v1 = JSEM_KBDLAYOUT + 1; break;
+     case 'C': case 'c': v1 = JSEM_KBDLAYOUT + 2; break;
      default: goto bad;
     }
     if (v0 == v1)
@@ -767,12 +812,12 @@ static void parse_joy_spec (char *spec)
     /* Let's scare Pascal programmers */
     if (0)
 bad:
-    fprintf (stderr, "Bad joystick mode specification. Use -J xy, where x and y\n"
+    write_log ("Bad joystick mode specification. Use -J xy, where x and y\n"
 	     "can be 0 for joystick 0, 1 for joystick 1, M for mouse, and\n"
 	     "a, b or c for different keyboard settings.\n");
 
-    currprefs.jport0 = v0;
-    currprefs.jport1 = v1;
+    p->jport0 = v0;
+    p->jport1 = v1;
 }
 
 static void parse_filesys_spec (int readonly, char *spec)
@@ -787,7 +832,7 @@ static void parse_filesys_spec (int readonly, char *spec)
 #ifdef __DOS__
 	{
 	    char *tmp;
- 
+
 	    while ((tmp = strchr (s2, '\\')))
 		*tmp = '/';
 	}
@@ -799,7 +844,7 @@ static void parse_filesys_spec (int readonly, char *spec)
 	fprintf (stderr, "Usage: [-m | -M] VOLNAME:mount_point\n");
     }
 }
- 
+
 static void parse_hardfile_spec (char *spec)
 {
     char *x0 = my_strdup (spec);
@@ -840,7 +885,7 @@ static void parse_cpu_specs (char *spec)
 	fprintf (stderr, "CPU parameter string must begin with '0', '1', '2', '3' or '4'.\n");
 	return;
     }
-	
+
     currprefs.cpu_level = *spec++ - '0';
     currprefs.address_space_24 = currprefs.cpu_level < 2;
     currprefs.cpu_compatible = 0;
@@ -892,12 +937,12 @@ int parse_cmdline_option (char c, char *arg)
 	/*     case 'I': strncpy (currprefs.sername, arg, 255); currprefs.sername[255] = 0; currprefs.use_serial = 1; break; */
     case 'm': case 'M': parse_filesys_spec (c == 'M', arg); break;
     case 'W': parse_hardfile_spec (arg); break;
-    case 'S': parse_sound_spec (arg); break;
+    case 'S': parse_sound_spec (&currprefs, arg); break;
     case 'R': currprefs.gfx_framerate = atoi (arg); break;
     case 'A': currprefs.emul_accuracy = atoi (arg); break;
     case 'x': currprefs.no_xhair = 1; break;
     case 'i': currprefs.illegal_mem = 1; break;
-    case 'J': parse_joy_spec (arg); break;
+    case 'J': parse_joy_spec (&currprefs, arg); break;
 
     case 't': currprefs.test_drawing_speed = 1; break;
     case 'L': currprefs.x11_use_low_bandwidth = 1; break;
@@ -960,7 +1005,7 @@ int parse_cmdline_option (char c, char *arg)
 	    currprefs.keyboard_lang = KBD_LANG_ES;
 	break;
 
-    case 'O': parse_gfx_specs (arg); break;
+    case 'O': parse_gfx_specs (&currprefs, arg); break;
     case 'd':
 	if (strchr (arg, 'S') != NULL || strchr (arg, 's')) {
 	    write_log ("  Serial on demand.\n");

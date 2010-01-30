@@ -1,8 +1,8 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * AppWindow interface
-  * 
+  *
   * Copyright 1997 Samuel Devulder.
   */
 
@@ -65,14 +65,14 @@ int appw_init(struct Window *W)
 {
     WorkbenchBase = (void*)OpenLibrary("workbench.library",36L);
     if(WorkbenchBase) {
-        AppPort = CreatePort(0,0);
-        if(AppPort) {
-            AppWin = AddAppWindow(0,0,W,AppPort,NULL);
-            if(AppWin) {
-                write_log("AppWindow started.\n");
-                return 1;
-            }
-        }
+	AppPort = CreatePort(0,0);
+	if(AppPort) {
+	    AppWin = AddAppWindow(0,0,W,AppPort,NULL);
+	    if(AppWin) {
+		write_log("AppWindow started.\n");
+		return 1;
+	    }
+	}
     }
     write_log("Failed to start AppWindow.\n");
 
@@ -84,18 +84,18 @@ int appw_init(struct Window *W)
 void appw_exit(void)
 {
     if(AppPort) {
-        void *msg;
-        while((msg=GetMsg(AppPort))) ReplyMsg(msg);
-        DeletePort(AppPort);
-        AppPort = NULL;
+	void *msg;
+	while((msg=GetMsg(AppPort))) ReplyMsg(msg);
+	DeletePort(AppPort);
+	AppPort = NULL;
     }
     if(AppWin) {
-        RemoveAppWindow(AppWin);
-        AppWin = NULL;
+	RemoveAppWindow(AppWin);
+	AppWin = NULL;
     }
     if(WorkbenchBase) {
-        CloseLibrary((void*)WorkbenchBase);
-        WorkbenchBase = NULL;
+	CloseLibrary((void*)WorkbenchBase);
+	WorkbenchBase = NULL;
     }
 }
 
@@ -119,25 +119,25 @@ static void addcmd(char *cmd, int len, ULONG lock, char *name)
 void appw_events(void)
 {
     if(AppWin) {
-        struct AppMessage *msg;
-        struct WBArg *arg;
-        while((msg=(void*)GetMsg(AppPort))) {
-            char cmd[LEN];
-            int  i;
+	struct AppMessage *msg;
+	struct WBArg *arg;
+	while((msg=(void*)GetMsg(AppPort))) {
+	    char cmd[LEN];
+	    int  i;
 
-            arg = msg->am_ArgList;
+	    arg = msg->am_ArgList;
 
-            strcpy(cmd,"cd ");
-            NameFromLock(arg[0].wa_Lock,&cmd[3],LEN-3);
-            if(!uaeexe(cmd)) {
+	    strcpy(cmd,"cd ");
+	    NameFromLock(arg[0].wa_Lock,&cmd[3],LEN-3);
+	    if(!uaeexe(cmd)) {
 	       strcpy(cmd,"run ");strcpy(cmd+4,arg[0].wa_Name);
-               for(i=1;i<msg->am_NumArgs;++i)
-                   addcmd(cmd,LEN-2,arg[i].wa_Lock,arg[i].wa_Name);
-                   /*             ^        */
-                   /* 2 bytes for security */
-               uaeexe(cmd);
-            }
-            ReplyMsg((void*)msg);
-        }
+	       for(i=1;i<msg->am_NumArgs;++i)
+		   addcmd(cmd,LEN-2,arg[i].wa_Lock,arg[i].wa_Name);
+		   /*             ^        */
+		   /* 2 bytes for security */
+	       uaeexe(cmd);
+	    }
+	    ReplyMsg((void*)msg);
+	}
     }
 }

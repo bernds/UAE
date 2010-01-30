@@ -1,3 +1,16 @@
+9F0702 Deleted really old mousehack (sprite follow) code, since there are a
+       number of better alternatives today and it didn't work so well with
+       the inputdevice stuff.
+       leds_on_screen can be toggled in the GTK UI; hscale widths fixed.
+       Lose 24bit checkbox; use 68EC020 names.  Disable Z3 and P96 memory when
+       using EC CPU.  CPU type settings take effect only after reset.  68000
+       mode is always slow but compatible.
+       Some state save changes merged from WinUAE.
+9F0701 Imported inputdevice code from WinUAE; Linux specific inputdevice code
+       partly from EUAE.  Breaks the autofire stuff I added :-/
+       uae_reset now takes an argument.
+       Imported more romlist code and a few other bits and pieces from WinUAE.
+       Removed memory-smashing remains of AHI.
 9F0629 Adapt autofire logic a little to work better with my new four-button
        Competition Pro.
        More small and relatively unimportant differences merged from WinUAE.

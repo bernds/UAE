@@ -13687,7 +13687,7 @@ echo "${ECHO_T}Ummm...." >&6
 echo "${ECHO_T}X11" >&6
     TARGET=x11
     TARGETDEP=t-x11.h
-    GFXOBJS=xwin.o
+    GFXOBJS="xwin.o x11keys.o"
 
     LIBRARIES="$X_LIBS $X_PRE_LIBS"
         if [ "x$WANT_DGA" = "xyes" ]; then

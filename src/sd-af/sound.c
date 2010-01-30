@@ -1,8 +1,8 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Support for the AF sound system
-  * 
+  *
   * Copyright 1996 Marcus Sundberg
   */
 
@@ -36,13 +36,13 @@ int init_sound (void)
     AFSetACAttributes   attributes;
     AFDeviceDescriptor *aDev;
     int                 device;
-    
+
     aud = AFOpenAudioConn(NULL);
     have_sound = !(aud == NULL);
     if (!have_sound) {
 	return 0;
     }
-    
+
     for(device = 0; device < ANumberOfAudioDevices(aud); device++) {
 	aDev = AAudioDeviceDescriptor(aud, device);
 	rate = aDev->playSampleFreq;
@@ -55,7 +55,7 @@ int init_sound (void)
     if (device == ANumberOfAudioDevices(aud)) {
 	return 0;
     }
-    
+
     attributes.type = LIN16;
     ac = AFCreateAC(aud, device, ACEncodingType, &attributes);
     aftime = AFGetTime(ac);

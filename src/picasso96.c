@@ -527,7 +527,7 @@ static void do_blit (struct RenderInfo *ri, int Bpp, int srcx, int srcy,
 	goto out;
     dstp += dsty * picasso_vidinfo.rowbytes + dstx * picasso_vidinfo.pixbytes;
     P96TRACE(("do_blit with srcp 0x%x, dstp 0x%x, dst_rowbytes %d, srcx %d, srcy %d, dstx %d, dsty %d, w %d, h %d, dst_pixbytes %d\n",
-        srcp, dstp, picasso_vidinfo.rowbytes, srcx, srcy, dstx, dsty, width, height, picasso_vidinfo.pixbytes));
+	srcp, dstp, picasso_vidinfo.rowbytes, srcx, srcy, dstx, dsty, width, height, picasso_vidinfo.pixbytes));
     P96TRACE(("gfxmem is at 0x%x\n",gfxmemory));
 
     srcp = ri->Memory + srcx * Bpp + srcy * ri->BytesPerRow;
@@ -705,7 +705,7 @@ void picasso_refresh (void)
 	ri.BytesPerRow = picasso96_state.BytesPerRow;
 	ri.RGBFormat = picasso96_state.RGBFormat;
 
-        if (set_panning_called) {
+	if (set_panning_called) {
 	    width = picasso96_state.VirtualWidth;
 	    height = picasso96_state.VirtualHeight;
 	} else {
@@ -1141,9 +1141,6 @@ uae_u32 picasso_SetPanning (void)
 
     init_picasso_screen ();
 
-    lastmx += oldxoff - picasso96_state.XOffset;
-    lastmy += oldyoff - picasso96_state.YOffset;
-    
     return 1;
 }
 
@@ -1179,7 +1176,7 @@ static void do_xor8 (uae_u8 * ptr, long len, uae_u32 val)
 
 /*
  * InvertRect:
- * 
+ *
  * Inputs:
  * a0:struct BoardInfo *bi
  * a1:struct RenderInfo *ri
@@ -1189,7 +1186,7 @@ static void do_xor8 (uae_u8 * ptr, long len, uae_u32 val)
  * d3.w:Height
  * d4.l:Mask
  * d7.l:RGBFormat
- * 
+ *
  * This function is used to invert a rectangular area on the board. It is called by BltBitMap,
  * BltPattern and BltTemplate.
  */
@@ -1596,7 +1593,7 @@ STATIC_INLINE void PixelWrite (uae_u8 * mem, int bits, uae_u32 fgpen, uae_u8 Bpp
 
 /*
  * BlitPattern:
- * 
+ *
  * Synopsis:BlitPattern(bi, ri, pattern, X, Y, Width, Height, Mask, RGBFormat);
  * Inputs:
  * a0:struct BoardInfo *bi
@@ -1608,7 +1605,7 @@ STATIC_INLINE void PixelWrite (uae_u8 * mem, int bits, uae_u32 fgpen, uae_u8 Bpp
  * d3.w:Height
  * d4.w:Mask
  * d7.l:RGBFormat
- * 
+ *
  * This function is used to paint a pattern on the board memory using the blitter. It is called by
  * BltPattern, if a AreaPtrn is used with positive AreaPtSz. The pattern consists of a b/w image
  * using a single plane of image data which will be expanded repeatedly to the destination RGBFormat
@@ -1912,7 +1909,7 @@ uae_u32 picasso_CalculateBytesPerRow (void)
     uae_u32 type = m68k_dreg (regs, 7);
 
     width = GetBytesPerPixel (type) * width;
-    P96TRACE  (("CalculateBytesPerRow() = %d\n", width)); 
+    P96TRACE  (("CalculateBytesPerRow() = %d\n", width));
 
     return width;
 }
@@ -1922,7 +1919,7 @@ uae_u32 picasso_CalculateBytesPerRow (void)
  * a0:	struct BoardInfo
  * d0:	BOOL state
  * This function enables and disables the video display.
- * 
+ *
  * NOTE: return the opposite of the state
  */
 uae_u32 picasso_SetDisplay (void)
@@ -1955,7 +1952,7 @@ static void PlanarToChunky (struct RenderInfo *ri, struct BitMap *bm,
     unsigned long rows, bitoffset = srcx & 7;
     long eol_offset;
 
-    /* if (mask != 0xFF) 
+    /* if (mask != 0xFF)
        write_log ("P2C - pixel-width = %d, bit-offset = %d\n", width, bitoffset); */
 
     /* Set up our bm->Planes[] pointers to the right horizontal offset */
@@ -2140,8 +2137,8 @@ static void PlanarToDirect (struct RenderInfo *ri, struct BitMap *bm,
 }
 
 /*
- * BlitPlanar2Direct: 
- * 
+ * BlitPlanar2Direct:
+ *
  * Synopsis:
  * BlitPlanar2Direct(bi, bm, ri, cim, SrcX, SrcY, DstX, DstY, SizeX, SizeY, MinTerm, Mask);
  * Inputs:
@@ -2157,14 +2154,14 @@ static void PlanarToDirect (struct RenderInfo *ri, struct BitMap *bm,
  * d5.w:SizeY
  * d6.b:MinTerm
  * d7.b:Mask
- * 
+ *
  * This function is currently used to blit from planar bitmaps within system memory to direct color
  * bitmaps (15, 16, 24 or 32 bit) on the board. Watch out for plane pointers that are 0x00000000 (represents
  * a plane with all bits "0") or 0xffffffff (represents a plane with all bits "1"). The ColorIndexMapping is
  * used to map the color index of each pixel formed by the bits in the bitmap's planes to a direct color value
  * which is written to the destination RenderInfo. The color mask and all colors within the mapping are words,
  * triple bytes or longwords respectively similar to the color values used in FillRect(), BlitPattern() or
- * BlitTemplate(). 
+ * BlitTemplate().
  */
 uae_u32 picasso_BlitPlanar2Direct (void)
 {
@@ -2415,13 +2412,13 @@ int picasso_display_mode_index (uae_u32 x, uae_u32 y, uae_u32 d)
 {
     int i;
     for (i = 0; i < mode_count; i++) {
-        if (DisplayModes[i].res.width == x
+	if (DisplayModes[i].res.width == x
 	    && DisplayModes[i].res.height == y
 	    && DisplayModes[i].depth == d)
-            break;
+	    break;
     }
     if (i == mode_count)
-        i = -1;
+	i = -1;
     return i;
 }
 

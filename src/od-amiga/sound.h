@@ -1,20 +1,20 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Support for Amiga audio.device and AHI.device sound.
-  * 
+  *
   * Copyright 1996, 1997, 1998 Samuel Devulder, Holger Jakob (AHI)
   */
 
 #ifdef HAVE_DEVICES_AHI_H
-#define USE_AHIDEVICE 
+#define USE_AHIDEVICE
 #ifdef FRAME_RATE_HACK
 /* holger:In this mode emulation speed is adjusted with sound dma
-          and sound output delay does not depend on sndbufsize
+	  and sound output delay does not depend on sndbufsize
 #define AHI_DMA_MODE
  */
 #endif
-#endif 
+#endif
 
 #include <exec/memory.h>
 #include <exec/devices.h>
@@ -55,7 +55,7 @@ static void BeginIO(struct IORequest *iorequest)
 
 #ifdef USE_AHIDEVICE
 #include <devices/ahi.h>
-extern struct AHIRequest *AHIio[]; 
+extern struct AHIRequest *AHIio[];
 extern struct AHIRequest *linkio;
 #ifdef AHI_DMA_MODE
 extern struct Library    *AHIBase;
@@ -81,9 +81,9 @@ extern ULONG AUDIO_FILE;
 static __inline__ void flush_sound_buffer(void)
 {
     if(AUDIO_FILE) {
-        Write(AUDIO_FILE, 
-              sndbuffer = sndbufpt = (uae_u16*)buffers[bufidx], 
-              sndbufsize);
+	Write(AUDIO_FILE,
+	      sndbuffer = sndbufpt = (uae_u16*)buffers[bufidx],
+	      sndbufsize);
     } else if(ahiopen) {
 #ifdef USE_AHIDEVICE
 	void *tmp;
@@ -95,10 +95,10 @@ static __inline__ void flush_sound_buffer(void)
 	AHIio[bufidx]->ahir_Std.io_Offset   = 0;
 	AHIio[bufidx]->ahir_Frequency       = currprefs.sound_freq;
 	if( currprefs.stereo )
-		AHIio[bufidx]->ahir_Type    = (currprefs.sound_bits==16) ? 
+		AHIio[bufidx]->ahir_Type    = (currprefs.sound_bits==16) ?
 						AHIST_S16S : AHIST_S8S;
 	else
-		AHIio[bufidx]->ahir_Type    = (currprefs.sound_bits==16) ? 
+		AHIio[bufidx]->ahir_Type    = (currprefs.sound_bits==16) ?
 						AHIST_M16S : AHIST_M8S;
 	AHIio[bufidx]->ahir_Volume          = 0x10000;          /* Full volume */
 	AHIio[bufidx]->ahir_Position        = 0x8000;           /* Centered */

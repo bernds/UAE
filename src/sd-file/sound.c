@@ -1,8 +1,8 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Support for Linux/USS sound
-  * 
+  *
   * Copyright 1997 Bernd Schmidt
   */
 
@@ -43,10 +43,10 @@ void close_sound(void)
     int t;
     uae_u32 v;
     char buf[4];
-    
+
     if (!have_sound)
 	return;
-    
+
     t = 0;
     v = sndbuf_written;
     buf[t] = v & 255;

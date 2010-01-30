@@ -41,13 +41,13 @@ static uae_u32 emulib_GetVersion (void)
  */
 static uae_u32 emulib_HardReset (void)
 {
-    uae_reset();
+    uae_reset(1);
     return 0;
 }
 
 static uae_u32 emulib_Reset (void)
 {
-    uae_reset();
+    uae_reset(0);
     return 0;
 }
 
@@ -140,7 +140,7 @@ static uae_u32 emulib_ChgCMemSize (uae_u32 memsize)
     m68k_dreg(regs, 0) = 0;
 
     currprefs.chipmem_size = memsize;
-    uae_reset();
+    uae_reset(0);
     return 1;
 }
 
@@ -158,7 +158,7 @@ static uae_u32 emulib_ChgSMemSize (uae_u32 memsize)
 
     m68k_dreg(regs, 0) = 0;
     currprefs.bogomem_size = memsize;
-    uae_reset ();
+    uae_reset (0);
     return 1;
 }
 
@@ -175,7 +175,7 @@ static uae_u32 emulib_ChgFMemSize (uae_u32 memsize)
     }
     m68k_dreg(regs, 0) = 0;
     currprefs.fastmem_size = memsize;
-    uae_reset ();
+    uae_reset (0);
     return 0;
 }
 

@@ -1,11 +1,11 @@
-/* 
- * sam: GCC has a bad feature ("bug" would a better word) for uae in 
+/*
+ * sam: GCC has a bad feature ("bug" would a better word) for uae in
  * libamiga.a: bltsize, bltcon0, ... are defined as absolute address
  * in memory, causing real customchip registers being modified when
- * UAE is running. (I hate this feature... It makes  me lost lots of 
+ * UAE is running. (I hate this feature... It makes  me lost lots of
  * time looking for a bug on my side =:-( ).
  *
- * This cures the problem (I hope, since I don't exactly know which 
+ * This cures the problem (I hope, since I don't exactly know which
  * variables need to be redefined for UAE):
  */
 /* 0.6.1 */
@@ -29,7 +29,7 @@
  * in libamiga.a, defining CUSTOM_NEED_TO_BE_REALLY_SURE will prevent
  * uae from using any absolute variable.
  */
-#ifdef AMIGALIB_NEED_TO_BE_REALLY_SURE 
+#ifdef AMIGALIB_NEED_TO_BE_REALLY_SURE
 #define bootrom my_bootrom
 #define cartridge my_cartridge
 #define romend my_romend

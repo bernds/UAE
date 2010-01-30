@@ -1,8 +1,8 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Support for Amiga audio.device sound
-  * 
+  *
   * Copyright 1996, 1997 Samuel Devulder
   */
 
@@ -49,8 +49,8 @@ static FILE *TST_AUDIO_FILE(char *buff, char *name, int rate, int bsize)
     sprintf(buff,name,rate,bsize);
     lock = pOS_LockObject(NULL, buff, FILELKACC_Exclusive|FILELKACC_NoReq);
     if(lock) {
-        pOS_UnlockObject(lock);
-        return fopen(buff,"wb");
+	pOS_UnlockObject(lock);
+	return fopen(buff,"wb");
     }
     return NULL;
 }
@@ -61,7 +61,7 @@ int setup_sound(void)
     return 1;
 }
 
-int init_sound (void) 
+int init_sound (void)
 {
     int rate;
     char buff[256],*devname = NULL;
@@ -77,44 +77,44 @@ int init_sound (void)
     /* check for $AUDIONAME or AUD: or AUDIO: device */
     devname = buff;
     AUDIO_FILE = TST_AUDIO_FILE(buff, getenv("AUDIONAME"),
-                                rate, sndbufsize);
+				rate, sndbufsize);
     if(!AUDIO_FILE) /* AHI */
     AUDIO_FILE = TST_AUDIO_FILE(buff, "AUDIO:FREQUENCY=%d/BUFFER=%d",
-                                rate, sndbufsize);
+				rate, sndbufsize);
     if(!AUDIO_FILE) /* AUD: */
     AUDIO_FILE = TST_AUDIO_FILE(buff, "AUDIO:FREQUENCY%d/BUFFER%d",
-                                rate, sndbufsize);
+				rate, sndbufsize);
     if(!AUDIO_FILE)
     AUDIO_FILE = TST_AUDIO_FILE(buff, "AUD:FREQUENCY%d/BUFFER%d",
-                                rate, sndbufsize);
+				rate, sndbufsize);
 
     /* else use audio.device */
     if(!AUDIO_FILE) {
-        if(!pOS_ConstructMsgPort(&AudioMP)) goto fail;
-        port_created = 1;
-        AudioIO      = (void*)pOS_CreateIORequest(&AudioMP,
-                                                  sizeof(struct pOS_AudioIO));
-        if(!AudioIO) goto fail;
+	if(!pOS_ConstructMsgPort(&AudioMP)) goto fail;
+	port_created = 1;
+	AudioIO      = (void*)pOS_CreateIORequest(&AudioMP,
+						  sizeof(struct pOS_AudioIO));
+	if(!AudioIO) goto fail;
 
-        if(pOS_OpenDevice(devname = "pAudio.device", 0, (void*)AudioIO, 0,0)) 
-            goto fail;
-        devopen = 1;
+	if(pOS_OpenDevice(devname = "pAudio.device", 0, (void*)AudioIO, 0,0))
+	    goto fail;
+	devopen = 1;
 
-        AudioIO->aio_Command                 = AUDIOCMD_AllocChannel;
-        AudioIO->aio_U.aio_AllocCh.alio_Tags = NULL;
-        if(pOS_DoIO((struct pOS_IORequest*)AudioIO)) goto fail;
-        channel_allocated = 1;
+	AudioIO->aio_Command                 = AUDIOCMD_AllocChannel;
+	AudioIO->aio_U.aio_AllocCh.alio_Tags = NULL;
+	if(pOS_DoIO((struct pOS_IORequest*)AudioIO)) goto fail;
+	channel_allocated = 1;
     }
 
     /* get the buffers */
     if(AUDIO_FILE) {
-        buffers[0] = malloc(sndbufsize);
-        buffers[1] = NULL;
-        if(!buffers[0]) goto fail;
+	buffers[0] = malloc(sndbufsize);
+	buffers[1] = NULL;
+	if(!buffers[0]) goto fail;
     } else {
-        buffers[0] = malloc(sndbufsize);
-        buffers[1] = malloc(sndbufsize);
-        if(!buffers[0] || !buffers[1]) goto fail;
+	buffers[0] = malloc(sndbufsize);
+	buffers[1] = malloc(sndbufsize);
+	if(!buffers[0] || !buffers[1]) goto fail;
     }
     bufidx = 0;
     sndbuffer = sndbufpt = (uae_u16*)buffers[bufidx];
@@ -132,8 +132,8 @@ int init_sound (void)
     sample_handler = sample8_handler;
 
     fprintf(stderr, "Sound driver found and configured for %d bits "
-                    "at %d Hz, buffer is %d bytes (%s)\n",
-                    8, rate, sndbufsize,devname);
+		    "at %d Hz, buffer is %d bytes (%s)\n",
+		    8, rate, sndbufsize,devname);
 
     sound_available = 1;
     return 1;
@@ -145,25 +145,25 @@ fail:
 void close_sound(void)
 {
     if(AUDIO_FILE) {
-        fclose(AUDIO_FILE);
-        AUDIO_FILE = NULL;
+	fclose(AUDIO_FILE);
+	AUDIO_FILE = NULL;
     }
     if(channel_allocated) {
-        AudioIO->aio_Command = AUDIOCMD_FreeChannel;
-        pOS_DoIO((struct pOS_IORequest*)AudioIO);
-        channel_allocated = 0;
+	AudioIO->aio_Command = AUDIOCMD_FreeChannel;
+	pOS_DoIO((struct pOS_IORequest*)AudioIO);
+	channel_allocated = 0;
     }
     if(devopen) {
-        pOS_CloseDevice((void*)AudioIO);
-        devopen = 0;
+	pOS_CloseDevice((void*)AudioIO);
+	devopen = 0;
     }
     if(AudioIO) {
-        pOS_DeleteIORequest((void*)AudioIO);
-        AudioIO = NULL;
+	pOS_DeleteIORequest((void*)AudioIO);
+	AudioIO = NULL;
     }
     if(port_created) {
-        pOS_DestructMsgPort(&AudioMP);
-        port_created = 0;
+	pOS_DestructMsgPort(&AudioMP);
+	port_created = 0;
     }
     if(buffers[0]) {free(buffers[0]);buffers[0] = 0;}
     if(buffers[1]) {free(buffers[1]);buffers[1] = 0;}

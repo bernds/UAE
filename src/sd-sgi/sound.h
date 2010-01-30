@@ -1,8 +1,8 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Support for the Silicon Graphics Audio Library (AL)
-  * 
+  *
   * Copyright 1998 Ari Heikkinen
   */
 

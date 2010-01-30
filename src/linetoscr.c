@@ -8,7 +8,7 @@ static NOINLINE int LNAME (int spix, int dpix, int stoppos)
     if (dp_for_drawing->ham_seen) {
 	/* HAM 6 / HAM 8 */
 	while (dpix < stoppos) {
-	    TYPE d = AGAC ? CONVERT_RGB (ham_linebuf[spix]) : xcolors[ham_linebuf[spix]];
+	    TYPE d = AGAC ? (TYPE)CONVERT_RGB (ham_linebuf[spix]) : (TYPE)xcolors[ham_linebuf[spix]];
 	    spix += SRC_INC;
 	    buf[dpix++] = d;
 	    if (HDOUBLE)

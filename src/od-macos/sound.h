@@ -1,8 +1,8 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Support for Mac OS sound
-  * 
+  *
   * Copyright 1996 Ernesto Corvi
   */
 
@@ -23,7 +23,7 @@ extern int sndbufsize;
 static __inline__ void flush_sound_buffer (void)
 {
     sndbufpt = buffer0;
-    
+
     theSndBuffer.samplePtr = (Ptr)buffer0;
     theSndBuffer.numChannels = 1;
     theSndBuffer.sampleRate = 0xac440000;
@@ -33,7 +33,7 @@ static __inline__ void flush_sound_buffer (void)
     theCmd.param1 = 0;
     theCmd.param2 = (long)&theSndBuffer;
     theCmd.cmd = bufferCmd;
-    SndDoCommand(newChannel, &theCmd, false);    
+    SndDoCommand(newChannel, &theCmd, false);
 }
 
 static __inline__ void check_sound_buffers (void)

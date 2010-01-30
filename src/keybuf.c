@@ -20,49 +20,18 @@
 #include "options.h"
 #include "keybuf.h"
 #include "keyboard.h"
-#include "joystick.h"
+#include "inputdevice.h"
 #include "custom.h"
+#include "savestate.h"
 
-static int fakestate[3][6] = { { 0, 0, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0 } };
+static int fakestate[2][7] = { {0},{0} };
 
-static int *fs_np;
-static int *fs_ck;
-static int *fs_se;
-
-void getjoystate(int nr, unsigned int *st, int *button)
-{
-    int *fake = 0;
-
-    if (JSEM_ISJOY0 (nr, &currprefs))
-	nr = 0;
-    else if (JSEM_ISJOY1 (nr, &currprefs))
-	nr = 1;
-    else if (JSEM_ISMOUSE (nr, &currprefs)) {
-	*st = 0;
-	*button = 0;
-	return;
-    } else
-	fake = fakestate[nr];
-
-    if (fake) {
-	int top = fake[0];
-	int bot = top ? 0 : fake[3];
-	int left = fake[1];
-	int right = left ? 0 : fake[2];
-	if (left) top = !top;
-	if (right) bot = !bot;
-	*st = bot | (right << 1) | (top << 8) | (left << 9);
-	*button = fake[4] | (!!fake[5] << 2);
-    } else
-	read_joystick (nr, st, button);
-    if ((*button & 5) == 4 && (n_frames & 1))
-	*button |= 1;
-}
+static int *fs_np, *fs_ck, *fs_se, *fs_xa1, *fs_xa2;
 
 /* Not static so the DOS code can mess with them */
 int kpb_first, kpb_last;
 
-int keybuf[256];
+static int keybuf[256];
 
 int keys_available (void)
 {
@@ -82,57 +51,133 @@ int get_next_key (void)
     return key;
 }
 
+static void do_fake (int nr)
+{
+    int *fake = fakestate[nr];
+
+    nr = compatibility_device[nr];
+    setjoystickstate (nr, 0, fake[1] ? -100 : (fake[2] ? 100 : 0), 100);
+    setjoystickstate (nr, 1, fake[0] ? -100 : (fake[3] ? 100 : 0), 100);
+    setjoybuttonstate (nr, 0, fake[4]);
+    setjoybuttonstate (nr, 1, fake[5]);
+    setjoybuttonstate (nr, 2, fake[6]);
+}
+
 void record_key (int kc)
 {
+    int fs = 0;
     int kpb_next = kpb_first + 1;
+    int k = kc >> 1;
+    int b = !(kc & 1);
 
+    //write_log ("got kc %02.2X\n", ((kc << 7) | (kc >> 1)) & 0xff);
     if (kpb_next == 256)
 	kpb_next = 0;
     if (kpb_next == kpb_last) {
 	write_log ("Keyboard buffer overrun. Congratulations.\n");
 	return;
     }
+
     if (fs_np != 0) {
-	switch (kc >> 1) {
-	case AK_NP8: fs_np[0] = !(kc & 1); return;
-	case AK_NP4: fs_np[1] = !(kc & 1); return;
-	case AK_NP6: fs_np[2] = !(kc & 1); return;
-	case AK_NP2: fs_np[3] = !(kc & 1); return;
-	case AK_NP0: case AK_NP5: fs_np[4] = !(kc & 1); return;
-	case AK_NPDEL: case AK_NPDIV: case AK_ENT: if (! (kc & 1)) fs_np[5] = ! fs_np[5]; return;
+	switch (k) {
+	case AK_NP8: fs = 1; fs_np[0] = b; break;
+	case AK_NP4: fs = 1; fs_np[1] = b; break;
+	case AK_NP6: fs = 1; fs_np[2] = b; break;
+	case AK_NP2: fs = 1; fs_np[3] = b; break;
+	case AK_NP0: case AK_NP5: fs = 1; fs_np[4] = b; break;
+	case AK_NPDEL: case AK_NPDIV: case AK_ENT: fs = 1; fs_np[5] = b; break;
 	}
     }
     if (fs_ck != 0) {
-	switch (kc >> 1) {
-	case AK_UP: fs_ck[0] = !(kc & 1); return;
-	case AK_LF: fs_ck[1] = !(kc & 1); return;
-	case AK_RT: fs_ck[2] = !(kc & 1); return;
-	case AK_DN: fs_ck[3] = !(kc & 1); return;
-	case AK_RCTRL: fs_ck[4] = !(kc & 1); return;
-	case AK_RSH: if (! (kc & 1)) fs_ck[5] = ! fs_ck[5]; return;
+	switch (k) {
+	case AK_UP: fs = 1; fs_ck[0] = b; break;
+	case AK_LF: fs = 1; fs_ck[1] = b; break;
+	case AK_RT: fs = 1; fs_ck[2] = b; break;
+	case AK_DN: fs = 1; fs_ck[3] = b; break;
+	case AK_RCTRL: case AK_RALT: fs = 1; fs_ck[4] = b; break;
+	case AK_RSH: fs = 1; fs_ck[5] = b; break;
 	}
     }
     if (fs_se != 0) {
-	switch (kc >> 1) {
-	case AK_T: fs_se[0] = !(kc & 1); return;
-	case AK_F: fs_se[1] = !(kc & 1); return;
-	case AK_H: fs_se[2] = !(kc & 1); return;
-	case AK_B: fs_se[3] = !(kc & 1); return;
-	case AK_LALT: fs_se[4] = !(kc & 1); return;
-	case AK_LSH: if (! (kc & 1)) fs_se[5] = ! fs_se[5]; return;
+	switch (k) {
+	case AK_T: fs = 1; fs_se[0] = b; break;
+	case AK_F: fs = 1; fs_se[1] = b; break;
+	case AK_H: fs = 1; fs_se[2] = b; break;
+	case AK_B: fs = 1; fs_se[3] = b; break;
+	case AK_LALT: fs = 1; fs_se[4] = b; break;
+	case AK_LSH: fs = 1; fs_se[5] = b; break;
 	}
     }
-    if ((kc >> 1) == AK_RCTRL) {
-	kc ^= AK_RCTRL << 1;
-	kc ^= AK_CTRL << 1;
+    if (fs_xa1 != 0) {
+	switch (k) {
+	case AK_NP8: fs = 1; fs_xa1[0] = b; break;
+	case AK_NP4: fs = 1; fs_xa1[1] = b; break;
+	case AK_NP6: fs = 1; fs_xa1[2] = b; break;
+	case AK_NP2: case AK_NP5: fs = 1; fs_xa1[3] = b; break;
+	case AK_CTRL: fs = 1; fs_xa1[4] = b; break;
+	case AK_LALT: fs = 1; fs_xa1[5] = b; break;
+	case AK_SPC: fs = 1; fs_xa1[6] = b; break;
+	}
     }
+    if (fs_xa2 != 0) {
+	switch (k) {
+	case AK_R: fs = 1; fs_xa2[0] = b; break;
+	case AK_D: fs = 1; fs_xa2[1] = b; break;
+	case AK_G: fs = 1; fs_xa2[2] = b; break;
+	case AK_F: fs = 1; fs_xa2[3] = b; break;
+	case AK_A: fs = 1; fs_xa2[4] = b; break;
+	case AK_S: fs = 1; fs_xa2[5] = b; break;
+	case AK_Q: fs = 1; fs_xa2[6] = b; break;
+	}
+    }
+
+    if (fs && currprefs.input_selected_setting == 0) {
+	if (JSEM_ISANYKBD (0, &currprefs))
+	    do_fake (0);
+	if (JSEM_ISANYKBD (1, &currprefs))
+	    do_fake (1);
+	return;
+    } else {
+	if ((kc >> 1) == AK_RCTRL) {
+	    kc ^= AK_RCTRL << 1;
+	    kc ^= AK_CTRL << 1;
+	}
+	if (fs_xa1 || fs_xa2) {
+	    int k2 = k;
+	    if (k == AK_1)
+		k2 = AK_F1;
+	    if (k == AK_2)
+		k2 = AK_F2;
+	    if (k == AK_3)
+		k2 = AK_LALT;
+	    if (k == AK_4)
+		k2 = AK_RALT;
+	    if (k == AK_6)
+		k2 = AK_DN;
+	    if (k == AK_LBRACKET || k == AK_LSH)
+		k2 = AK_SPC;
+	    if (k == AK_RBRACKET)
+		k2 = AK_RET;
+	    if (k == AK_C)
+		k2 = AK_1;
+	    if (k == AK_5)
+		k2 = AK_2;
+	    if (k == AK_Z)
+		k2 = AK_3;
+	    if (k == AK_X)
+		k2 = AK_4;
+	    if (k != k2)
+		kc = (k2 << 1) | (b ? 0 : 1);
+	}
+    }
+
     keybuf[kpb_first] = kc;
     kpb_first = kpb_next;
 }
 
 void joystick_setting_changed (void)
 {
-    fs_np = fs_ck = fs_se = 0;
+    fs_np = fs_ck = fs_se = fs_xa1 = fs_xa2 = 0;
 
     if (JSEM_ISNUMPAD (0, &currprefs))
 	fs_np = fakestate[0];
@@ -149,10 +194,38 @@ void joystick_setting_changed (void)
     else if (JSEM_ISSOMEWHEREELSE (1, &currprefs))
 	fs_se = fakestate[1];
 
-}
+    if (JSEM_ISXARCADE1 (0, &currprefs))
+	fs_xa1 = fakestate[0];
+    else if (JSEM_ISXARCADE1 (1, &currprefs))
+	fs_xa1 = fakestate[1];
+
+    if (JSEM_ISXARCADE2 (0, &currprefs))
+	fs_xa2 = fakestate[0];
+    else if (JSEM_ISXARCADE2 (1, &currprefs))
+	fs_xa2 = fakestate[1];
+
+ }
 
 void keybuf_init (void)
 {
     kpb_first = kpb_last = 0;
-    joystick_setting_changed ();
+    inputdevice_updateconfig (&currprefs);
+}
+
+
+uae_u8 *save_keyboard (int *len)
+{
+    uae_u8 *dst, *t;
+    dst = t = malloc (8);
+    save_u32 (getcapslockstate() ? 1 : 0);
+    save_u32 (0);
+    *len = 8;
+    return t;
+}
+
+uae_u8 *restore_keyboard (uae_u8 *src)
+{
+    setcapslockstate (restore_u32 ());
+    restore_u32 ();
+    return src;
 }

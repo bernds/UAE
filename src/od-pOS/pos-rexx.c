@@ -1,8 +1,8 @@
  /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * pos-rexx.c
-  * 
+  *
   * Copyright 1997 Samuel Devulder.
   */
 
@@ -29,7 +29,7 @@ void rexx_handle_events(void) {}
 #include <rexx/errors.h>
 
 /* this prevent a conflict between <rexx/rexxio.h> and <sys/dirent.h> */
-#undef DT_DIR 
+#undef DT_DIR
 
 /****************************************************************************/
 
@@ -79,7 +79,7 @@ void rexx_handle_events(void);
 /****************************************************************************/
 
 struct /*RxsLib*/ Library
-                        *RexxSysBase;
+			*RexxSysBase;
 static struct MsgPort   *ARexxPort;
 static gui_rexx_s        gui_rexx[GUI_REXX_MAX];
 static char              RESULT[RESULT_LEN];
@@ -104,17 +104,17 @@ int rexx_init(void)
     quit_program = 0;
     RexxSysBase = (void*)OpenLibrary("rexxsyslib.library",0L);
     if(!RexxSysBase) {
-        fprintf(stderr, "Can't find rexxsyslib.library!\n");
-        return 1;
+	fprintf(stderr, "Can't find rexxsyslib.library!\n");
+	return 1;
     }
     if(FindPort(UAE_PORTNAME)) {
-        fprintf(stderr, "Port \"%s\" already exists!\n",UAE_PORTNAME);
-        return 1;    
+	fprintf(stderr, "Port \"%s\" already exists!\n",UAE_PORTNAME);
+	return 1;
     }
     ARexxPort = CreatePort(UAE_PORTNAME,0);
     if(!ARexxPort) {
-        fprintf(stderr, "Failed to open AREXX port \"%s\"!\n",UAE_PORTNAME);
-        return 1;
+	fprintf(stderr, "Failed to open AREXX port \"%s\"!\n",UAE_PORTNAME);
+	return 1;
     }
     fprintf(stderr,"Rexx port \"%s\" installed.\n", UAE_PORTNAME);
     rexx_handle_events();
@@ -126,30 +126,30 @@ int rexx_init(void)
 void rexx_exit(void)
 {
     if(ARexxPort) {
-        struct RexxMsg *msg;
-        gui_rexx_s *gui = &gui_rexx[ON_EXIT];
+	struct RexxMsg *msg;
+	gui_rexx_s *gui = &gui_rexx[ON_EXIT];
 
-        if(gui->port[0] && gui->cmd_on[0]) {
-            if(ADDRESS(gui->port, gui->cmd_on) != RC_OK) {
-                fprintf(stderr,"%s:%s:%s\n", gui->port,
-                                             gui->cmd_on,
-                                             RESULT);
-            }
-            gui->port[0] = '\0';
-         }
-        Forbid();
-        while((msg = (struct RexxMsg*)GetMsg(ARexxPort))) {
-           msg->rm_Result1 = RC_ERROR;
-           msg->rm_Result2 = NULL;
-           ReplyMsg((void*)msg);
-        }
-        DeletePort(ARexxPort);
-        Permit();
-        ARexxPort = NULL;
+	if(gui->port[0] && gui->cmd_on[0]) {
+	    if(ADDRESS(gui->port, gui->cmd_on) != RC_OK) {
+		fprintf(stderr,"%s:%s:%s\n", gui->port,
+					     gui->cmd_on,
+					     RESULT);
+	    }
+	    gui->port[0] = '\0';
+	 }
+	Forbid();
+	while((msg = (struct RexxMsg*)GetMsg(ARexxPort))) {
+	   msg->rm_Result1 = RC_ERROR;
+	   msg->rm_Result2 = NULL;
+	   ReplyMsg((void*)msg);
+	}
+	DeletePort(ARexxPort);
+	Permit();
+	ARexxPort = NULL;
     }
     if(RexxSysBase) {
-        CloseLibrary((void*)RexxSysBase);
-        RexxSysBase = NULL;
+	CloseLibrary((void*)RexxSysBase);
+	RexxSysBase = NULL;
     }
 }
 
@@ -171,15 +171,15 @@ static int INSERT(char *line)
     int drive = matchnum(&line);
     if(drive<0 || drive>3) return RC_WARN;
     if(disk_empty(drive)) {
-        char buff[256];
-        char *name;
-        extractstr(&line, buff, 256);
-        name = to_unix_path(buff);
-        disk_insert(drive, name);
-        free(name);
+	char buff[256];
+	char *name;
+	extractstr(&line, buff, 256);
+	name = to_unix_path(buff);
+	disk_insert(drive, name);
+	free(name);
     } else {
-        sprintf(RESULT,"Drive %d not empty!",drive);
-        return RC_WARN;
+	sprintf(RESULT,"Drive %d not empty!",drive);
+	return RC_WARN;
     }
     return RC_OK;
 }
@@ -212,17 +212,17 @@ static int QUERY(char *line)
     else if(matchstr(&line, "FAKEJOYSTICK")) res = fake_joystick?"1":"0";
     else if(matchstr(&line, "DISPLAY"))  res = inhibit_frame?"0":"1";
     else if(matchstr(&line, "FRAMERATE")) {
-        sprintf(RESULT,"%d",framerate);
-        return RC_OK;
+	sprintf(RESULT,"%d",framerate);
+	return RC_OK;
     } else if(matchstr(&line, "SOUND")) {
-        sprintf(RESULT,"%d",sound_available?produce_sound:-1);
-        return RC_OK;
-    } 
+	sprintf(RESULT,"%d",sound_available?produce_sound:-1);
+	return RC_OK;
+    }
     else return RC_ERROR;
 
     if(res) {
-        strncpy(RESULT, res, RESULT_LEN);
-        if(alc) free(res);
+	strncpy(RESULT, res, RESULT_LEN);
+	if(alc) free(res);
     }
     return RC_OK;
 }
@@ -246,16 +246,16 @@ static int FEEDBACK(char *line)
     else return RC_ERROR;
 
     while(1) {
-        if(matchstr(&line, "ADDRESS") ||
-           matchstr(&line, "PORT")) {
-            extractstr(&line, gui->port, PORT_LEN);
-        } else if(matchstr(&line,"COMMAND") ||
-                  matchstr(&line,"CMD") ||
-                  matchstr(&line,"CMD_ON")) {
-            extractstr(&line, gui->cmd_on,  CMD_LEN);
-        } else if(matchstr(&line,"CMD_OFF")) {
-            extractstr(&line, gui->cmd_off, CMD_LEN);
-        } else break;
+	if(matchstr(&line, "ADDRESS") ||
+	   matchstr(&line, "PORT")) {
+	    extractstr(&line, gui->port, PORT_LEN);
+	} else if(matchstr(&line,"COMMAND") ||
+		  matchstr(&line,"CMD") ||
+		  matchstr(&line,"CMD_ON")) {
+	    extractstr(&line, gui->cmd_on,  CMD_LEN);
+	} else if(matchstr(&line,"CMD_OFF")) {
+	    extractstr(&line, gui->cmd_off, CMD_LEN);
+	} else break;
     }
     return RC_OK;
 }
@@ -265,16 +265,16 @@ static int FEEDBACK(char *line)
 static int VERSION(char *line)
 {
     if(matchstr(&line,"STRING")) {
-        sprintf(RESULT,
-                "UAE-%d.%d.%d © by Bernd Schmidt & contributors, "
-                "Amiga Port by Samuel Devulder.",
-                (version / 100) % 10, (version / 10) % 10, version % 10);
+	sprintf(RESULT,
+		"UAE-%d.%d.%d © by Bernd Schmidt & contributors, "
+		"Amiga Port by Samuel Devulder.",
+		(version / 100) % 10, (version / 10) % 10, version % 10);
     } else if(matchstr(&line,"NUM")) {
-        sprintf(RESULT,"%d",version);
+	sprintf(RESULT,"%d",version);
     } else if(matchstr(&line,"AUTHOR")) {
-        sprintf(RESULT,"© by Bernd Schmidt & contributors");
+	sprintf(RESULT,"© by Bernd Schmidt & contributors");
     } else if(matchstr(&line,"PORT")) {
-        sprintf(RESULT,"Amiga Port by Samuel Devulder");
+	sprintf(RESULT,"Amiga Port by Samuel Devulder");
     } else return RC_ERROR;
     return RC_OK;
 }
@@ -286,10 +286,10 @@ static int FRAMERATE(char *line)
     int num;
     num = matchnum(&line);
     if(num>=1 && num<=20) {
-        framerate = num;
+	framerate = num;
     } else {
-        sprintf(RESULT,"Invalid frame rate: %d\n", num);
-        return RC_WARN;
+	sprintf(RESULT,"Invalid frame rate: %d\n", num);
+	return RC_WARN;
     }
     return RC_OK;
 }
@@ -321,8 +321,8 @@ static int DISPLAY(char *line)
 static int SOUND(char *line)
 {
     if(!sound_available) {
-        sprintf(RESULT,"Sound not available!");
-        return RC_WARN;
+	sprintf(RESULT,"Sound not available!");
+	return RC_WARN;
     }
 
     if     (matchstr(&line,"ON"))     produce_sound = 2;
@@ -361,17 +361,17 @@ void rexx_handle_events(void)
 {
     struct RexxMsg *msg;
     while((msg = (struct RexxMsg*)GetMsg(ARexxPort))) {
-        if(!(msg->rm_Action & RXCOMM)) {
-            fprintf(stderr,"Unknown action '%08X' recieved!\n",
-                    msg->rm_Action);
-            continue;
-        }
-        msg->rm_Result1 = process_cmd(msg->rm_Args[0]);
-        msg->rm_Result2 = NULL;
-        if(msg->rm_Action & RXFF_RESULT) {
-            msg->rm_Result2 = (LONG)CreateArgstring(RESULT,strlen(RESULT));
-        }
-        ReplyMsg((void*)msg);
+	if(!(msg->rm_Action & RXCOMM)) {
+	    fprintf(stderr,"Unknown action '%08X' recieved!\n",
+		    msg->rm_Action);
+	    continue;
+	}
+	msg->rm_Result1 = process_cmd(msg->rm_Args[0]);
+	msg->rm_Result2 = NULL;
+	if(msg->rm_Action & RXFF_RESULT) {
+	    msg->rm_Result2 = (LONG)CreateArgstring(RESULT,strlen(RESULT));
+	}
+	ReplyMsg((void*)msg);
     }
 }
 
@@ -391,11 +391,11 @@ void rexx_led(int led, int on)
     if(led == 4) gui = &gui_rexx[LED_DF3];
 
     if(gui->port[0] && gui->cmd_on[0] && gui->cmd_off[0]) {
-        if(ADDRESS(gui->port, on ? gui->cmd_on : gui->cmd_off) != RC_OK) {
-            fprintf(stderr,"%s:%s:%s\n", gui->port,
-                                         on ? gui->cmd_on : gui->cmd_off,
-                                         RESULT);
-        }
+	if(ADDRESS(gui->port, on ? gui->cmd_on : gui->cmd_off) != RC_OK) {
+	    fprintf(stderr,"%s:%s:%s\n", gui->port,
+					 on ? gui->cmd_on : gui->cmd_off,
+					 RESULT);
+	}
     }
 }
 
@@ -407,13 +407,13 @@ void rexx_filename(int num, char *filename)
     if(num < 0 || num > 3) return;
     gui = &gui_rexx[NAME_DF0 + num];
     if(gui->port[0] && gui->cmd_on[0]) {
-        char buf[CMD_LEN];
-        if(!(filename = from_unix_path(filename))) return;
-        sprintf(buf, gui->cmd_on, filename);
-        free(filename);
-        if(ADDRESS(gui->port, buf) != RC_OK) {
-            fprintf(stderr,"%s:%s:%s\n", gui->port, buf, RESULT);
-        }
+	char buf[CMD_LEN];
+	if(!(filename = from_unix_path(filename))) return;
+	sprintf(buf, gui->cmd_on, filename);
+	free(filename);
+	if(ADDRESS(gui->port, buf) != RC_OK) {
+	    fprintf(stderr,"%s:%s:%s\n", gui->port, buf, RESULT);
+	}
     }
 }
 
@@ -423,36 +423,36 @@ void rexx_filename(int num, char *filename)
 static int ADDRESS(char *hostname, char *cmd)
 {
     struct MsgPort *RexxPort,
-                   *ReplyPort;
+		   *ReplyPort;
     struct RexxMsg *HostMsg,
-                   *answer;
+		   *answer;
     int result = RC_WARN;
 
     if(!stricmp(hostname, "COMMAND")) {
-        return SystemTagList(cmd,NULL);
+	return SystemTagList(cmd,NULL);
     }
 
     if((RexxPort = (void *)FindPort(hostname))) {
-        if((ReplyPort = (void *)CreateMsgPort())) {
-            if((HostMsg = CreateRexxMsg(ReplyPort, NULL, hostname))) {
-                if((HostMsg->rm_Args[0] = CreateArgstring(cmd,strlen(cmd)))) {
-                    HostMsg->rm_Action  = RXCOMM | RXFF_RESULT;
-                    PutMsg(RexxPort, (void*)HostMsg);
-                    WaitPort(ReplyPort);
-                    while(!(answer = (void *)GetMsg(ReplyPort)));
-                    result = answer->rm_Result1;
-                    if(result == RC_OK) {
-                        if(answer->rm_Result2) {
-                        strncpy(RESULT,(char *)answer->rm_Result2,RESULT_LEN);
-                        DeleteArgstring((char *)answer->rm_Result2);
-                        } else RESULT[0] = '\0';
-                    }
-                    DeleteArgstring(HostMsg->rm_Args[0]);
-                } else strcpy(RESULT, "Can't create argstring!");
-                DeleteRexxMsg(HostMsg);
-            } else strcpy(RESULT, "Can't create rexx message!");
-            DeleteMsgPort(ReplyPort);
-        } else strcpy(RESULT, "Can't alloc reply port!");
+	if((ReplyPort = (void *)CreateMsgPort())) {
+	    if((HostMsg = CreateRexxMsg(ReplyPort, NULL, hostname))) {
+		if((HostMsg->rm_Args[0] = CreateArgstring(cmd,strlen(cmd)))) {
+		    HostMsg->rm_Action  = RXCOMM | RXFF_RESULT;
+		    PutMsg(RexxPort, (void*)HostMsg);
+		    WaitPort(ReplyPort);
+		    while(!(answer = (void *)GetMsg(ReplyPort)));
+		    result = answer->rm_Result1;
+		    if(result == RC_OK) {
+			if(answer->rm_Result2) {
+			strncpy(RESULT,(char *)answer->rm_Result2,RESULT_LEN);
+			DeleteArgstring((char *)answer->rm_Result2);
+			} else RESULT[0] = '\0';
+		    }
+		    DeleteArgstring(HostMsg->rm_Args[0]);
+		} else strcpy(RESULT, "Can't create argstring!");
+		DeleteRexxMsg(HostMsg);
+	    } else strcpy(RESULT, "Can't create rexx message!");
+	    DeleteMsgPort(ReplyPort);
+	} else strcpy(RESULT, "Can't alloc reply port!");
     } else sprintf(RESULT, "Port \"%s\" not found!",hostname);
     return result;
 }
@@ -469,9 +469,9 @@ static int matchstr(char **line,char *pat)
     while(*s && (tolower(*s)==tolower(*pat)) && (!match || *s!=match)) {++s;++pat;}
     if(match && *s==match && s[1]) ++s;
     if(!*pat && (!*s || isspace(*s))) {
-        while(isspace(*s)) ++s;
-        *line = s;
-        return 1;
+	while(isspace(*s)) ++s;
+	*line = s;
+	return 1;
     }
     return 0;
 }
@@ -487,10 +487,10 @@ static void extractstr(char **line, char *result, int len)
 
     if(*s=='\"' || *s=='\'') match = *s++;
     while(*s && *s != match) {
-        if(*s == '\\' && (s[1] == '\'' || s[1] == '\"')) ++s;
-        if(len > 1) {*result++ = *s;--len;}
-        ++s;
-        if(!match && isspace(*s)) break;
+	if(*s == '\\' && (s[1] == '\'' || s[1] == '\"')) ++s;
+	if(len > 1) {*result++ = *s;--len;}
+	++s;
+	if(!match && isspace(*s)) break;
     }
     if(match && *s == match) ++s;
     while(isspace(*s)) ++s;

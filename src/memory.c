@@ -20,6 +20,7 @@
 #include "newcpu.h"
 #include "autoconf.h"
 #include "savestate.h"
+#include "crc32.h"
 
 #ifdef USE_MAPPED_MEMORY
 #include <sys/mman.h>
@@ -64,7 +65,7 @@ void romlist_add (char *path, struct romdata *rd)
 char *romlist_get (struct romdata *rd)
 {
     int i;
-    
+
     if (!rd)
 	return 0;
     for (i = 0; i < romlist_cnt; i++) {
@@ -139,11 +140,20 @@ static struct romdata roms[] = {
     { NULL, 0, 0, 0, 0, 0, 0, 0, 0 }
 };
 
+static void decode_cloanto_rom_do (uae_u8 *mem, int size, int real_size, uae_u8 *key, int keysize)
+{
+    long cnt, t;
+    for (t = cnt = 0; cnt < size; cnt++, t = (t + 1) % keysize)  {
+	mem[cnt] ^= key[t];
+	if (real_size == cnt + 1)
+	    t = keysize - 1;
+    }
+}
+
 static int decode_cloanto_rom (uae_u8 *mem, int size, int real_size)
 {
     FILE *keyf;
     uae_u8 *p;
-    long cnt, t;
     int keysize;
 
     if (strlen (currprefs.keyfile) == 0) {
@@ -158,14 +168,93 @@ static int decode_cloanto_rom (uae_u8 *mem, int size, int real_size)
 
     p = (uae_u8 *) xmalloc (524288);
     keysize = fread (p, 1, 524288, keyf);
-    for (t = cnt = 0; cnt < size; cnt++, t = (t + 1) % keysize) {
-	mem[cnt] ^= p[t];
-	if (real_size == cnt + 1)
-	    t = keysize - 1;
-    }
+    decode_cloanto_rom_do (mem, size, real_size, p, keysize);
     fclose (keyf);
     free (p);
     return 1;
+}
+
+struct romdata *getromdatabyname (char *name)
+{
+    char tmp[1024];
+    int i = 0;
+    while (roms[i].name) {
+	getromname (&roms[i], tmp);
+	if (!strcmp (tmp, name) || !strcmp (roms[i].name, name))
+	    return &roms[i];
+	i++;
+    }
+    return 0;
+}
+
+struct romdata *getromdatabyid (int id)
+{
+    int i = 0;
+    while (roms[i].name) {
+	if (id == roms[i].id)
+	    return &roms[i];
+	i++;
+    }
+    return 0;
+}
+
+struct romdata *getromdatabycrc (uae_u32 crc32)
+{
+    int i = 0;
+    while (roms[i].name) {
+	if (crc32 == roms[i].crc32)
+	    return &roms[i];
+	i++;
+    }
+    return 0;
+}
+
+struct romdata *getromdatabydata (uae_u8 *rom, int size)
+{
+    int i;
+    uae_u32 crc32a, crc32b, crc32c;
+    uae_u8 tmp[4];
+    uae_u8 *tmpbuf = NULL;
+
+    if (size > 11 && !memcmp (rom, "AMIROMTYPE1", 11)) {
+	uae_u8 *tmpbuf = xmalloc (size);
+	int tmpsize = size - 11;
+	memcpy (tmpbuf, rom + 11, tmpsize);
+	decode_cloanto_rom (tmpbuf, tmpsize, tmpsize);
+	rom = tmpbuf;
+	size = tmpsize;
+    }
+    crc32a = get_crc32 (rom, size);
+    crc32b = get_crc32 (rom, size / 2);
+     /* ignore AR IO-port range until we have full dump */
+    memcpy (tmp, rom, 4);
+    memset (rom, 0, 4);
+    crc32c = get_crc32 (rom, size);
+    memcpy (rom, tmp, 4);
+    i = 0;
+    while (roms[i].name) {
+	if (roms[i].crc32) {
+	    if (crc32a == roms[i].crc32 || crc32b == roms[i].crc32)
+		return &roms[i];
+	    if (crc32c == roms[i].crc32 && roms[i].type == ROMTYPE_AR)
+		return &roms[i];
+	}
+	i++;
+    }
+    free (tmpbuf);
+    return 0;
+}
+
+void getromname (struct romdata *rd, char *name)
+{
+    name[0] = 0;
+    if (rd->type == ROMTYPE_ARCADIA)
+	strcat (name, "Arcadia ");
+    strcat (name, rd->name);
+    if (rd->revision)
+	sprintf (name + strlen (name), " rev %d.%d", rd->version, rd->revision);
+    if (rd->size > 0)
+	sprintf (name + strlen (name), " (%dk)", (rd->size + 1023) / 1024);
 }
 
 addrbank *mem_banks[65536];
@@ -814,7 +903,7 @@ int REGPARAM2 default_check (uaecptr a, uae_u32 b)
 uae_u8 REGPARAM2 *default_xlate (uaecptr a)
 {
     write_log ("Your Amiga program just did something terribly stupid\n");
-    uae_reset ();
+    uae_reset (1);
     return kickmem_xlate (get_long (0xF80000));	/* So we don't crash. */
 }
 
@@ -1439,16 +1528,26 @@ void restore_bram (int len, long filepos)
 
 uae_u8 *restore_rom (uae_u8 *src)
 {
+    uae_u32 crc32;
+    int i;
+
     restore_u32 ();
     restore_u32 ();
     restore_u32 ();
     restore_u32 ();
-    restore_u32 ();
+    crc32 = restore_u32 ();
+
+    for (i = 0; i < romlist_cnt; i++) {
+	if (rl[i].rd->crc32 == crc32 && crc32) {
+	    strncpy (changed_prefs.romfile, rl[i].path, 255);
+	    break;
+	}
+    }
 
     return src;
 }
 
-uae_u8 *save_rom (int first, int *len)
+uae_u8 *save_rom (int first, int *len, uae_u8 *dstptr)
 {
     static int count;
     uae_u8 *dst, *dstbak;
@@ -1483,12 +1582,15 @@ uae_u8 *save_rom (int first, int *len)
 	if (mem_size)
 	    break;
     }
-    dstbak = dst = malloc (4 + 4 + 4 + 4 + 4 + mem_size);
+    if (dstptr)
+	dstbak = dst = dstptr;
+    else
+	dstbak = dst = malloc (4 + 4 + 4 + 4 + 4 + mem_size);
     save_u32 (mem_start);
     save_u32 (mem_size);
     save_u32 (mem_type);
     save_u32 (longget (mem_start + 12));	/* version+revision */
-    save_u32 (0);
+    save_u32 (get_crc32 (kickmemory, mem_size));
     sprintf (dst, "Kickstart %d.%d", wordget (mem_start + 12), wordget (mem_start + 14));
     dst += strlen (dst) + 1;
     if (saverom) {

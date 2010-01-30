@@ -1,8 +1,8 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Support for Amiga audio.device sound
-  * 
+  *
   * Copyright 1996, 1997, 1998 Samuel Devulder, Holger Jakob (AHI).
   *
   * History:
@@ -35,12 +35,12 @@
 #endif
 
 #ifdef USE_AHIDEVICE
-struct MsgPort    *AHImp=NULL; 
+struct MsgPort    *AHImp=NULL;
 struct AHIRequest *AHIio[2]={NULL,NULL};
 struct AHIRequest *linkio=NULL;
 
-/* sam: AHI_DMA_MODE come from Holger Jakob. In this mode, uae 
-   will output the sound in real time. It is to be used in conjunction 
+/* sam: AHI_DMA_MODE come from Holger Jakob. In this mode, uae
+   will output the sound in real time. It is to be used in conjunction
    with FRAME_RATE_HACK. Use this on fast hardwares only! */
 #ifdef AHI_DMA_MODE
 #ifndef USE_CLIB
@@ -92,7 +92,7 @@ signed long bufsamples;
 #endif /* AHI_DMA_MODE */
 #endif /* AHI_DEVICE */
 
-#define CIAAPRA 0xBFE001 
+#define CIAAPRA 0xBFE001
 #define CUSTOM  0xDFF000
 
 static struct Custom *custom= (struct Custom*) CUSTOM;
@@ -143,7 +143,7 @@ static char* open_AHI(void)
 {
 #ifdef USE_AHIDEVICE
     if( (AHImp=CreateMsgPort()) ) {
-    if( (AHIio[0]=(struct AHIRequest *)CreateIORequest(AHImp,sizeof(struct AHIRequest))) ) { 
+    if( (AHIio[0]=(struct AHIRequest *)CreateIORequest(AHImp,sizeof(struct AHIRequest))) ) {
     AHIio[0]->ahir_Version=4;
 #ifdef AHI_DMA_MODE
     if( !OpenDevice(AHINAME,AHI_NO_UNIT,(struct IORequest *)AHIio[0],NULL) ) {
@@ -181,12 +181,12 @@ static void close_AHI(void)
       }
 #endif
       if(AHIio[0]->ahir_Std.io_Length) {
-        AbortIO((struct IORequest *) AHIio[0]);
-        WaitIO((struct IORequest *) AHIio[0]);
+	AbortIO((struct IORequest *) AHIio[0]);
+	WaitIO((struct IORequest *) AHIio[0]);
       }
       if(linkio) { /* Only if the second request was started */
-        AbortIO((struct IORequest *) AHIio[1]);
-        WaitIO((struct IORequest *) AHIio[1]);
+	AbortIO((struct IORequest *) AHIio[1]);
+	WaitIO((struct IORequest *) AHIio[1]);
       }
       CloseDevice((struct IORequest *)AHIio[0]);
       DeleteIORequest((void*)AHIio[0]);
@@ -198,7 +198,7 @@ static void close_AHI(void)
 #endif
 }
 
-int init_sound (void) 
+int init_sound (void)
 { /* too complex ? No it is only the allocation of a single channel ! */
   /* it would have been far less painfull if AmigaOS provided a */
   /* SOUND: device handler */
@@ -206,9 +206,9 @@ int init_sound (void)
     char buff[256],*devname = NULL;
 
     atexit(close_sound); /* if only amiga os had resource tracking */
-    
+
     /* determine the clock */
-    { 
+    {
 	struct GfxBase *GB;
 	GB = (void*)OpenLibrary("graphics.library",0L);
 	if(!GB) goto fail;
@@ -221,16 +221,16 @@ int init_sound (void)
 
     /* check buffsize */
     if (currprefs.sound_maxbsiz < 2 || currprefs.sound_maxbsiz > (256*1024)) {
-        fprintf(stderr, "Sound buffer size %d out of range.\n", currprefs.sound_maxbsiz);
-        currprefs.sound_maxbsiz = 8192;
-    } 
+	fprintf(stderr, "Sound buffer size %d out of range.\n", currprefs.sound_maxbsiz);
+	currprefs.sound_maxbsiz = 8192;
+    }
     sndbufsize = (currprefs.sound_maxbsiz + 1)&~1;
 
     /* check freq */
     if (!currprefs.sound_freq) currprefs.sound_freq = 1;
     if (clockval/currprefs.sound_freq < 80/*124*/ || clockval/currprefs.sound_freq > 65535) {
 	fprintf(stderr, "Can't use sound with desired frequency %d Hz\n", currprefs.sound_freq);
-        currprefs.sound_freq = 22000;
+	currprefs.sound_freq = 22000;
     }
     rate   = currprefs.sound_freq;
     period = (uae_u16)(clockval/rate);
@@ -238,47 +238,47 @@ int init_sound (void)
     /* check for $AUDIONAME */
     devname = buff;
     AUDIO_FILE = TST_AUDIO_FILE(buff, getenv("AUDIONAME"),
-                                rate, sndbufsize);
+				rate, sndbufsize);
 
     if(!AUDIO_FILE) {char *s=open_AHI();if(s) devname=s;}
 
     if(!AUDIO_FILE && !ahiopen) /* AHI dos-handler */
     AUDIO_FILE = TST_AUDIO_FILE(buff, "AUDIO:FREQUENCY=%d/BUFFER=%d",
-                                rate, sndbufsize);
+				rate, sndbufsize);
     /* check for AUD: or AUDIO: device */
     if(!AUDIO_FILE && !ahiopen) /* AUDIO: */
     AUDIO_FILE = TST_AUDIO_FILE(buff, "AUDIO:FREQUENCY%d/BUFFER%d",
-                                rate, sndbufsize);
+				rate, sndbufsize);
     if(!AUDIO_FILE && !ahiopen) /* AUD: */
     AUDIO_FILE = TST_AUDIO_FILE(buff, "AUD:FREQUENCY%d/BUFFER%d",
-                                rate, sndbufsize);
-                                
-    if(!AUDIO_FILE && !ahiopen) {
-        /* else use the plain old audio.device */
-        /* setup the stuff */
-        AudioMP = CreateMsgPort();
-        if(!AudioMP) goto fail;
-            AudioIO = (struct IOAudio *)CreateIORequest(AudioMP, 
-                                                    sizeof(struct IOAudio));
-        if(!AudioIO) goto fail;
+				rate, sndbufsize);
 
-        AudioIO->ioa_Request.io_Message.mn_Node.ln_Pri /*pfew!!*/ = 85;
-        AudioIO->ioa_Data = whichchannel;
-        AudioIO->ioa_Length = sizeof(whichchannel);
-        AudioIO->ioa_AllocKey = 0;
-        if(OpenDevice(devname = AUDIONAME, 0, (void*)AudioIO, 0)) goto fail;
-        devopen = 1;
+    if(!AUDIO_FILE && !ahiopen) {
+	/* else use the plain old audio.device */
+	/* setup the stuff */
+	AudioMP = CreateMsgPort();
+	if(!AudioMP) goto fail;
+	    AudioIO = (struct IOAudio *)CreateIORequest(AudioMP,
+						    sizeof(struct IOAudio));
+	if(!AudioIO) goto fail;
+
+	AudioIO->ioa_Request.io_Message.mn_Node.ln_Pri /*pfew!!*/ = 85;
+	AudioIO->ioa_Data = whichchannel;
+	AudioIO->ioa_Length = sizeof(whichchannel);
+	AudioIO->ioa_AllocKey = 0;
+	if(OpenDevice(devname = AUDIONAME, 0, (void*)AudioIO, 0)) goto fail;
+	devopen = 1;
     }
 
     /* get the buffers */
     if(AUDIO_FILE) {
-        buffers[0] = (void*)AllocMem(sndbufsize,MEMF_ANY|MEMF_CLEAR);
-        buffers[1] = NULL;
-        if(!buffers[0]) goto fail;
+	buffers[0] = (void*)AllocMem(sndbufsize,MEMF_ANY|MEMF_CLEAR);
+	buffers[1] = NULL;
+	if(!buffers[0]) goto fail;
     } else if( ahiopen ) {
-        buffers[0] = (void*)AllocMem(sndbufsize,MEMF_PUBLIC|MEMF_CLEAR);
-        buffers[1] = (void*)AllocMem(sndbufsize,MEMF_PUBLIC|MEMF_CLEAR);
-        if(!buffers[0] || !buffers[1]) goto fail;
+	buffers[0] = (void*)AllocMem(sndbufsize,MEMF_PUBLIC|MEMF_CLEAR);
+	buffers[1] = (void*)AllocMem(sndbufsize,MEMF_PUBLIC|MEMF_CLEAR);
+	if(!buffers[0] || !buffers[1]) goto fail;
 
 #ifdef AHI_DMA_MODE
 	sndbufptrmax = (uae_u16 *)(((uae_u8 *)buffers[0]) + sndbufsize);
@@ -305,9 +305,9 @@ int init_sound (void)
 	AHI_SetEffect(&effect,actrl);
 #endif /* !AHI_DMA_MODE && ! FRAME_RATE_HACK */
     } else {
-        buffers[0] = (void*)AllocMem(sndbufsize,MEMF_CHIP|MEMF_CLEAR);
-        buffers[1] = (void*)AllocMem(sndbufsize,MEMF_CHIP|MEMF_CLEAR);
-        if(!buffers[0] || !buffers[1]) goto fail;
+	buffers[0] = (void*)AllocMem(sndbufsize,MEMF_CHIP|MEMF_CLEAR);
+	buffers[1] = (void*)AllocMem(sndbufsize,MEMF_CHIP|MEMF_CLEAR);
+	if(!buffers[0] || !buffers[1]) goto fail;
     }
     bufidx = 0;
     sndbuffer = sndbufpt = (uae_u16*)buffers[bufidx];
@@ -319,7 +319,7 @@ int init_sound (void)
     scaled_sample_evtime_ok = 1;
 
     if (ahiopen) {
-    	if(currprefs.sound_bits == 16) {
+	if(currprefs.sound_bits == 16) {
 	   init_sound_table16 ();
 	   sample_handler = currprefs.stereo ? sample16s_handler
 					     : sample16_handler;
@@ -329,14 +329,14 @@ int init_sound (void)
 					     : sample8_handler;
 	}
     } else {
-    	currprefs.stereo = 0;
+	currprefs.stereo = 0;
 	init_sound_table8 ();
-        sample_handler = sample8_handler;
+	sample_handler = sample8_handler;
     }
 
     fprintf(stderr, "Sound driver found and configured for %d bits %s "
-                    "at %d Hz, buffer is %d bytes (%s)\n",
-                    currprefs.sound_bits,(currprefs.stereo==1 ? "stereo" : "mono"), 
+		    "at %d Hz, buffer is %d bytes (%s)\n",
+		    currprefs.sound_bits,(currprefs.stereo==1 ? "stereo" : "mono"),
 		    rate, sndbufsize,devname);
 
     sound_available = 1;
@@ -389,7 +389,7 @@ void close_sound(void)
     if(buffers[0]) {FreeMem((APTR)buffers[0],sndbufsize);buffers[0] = 0;}
     if(buffers[1]) {FreeMem((APTR)buffers[1],sndbufsize);buffers[1] = 0;}
     if(sound_available) {
-    	cia->ciapra = (cia->ciapra & ~(1<<CIAB_LED)) | oldledstate;
+	cia->ciapra = (cia->ciapra & ~(1<<CIAB_LED)) | oldledstate;
 	sound_available = 0;
     }
 }

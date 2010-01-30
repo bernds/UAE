@@ -28,7 +28,7 @@
 #include "disk.h"
 #include "blitter.h"
 #include "xwin.h"
-#include "joystick.h"
+#include "inputdevice.h"
 #include "audio.h"
 #include "keybuf.h"
 #include "serial.h"
@@ -38,7 +38,6 @@
 #include "picasso96.h"
 #include "drawing.h"
 #include "savestate.h"
-#include "inputdevice.h"
 
 #define SPRITE_COLLISIONS
 
@@ -55,7 +54,7 @@ struct ev eventtab[ev_max];
 
 frame_time_t vsynctime, vsyncmintime;
 
-static int vpos;
+int vpos;
 static uae_u16 lof;
 static int next_lineno;
 static enum nln_how nextline_how;
@@ -79,7 +78,7 @@ uae_u16 dmacon;
 uae_u16 adkcon; /* used by audio code */
 
 static uae_u32 cop1lc,cop2lc,copcon;
- 
+
 int maxhpos = MAXHPOS_PAL;
 int maxvpos = MAXVPOS_PAL;
 int minfirstline = MINFIRSTLINE_PAL;
@@ -468,7 +467,7 @@ static int get_maxplanes (int res)
 }
 
 /* Disable bitplane DMA if planes > maxplanes.  This is needed e.g. by the
-       Sanity WOC demo (at the "Party Effect").  */
+   Sanity WOC demo (at the "Party Effect").  */
 STATIC_INLINE int GET_PLANES_LIMIT (uae_u16 v)
 {
     if (GET_PLANES(v) > get_maxplanes (GET_RES(v)))
@@ -484,7 +483,7 @@ static void add_modulos (void)
 {
     int m1, m2;
 
-    if ((currprefs.chipset_mask & CSMASK_AGA) && (fmode & 0x4000)) {
+    if (fmode & 0x4000) {
 	if (((diwstrt >> 8) ^ vpos) & 1)
 	    m1 = m2 = bpl2mod;
 	else
@@ -495,7 +494,7 @@ static void add_modulos (void)
     }
 
     if (dmaen (DMA_BITPLANE))
-	switch (GET_PLANES (bplcon0)) {
+	switch (GET_PLANES_LIMIT (bplcon0)) {
 	case 8: bplpt[7] += m2;
 	case 7: bplpt[6] += m1;
 	case 6: bplpt[5] += m2;
@@ -554,7 +553,7 @@ static int fm_maxplane, fm_maxplane_shift;
 /* The corresponding values, by fetchmode and display resolution.  */
 static int fetchunits[] = { 8,8,8,0, 16,8,8,0, 32,16,8,0 };
 static int fetchstarts[] = { 3,2,1,0, 4,3,2,0, 5,4,3,0 };
-static int fm_maxplanes[] = { 3,2,1,0, 3,3,2,0, 3,3,3,0 }; 
+static int fm_maxplanes[] = { 3,2,1,0, 3,3,2,0, 3,3,3,0 };
 
 static uae_u8 cycle_diagram_table[3][3][9][32];
 static uae_u8 cycle_diagram_free_cycles[3][3][9];
@@ -599,7 +598,7 @@ static void create_cycle_diagram_table(void)
 	    cycle_sequence = &cycle_sequences[(max_planes - 1) * 8];
 	    max_planes = 1 << max_planes;
 	    for (planes = 0; planes <= 8; planes++) {
-	        freecycles = 0;
+		freecycles = 0;
 		for (cycle = 0; cycle < 32; cycle++)
 		    cycle_diagram_table[fm][res][planes][cycle] = -1;
 		if (planes <= max_planes) {
@@ -658,10 +657,10 @@ static uae_u32 fetched_aga1[MAX_PLANES];
 /* Expansions from bplcon0/bplcon1.  */
 static int toscr_res, toscr_delay1, toscr_delay2, toscr_nr_planes, fetchwidth;
 
-/* The number of bits left from the last fetched words.  
+/* The number of bits left from the last fetched words.
    This is an optimization - conceptually, we have to make sure the result is
    the same as if toscr is called in each clock cycle.  However, to speed this
-   up, we accumulate display data; this variable keeps track of how much. 
+   up, we accumulate display data; this variable keeps track of how much.
    Thus, once we do call toscr_nbits (which happens at least every 16 bits),
    we can do more work at once.  */
 static int toscr_nbits;
@@ -964,7 +963,7 @@ STATIC_INLINE void beginning_of_plane_block (int pos, int fm)
     flush_display (fm);
 
     if (fm == 0)
-	for (i = 0; i < MAX_PLANES; i++) 
+	for (i = 0; i < MAX_PLANES; i++)
 	    todisplay[i][0] |= fetched[i];
     else
 	for (i = 0; i < MAX_PLANES; i++) {
@@ -984,7 +983,7 @@ STATIC_INLINE void beginning_of_plane_block (int pos, int fm)
 STATIC_INLINE void long_fetch_ecs (int plane, int nwords, int weird_number_of_bits, int dma)
 {
     uae_u16 *real_pt = (uae_u16 *)pfield_xlateptr (bplpt[plane] + bpl_off[plane], nwords * 2);
-    int delay = ((plane & 1) ? toscr_delay2 : toscr_delay1);
+    int delay = (plane & 1) ? toscr_delay2 : toscr_delay1;
     int tmp_nbits = out_nbits;
     uae_u32 shiftbuffer = todisplay[plane][0];
     uae_u32 outval = outword[plane];
@@ -1039,7 +1038,7 @@ STATIC_INLINE void long_fetch_ecs (int plane, int nwords, int weird_number_of_bi
 STATIC_INLINE void long_fetch_aga (int plane, int nwords, int weird_number_of_bits, int fm, int dma)
 {
     uae_u32 *real_pt = (uae_u32 *)pfield_xlateptr (bplpt[plane] + bpl_off[plane], nwords * 2);
-    int delay = ((plane & 1) ? toscr_delay2 : toscr_delay1);
+    int delay = (plane & 1) ? toscr_delay2 : toscr_delay1;
     int tmp_nbits = out_nbits;
     uae_u32 *shiftbuffer = todisplay[plane];
     uae_u32 outval = outword[plane];
@@ -1123,7 +1122,6 @@ static void long_fetch_aga_2_1 (int hpos, int nwords, int dma) { long_fetch_aga 
 
 static void do_long_fetch (int hpos, int nwords, int dma, int fm)
 {
-    int added;
     int i;
 
     flush_display (fm);
@@ -1172,13 +1170,14 @@ static void finish_final_fetch (int i, int fm)
 {
     passed_plfstop = 3;
 
-    if (thisline_decision.plfleft != -1) {
-	i += flush_plane_data (fm);
-	thisline_decision.plfright = i;
-	thisline_decision.plflinelen = out_offs;
-	thisline_decision.bplres = toscr_res;
-	finish_playfield_line ();
-    }
+    if (thisline_decision.plfleft == -1)
+	return;
+
+    i += flush_plane_data (fm);
+    thisline_decision.plfright = i;
+    thisline_decision.plflinelen = out_offs;
+    thisline_decision.bplres = toscr_res;
+    finish_playfield_line ();
 }
 
 STATIC_INLINE int one_fetch_cycle_0 (int i, int ddfstop_to_test, int dma, int fm)
@@ -1472,7 +1471,7 @@ static void do_playfield_collisions (void)
 	clxdat |= 1;
 	return;
     }
-	
+
     for (i = thisline_decision.plfleft; i < thisline_decision.plfright; i += 2) {
 	int j;
 	uae_u32 total = 0xFFFFFFFF;
@@ -1487,7 +1486,7 @@ static void do_playfield_collisions (void)
 	    total &= t;
 	}
 	if (total)
-	    clxdat |= 1;	
+	    clxdat |= 1;
     }
 }
 
@@ -1628,7 +1627,7 @@ static void record_sprite (int line, int num, int sprxp, uae_u16 *data, uae_u16 
     uae_u16 *buf;
     uae_u32 collision_mask;
     int width = sprite_width;
-    int dbl = 0;
+    int dbl = 0, half = 0;
     unsigned int mask = 0;
 
     if (sprres != RES_LORES)
@@ -1637,6 +1636,10 @@ static void record_sprite (int line, int num, int sprxp, uae_u16 *data, uae_u16 
     if (currprefs.chipset_mask & CSMASK_AGA) {
 	width = (width << 1) >> sprres;
 	dbl = sprite_buffer_res - sprres;
+	if (dbl < 0) {
+	    half = -dbl;
+	    dbl = 0;
+	}
 	mask = sprres == RES_SUPERHIRES ? 1 : 0;
     }
 
@@ -1665,7 +1668,7 @@ static void record_sprite (int line, int num, int sprxp, uae_u16 *data, uae_u16 
 	uae_u32 datab = ((sprtaba[da & 0xFF] << 16) | sprtaba[da >> 8]
 			 | (sprtabb[db & 0xFF] << 16) | sprtabb[db >> 8]);
 
-	buf = spixels + word_offs + (i << dbl);
+	buf = spixels + word_offs + ((i << dbl) >> half);
 	if (currprefs.collision_level > 0 && collision_mask)
 	    record_sprite_1 (buf, datab, num, dbl, mask, 1, collision_mask);
 	else
@@ -1680,7 +1683,7 @@ static void record_sprite (int line, int num, int sprxp, uae_u16 *data, uae_u16 
     if (ctl & (num << 7) & 0x80) {
 	uae_u32 state = 0x01010101 << (num - 1);
 	uae_u32 *stbuf = spixstate.words + (word_offs >> 2);
-	uae_u8 *stb1 = spixstate.bytes + word_offs;	
+	uae_u8 *stb1 = spixstate.bytes + word_offs;
 	for (i = 0; i < width; i += 8) {
 	    stb1[0] |= state;
 	    stb1[1] |= state;
@@ -1760,7 +1763,7 @@ STATIC_INLINE int sprites_differ (struct draw_info *dip, struct draw_info *dip_o
 
     if (dip->nr_sprites != dip_old->nr_sprites)
 	return 1;
-    
+
     if (dip->nr_sprites == 0)
 	return 0;
 
@@ -1783,7 +1786,7 @@ STATIC_INLINE int color_changes_differ (struct draw_info *dip, struct draw_info 
 {
     if (dip->nr_color_changes != dip_old->nr_color_changes)
 	return 1;
-    
+
     if (dip->nr_color_changes == 0)
 	return 0;
     if (memcmp (curr_color_changes + dip->first_color_change,
@@ -2038,7 +2041,7 @@ STATIC_INLINE uae_u16 INTENAR (void)
 }
 uae_u16 INTREQR (void)
 {
-    return intreq /* | (currprefs.use_serial ? 0x0001 : 0) */;
+    return intreq;
 }
 STATIC_INLINE uae_u16 ADKCONR (void)
 {
@@ -2204,17 +2207,6 @@ void INTREQ (uae_u16 v)
     rethink_cias ();
 }
 
-static void update_adkmasks (void)
-{
-    unsigned long t;
-
-    t = adkcon | (adkcon >> 4);
-    audio_channel[0].adk_mask = (((t >> 0) & 1) - 1);
-    audio_channel[1].adk_mask = (((t >> 1) & 1) - 1);
-    audio_channel[2].adk_mask = (((t >> 2) & 1) - 1);
-    audio_channel[3].adk_mask = (((t >> 3) & 1) - 1);
-}
-
 static void ADKCON (uae_u16 v)
 {
     if (currprefs.produce_sound > 0)
@@ -2259,7 +2251,7 @@ static void BPLCON0 (int hpos, uae_u16 v)
     if ((bplcon0 ^ v) & 0x800) {
 	record_color_change (hpos, -1, !! (v & 0x800));
     }
-    
+
     bplcon0 = v;
     curr_diagram = cycle_diagram_table[fetchmode][GET_RES(bplcon0)][GET_PLANES (v)];
 
@@ -2773,7 +2765,7 @@ static void perform_copper_write (int old_hpos)
     record_copper (cop_state.saved_ip - 4, old_hpos, vpos);
 
     if (address < (copcon & 2 ? ((currprefs.chipset_mask & CSMASK_AGA) ? 0 : 0x40u) : 0x80u)) {
-	cop_state.state = COP_stop;	
+	cop_state.state = COP_stop;
 	copper_enabled_thisline = 0;
 	unset_special (SPCFLAG_COPPER);
 	return;
@@ -2804,7 +2796,7 @@ static int isagnus[]= {
 
 static void update_copper (int until_hpos)
 {
-    int vp = vpos & (((cop_state.saved_i2 >> 8) & 0x7F) | 0x80);    
+    int vp = vpos & (((cop_state.saved_i2 >> 8) & 0x7F) | 0x80);
     int c_hpos = cop_state.hpos;
 
     if (eventtab[ev_copper].active)
@@ -3101,9 +3093,6 @@ STATIC_INLINE void do_sprites_1 (int num, int cycle, int hpos)
 	}
     } else if (s->state == SPR_waiting_stop) {
 	uae_u16 data = sprite_fetch (s, dma);
-	/* Hack for X mouse auto-calibration */
-	if (num == 0 && cycle == 0)
-	    mousehack_handle (sprctl[0], sprpos[0]);
 
 	if (cycle == 0)
 	    SPRxDATA_1 (dma ? data : sprdata[num][0], num);
@@ -3130,7 +3119,7 @@ STATIC_INLINE void do_sprites_1 (int num, int cycle, int hpos)
 	    }
 	    break;
 	    case 32:
-	    {	
+	    {
 		uae_u32 data32 = sprite_fetch (s, dma);
 		if (dma) {
 		    if (cycle == 0)
@@ -3317,9 +3306,6 @@ static void vsync_handler (void)
 
     handle_events ();
 
-    getjoystate (0, &joy0dir, &joy0button);
-    getjoystate (1, &joy1dir, &joy1button);
-
     INTREQ (0x8020);
     if (bplcon0 & 4)
 	lof ^= 0x8000;
@@ -3383,10 +3369,9 @@ static void vsync_handler (void)
 	bogusframe = 0;
     }
 #endif
-    if (ievent_alive > 0)
-	ievent_alive--;
     if (timehack_alive > 0)
 	timehack_alive--;
+    inputdevice_vsync ();
     CIA_vsync_handler ();
 }
 
@@ -3407,30 +3392,8 @@ static void hsync_handler (void)
     eventtab[ev_hsync].oldcycles = get_cycles ();
     CIA_hsync_handler ();
 
-    if (currprefs.produce_sound > 0) {
-	int nr;
-
-	update_audio ();
-
-	/* Sound data is fetched at the beginning of each line */
-	for (nr = 0; nr < 4; nr++) {
-	    struct audio_channel_data *cdp = audio_channel + nr;
-
-	    if (cdp->data_written == 2) {
-		cdp->data_written = 0;
-		cdp->nextdat = chipmem_wget (cdp->pt);
-		cdp->pt += 2;
-		if (cdp->state == 2 || cdp->state == 3) {
-		    if (cdp->wlen == 1) {
-			cdp->pt = cdp->lc;
-			cdp->wlen = cdp->len;
-			cdp->intreq2 = 1;
-		    } else
-			cdp->wlen = (cdp->wlen - 1) & 0xFFFF;
-		}
-	    }
-	}
-    }
+    if (currprefs.produce_sound > 0)
+	audio_hsync (1);
 
     hardware_line_completed (next_lineno);
 
@@ -3476,6 +3439,7 @@ static void hsync_handler (void)
     /* See if there's a chance of a copper wait ending this line.  */
     cop_state.hpos = 0;
     compute_spcflag_copper ();
+    inputdevice_hsync ();
 }
 
 void init_eventtab (void)
@@ -3557,16 +3521,7 @@ void customreset (void)
 
     vpos = 0;
 
-    if (needmousehack ()) {
-#if 0
-	mousehack_setfollow();
-#else
-	mousehack_setdontcare();
-#endif
-    } else {
-	mousestate = normal_mouse;
-    }
-    ievent_alive = 0;
+    inputdevice_reset ();
     timehack_alive = 0;
 
     curr_sprite_entries = 0;
@@ -3588,6 +3543,11 @@ void customreset (void)
     init_hz ();
 
     audio_reset ();
+    if (savestate_state != STATE_RESTORE) {
+	/* must be called after audio_reset */
+	adkcon = 0;
+	update_adkmasks ();
+    }
 
     init_sprites ();
 
@@ -3740,11 +3700,6 @@ void custom_init (void)
     build_blitfilltable ();
 
     drawing_init ();
-
-    mousestate = unknown_mouse;
-
-    if (needmousehack ())
-	mousehack_setfollow ();
 
     create_cycle_diagram_table ();
 }
@@ -4324,19 +4279,22 @@ uae_u8 *restore_custom_agacolors (uae_u8 *src)
     return src;
 }
 
-uae_u8 *save_custom_agacolors (int *len)
+uae_u8 *save_custom_agacolors (int *len, uae_u8 *dstptr)
 {
     uae_u8 *dstbak, *dst;
     int i;
 
-    dstbak = dst = malloc (256*4);
+    if (dstptr)
+	dstbak = dst = dstptr;
+    else
+	dstbak = dst = malloc (256*4);
     for (i = 0; i < 256; i++)
 	SL (current_colors.color_regs_aga[i]);
     *len = dst - dstbak;
     return dstbak;
 }
 
-uae_u8 *restore_custom_sprite (uae_u8 *src, int num)
+uae_u8 *restore_custom_sprite (int num, uae_u8 *src)
 {
     spr[num].pt = RL;		/* 120-13E SPRxPT */
     sprpos[num] = RW;		/* 1x0 SPRxPOS */
@@ -4353,7 +4311,7 @@ uae_u8 *restore_custom_sprite (uae_u8 *src, int num)
     return src;
 }
 
-uae_u8 *save_custom_sprite(int *len, int num)
+uae_u8 *save_custom_sprite(int num, int *len)
 {
     uae_u8 *dstbak, *dst;
 
@@ -4377,14 +4335,14 @@ uae_u8 *save_custom_sprite(int *len, int num)
 void check_prefs_changed_custom (void)
 {
     currprefs.gfx_framerate = changed_prefs.gfx_framerate;
-    /* Not really the right place... */
-    if (currprefs.jport0 != changed_prefs.jport0
-	|| currprefs.jport1 != changed_prefs.jport1) {
-	currprefs.jport0 = changed_prefs.jport0;
-	currprefs.jport1 = changed_prefs.jport1;
-	joystick_setting_changed ();
+    if (inputdevice_config_change_test ()) {
+	inputdevice_copyconfig (&changed_prefs, &currprefs);
+	inputdevice_updateconfig (&currprefs);
     }
     currprefs.immediate_blits = changed_prefs.immediate_blits;
     currprefs.blits_32bit_enabled = changed_prefs.blits_32bit_enabled;
     currprefs.collision_level = changed_prefs.collision_level;
+    if (currprefs.leds_on_screen && !changed_prefs.leds_on_screen)
+	notice_screen_contents_lost ();
+    currprefs.leds_on_screen = changed_prefs.leds_on_screen;
 }

@@ -47,7 +47,7 @@ unsigned long DMA_AllocDMABuf  (_go32_dpmi_seginfo *info)
 
   Phys  = (info->rm_segment) << 4;
   bytes = (info->size)       << 4;
-  
+
   /* if memory does not cross boundary we are lucky and that's it */
   if (HIWORD(Phys + bytes) == HIWORD (Phys)) return (Phys);
 
@@ -62,7 +62,7 @@ unsigned long DMA_AllocDMABuf  (_go32_dpmi_seginfo *info)
   /* and take the half that does not cross a boundary */
   Phys = (info->rm_segment) << 4;
   if (HIWORD(Phys + bytes) == HIWORD (Phys)) return (Phys);
-  
+
   return (Phys + (bytes>>1));
 }
 
@@ -77,14 +77,14 @@ void DMA_UnMask (unsigned char channel)
 }
 
 void DMA_InitTransfer (unsigned char channel, unsigned char Mode,
-                       unsigned long PhysAddr, unsigned short Count)
+		       unsigned long PhysAddr, unsigned short Count)
 {
   unsigned short Page;
   unsigned short Addr;
 
   if (channel & 4) Count >>= 1;
   Count--;
-  
+
   Page = HIWORD(PhysAddr);
   if (channel & 4) PhysAddr >>= 1;
   Addr = LOWORD (PhysAddr);

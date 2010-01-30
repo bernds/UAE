@@ -1,8 +1,8 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Support for Amiga audio.device sound
-  * 
+  *
   * Copyright 1996, 1997 Samuel Devulder
   */
 
@@ -64,30 +64,30 @@ static __inline__ void flush_sound_buffer(void)
     if(AUDIO_FILE) {
 	fwrite(buffers[bufidx], sndbufsize, 1, AUDIO_FILE);
     } else {
-        static char IOSent = 0;
+	static char IOSent = 0;
 
 	AudioMap.bam_Sample                   = (SBYTE *)buffers[bufidx];
 
 	AudioIO->aio_Command                  = CMD_WRITE;
 	AudioIO->aio_Flags                    = IOREQF_Quick;
-	AudioIO->aio_U.aio_Map.amio_Volume    = 0xFFFF; 
+	AudioIO->aio_U.aio_Map.amio_Volume    = 0xFFFF;
 	AudioIO->aio_U.aio_Map.amio_Cycles    = 1;
-	AudioIO->aio_U.aio_Map.amio_Frequency = currprefs.sound_freq;  
+	AudioIO->aio_U.aio_Map.amio_Frequency = currprefs.sound_freq;
 	AudioIO->aio_U.aio_Map.amio_Length    = sndbufsize;
 
-        if(IOSent) pOS_WaitIO((void*)AudioIO); else IOSent=1;
+	if(IOSent) pOS_WaitIO((void*)AudioIO); else IOSent=1;
 	pOS_BeginIO((void*)AudioIO);
 
-        /* double buffering */
-        bufidx = 1 - bufidx;
-        sndbuffer = sndbufpt = (uae_u16*)buffers[bufidx];
+	/* double buffering */
+	bufidx = 1 - bufidx;
+	sndbuffer = sndbufpt = (uae_u16*)buffers[bufidx];
     }
 }
 
 static __inline__ void check_sound_buffers (void)
 {
     if ((char *)sndbufpt - (char *)sndbuffer >= sndbufsize) {
-        flush_sound_buffer();
+	flush_sound_buffer();
     }
 }
 

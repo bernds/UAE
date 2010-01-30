@@ -262,8 +262,8 @@ int graphics_setup (void)
     /* Initialize the SDL library */
     if ( SDL_Init(SDL_INIT_VIDEO) < 0 )
     {
-        fprintf(stderr, "Unable to init SDL: %s\n", SDL_GetError());
-        return 0;
+	fprintf(stderr, "Unable to init SDL: %s\n", SDL_GetError());
+	return 0;
     }
 
     return 1;
@@ -395,9 +395,9 @@ int graphics_init (void)
 				}
 			}
 		}
-    		if (bitdepth == 0)
+		if (bitdepth == 0)
 		{
-    			fprintf(stderr, "No video mode found!\n");
+			fprintf(stderr, "No video mode found!\n");
 			return 0;
 		}
 	}
@@ -703,23 +703,23 @@ static int keycode2amiga(SDL_keysym *prKeySym)
     int iAmigaKeycode = kc_decode(prKeySym);
     if (iAmigaKeycode == -1)
     {
-        switch (currprefs.keyboard_lang)
-        {
-        case KBD_LANG_FR:
-            return decode_fr(prKeySym);
-        case KBD_LANG_US:
-            return decode_us(prKeySym);
-        case KBD_LANG_DE:
-            return decode_de(prKeySym);
-        case KBD_LANG_SE:
-            return decode_se (prKeySym);
-        case KBD_LANG_IT:
-            return decode_it (prKeySym);
-        case KBD_LANG_ES:
-            return decode_es (prKeySym);
-        default:
-            return -1;
-        }
+	switch (currprefs.keyboard_lang)
+	{
+	case KBD_LANG_FR:
+	    return decode_fr(prKeySym);
+	case KBD_LANG_US:
+	    return decode_us(prKeySym);
+	case KBD_LANG_DE:
+	    return decode_de(prKeySym);
+	case KBD_LANG_SE:
+	    return decode_se (prKeySym);
+	case KBD_LANG_IT:
+	    return decode_it (prKeySym);
+	case KBD_LANG_ES:
+	    return decode_es (prKeySym);
+	default:
+	    return -1;
+	}
     }
     return iAmigaKeycode;
 }
@@ -749,7 +749,7 @@ void handle_events (void)
 #endif
 	    uae_quit();
 	    break;
-        case SDL_KEYDOWN:
+	case SDL_KEYDOWN:
 #ifdef DEBUG
 	    fprintf(stderr, "Event: key down\n");
 #endif

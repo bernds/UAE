@@ -1,8 +1,8 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Support for Mac OS sound
-  * 
+  *
   * Copyright 1996 Ernesto Corvi
   */
 
@@ -35,8 +35,8 @@ void close_sound(void)
 }
 
 int init_sound (void)
-{	
-    if (SndNewChannel(&newChannel, sampledSynth, initMono, NULL)) 
+{
+    if (SndNewChannel(&newChannel, sampledSynth, initMono, NULL))
 	return 0;
     sndbufsize = 44100;
     init_sound_table8 ();

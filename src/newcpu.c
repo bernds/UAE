@@ -117,11 +117,10 @@ static void build_cpufunctbl (void)
 			  : currprefs.cpu_level == 3 ? op_smalltbl_1_ff
 			  : currprefs.cpu_level == 2 ? op_smalltbl_2_ff
 			  : currprefs.cpu_level == 1 ? op_smalltbl_3_ff
-			  : ! currprefs.cpu_compatible ? op_smalltbl_4_ff
 			  : op_smalltbl_5_ff);
 
-    write_log ("Building CPU function table (%d %d %d).\n",
-	       currprefs.cpu_level, currprefs.cpu_compatible, currprefs.address_space_24);
+    write_log ("Building CPU function table (%d %d).\n",
+	       currprefs.cpu_level, currprefs.address_space_24);
 
     for (opcode = 0; opcode < 65536; opcode++)
 	cpufunctbl[opcode] = op_illg_1;
@@ -177,16 +176,6 @@ static void update_68k_cycles (void)
 
 void check_prefs_changed_cpu (void)
 {
-    if (currprefs.cpu_level != changed_prefs.cpu_level
-	|| currprefs.cpu_compatible != changed_prefs.cpu_compatible)
-    {
-	if (!currprefs.cpu_compatible && changed_prefs.cpu_compatible)
-	    fill_prefetch_slow ();
-
-	currprefs.cpu_level = changed_prefs.cpu_level;
-	currprefs.cpu_compatible = changed_prefs.cpu_compatible;
-	build_cpufunctbl ();
-    }
     if (currprefs.m68k_speed != changed_prefs.m68k_speed) {
 	currprefs.m68k_speed = changed_prefs.m68k_speed;
 	reset_frame_rate_hack ();
@@ -256,14 +245,12 @@ void init_m68k (void)
 	write_log ("000");
 	break;
     }
-    if (currprefs.cpu_compatible)
-	write_log (" (compatible mode)");
     if (currprefs.address_space_24) {
 	regs.address_space_mask = 0x00ffffff;
 	write_log (" 24-bit addressing");
     }
     write_log ("\n");
-    
+
     read_table68k ();
     do_merges ();
 
@@ -705,7 +692,7 @@ void MakeFromSR (void)
     if (regs.t1 || regs.t0)
 	set_special (SPCFLAG_TRACE);
     else
-    	/* Keep SPCFLAG_DOTRACE, we still want a trace exception for
+	/* Keep SPCFLAG_DOTRACE, we still want a trace exception for
 	   SR-modifying instructions (including STOP).  */
 	unset_special (SPCFLAG_TRACE);
 }
@@ -728,7 +715,7 @@ static void exception_debug (int nr)
 #ifdef DEBUGGER
     if (!exception_debugging)
 	return;
-    console_out ("Exception %d, PC=%08.8X\n", nr, m68k_getpc()); 
+    console_out ("Exception %d, PC=%08.8X\n", nr, m68k_getpc());
 #endif
 }
 
@@ -798,7 +785,10 @@ void Exception_normal (int nr, uaecptr oldpc)
 		m68k_areg(regs, 7) -= 2;
 		put_word (m68k_areg(regs, 7), 0xb000 + nr * 4);
 	    }
+#if 0
 	    write_log ("Exception %d (%x) at %x -> %x!\n", nr, oldpc, currpc, get_long (regs.vbr + 4*nr));
+#endif
+	    
 	} else if (nr ==5 || nr == 6 || nr == 7 || nr == 9) {
 	    m68k_areg(regs, 7) -= 4;
 	    put_long (m68k_areg(regs, 7), oldpc);
@@ -841,7 +831,7 @@ kludge_me_do:
     newpc = get_long (regs.vbr + 4 * nr);
     if (newpc & 1) {
 	if (nr == 2 || nr == 3)
-	    uae_reset (); /* there is nothing else we can do.. */
+	    uae_reset (1); /* there is nothing else we can do.. */
 	else
 	    exception3 (regs.ir, m68k_getpc(), newpc);
 	return;
@@ -890,7 +880,7 @@ int m68k_move2c (int regno, uae_u32 *regp)
 	case 5: itt1 = *regp & 0xffffe364; break;
 	case 6: dtt0 = *regp & 0xffffe364; break;
 	case 7: dtt1 = *regp & 0xffffe364; break;
-	  
+
 	case 0x800: regs.usp = *regp; break;
 	case 0x801: regs.vbr = *regp; break;
 	case 0x802: caar = *regp & 0xfc; break;
@@ -1198,6 +1188,14 @@ static char* ccnames[] =
 
 void m68k_reset (void)
 {
+    if (currprefs.cpu_level != changed_prefs.cpu_level
+	|| currprefs.address_space_24 != changed_prefs.address_space_24)
+    {
+	currprefs.address_space_24 = changed_prefs.address_space_24;
+	currprefs.cpu_level = changed_prefs.cpu_level;
+	build_cpufunctbl ();
+    }
+
     regs.kick_mask = 0x00F80000;
     regs.spcflags = 0;
     if (savestate_state == STATE_RESTORE) {
@@ -1235,7 +1233,7 @@ void m68k_reset (void)
 unsigned long REGPARAM2 op_illg (uae_u32 opcode)
 {
     uaecptr pc = m68k_getpc ();
-    
+
     if (cloanto_rom && (opcode & 0xF100) == 0x7100) {
 	m68k_dreg (regs, (opcode >> 9) & 7) = (uae_s8)(opcode & 0xFF);
 	m68k_incpc (2);
@@ -1520,10 +1518,10 @@ void m68k_go (int may_quit)
 		/* system is very badly confused */
 		write_log ("double bus error or corrupted stack, forcing reboot..\n");
 		regs.panic = 0;
-		uae_reset ();
+		uae_reset (1);
 	    }
 	}
-	m68k_run1 (currprefs.cpu_compatible ? m68k_run_1 : m68k_run_2);
+	m68k_run1 (currprefs.cpu_level == 0 ? m68k_run_1 : m68k_run_2);
     }
     in_m68k_go--;
 }
@@ -1712,12 +1710,15 @@ uae_u8 *restore_cpu (uae_u8 *src)
 
 static int cpumodel[] = { 68000, 68010, 68020, 68020 };
 
-uae_u8 *save_cpu (int *len)
+uae_u8 *save_cpu (int *len, uae_u8 *dstptr)
 {
     uae_u8 *dstbak,*dst;
     int model,i;
 
-    dstbak = dst = malloc(4+4+15*4+4+4+4+4+2+4+4+4+4+4+4+4);
+    if (dstptr)
+	dstbak = dst = dstptr;
+    else
+	dstbak = dst = malloc(4+4+15*4+4+4+4+4+2+4+4+4+4+4+4+4);
     model = cpumodel[currprefs.cpu_level];
     save_u32 (model);					/* MODEL */
     save_u32 (currprefs.address_space_24 ? 1 : 0);	/* FLAGS */

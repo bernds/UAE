@@ -1,12 +1,12 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * MC68000 emulation - machine dependent bits
   *
   * Copyright 1996 Bernd Schmidt, Samuel Devulder
   */
 
- 
+
 struct flag_struct {
     /* tricky: be sure that bit-offset(x)=bit-offset(c) in word representation. */
     /* This depends heavily on the bit-order and the compiler used. I am not    */
@@ -16,7 +16,7 @@ struct flag_struct {
     unsigned int z:1;
     unsigned int v:1;
     unsigned int c:1;
-    
+
     int :15;           /* Second word */
     unsigned int x:1;
 };
@@ -62,25 +62,25 @@ STATIC_INLINE int cctrue(const int cc)
 
 #define m68k_flag_tst(l, v)                                           \
   __asm__ __volatile__(MITMOT("tst"#l" %0\n\tmovew ccr,_regflags",    \
-                              "tst."#l" %0\n\tmove.w %%ccr,regflags") \
-                              : : "dmi" (v) : "cc")
+			      "tst."#l" %0\n\tmove.w %%ccr,regflags") \
+			      : : "dmi" (v) : "cc")
 
 #define m68k_flag_add(l, v, s, d)                                  \
   __asm__ __volatile__(MITMOT("add"#l" %3,%1\n\tmovew ccr,%0",     \
-                              "add."#l" %3,%1\n\tmove.w %%ccr,%0") \
-                       : "=d" (ccr), "=&d" (v)                     \
-                       : "1" (s), "dmi" (d)                        \
-                       : "cc")
+			      "add."#l" %3,%1\n\tmove.w %%ccr,%0") \
+		       : "=d" (ccr), "=&d" (v)                     \
+		       : "1" (s), "dmi" (d)                        \
+		       : "cc")
 
 #define m68k_flag_sub(l, v, s, d)                                  \
   __asm__ __volatile__(MITMOT("sub"#l" %2,%1\n\tmovew ccr,%0",     \
-                              "sub."#l" %2,%1\n\tmove.w %%ccr,%0") \
-                       : "=d" (ccr), "=&d" (v)                     \
-                       : "dmi" (s), "1" (d)                        \
-                       : "cc")
+			      "sub."#l" %2,%1\n\tmove.w %%ccr,%0") \
+		       : "=d" (ccr), "=&d" (v)                     \
+		       : "dmi" (s), "1" (d)                        \
+		       : "cc")
 
 #define m68k_flag_cmp(l, s, d)                                           \
   __asm__ __volatile__(MITMOT("cmp"#l" %0,%1\n\tmovew ccr,_regflags",    \
-                              "cmp."#l" %0,%1\n\tmove.w %%ccr,regflags") \
-                       : : "dmi" (s), "d" (d) : "cc")
+			      "cmp."#l" %0,%1\n\tmove.w %%ccr,regflags") \
+		       : : "dmi" (s), "d" (d) : "cc")
 

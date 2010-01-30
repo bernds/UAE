@@ -1,8 +1,8 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Support for Acorn RISC-OS sound
-  * 
+  *
   * Copyright 1996, 1997 Peter Teichmann
   */
 

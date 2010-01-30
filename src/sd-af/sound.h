@@ -1,8 +1,8 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Support for the AF sound system
-  * 
+  *
   * Copyright 1996 Marcus Sundberg
   */
 

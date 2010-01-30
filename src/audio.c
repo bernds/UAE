@@ -212,7 +212,7 @@ void sample16i_crux_handler (void)
     data3 &= audio_channel[3].adk_mask;
     data3p &= audio_channel[3].adk_mask;
 
-    {    
+    {
 	struct audio_channel_data *cdp;
 	unsigned long ratio, ratio1;
 #define INTERVAL (scaled_sample_evtime * 3)
@@ -297,7 +297,7 @@ void sample16s_handler (void)
     data1 &= audio_channel[1].adk_mask;
     data2 &= audio_channel[2].adk_mask;
     data3 &= audio_channel[3].adk_mask;
-    
+
     data0 += data3;
     {
 	uae_u32 data = SBASEVAL16(1) + data0;
@@ -307,7 +307,7 @@ void sample16s_handler (void)
 
     data1 += data2;
     {
-	uae_u32 data = SBASEVAL16(1) + data1;	
+	uae_u32 data = SBASEVAL16(1) + data1;
 	FINISH_DATA (data, 16, 1);
 	put_sound_word_left (data);
     }
@@ -344,7 +344,7 @@ void sample16si_crux_handler (void)
     data3 &= audio_channel[3].adk_mask;
     data3p &= audio_channel[3].adk_mask;
 
-    {    
+    {
 	struct audio_channel_data *cdp;
 	unsigned long ratio, ratio1;
 #define INTERVAL (scaled_sample_evtime * 3)
@@ -565,7 +565,7 @@ void schedule_audio (void)
 		best = cdp->evtime;
 		eventtab[ev_audio].active = 1;
 	    }
-	}	
+	}
     }
     eventtab[ev_audio].evtime = get_cycles () + best;
 }
@@ -831,10 +831,6 @@ void update_audio (void)
 	    best_evtime = audio_channel[2].evtime;
 	if (audio_channel[3].state != 0 && best_evtime > audio_channel[3].evtime)
 	    best_evtime = audio_channel[3].evtime;
-	if (audio_channel[4].state != 0 && best_evtime > audio_channel[4].evtime)
-	    best_evtime = audio_channel[4].evtime;
-	if (audio_channel[5].state != 0 && best_evtime > audio_channel[5].evtime)
-	    best_evtime = audio_channel[5].evtime;
 	if (currprefs.produce_sound > 1 && best_evtime > next_sample_evtime)
 	    best_evtime = next_sample_evtime;
 
@@ -846,8 +842,6 @@ void update_audio (void)
 	audio_channel[1].evtime -= best_evtime;
 	audio_channel[2].evtime -= best_evtime;
 	audio_channel[3].evtime -= best_evtime;
-	audio_channel[4].evtime -= best_evtime;
-	audio_channel[5].evtime -= best_evtime;
 	n_cycles -= best_evtime;
 	if (next_sample_evtime == 0 && currprefs.produce_sound > 1) {
 	    next_sample_evtime = scaled_sample_evtime;
@@ -872,6 +866,32 @@ void audio_evhandler (void)
 
     update_audio ();
     schedule_audio ();
+}
+
+void audio_hsync (int dmaaction)
+{
+    int nr;
+
+    update_audio ();
+
+    /* Sound data is fetched at the beginning of each line */
+    for (nr = 0; nr < 4; nr++) {
+	struct audio_channel_data *cdp = audio_channel + nr;
+
+	if (cdp->data_written == 2) {
+	    cdp->data_written = 0;
+	    cdp->nextdat = chipmem_wget (cdp->pt);
+	    cdp->pt += 2;
+	    if (cdp->state == 2 || cdp->state == 3) {
+		if (cdp->wlen == 1) {
+		    cdp->pt = cdp->lc;
+		    cdp->wlen = cdp->len;
+		    cdp->intreq2 = 1;
+		} else
+		    cdp->wlen = (cdp->wlen - 1) & 0xFFFF;
+	    }
+	}
+    }
 }
 
 void AUDxDAT (int nr, uae_u16 v)
@@ -949,6 +969,17 @@ void AUDxVOL (int nr, uae_u16 v)
 #endif
 }
 
+void update_adkmasks (void)
+{
+    unsigned long t;
+
+    t = adkcon | (adkcon >> 4);
+    audio_channel[0].adk_mask = (((t >> 0) & 1) - 1);
+    audio_channel[1].adk_mask = (((t >> 1) & 1) - 1);
+    audio_channel[2].adk_mask = (((t >> 2) & 1) - 1);
+    audio_channel[3].adk_mask = (((t >> 3) & 1) - 1);
+}
+
 int init_audio (void)
 {
     int retval;
@@ -964,7 +995,7 @@ int init_audio (void)
 /* audio save/restore code FIXME: not working correctly */
 /* help needed */
 
-uae_u8 *restore_audio (uae_u8 *src, int i)
+uae_u8 *restore_audio (int i, uae_u8 *src)
 {
     struct audio_channel_data *acd;
     uae_u16 p;
@@ -987,8 +1018,7 @@ uae_u8 *restore_audio (uae_u8 *src, int i)
     return src;
 }
 
-
-uae_u8 *save_audio (int *len, int i)
+uae_u8 *save_audio (int i, int *len)
 {
     struct audio_channel_data *acd;
     uae_u8 *dst = malloc (100);

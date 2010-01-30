@@ -1,6 +1,6 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Memory access functions
   *
   * Copyright 1996 Bernd Schmidt

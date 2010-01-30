@@ -1,8 +1,8 @@
  /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Support for Acorn RISC-OS sound
-  * 
+  *
   * Copyright 1996, 1997 Peter Teichmann
   */
 
@@ -28,7 +28,7 @@ int sndbufsize;
 int init_sound (void)
 {
     int rate, dspbits;
-  
+
     dspbits = sound_desired_bits;
     rate = sound_desired_freq;
     sratecode = 4096.0*log(rate/4096.0)/log(2.0);
@@ -48,7 +48,7 @@ int init_sound (void)
 
     sound_available=1;
     sndbufpt=sndbuffer;
-  
+
     return 1;
 }
 

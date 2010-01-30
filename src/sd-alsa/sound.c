@@ -1,8 +1,8 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Support for Linux/ALSA sound
-  * 
+  *
   * Copyright 1997 Bernd Schmidt
   * Copyright 2004 Heikki Orsila
   *
@@ -142,7 +142,7 @@ int init_sound (void)
 	     snd_strerror (err));
     goto nosound;
   }
-      
+
   alsa_to_frames_divisor = channels * dspbits / 8;
   buffer_frames = sndbufsize / alsa_to_frames_divisor;
   if ((err = snd_pcm_hw_params_set_period_size_near(alsa_playback_handle, hw_params, &buffer_frames, 0)) < 0) {
@@ -155,9 +155,9 @@ int init_sound (void)
 	     snd_strerror (err));
     goto nosound;
   }
-      
+
   snd_pcm_hw_params_free (hw_params);
-      
+
   if ((err = snd_pcm_prepare (alsa_playback_handle)) < 0) {
     fprintf (stderr, "cannot prepare audio interface for use (%s)\n",
 	     snd_strerror (err));
@@ -166,7 +166,7 @@ int init_sound (void)
 
   scaled_sample_evtime = (unsigned long) MAXHPOS_PAL * MAXVPOS_PAL * VBLANK_HZ_PAL * CYCLE_UNIT / rate;
   scaled_sample_evtime_ok = 1;
-  
+
   if (dspbits == 16) {
     init_sound_table16 ();
     sample_handler = currprefs.sound_stereo ? sample16s_handler : sample16_handler;

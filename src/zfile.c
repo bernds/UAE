@@ -27,7 +27,7 @@ struct zfile
     FILE *f;
     char name[L_tmpnam];
 };
- 
+
 static struct zfile *zlist = 0;
 
 /*
@@ -36,7 +36,7 @@ static struct zfile *zlist = 0;
 void zfile_exit (void)
 {
     struct zfile *l;
-    
+
     while ((l = zlist)) {
 	zlist = l->next;
 	fclose (l->f);
@@ -79,8 +79,8 @@ static int gunzip (const char *decompress, const char *src, const char *dst)
 {
     char cmd[1024];
     char *ext = strrchr (src, '.');
-    if (!dst) 
-        return 1;
+    if (!dst)
+	return 1;
 #if defined(AMIGA)
     sprintf (cmd, "%s -c -d -S %s \"%s\" > \"%s\"", decompress, ext, src, dst);
 #else
@@ -95,7 +95,7 @@ static int gunzip (const char *decompress, const char *src, const char *dst)
 static int bunzip (const char *decompress, const char *src, const char *dst)
 {
     char cmd[1024];
-    if (!dst) 
+    if (!dst)
 	return 1;
     sprintf (cmd, "%s -c -d \"%s\" > \"%s\"", decompress, src, dst);
     return !system (cmd);
@@ -147,9 +147,9 @@ static int uncompress (const char *name, char *dest)
 	    || strcasecmp (ext, "roz") == 0)
 	    return gunzip ("gzip", name, dest);
 	if (strcasecmp (ext, "bz") == 0)
-            return bunzip ("bzip", name, dest);
+	    return bunzip ("bzip", name, dest);
 	if (strcasecmp (ext, "bz2") == 0)
-            return bunzip ("bzip2", name, dest);
+	    return bunzip ("bzip2", name, dest);
 
 #ifndef __DOS__
 	if (strcasecmp (ext, "lha") == 0
@@ -170,11 +170,11 @@ static int uncompress (const char *name, char *dest)
 
     if (access (strcat (strcpy (nam, name), ".bz"), 0) >= 0
 	|| access (strcat (strcpy (nam, name), ".BZ"), 0) >= 0)
-        return bunzip ("bzip", nam, dest);
+	return bunzip ("bzip", nam, dest);
 
     if (access (strcat (strcpy (nam, name), ".bz2"), 0) >= 0
 	|| access (strcat (strcpy (nam, name), ".BZ2"), 0) >= 0)
-        return bunzip ("bzip2", nam, dest);
+	return bunzip ("bzip2", nam, dest);
 
 #ifndef __DOS__
     if (access (strcat (strcpy (nam, name), ".lha"), 0) >= 0

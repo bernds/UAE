@@ -114,7 +114,7 @@ struct utimbuf
 
 /* sam: some definitions so that SAS/C can compile UAE */
 #if defined(__SASC) && defined(AMIGA)
-#define REGPARAM2 
+#define REGPARAM2
 #define REGPARAM
 #define S_IRUSR S_IREAD
 #define S_IWUSR S_IWRITE
@@ -277,7 +277,7 @@ extern void *xcalloc(size_t, size_t);
 
 #endif
 
-#endif /* _WIN32 */ 
+#endif /* _WIN32 */
 
 #ifdef DONT_HAVE_POSIX
 

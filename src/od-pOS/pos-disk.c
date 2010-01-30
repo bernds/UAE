@@ -1,9 +1,9 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * pos-disk.c: Creates pseudo dev: handler. Copy tracks to rawfile
   * (used in zfile.c).
-  * 
+  *
   * Copyright 1997, Samuel Devulder.
   */
 
@@ -91,7 +91,7 @@ static char dfx_done[4];
 static int device_exists(char *device_name, int device_unit);
 
 /****************************************************************************/
-/* support routines to handle unix filename convention 
+/* support routines to handle unix filename convention
  */
 char *to_unix_path(char *s)
 {
@@ -105,14 +105,14 @@ char *to_unix_path(char *s)
 
     for(u=s;*u && *u!=':';++u);
     if(*u) {
-        *t++='/';
-        while(*s!=':') *t++=*s++;
-        *t++='/';++s;
+	*t++='/';
+	while(*s!=':') *t++=*s++;
+	*t++='/';++s;
     }
     while(*s=='/') {*t++='.';*t++='.';*t++=*s++;}
     while(*s) {
-        if(s[0]=='/' && s[1]=='/') {*t++=*s++;*t++='.';*t++='.';*t++=*s++;}
-        else *t++=*s++;
+	if(s[0]=='/' && s[1]=='/') {*t++=*s++;*t++='.';*t++='.';*t++=*s++;}
+	else *t++=*s++;
     }
     *t='\0';
     return r;
@@ -128,14 +128,14 @@ char *from_unix_path(char *s)
     if(!r) return NULL;
 
     if(*s=='/') {
-        ++s;
-        while(*s && *s!='/') *t++=*s++;
-        if(*s=='/') {*t++=':';++s;}
+	++s;
+	while(*s && *s!='/') *t++=*s++;
+	if(*s=='/') {*t++=':';++s;}
     }
 
     while(*s) {
-        if(s[0]=='.' && s[1]=='.') s+=2;
-        else *t++=*s++;
+	if(s[0]=='.' && s[1]=='.') s+=2;
+	else *t++=*s++;
     }
 
     *t='\0';
@@ -152,13 +152,13 @@ void split_dir_file(char *src, char **dir, char **file)
     while(*s) ++s;
     while(s>src && (*s!=':' && *s!='/')) --s;
     if(*s==':' || *s=='/') {
-        *file = my_strdup(s+1);
-        s[1]  = '\0';
-        *dir  = my_strdup(src);
-        free(src);
+	*file = my_strdup(s+1);
+	s[1]  = '\0';
+	*dir  = my_strdup(src);
+	free(src);
     } else {
-        *file = src;
-        *dir  = my_strdup("");
+	*file = src;
+	*dir  = my_strdup("");
     }
 }
 
@@ -187,39 +187,39 @@ void initpseudodevices(void)
     for(i=0;i<4;++i) dfx_done[i]=0;
 
     /* check if dev: already exists */
-    lock = pOS_LockObject(NULL, amiga_dev_path, 
+    lock = pOS_LockObject(NULL, amiga_dev_path,
 			  FILELKACC_Shared|FILELKACC_NoReq);
     if(!lock) {
-        char name[80];
-	lock = pOS_LockObject(NULL, pseudo_dev_path, 
+	char name[80];
+	lock = pOS_LockObject(NULL, pseudo_dev_path,
 			      FILELKACC_Shared|FILELKACC_NoReq);
-        if(!lock) {
-            /* create it */
-            lock = pOS_CreateDirectory(NULL, pseudo_dev_path);
-            if(!lock) goto fail;
-            pOS_UnlockObject(lock);
-	    lock = pOS_LockObject(NULL, pseudo_dev_path, 
+	if(!lock) {
+	    /* create it */
+	    lock = pOS_CreateDirectory(NULL, pseudo_dev_path);
+	    if(!lock) goto fail;
+	    pOS_UnlockObject(lock);
+	    lock = pOS_LockObject(NULL, pseudo_dev_path,
 				  FILELKACC_Shared|FILELKACC_NoReq);
-            pseudo_dev_created = 1;
-        }
-        strcpy(name,amiga_dev_path);
-        if(*name && name[strlen(name)-1]==':') name[strlen(name)-1]='\0';
-        if(!pOS_CreateDosAssign(name,lock,NULL, DDTYP_Assign)) {
+	    pseudo_dev_created = 1;
+	}
+	strcpy(name,amiga_dev_path);
+	if(*name && name[strlen(name)-1]==':') name[strlen(name)-1]='\0';
+	if(!pOS_CreateDosAssign(name,lock,NULL, DDTYP_Assign)) {
 	    pOS_UnlockObject(lock);
 	    goto fail;
 	}
-        /* the lock is the assign now */
-        pseudo_dev_assigned = 1;
+	/* the lock is the assign now */
+	pseudo_dev_assigned = 1;
     } else pOS_UnlockObject(lock);
 
     /* Create the dev:DFi entry */
     for(i=0;i<4;++i) if(device_exists("pTrackdisk.device",i)) {
-        struct pOS_FileHandle *fd;
-        char name[80];
+	struct pOS_FileHandle *fd;
+	char name[80];
 
-        sprintf(name,"%sDF%d",amiga_dev_path,i);
-        fd = pOS_OpenFile(NULL,name,FILEHDMOD_Write);
-        if(fd) {pOS_CloseFile(fd);dfx_done[i]=1;}
+	sprintf(name,"%sDF%d",amiga_dev_path,i);
+	fd = pOS_OpenFile(NULL,name,FILEHDMOD_Write);
+	if(fd) {pOS_CloseFile(fd);dfx_done[i]=1;}
     }
 
     return;
@@ -235,23 +235,23 @@ void closepseudodevices(void)
 {
     int i;
     for(i=0;i<4;++i) if(dfx_done[i]) {
-        char name[80];
-        sprintf(name,"%sDF%d",amiga_dev_path,i);
-        pOS_DeleteObjectName(NULL, name);
-        dfx_done[i] = 0;
+	char name[80];
+	sprintf(name,"%sDF%d",amiga_dev_path,i);
+	pOS_DeleteObjectName(NULL, name);
+	dfx_done[i] = 0;
     }
 
     if(pseudo_dev_assigned) {
-        char name[80];
-        strcpy(name,amiga_dev_path);
-        if(*name && name[strlen(name)-1]==':') name[strlen(name)-1]='\0';
-        pOS_DeleteDosAssign(name,NULL,0);
-        pseudo_dev_assigned = 0;
+	char name[80];
+	strcpy(name,amiga_dev_path);
+	if(*name && name[strlen(name)-1]==':') name[strlen(name)-1]='\0';
+	pOS_DeleteDosAssign(name,NULL,0);
+	pseudo_dev_assigned = 0;
     }
 
     if(pseudo_dev_created) {
-        pOS_DeleteObjectName(NULL, pseudo_dev_path);
-        pseudo_dev_created = 0;
+	pOS_DeleteObjectName(NULL, pseudo_dev_path);
+	pseudo_dev_created = 0;
     }
 }
 
@@ -268,7 +268,7 @@ static int device_exists(char *device_name, int device_unit)
     if(pOS_ConstructMsgPort(&port)) {
 	IO=(void *)pOS_CreateIORequest(&port, sizeof(struct pOS_TrackdiskIO));
 	if(IO) {
-	    if(!pOS_OpenDevice(device_name, device_unit, 
+	    if(!pOS_OpenDevice(device_name, device_unit,
 			       (struct pOS_IORequest*)IO, 0, 0)) {
 		pOS_CloseDevice((struct pOS_IORequest*)IO);
 		ret = 1;
@@ -293,34 +293,34 @@ static void extract_dev_unit(char *name, char **dev_name, int *dev_unit)
 	sprintf(s,"%s:",name);
 	dev = pOS_GetDosMountName(s);
 	free(s);
-    } 
+    }
     if(dev && dev->dmd_Type == DMDTYP_BOD) {
 	*dev_name = strdup(dev->dmd_U.dmd_BOD.dmbod_DevName);
 	*dev_unit = dev->dmd_U.dmd_BOD.dmbod_UnitNum;
-    } else if((s = strrchr(name,'/'))) { 
-        /* pTrackdisk[.device]/0 */
-        *dev_unit = atoi(s+1);
-        *dev_name = malloc(1 + s-name);
-        if(*dev_name) {
-            strncpy(*dev_name, name, 1 + s-name);
-            (*dev_name)[s-name]='\0';
-        }
-    } else { 
-        /* ?? STRANGEDISK0: ?? */
-        *dev_unit = 0;
-        *dev_name = strdup(name);
+    } else if((s = strrchr(name,'/'))) {
+	/* pTrackdisk[.device]/0 */
+	*dev_unit = atoi(s+1);
+	*dev_name = malloc(1 + s-name);
+	if(*dev_name) {
+	    strncpy(*dev_name, name, 1 + s-name);
+	    (*dev_name)[s-name]='\0';
+	}
+    } else {
+	/* ?? STRANGEDISK0: ?? */
+	*dev_unit = 0;
+	*dev_name = strdup(name);
     }
     if(*dev_name) {
-        char *s;
-        if(!(s = strrchr(*dev_name,'.'))) { 
-            /* .device is missing: add it */
-            s = malloc(8+strlen(*dev_name));
-            if(s) {
-                sprintf(s,"%s.device",*dev_name);
-                free(*dev_name);
-                *dev_name = s;
-            }
-        }
+	char *s;
+	if(!(s = strrchr(*dev_name,'.'))) {
+	    /* .device is missing: add it */
+	    s = malloc(8+strlen(*dev_name));
+	    if(s) {
+		sprintf(s,"%s.device",*dev_name);
+		free(*dev_name);
+		*dev_name = s;
+	    }
+	}
     }
 }
 
@@ -358,7 +358,7 @@ static int raw_copy(char *dev_name, int dev_unit, FILE *dst)
 	IO->tdio_Length  = sizeof(struct pOS_DriveGeometry);
 	pOS_DoIO((struct pOS_IORequest*)IO);
 	if(IO->tdio_Error!=0) {
-	    Geom.dg_SectorSize   = 512;	    
+	    Geom.dg_SectorSize   = 512;
 	    Geom.dg_TotalSectors = 880*2;
 	}
 
@@ -369,11 +369,11 @@ static int raw_copy(char *dev_name, int dev_unit, FILE *dst)
 	    for(sec = 0; sec<Geom.dg_TotalSectors; ++sec) {
 		if((sec % Geom.dg_CylSectors) == 0) {
 		    printf("Reading sector %d/%d (%02d%%) of %s unit %d    \r",
-			   sec, Geom.dg_TotalSectors, 
+			   sec, Geom.dg_TotalSectors,
 			   (100*sec)/Geom.dg_TotalSectors, dev_name, dev_unit);
 		    fflush(stdout);
 		}
-		
+
 		IO->tdio_Command = CMD_READ;
 		IO->tdio_Data    = buf;
 		IO->tdio_Length  = Geom.dg_SectorSize;
@@ -381,7 +381,7 @@ static int raw_copy(char *dev_name, int dev_unit, FILE *dst)
 		pOS_DoIO((struct pOS_IORequest*)IO);
 		if(IO->tdio_Error) printf("Err. on\n");
 		if(fwrite(buf,1,Geom.dg_SectorSize,dst)!=Geom.dg_SectorSize) {
-		    ret = 0; 
+		    ret = 0;
 		    break;
 		}
 	    }
@@ -390,7 +390,7 @@ static int raw_copy(char *dev_name, int dev_unit, FILE *dst)
 	    pOS_DoIO((struct pOS_IORequest*)IO);
 	    printf("                                                                        \r");
 	    fflush(stdout);
-	    
+
 	    pOS_FreeMem(buf,Geom.dg_SectorSize);
 	}
 	pOS_CloseDevice((struct pOS_IORequest*)IO);
@@ -404,7 +404,7 @@ static int raw_copy(char *dev_name, int dev_unit, FILE *dst)
 /*
  * Copy one raw disk to a file.
  */
-int readdevice(char *name, char *dst) 
+int readdevice(char *name, char *dst)
 {
     FILE *f = NULL;
     char *device_name;
@@ -420,25 +420,25 @@ int readdevice(char *name, char *dst)
     /* disable break */
     oldsa_valid = (0==sigaction(SIGINT, NULL, &oldsa));
     signal(SIGINT, SIG_IGN); /* <--- gcc complains about something */
-                             /* in there but I don't know why. */
+			     /* in there but I don't know why. */
 #endif
     /* get device name & unit */
     extract_dev_unit(name, &device_name, &device_unit);
 
     if(device_name) {
-        /* if no destination then just check if the device exists */
-        if(dst == NULL) 
-           retstatus = device_exists(device_name, device_unit);
-        else {
+	/* if no destination then just check if the device exists */
+	if(dst == NULL)
+	   retstatus = device_exists(device_name, device_unit);
+	else {
 	    inhibited = dev_inhibit(name,1);
-            /* open dest file */
-            if((f = fopen(dst,"wb"))) {
-                retstatus = raw_copy(device_name, device_unit, f);
-                fclose(f);
-            }
+	    /* open dest file */
+	    if((f = fopen(dst,"wb"))) {
+		retstatus = raw_copy(device_name, device_unit, f);
+		fclose(f);
+	    }
 	    if(inhibited) dev_inhibit(name,0);
-        }
-        free(device_name);           
+	}
+	free(device_name);
     }
 
 #ifdef HAVE_SIGACTION

@@ -107,9 +107,9 @@ extern uae_u8 *baseaddr[65536];
 #define put_mem_bank(addr, b, realstart) do { \
     (mem_banks[bankindex(addr)] = (b)); \
     if ((b)->baseaddr) \
-        baseaddr[bankindex(addr)] = (b)->baseaddr - (realstart); \
+	baseaddr[bankindex(addr)] = (b)->baseaddr - (realstart); \
     else \
-        baseaddr[bankindex(addr)] = (uae_u8*)(((long)b)+1); \
+	baseaddr[bankindex(addr)] = (uae_u8*)(((long)b)+1); \
 } while (0)
 
 extern void memory_init (void);
@@ -229,6 +229,12 @@ struct romdata {
     int type;
 };
 
+extern struct romdata *getromdatabycrc (uae_u32 crc32);
+extern struct romdata *getromdatabydata (uae_u8 *rom, int size);
+extern struct romdata *getromdatabyid (int id);
+extern struct romdata *getarcadiarombyname (char *name);
+extern void getromname (struct romdata*, char*);
+extern struct romdata *getromdatabyname (char*);
 extern void romlist_add (char *path, struct romdata *rd);
 extern char *romlist_get (struct romdata *rd);
 extern void romlist_clear (void);

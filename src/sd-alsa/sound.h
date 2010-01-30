@@ -1,8 +1,8 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Support for Linux/ALSA sound
-  * 
+  *
   * Copyright 1997 Bernd Schmidt
   * Copyright 2004 Heikki Orsila
   */

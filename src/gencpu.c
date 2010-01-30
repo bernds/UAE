@@ -297,7 +297,7 @@ static void fill_prefetch_0 (void)
 	printf ("\tget_word_prefetch (0);\n");
     did_prefetch = 1;
     insn_n_cycles += 4;
-} 
+}
 
 static void fill_prefetch_next_1 (needcycles)
 {
@@ -306,7 +306,7 @@ static void fill_prefetch_next_1 (needcycles)
     }
     irc2ir ();
     fill_prefetch_1 (m68k_pc_offset + 2, needcycles);
-} 
+}
 
 static void fill_prefetch_next (void)
 {
@@ -519,12 +519,12 @@ static void genamode (amodes mode, char *reg, wordsizes size, char *name, int ge
     /* We get here for all non-reg non-immediate addressing modes to
      * actually fetch the value. */
 
-    if (using_prefetch && using_exception_3 && getv != 0 && size != sz_byte) {	    
+    if (using_prefetch && using_exception_3 && getv != 0 && size != sz_byte) {
 	printf ("\tif (%sa & 1) {\n", name);
 	if (using_prefetch)
 	    printf ("\t\texception3 (opcode, m68k_getpc() + %d, %sa);\n", m68k_pc_offset + 2, name);
 	else
-	    printf ("\t\texception3 (opcode, m68k_getpc() + %d, %sa);\n", m68k_pc_offset_last, name); 
+	    printf ("\t\texception3 (opcode, m68k_getpc() + %d, %sa);\n", m68k_pc_offset_last, name);
 	printf ("\t\tgoto %s;\n", endlabelstr);
 	printf ("\t}\n");
 	need_endlabel = 1;
@@ -931,7 +931,7 @@ static void genflags (flagtypes type, wordsizes size, char *value, char *src, ch
 	 case sz_long: printf ("\toptflag_cmpl ((uae_s32)(%s), (uae_s32)(%s));\n", src, dst); break;
 	}
 	return;
-	
+
      default:
 	break;
     }
@@ -1676,7 +1676,7 @@ static void gen_opcode (unsigned long int opcode)
 	     */
 	    printf("\t\tSET_VFLG (1);\n");
 	    printf("\t\tif (dst < 0) SET_NFLG (1);\n");
-	}	
+	}
 	printf ("\t\tException (5, oldpc);\n");
 	printf ("\t\tgoto %s;\n", endlabelstr);
 	printf ("\t} else {\n");
@@ -2566,7 +2566,7 @@ static void generate_includes (FILE * f)
     fprintf (f, "#include \"newcpu.h\"\n");
     fprintf (f, "#include \"cpu_prefetch.h\"\n");
     fprintf (f, "#include \"cputbl.h\"\n");
-    
+
     fprintf (f, "#define CPUFUNC(x) x##_ff\n"
 	     "#ifdef NOFLAGS\n"
 	     "#include \"noflags.h\"\n"
@@ -2661,7 +2661,7 @@ static void generate_one_opcode (int rp)
 	    /* Check that we can do the little endian optimization safely.  */
 	    if (pos < 8 && (dmsk >> (8 - pos)) != 0)
 		abort ();
-#endif	    
+#endif
 	    if (pos)
 		printf ("\tuae_u32 dstreg = (opcode >> %d) & %d;\n",
 			pos, dmsk);
@@ -2703,7 +2703,7 @@ static void generate_func (void)
 	/* sam: this is for people with low memory (eg. me :)) */
 	printf ("\n"
 		"#if !defined(PART_1) && !defined(PART_2) && "
-	 	    "!defined(PART_3) && !defined(PART_4) && "
+		    "!defined(PART_3) && !defined(PART_4) && "
 		    "!defined(PART_5) && !defined(PART_6) && "
 		    "!defined(PART_7) && !defined(PART_8)"
 		"\n"
@@ -2716,7 +2716,7 @@ static void generate_func (void)
 		"#define PART_7 1\n"
 		"#define PART_8 1\n"
 		"#endif\n\n");
-	
+
 	rp = 0;
 	for(j = 1; j <= 8; ++j) {
 		int k = (j * nr_cpuop_funcs) / 8;

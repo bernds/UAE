@@ -2,6 +2,12 @@ Note! This file only contains user-visible changes. There may be others. For a
 more detailed description of changes between releases, read src/ChangeLog, and
 for the full picture, make a diff between releases.
 
+User-visible changes in 0.8.25:
+  - More merging with WinUAE; a lot of the input device code has changed
+  - GUI cleaned up.
+  - Quest to eliminate useless options continues: 68000 mode is always "slow
+    but compatible"; it's not that slow after all.
+
 User-visible changes in 0.8.24:
   - More merging with WinUAE
   - Now uses GTK2 for the GUI.

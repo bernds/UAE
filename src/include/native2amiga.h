@@ -5,7 +5,7 @@
   * and without stack magic.
   *
   * Copyright 1999 Patrick Ohly
-  * 
+  *
   * Uses the EXTER interrupt that is setup in filesys.c
   * and some of it needs thread support.
   */
@@ -52,7 +52,7 @@ void native2amiga_startup (void);
 extern smp_comm_pipe native2amiga_pending;
 #endif
 
-STATIC_INLINE do_uae_int_requested(void)
+STATIC_INLINE void do_uae_int_requested(void)
 {
 	uae_int_requested = 1;
 	set_uae_int_flag ();

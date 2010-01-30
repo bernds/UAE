@@ -119,7 +119,7 @@ typedef struct {
     char *rootdir; /* root unix directory */
     int readonly; /* disallow write access? */
     int devno;
-    
+
     struct hardfiledata hf;
 
     /* Threading stuff */
@@ -183,7 +183,7 @@ char *get_filesys_unit (struct uaedev_mount_info *mountinfo, int nr,
 
     if (nr >= mountinfo->num_units)
 	return "No slot allocated for this unit";
-    
+
     *volname = uip->volname ? my_strdup (uip->volname) : 0;
     *rootdir = uip->rootdir ? my_strdup (uip->rootdir) : 0;
     *readonly = uip->readonly;
@@ -601,7 +601,7 @@ find_unit (uaecptr port)
 
     return u;
 }
-    
+
 static void prepare_for_open (char *name)
 {
 #if 0
@@ -720,7 +720,7 @@ static void update_child_names (Unit *unit, a_inode *a, a_inode *parent)
 	char *name_start;
 	char *new_name;
 	char dirsep[2] = { FSDB_DIR_SEPARATOR, '\0' };
-	  
+
 	a->parent = parent;
 	name_start = strrchr (a->nname, FSDB_DIR_SEPARATOR);
 	if (name_start == 0) {
@@ -863,7 +863,7 @@ static char *get_nname (Unit *unit, a_inode *base, char *rel,
     char *p = 0;
 
     *modified_rel = 0;
-    
+
     /* If we have a mapping of some other aname to "rel", we must pretend
      * it does not exist.
      * This can happen for example if an Amiga program creates a
@@ -896,7 +896,7 @@ static char *create_nname (Unit *unit, a_inode *base, char *rel)
     char *p;
 
     /* We are trying to create a file called REL.  */
-    
+
     /* If the name is used otherwise in the directory (or globally), we
      * need a new unique nname.  */
     if (fsdb_name_invalid (rel) || fsdb_used_as_nname (base, rel)) {
@@ -1267,7 +1267,7 @@ static void
 do_info (Unit *unit, dpacket packet, uaecptr info)
 {
     struct fs_usage fsu;
-    
+
     if (get_fs_usage (unit->ui.rootdir, 0, &fsu) != 0) {
 	PUT_PCK_RES1 (packet, DOS_FALSE);
 	PUT_PCK_RES2 (packet, dos_errno ());
@@ -2190,7 +2190,7 @@ action_seek (Unit *unit, dpacket packet)
     TRACE(("ACTION_SEEK(%s,%d,%d)\n", k->aino->nname, pos, mode));
 
     old = lseek (k->fd, 0, SEEK_CUR);
-    {      
+    {
 	uae_s32 temppos;
 	long filesize = lseek (k->fd, 0, SEEK_END);
 	lseek (k->fd, old, SEEK_SET);
@@ -2315,7 +2315,7 @@ action_change_mode (Unit *unit, dpacket packet)
     /* will be CHANGE_FH or CHANGE_LOCK value */
     long type = GET_PCK_ARG1 (packet);
     /* either a file-handle or lock */
-    uaecptr object = GET_PCK_ARG2 (packet) << 2; 
+    uaecptr object = GET_PCK_ARG2 (packet) << 2;
     /* will be EXCLUSIVE_LOCK/SHARED_LOCK if CHANGE_LOCK,
      * or MODE_OLDFILE/MODE_NEWFILE/MODE_READWRITE if CHANGE_FH */
     long mode = GET_PCK_ARG3 (packet);
@@ -3068,7 +3068,7 @@ void filesys_start_threads (void)
     current_mountinfo = dup_mountinfo (currprefs.mountinfo);
 
     reset_uaedevices ();
-    
+
     uip = current_mountinfo->ui;
     for (i = 0; i < current_mountinfo->num_units; i++) {
 	uip[i].unit_pipe = 0;
@@ -3171,7 +3171,7 @@ static uae_u32 filesys_diagentry (void)
     }
     resaddr += 0x1A;
     tmp = resaddr;
-    
+
     /* The good thing about this function is that it always gets called
      * when we boot. So we could put all sorts of stuff that wants to be done
      * here.

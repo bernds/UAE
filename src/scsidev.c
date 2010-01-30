@@ -69,7 +69,7 @@ static int inquiry (SCSI *scgp, void *bp, int cnt)
     scmd->cdb.g0_cdb.cmd = SC_INQUIRY;
     scmd->cdb.g0_cdb.lun = scgp->lun;
     scmd->cdb.g0_cdb.count = cnt;
-	
+
     scgp->cmdname = "inquiry";
 
     if (scsicmd(scgp) < 0)
@@ -115,7 +115,7 @@ static SCSI *openscsi (int scsibus, int target, int lun)
 	return NULL;
     } else {
 	return scgp;
-    } 
+    }
 }
 
 static void closescsi (SCSI *scgp)
@@ -205,7 +205,7 @@ static int start_thread (struct scsidevdata *sdd)
     return 1;
 #endif
 }
-    
+
 /************* Exec device functions ****************/
 
 
@@ -378,7 +378,7 @@ static void scsidev_do_scsi (struct scsidevdata *sdd, uaecptr request)
 	fflush (stdout);
     }
     #endif
- 
+
     scgp->scsibus = sdd->bus;
     scgp->target  = sdd->target;
     scgp->lun     = sdd->lun;
@@ -446,7 +446,7 @@ static void scsidev_do_scsi (struct scsidevdata *sdd, uaecptr request)
 	    scmd->size = len;
 	    scmd->sense_count = 0;
 	    *(uae_u8 *)&scmd->scb = 0;
-	    
+
 	    scsicmd (scgp);
 
 	    if (cmd == MODE_SENSE_6 &&
@@ -454,7 +454,7 @@ static void scsidev_do_scsi (struct scsidevdata *sdd, uaecptr request)
 		!scmd->ux_errno &&
 		!*(uae_u8 *)&scmd->scb) {
 		int req_len = len;
-		
+
 		/* compress result */
 		tmp = buffer;
 		len = 0;
@@ -475,7 +475,7 @@ static void scsidev_do_scsi (struct scsidevdata *sdd, uaecptr request)
     } else {
 	scsicmd (scgp);
     }
-    
+
     put_word (acmd + 18, scmd->error == SCG_FATAL ? 0 : scsi_cmd_len); /* fake scsi_CmdActual */
     put_byte (acmd + 21, *(uae_u8 *)&scmd->scb); /* scsi_Status */
     if (*(uae_u8 *)&scmd->scb) {
@@ -490,7 +490,7 @@ static void scsidev_do_scsi (struct scsidevdata *sdd, uaecptr request)
 	put_long (acmd + 8, 0); /* scsi_Actual */
     } else {
 	int i;
-	
+
 	for (i = 0; i < scsi_sense_len; i++) {
 	    put_byte (scsi_sense + i, 0);
 	}
@@ -522,7 +522,7 @@ static void scsidev_do_scsi (struct scsidevdata *sdd, uaecptr request)
 static void scsidev_do_io (struct scsidevdata *sdd, uaecptr request)
 {
     uae_u32 tmp2, dataptr, offset;
-    
+
     tmp2 = get_word (request+28); /* io_Command */
     switch (tmp2) {
      case 28:
@@ -581,7 +581,7 @@ static void *scsidev_thread (void *sddv)
 
 #ifdef DEBUGME
     printf ("scsidev_penguin: sdd  = 0x%x ready\n", sdd);
-#endif    
+#endif
     /* init SCSI */
     if (!(sdd->scgp = openscsi (sdd->bus, sdd->target, sdd->lun)) ||
 	(sdd->max_dma = scsi_bufsize (sdd->scgp, 512 * 1024)) <= 0) {
@@ -628,12 +628,12 @@ static uae_u32 scsidev_init (void)
 #ifdef DEBUGME
     printf("scsidev_init()\n");
 #endif
-    
+
     if (scgp) {
 	/* we still have everything in place */
 	return m68k_dreg (regs, 0); /* device base */
     }
-    
+
     /* init global SCSI */
     if (!(scgp = openscsi (-1, -1, -1))) {
 	return 0;
@@ -656,7 +656,7 @@ static uae_u32 scsidev_init (void)
 		if (!inquiry (scgp, &inq, sizeof(inq))) {
 		    int aunit = BTL2UNIT(scgp->scsibus, scgp->target, scgp->lun);
 		    struct scsidevdata *sdd;
-		    
+
 		    write_log ("   %2.01d,%d (= %3.d): ", scgp->target, scgp->lun, aunit);
 		    print_product (&inq);
 		    sdd = add_scsidev_data (scgp->scsibus, scgp->target, scgp->lun, aunit);
@@ -709,7 +709,7 @@ void scsidev_install (void)
     /* initcode */
     initcode = here ();
     calltrap (deftrap (scsidev_init)); dw (RTS);
-    
+
     /* Open */
     openfunc = here ();
     calltrap (deftrap (scsidev_open)); dw (RTS);
@@ -800,13 +800,13 @@ void scsidev_reset (void)
 	num_drives = 0;
     }
 #endif
-    
+
     if (scgp) {
 	closescsi (scgp);
 	scgp = NULL;
     }
 #endif
-    
+
     opencount = 0;
 }
 

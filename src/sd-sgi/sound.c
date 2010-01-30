@@ -1,8 +1,8 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Support for the Silicon Graphics Audio Library (AL)
-  * 
+  *
   * Copyright 1998 Ari Heikkinen
   */
 
@@ -113,8 +113,8 @@ int init_sound(void)
 		return 0;
 	}
 
- 	scaled_sample_evtime = (unsigned long)MAXHPOS_PAL * MAXVPOS_PAL * VBLANK_HZ_PAL * CYCLE_UNIT / rate;
- 	scaled_sample_evtime_ok = 1;
+	scaled_sample_evtime = (unsigned long)MAXHPOS_PAL * MAXVPOS_PAL * VBLANK_HZ_PAL * CYCLE_UNIT / rate;
+	scaled_sample_evtime_ok = 1;
 
 	sndbufpt = sndbuffer;
 	if (width == AL_SAMPLE_16) {

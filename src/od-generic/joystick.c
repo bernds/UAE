@@ -1,9 +1,10 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Joystick emulation stubs
-  * 
+  *
   * Copyright 1997 Bernd Schmidt
+  * Copyright 2003 Richard Drummond
   */
 
 #include "sysconfig.h"
@@ -13,22 +14,66 @@
 #include "options.h"
 #include "memory.h"
 #include "custom.h"
-#include "joystick.h"
+#include "inputdevice.h"
 
-int nr_joysticks;
-
-void read_joystick(int nr, unsigned int *dir, int *button)
+static int init_joysticks (void)
 {
-    *dir = 0;
-    *button = 0;
+   return 1;
 }
 
-void init_joystick(void)
-{
-    nr_joysticks = 0;
-}
-
-void close_joystick(void)
+static void close_joysticks (void)
 {
 }
 
+static int acquire_joystick (int num, int flags)
+{
+    return 0;
+}
+
+static void unacquire_joystick (int num)
+{
+}
+
+static void read_joysticks (void)
+{
+}
+
+static int get_joystick_num (void)
+{
+    return 0;
+}
+
+static char *get_joystick_name (int joy)
+{
+    return 0;
+}
+
+static int get_joystick_widget_num (int joy)
+{
+    return 0;
+}
+
+static int get_joystick_widget_type (int joy, int num, char *name, uae_u32 *code)
+{
+    return IDEV_WIDGET_NONE;
+}
+
+static int get_joystick_widget_first (int joy, int type)
+{
+    return -1;
+}
+
+struct inputdevice_functions inputdevicefunc_joystick = {
+    init_joysticks, close_joysticks, acquire_joystick, unacquire_joystick,
+    read_joysticks, get_joystick_num, get_joystick_name,
+    get_joystick_widget_num, get_joystick_widget_type,
+    get_joystick_widget_first
+};
+
+/*
+ * Set default inputdevice config for SDL joysticks
+ */
+void input_get_default_joystick (struct uae_input_device *uid)
+{
+    uid[0].enabled = 0;
+}

@@ -78,10 +78,10 @@ get_fs_usage (path, disk, fsp)
     }
 
     /* HACK ALERT! WinNT returns 0 in TotalNumberOfClusters for an audio-CD, which calls the GURU! */
-    if( ( TotalNumberOfClusters == 0 ) && 
-        ( GetDriveType( buf2 ) == DRIVE_CDROM ) )
+    if( ( TotalNumberOfClusters == 0 ) &&
+	( GetDriveType( buf2 ) == DRIVE_CDROM ) )
     {
-        TotalNumberOfClusters = 327680;
+	TotalNumberOfClusters = 327680;
     }
 
     BytesPerSector *= SectorsPerCluster;

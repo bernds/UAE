@@ -1,8 +1,8 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Mac port specific stuff
-  * 
+  *
   * (c) 1996 Ernesto Corvi
   */
 
@@ -65,7 +65,7 @@ static short gOldMBarHeight;
 static Boolean	macDiskStatus[4];
 static GWorldPtr gOffscreenBuffer;
 static PixMapHandle gOffscreenPixels;
-static Rect gOffscreenRect,gDrawRect;	
+static Rect gOffscreenRect,gDrawRect;
 static unsigned char *gOffscreenBaseAddr;
 static unsigned long gOffscreenRowBytes;
 static PaletteHandle mypal;
@@ -95,11 +95,11 @@ static void Share_ResolvePath (FSSpec *fSpec, char *path);
 
 static void my_setpalette(int count, int r, int g, int b)
 {	RGBColor mycolor;
-	
+
 	mycolor.red=r*1024;
 	mycolor.green=g*1024;
 	mycolor.blue=b*1024;
-	
+
 	if (count == 0 || count == 255) SetEntryColor(mypal, count, &mycolor);
 	else SetEntryColor(mypal, (~count & 0x000000ff), &mycolor);
 }
@@ -117,7 +117,7 @@ static void init_colors(void)
 {
     int rw = 5, gw = 5, bw = 5;
     colors_allocated = 0;
-    
+
     if (gfxvidinfo.pixbytes == 1)
 	alloc_colors256(get_color);
 	else
@@ -130,7 +130,7 @@ static void HideMenuBar(GrafPtr grafPort)
 {	Rect	menuRect={0,0,20,640};
 	RgnHandle newVisRgn;
 	GrafPtr savePort;
-	
+
 	GetPort(&savePort);
 	SetPort(grafPort);
 
@@ -148,7 +148,7 @@ static void HideMenuBar(GrafPtr grafPort)
 
 	gOldMBarHeight = GetMBarHeight();
 	LMSetMBarHeight(0);
-	
+
 	SetPort(savePort);
 }
 
@@ -177,9 +177,9 @@ static void ShowMenuBar(GrafPtr grafPort)
 	CopyRgn(gOldVisRgn, grafPort->visRgn);
 	DisposeRgn(gOldVisRgn);
 	gOldVisRgn = NULL;
-	
+
 	LMSetMBarHeight(gOldMBarHeight);
-	
+
 	DrawMenuBar();
 }
 
@@ -193,21 +193,21 @@ int graphics_init()
 	char *dst;
 	CGrafPtr oldPort;
     GDHandle oldDevice;
-	
+
 	my_use_gfxlib=use_gfxlib;
 	my_automount_uaedev=automount_uaedev;
 	my_screen_res=screen_res;
 	my_use_quickdraw=use_quickdraw;
-	
+
 	if (CheckForSetup()) ExitToShell();
-	
+
 	gfxvidinfo.maxblocklines=600; // Whatever...
-	
+
 	if (gfxvidinfo.pixbytes == 1)
 	{	myCTAB=GetCTable(128);
 		mypal=NewPalette(256, myCTAB, pmTolerant + pmExplicit, 0x0000);
 	}
-	
+
 	windowRectangle.left=0;
 	if (screen_res > 4 || screen_res < 0) screen_res=3;
 	if (screen_res == 4 || screen_res == 2) dont_want_aspect = 0;
@@ -224,7 +224,7 @@ int graphics_init()
 			else if (screen_res == 1) windowRectangle.bottom=256+windowRectangle.top+38;
 				 else windowRectangle.bottom=400+windowRectangle.top+38;
 		break;
-	
+
 		case 3:
 		case 4:
 			CenterScreen=36*gfxvidinfo.pixbytes;
@@ -240,21 +240,21 @@ int graphics_init()
 			}
 		break;
 	}
-	
+
 	screenV=windowRectangle.bottom-windowRectangle.top;
 	if (dont_want_aspect == 1 || screen_res == 2) screenV -= 12;
 	screenH=windowRectangle.right-windowRectangle.left;
-	
+
 	mywin = NewCWindow(nil, &windowRectangle, "\pThe Un*x Amiga Emulator", 1, 4, (WindowPtr)-1L, 0, 0);
     SetPort(mywin);
-    
+
     gui_prepare_leds(screenV);
-    
+
     init_colors();
-    
+
     if (use_quickdraw)
     {	GetGWorld(&oldPort, &oldDevice);
-    	NewGWorld( &gOffscreenBuffer, (gfxvidinfo.pixbytes*8), &osRect, 0L, oldDevice, 0);
+	NewGWorld( &gOffscreenBuffer, (gfxvidinfo.pixbytes*8), &osRect, 0L, oldDevice, 0);
 		SetGWorld(oldPort, oldDevice);
 		gOffscreenPixels = GetGWorldPixMap( gOffscreenBuffer );
 		LockPixels(gOffscreenPixels);
@@ -282,20 +282,20 @@ int graphics_init()
 		if (gfxvidinfo.bufmem == 0) SysBeep(0);
 	    gfxvidinfo.rowbytes=800*gfxvidinfo.pixbytes;
 	}
-    
+
     if (dont_want_aspect || screen_res == 2) printStatusLine();
-    
+
     if (gfxvidinfo.pixbytes == 1)
     {	SetPalette((WindowPtr) -1L, mypal, false);
     }
-    
+
     buttonstate[0] = buttonstate[1] = buttonstate[2] = 0;
     for(i=0; i<256; i++) keystate[i] = 0;
-    
+
     lastmx = lastmy = 0; newmousecounters=0;
-	
+
     refresh=TickCount();
-    
+
 //    tmp=ProfilerInit(collectDetailed,bestTimeBase,200,10);
     return 1;
 }
@@ -304,7 +304,7 @@ void graphics_leave()
 {
 //	ProfilerDump((unsigned char *)"\pmyProf");
 //	ProfilerTerm();
- 
+
     ShowCursor();
 	if (dont_want_aspect == 0) if (!mBarState) ShowMenuBar(mywin);
     if (oldDepth != 0) SetDepth(curDevice,oldDepth,0,0);
@@ -312,7 +312,7 @@ void graphics_leave()
     SndDisposeChannel(newChannel,true);
     if (gfxvidinfo.pixbytes == 1)
     {	DisposePalette(mypal);
-    	DisposeCTable(myCTAB);
+	DisposeCTable(myCTAB);
     }
     DisposeWindow(mywin);
     if (use_quickdraw)
@@ -337,14 +337,14 @@ void flush_screen ()
 	if (!redraw) return;
 	if (FrontWindow() != mywin) return;
 	if (inhibit_frame) return;
-   	
-   	GetGWorld(&oldPort,&oldDevice);
+
+	GetGWorld(&oldPort,&oldDevice);
 	SetGWorld((CWindowPtr) mywin, oldDevice);
     if (use_quickdraw)
     {	ForeColor(blackColor);	/* Prevents colorizing mode */
 	    BackColor(whiteColor);	/* Prevents colorizing mode */
-    	(*((*gOffscreenPixels)->pmTable))->ctSeed = (*((*((*(GetGDevice()))->gdPMap))->pmTable))->ctSeed;
-    	CopyBits((BitMap *)(*gOffscreenPixels), &(mywin->portBits), &gOffscreenRect, &gDrawRect, srcCopy, (RgnHandle) 0L);
+	(*((*gOffscreenPixels)->pmTable))->ctSeed = (*((*((*(GetGDevice()))->gdPMap))->pmTable))->ctSeed;
+	CopyBits((BitMap *)(*gOffscreenPixels), &(mywin->portBits), &gOffscreenRect, &gDrawRect, srcCopy, (RgnHandle) 0L);
     }
     else
     {	ph=GetGWorldPixMap((CGrafPort *) mywin);
@@ -354,7 +354,7 @@ void flush_screen ()
 		winbaseaddr-=(((**ph).bounds.top)*winrowbytes);
 	    dest=(long *)winbaseaddr;
 	    src=(long *)(gfxvidinfo.bufmem)+CenterScreen;
-	    
+
 		y=0;
 	    if ((dont_want_aspect == 0 && mBarState == true && y < 20)) y=20;
 	    dest=(long *)(winbaseaddr+(y*winrowbytes));
@@ -382,39 +382,39 @@ void flush_block (int start_y, int end_y)
 	if (!redraw) return;
 	if (FrontWindow() != mywin) return;
 	if (inhibit_frame) return;
-   	
-   	if (end_y > screenV) end_y=screenV;
-   	GetGWorld(&oldPort,&oldDevice);
+
+	if (end_y > screenV) end_y=screenV;
+	GetGWorld(&oldPort,&oldDevice);
 	SetGWorld((CWindowPtr) mywin, oldDevice);
     if (use_quickdraw)
-    {	
-    	srcRect.top=start_y;
-    	srcRect.bottom=end_y;
-    	srcRect.left=gOffscreenRect.left;
-    	srcRect.right=gOffscreenRect.right;
-    	dstRect.top=start_y;
-    	dstRect.bottom=end_y;
-    	dstRect.left=gDrawRect.left;
-    	dstRect.right=gDrawRect.right;
-    	
-    	/* Taken from my favorite book:
-    	   "It is significant, if not surprising, that the Mac and PC cannot come
-    	   to an agreement over the most fundamental issue in the universe: the
-    	   distinction between black and white. On the PC, the pixel value 0
-    	   indicates a pixel of zero intensity, or black. On the Mac, 0 indicates
-    	   a page wich has not been written on, wich leaves it white."
-    	   
-    	   										Eric Johnston.
-    	   							Tricks of the Mac Game Programming Gurus.
-    	
-    	Check set_palette and line_to_scr8() on how i fixed that.
-    	If you know a better way let me know.
-    	*/
-    	
-    	ForeColor(blackColor);	/* Prevents colorizing mode */
+    {
+	srcRect.top=start_y;
+	srcRect.bottom=end_y;
+	srcRect.left=gOffscreenRect.left;
+	srcRect.right=gOffscreenRect.right;
+	dstRect.top=start_y;
+	dstRect.bottom=end_y;
+	dstRect.left=gDrawRect.left;
+	dstRect.right=gDrawRect.right;
+
+	/* Taken from my favorite book:
+	   "It is significant, if not surprising, that the Mac and PC cannot come
+	   to an agreement over the most fundamental issue in the universe: the
+	   distinction between black and white. On the PC, the pixel value 0
+	   indicates a pixel of zero intensity, or black. On the Mac, 0 indicates
+	   a page wich has not been written on, wich leaves it white."
+
+											Eric Johnston.
+								Tricks of the Mac Game Programming Gurus.
+
+	Check set_palette and line_to_scr8() on how i fixed that.
+	If you know a better way let me know.
+	*/
+
+	ForeColor(blackColor);	/* Prevents colorizing mode */
 	    BackColor(whiteColor);	/* Prevents colorizing mode */
-    	(*((*gOffscreenPixels)->pmTable))->ctSeed = (*((*((*(GetGDevice()))->gdPMap))->pmTable))->ctSeed;
-    	CopyBits((BitMap *)(*gOffscreenPixels), &(mywin->portBits), &srcRect, &dstRect, srcCopy, (RgnHandle) 0L);
+	(*((*gOffscreenPixels)->pmTable))->ctSeed = (*((*((*(GetGDevice()))->gdPMap))->pmTable))->ctSeed;
+	CopyBits((BitMap *)(*gOffscreenPixels), &(mywin->portBits), &srcRect, &dstRect, srcCopy, (RgnHandle) 0L);
     }
     else
     {	ph=GetGWorldPixMap((CGrafPort *) mywin);
@@ -424,7 +424,7 @@ void flush_block (int start_y, int end_y)
 		winbaseaddr-=(((**ph).bounds.top)*winrowbytes);
 	    dest=(long *)winbaseaddr;
 	    src=(long *)(gfxvidinfo.bufmem)+CenterScreen;
-	    
+
 		y=start_y;
 	    if ((dont_want_aspect == 0 && mBarState == true && y < 20)) y=20;
 	    dest=(long *)(winbaseaddr+(y*winrowbytes));
@@ -444,11 +444,11 @@ void flush_line(int line_num)
     char *dst,*src;
     CGrafPtr oldPort;
     GDHandle oldDevice;
-	 
+
 	if (use_quickdraw)
 	{	GetGWorld(&oldPort, &oldDevice);
 	    SetGWorld(gOffscreenBuffer, NULL);
-    	dst=(char *)gOffscreenBaseAddr;
+	dst=(char *)gOffscreenBaseAddr;
 		dst+=(char *)((line_num)*gOffscreenRowBytes);
 		src=(char *)xlinebuffer;
 		BlockMove(src,dst,gOffscreenRowBytes);
@@ -466,22 +466,22 @@ void flush_line(int line_num)
 			src=(char *)xlinebuffer;
 			BlockMove(src,dst,gfxvidinfo.rowbytes);
 		}
-    	if (next_line_double)
-    	{	
-    		if (line_num < 481)
+	if (next_line_double)
+	{
+		if (line_num < 481)
 			{   dst=(char *)gfxvidinfo.bufmem+((line_num+1)*gfxvidinfo.rowbytes);
 				src=(char *)xlinebuffer;
 			BlockMove(src,dst,gfxvidinfo.rowbytes);
 			}
-    	}
+	}
     }
 }
 
-/* Decode KeySyms. This function knows about all keys that are common 
+/* Decode KeySyms. This function knows about all keys that are common
  * between different keyboard languages.
  */
 static int kc_decode (long ks)
-{	
+{
     switch (ks)
     {
      case kAKeyMap: return AK_A;
@@ -508,7 +508,7 @@ static int kc_decode (long ks)
      case kVKeyMap: return AK_V;
      case kWKeyMap: return AK_W;
      case kXKeyMap: return AK_X;
-     
+
      case k0KeyMap: return AK_0;
      case k1KeyMap: return AK_1;
      case k2KeyMap: return AK_2;
@@ -519,7 +519,7 @@ static int kc_decode (long ks)
      case k7KeyMap: return AK_7;
      case k8KeyMap: return AK_8;
      case k9KeyMap: return AK_9;
-     
+
      case kKP0KeyMap: return AK_NP0;
      case kKP1KeyMap: return AK_NP1;
      case kKP2KeyMap: return AK_NP2;
@@ -530,7 +530,7 @@ static int kc_decode (long ks)
      case kKP7KeyMap: return AK_NP7;
      case kKP8KeyMap: return AK_NP8;
      case kKP9KeyMap: return AK_NP9;
-	
+
      case kF1KeyMap: return AK_F1;
      case kF2KeyMap: return AK_F2;
      case kF3KeyMap: return AK_F3;
@@ -541,19 +541,19 @@ static int kc_decode (long ks)
      case kF8KeyMap: return AK_F8;
      case kF9KeyMap: return AK_F9;
      case kF10KeyMap: return AK_F10;
-	
+
      case kBackSpaceKeyMap: return AK_BS;
      case kTabKeyMap: return AK_TAB;
      case kReturnKeyMap: return AK_RET;
      case kEscapeKeyMap: return AK_ESC;
-     
+
      case kSpaceBarMap:  return AK_SPC;
-     
+
      case kUpArrowKeyMap: return AK_UP;
      case kDownArrowKeyMap: return AK_DN;
      case kLeftArrowKeyMap: return AK_LF;
      case kRightArrowKeyMap: return AK_RT;
-	
+
      case kF11KeyMap: return AK_inhibit;
 
      case kF12KeyMap: return AK_mousestuff;
@@ -603,7 +603,7 @@ static int decode_de(long ks)
      case XK_ssharp: return AK_MINUS;
      case XK_apostrophe: return AK_EQUAL;
      case XK_asciicircum: return AK_00;
-     case XK_minus: return AK_SLASH;	    
+     case XK_minus: return AK_SLASH;
 */
     }
 
@@ -614,20 +614,20 @@ static int keycode2amiga(long code)
 {
     long ks;
     int as;
-    
+
     ks = (code & keyCodeMask) >> 8;
     as = kc_decode (ks);
-	
-    if (as == -1) {	    
+
+    if (as == -1) {
 	switch(keyboard_lang) {
 	 case KBD_LANG_US:
 	    as = decode_us(ks);
 	    break;
-		
+
 	 case KBD_LANG_DE:
 	    as = decode_de(ks);
 	    break;
-		
+
 	 default:
 	    as = -1;
 	    break;
@@ -648,37 +648,37 @@ void handle_events()
     int kc,i,count;
     char	osKind;
     GrafPtr	oldSave;
-	
+
 	GetPort(&oldSave);
 	if ((redraw) && mywin != FrontWindow()) SelectWindow(mywin);
-    
+
     SetEventMask(-1);
-    
+
     if (diskInit)
     {	macDiskStatus[0]=!disk_empty(0);
 		SetMenuItemText(GetMenuHandle(kDrivesMenuID), 1, macDiskStatus[0] ? "\pEject Disk in DF0:" : "\pInsert Disk in DF0:");
-    	macDiskStatus[1]=!disk_empty(1);
+	macDiskStatus[1]=!disk_empty(1);
 		SetMenuItemText(GetMenuHandle(kDrivesMenuID), 2, macDiskStatus[1] ? "\pEject Disk in DF1:" : "\pInsert Disk in DF1:");
-    	macDiskStatus[2]=!disk_empty(2);
+	macDiskStatus[2]=!disk_empty(2);
 		SetMenuItemText(GetMenuHandle(kDrivesMenuID), 3, macDiskStatus[2] ? "\pEject Disk in DF2:" : "\pInsert Disk in DF2:");
-    	macDiskStatus[3]=!disk_empty(3);
+	macDiskStatus[3]=!disk_empty(3);
 		SetMenuItemText(GetMenuHandle(kDrivesMenuID), 4, macDiskStatus[3] ? "\pEject Disk in DF3:" : "\pInsert Disk in DF3:");
-    	diskInit=false;
+	diskInit=false;
     }
-    
+
 	if (redraw)
 	{	gui_update_leds();
 		macHandleCursors();
 	}
-    
+
     GetKeys(keys);
     if (BitTst(&keys, kCommandRawKey))
 	buttonstate[2] = 1;
     else
 	buttonstate[2] = 0;
-    
+
     if (BitTst(&keys, kShiftRawKey))
-    {	
+    {
 	if (!keystate[AK_LSH]) {
 	    keystate[AK_LSH] = 1;
 	    record_key (AK_LSH << 1);
@@ -692,13 +692,13 @@ void handle_events()
 	}
     }
     if (BitTst(&keys, kControlRawKey))
-    {	
+    {
 	if (!keystate[AK_CTRL]) {
 	    keystate[AK_CTRL] = 1;
 	    record_key (AK_CTRL << 1);
 	    goto label1;
 	}
-    } else {	
+    } else {
 	if (keystate[AK_CTRL]) {
 	    keystate[AK_CTRL] = 0;
 	    record_key ((AK_CTRL << 1) | 1);
@@ -706,7 +706,7 @@ void handle_events()
 	}
     }
     if (BitTst(&keys, kCapsRawKey))
-    {	
+    {
 	if (!keystate[AK_CAPSLOCK]) {
 	    keystate[AK_CAPSLOCK] = 1;
 	    record_key (AK_CAPSLOCK << 1);
@@ -720,7 +720,7 @@ void handle_events()
 	}
     }
     if (BitTst(&keys, kOptionRawKey))
-    {	
+    {
 	if (!keystate[AK_LALT]) {
 	    keystate[AK_LALT] = 1;
 	    record_key (AK_LALT << 1);
@@ -741,30 +741,30 @@ void handle_events()
 	switch(event.what) {
 	 case keyDown:
 	 case autoKey: {
-	 	 if ((event.modifiers & cmdKey) != 0)
-	 	 {	HandleMenu(MenuKey((char) (event.message & charCodeMask)));
-	 	 }
-	 	 else
-	 	 {	int kc = keycode2amiga(event.message);
-	 	    if (kc == -1) break;
+		 if ((event.modifiers & cmdKey) != 0)
+		 {	HandleMenu(MenuKey((char) (event.message & charCodeMask)));
+		 }
+		 else
+		 {	int kc = keycode2amiga(event.message);
+		    if (kc == -1) break;
 		     switch (kc)
 		     {	case AK_mousestuff:
-			  	   togglemouse();
-			 		 break;
-		
+				   togglemouse();
+					 break;
+
 			    case AK_inhibit:
-				 	 inhibit_frame ^= 1;
-			 		 break;
-		
+					 inhibit_frame ^= 1;
+					 break;
+
 			    default:
-			     	 if (!keystate[kc])
-			     	 { 	keystate[kc] = 1;
-			    	 	record_key (kc << 1);
-			 		 }
-		 			 break;
+				 if (!keystate[kc])
+				 { 	keystate[kc] = 1;
+					record_key (kc << 1);
+					 }
+					 break;
 			 }
 		}
-	 	break;
+		break;
 	 }
 	 case keyUp: {
 	     kc = keycode2amiga(event.message);
@@ -774,28 +774,28 @@ void handle_events()
 	     break;
 	 }
 	 case mouseDown:
-	 	windowPart = FindWindow (event.where, (WindowPtr*) &wp);
-	 	if (windowPart == inMenuBar) HandleMenu(MenuSelect(event.where));
-	 	else
-	 	if (windowPart == inSysWindow) SystemClick (&event, (WindowPtr) wp);
+		windowPart = FindWindow (event.where, (WindowPtr*) &wp);
+		if (windowPart == inMenuBar) HandleMenu(MenuSelect(event.where));
+		else
+		if (windowPart == inSysWindow) SystemClick (&event, (WindowPtr) wp);
 	    else buttonstate[0] = 1;
 	    break;
-	 	
+
 	 case osEvt:
-	 	osKind=(event.message) >> 24;
-	 	if (osKind == suspendResumeMessage)
-	 	{	osKind=(event.message)&1;
-	 		if (osKind)
-	 		{	redraw=true; // Resume
-	 			flush_screen();
-	 			if (dont_want_aspect || screen_res == 2)
+		osKind=(event.message) >> 24;
+		if (osKind == suspendResumeMessage)
+		{	osKind=(event.message)&1;
+			if (osKind)
+			{	redraw=true; // Resume
+				flush_screen();
+				if (dont_want_aspect || screen_res == 2)
 			    {	SelectWindow(mywin);
-			    	printStatusLine();
+				printStatusLine();
 			    }
 			}
-	 		else redraw=false; // Suspend
-	 	}
-	 	break;
+			else redraw=false; // Suspend
+		}
+		break;
 	 case mouseUp:
 	    buttonstate[0] = 0;
 	    buttonstate[2] = 0;
@@ -807,11 +807,11 @@ void handle_events()
 		if (mpos.v != lastmy) { lastmy=mpos.v; /*repeat = 1;*/ }
 	}
     } while (repeat);
-    
+
 label1:
     /* "Affengriff" */
     if(keystate[AK_CTRL] && keystate[AK_LAMI] && keystate[AK_RAMI])
-    	m68k_reset();
+	m68k_reset();
     SetPort(oldSave);
 }
 
@@ -839,13 +839,13 @@ static void PStrCat ( StringPtr p1, StringPtr p2)
 	register int len;
 	register int total;
 	StringPtr	p3;
-	
+
 	len = *p1++;
 	total = len +*p2;
-	
+
 	p3=p2;
 	p2=p2+ (*p2 + 1);
-	
+
 	while (--len>=0) *p2++=*p1++;
 	*p3=total;
 }
@@ -853,7 +853,7 @@ static void PStrCat ( StringPtr p1, StringPtr p2)
 static void PStrCopy ( StringPtr p1, StringPtr p2)
 {
 	register int len;
-	
+
 	len = *p2++ = *p1++;
 	while (--len>=0) *p2++=*p1++;
 }
@@ -881,27 +881,27 @@ static void HandleMenu (long mSelect)
 	if (menuID == 0) return;
 	switch (menuID)
 	{	case kAppleMenuID:
-	  		if (menuItem == 1)
-	  		{	if (!macCursorState) ShowCursor();
+			if (menuItem == 1)
+			{	if (!macCursorState) ShowCursor();
 				macCursorState=true;
-	  			Alert(kAboutDialogID,0); // About Box
-	  			if (dont_want_aspect || screen_res == 2) printStatusLine();
-	  		}
-	 		else
-	 		{	GetPort(&savePort);
-	 			GetItem(GetMenuHandle(kAppleMenuID), menuItem, name);
+				Alert(kAboutDialogID,0); // About Box
+				if (dont_want_aspect || screen_res == 2) printStatusLine();
+			}
+			else
+			{	GetPort(&savePort);
+				GetItem(GetMenuHandle(kAppleMenuID), menuItem, name);
 				OpenDeskAcc(name);
 				SystemTask();
 				SetPort(savePort);
 			}
 			break;
-	 	
-	 	case kFileMenuID:
+
+		case kFileMenuID:
 			switch (menuItem)
 			{	case 1:
 					m68k_reset();
 				break;
-				
+
 				case 3:
 					if (dont_want_aspect == 0)
 					{	if (mBarState) HideMenuBar(mywin);
@@ -909,31 +909,31 @@ static void HandleMenu (long mSelect)
 						mBarState=!mBarState;
 					}
 				break;
-				
+
 				case 5:
-			                activate_debugger();
+					activate_debugger();
 				break;
-				
+
 				case 7:
 					inhibit_frame ^= 1;
 					if (inhibit_frame) SetMenuItemText(GetMenuHandle(kFileMenuID), 7, "\pTurn Screen Update On");
 					else SetMenuItemText(GetMenuHandle(kFileMenuID), 7, "\pTurn Screen Update Off");
 				break;
-				
+
 				case 9:
 					produce_sound= !produce_sound;
 					if (produce_sound) SetMenuItemText(GetMenuHandle(kFileMenuID), 9, "\pTurn Sound Off");
 					else SetMenuItemText(GetMenuHandle(kFileMenuID), 9, "\pTurn Sound On");
 					WritePrefs(0);
 				break;
-				
+
 				case 11:
 					fake_joystick= !fake_joystick;
 					if (fake_joystick) SetMenuItemText(GetMenuHandle(kFileMenuID), 11, "\pTurn Joystick Off");
 					else SetMenuItemText(GetMenuHandle(kFileMenuID), 11, "\pTurn Joystick On");
 					WritePrefs(0);
 				break;
-				
+
 				case 13:
 					broken_in = 1;
 					regs.spcflags |= SPCFLAG_BRK;
@@ -941,7 +941,7 @@ static void HandleMenu (long mSelect)
 				break;
 			}
 			break;
-		
+
 		case kDrivesMenuID:
 			if (menuItem >= 1 && menuItem <= 4)
 			{	if (macDiskStatus[menuItem-1]) disk_eject(menuItem-1);
@@ -965,7 +965,7 @@ static void HandleMenu (long mSelect)
 					PStrCat(batchStr2,batchStr);
 					PStrCat("\p:",batchStr);
 					SetMenuItemText(GetMenuHandle(kDrivesMenuID), menuItem, batchStr);
-		
+
 			}
 			if (menuItem == 6)
 			{	if (!macCursorState) ShowCursor();
@@ -1002,7 +1002,7 @@ static void HandleMenu (long mSelect)
 				Share_main();
 			}
 		break;
-		
+
 		case kMemoryMenuID:
 			if (menuItem == 1) use_slow_mem = !use_slow_mem;
 			WritePrefs(0);
@@ -1011,7 +1011,7 @@ static void HandleMenu (long mSelect)
 			if (use_slow_mem) SetMenuItemText(GetMenuHandle(kMemoryMenuID), 1, "\pDisable 1 Mb (SlowMem)");
 			else SetMenuItemText(GetMenuHandle(kMemoryMenuID), 1, "\pEnable 1 Mb (SlowMem)");
 		break;
-			
+
 		case kResMenuID:
 			my_screen_res=(int)menuItem-1;
 			WritePrefs(0);
@@ -1020,7 +1020,7 @@ static void HandleMenu (long mSelect)
 			ParamAString("\pChanges will take effect the next time you run UAE.");
 			DisplayError(kQuitError);
 		break;
-		
+
 		case kRateMenuID:
 			for (count=1;count<5;count++) CheckItem(GetMenuHandle(kRateMenuID),count,false);
 			if (menuItem == 1) framerate=1;
@@ -1030,7 +1030,7 @@ static void HandleMenu (long mSelect)
 			CheckItem(GetMenuHandle(kRateMenuID),menuItem,true);
 			WritePrefs(0);
 		break;
-		
+
 		case kVideoMenuID:
 		if (menuItem == 5)
 		{	my_use_quickdraw = !my_use_quickdraw;
@@ -1047,7 +1047,7 @@ static void HandleMenu (long mSelect)
 			DisplayError(kQuitError);
 		}
 		break;
-		
+
 		default:
 			break;
 	}
@@ -1093,10 +1093,10 @@ static void macHandleCursors(void)
 static Boolean CheckForSetup (void)
 {	Boolean			retvalue=false;
 	SysEnvRec		env;
-	
+
 	oldDepth=0;
 	SysEnvirons( 2, &env );
-	
+
 	if ( env.systemVersion < 0x0700 )
 	{	ParamAString("\pUAE requires System 7 or later!\n Press Ok to Quit...");
 		DisplayError(kQuitError);
@@ -1146,8 +1146,8 @@ static void printStatusLine (void)
 	DrawString("\pPower LED:        Drive LEDs:  DF0:        DF1:        DF2:        DF3:");
 	else DrawString("\pPower:      DF0:      DF1:      DF2:      DF3:");
 	TextFont(0);
- 	TextSize(0);
- 	SetPort(savePort);
+	TextSize(0);
+	SetPort(savePort);
 }
 
 typedef struct {
@@ -1200,12 +1200,12 @@ static void Share_main(void)
 	char share_path[1024];
 	Handle	share_handle;
 	short backup;
-	
+
 	GetPort(&oldPort);
 	Share_Init();
-	
+
 	good = Share_CustomGet(&fSpec);
-	
+
 	if (good)
 	{	Share_ResolvePath(&fSpec,share_path);
 		backup=filesys_vRefNum;
@@ -1219,13 +1219,13 @@ static void Share_main(void)
 static void Share_Init(void)
 {
 	Handle strHndl;
-	
+
 	gHasFindFolder = true;
-	
+
 	Share_FilterAllFiles_UPP=NewFileFilterYDProc(Share_FilterAllFiles);
 	Share_MyDlgHook_UPP=NewDlgHookYDProc(Share_MyDlgHook);
 	Share_MyModalFilter_UPP=NewModalFilterYDProc(Share_MyModalFilter);
-	
+
 	strHndl = Get1Resource('STR ',kSelectStrRsrc);
 	if (ResError()!=noErr || !strHndl || !*strHndl)
 		BlockMove(kDefaultSelectString,gSelectString,kDefaultSelectString[0]+1);
@@ -1256,25 +1256,25 @@ static Boolean Share_CustomGet(FSSpec *fSpec)
 	SFData sfUserData;
 	OSErr err;
 	Boolean targetIsFolder,wasAliased;
-	
+
 	/* initialize user data area */
-	
+
 	sfUserData.replyPtr = &sfReply;
 	sfUserData.oldSelection.vRefNum = -9999;	/* init to ridiculous value */
-	
+
 	CustomGetFile(Share_FilterAllFiles_UPP,-1,nil,&sfReply,kSFDlg,where,Share_MyDlgHook_UPP,
 					Share_MyModalFilter_UPP,nil,nil,&sfUserData);
-	
+
 	if (sfReply.sfGood) {
 		err = ResolveAliasFile(&sfReply.sfFile,true,&targetIsFolder,&wasAliased);
 		if (err!=noErr)
 			return false;
 	}
-	
+
 	err = FSMakeFSSpec(sfReply.sfFile.vRefNum,sfReply.sfFile.parID,sfReply.sfFile.name,fSpec);
 	if (err!=noErr)
 		return false;
-	
+
 	return sfReply.sfGood;
 }
 
@@ -1284,16 +1284,16 @@ static pascal short Share_MyDlgHook(short item,DialogPtr theDlg,Ptr userData)
 	Boolean hiliteButton;
 	FSSpec curSpec;
 	OSType refCon;
-	
+
 	refCon = GetWRefCon(theDlg);
 	if (refCon!=sfMainDialogRefCon)
 		return item;
-		
+
 	sfUserData = (SFDataPtr) userData;
-	
+
 	if (item==sfHookFirstCall || item==sfHookLastCall)
 		return item;
-	
+
 	if (item==sfItemVolumeUser) {
 		sfUserData->replyPtr->sfFile.name[0] = '\0';
 		sfUserData->replyPtr->sfFile.parID = 2;
@@ -1302,21 +1302,21 @@ static pascal short Share_MyDlgHook(short item,DialogPtr theDlg,Ptr userData)
 		sfUserData->replyPtr->sfFlags = 0;
 		item = sfHookChangeSelection;
 	}
-		
+
 	if (!Share_SameFile(&sfUserData->replyPtr->sfFile,&sfUserData->oldSelection)) {
 		BlockMove(&sfUserData->replyPtr->sfFile,&curSpec,sizeof(FSSpec));
 		Share_MakeCanonFSSpec(&curSpec);
-		
+
 		if (curSpec.vRefNum!=sfUserData->oldSelection.vRefNum)
-			Share_GetDeskFolderSpec(&gDeskFolderSpec,curSpec.vRefNum);	
+			Share_GetDeskFolderSpec(&gDeskFolderSpec,curSpec.vRefNum);
 		Share_SetSelectButtonName(curSpec.name,Share_ShouldHiliteSelect(&curSpec),theDlg);
-		
+
 		BlockMove(&sfUserData->replyPtr->sfFile,&sfUserData->oldSelection,sizeof(FSSpec));
 	}
-	
+
 	if (item==kSelectItem)
 		item = sfItemOpenButton;
-		
+
 	return item;
 }
 
@@ -1326,13 +1326,13 @@ static pascal Boolean Share_MyModalFilter(DialogPtr theDlg,EventRecord *ev,short
 	Boolean evHandled;
 	char keyPressed;
 	OSType refCon;
-	
+
 	refCon = GetWRefCon(theDlg);
 	if (refCon!=sfMainDialogRefCon)
 		return false;
-		
+
 	evHandled = false;
-	
+
 	switch (ev->what) {
 		case keyDown:
 		case autoKey:
@@ -1348,7 +1348,7 @@ static pascal Boolean Share_MyModalFilter(DialogPtr theDlg,EventRecord *ev,short
 			}
 			break;
 	}
-	
+
 	return evHandled;
 }
 
@@ -1359,7 +1359,7 @@ static void Share_HitButton(DialogPtr theDlg,short item)
 	Handle iHndl;
 	Rect iRect;
 	long fTicks;
-	
+
 	GetDItem(theDlg,item,&iType,&iHndl,&iRect);
 	HiliteControl((ControlHandle)iHndl,inButton);
 	Delay(5,&fTicks);
@@ -1384,12 +1384,12 @@ static void Share_SetSelectButtonName(StringPtr selName,Boolean hilited,DialogPt
 	Rect iRect;
 	Str255 storeName,tempLenStr,tempSelName;
 	short btnWidth;
-	
+
 	BlockMove(selName,tempSelName,selName[0]+1);
 	GetDItem(theDlg,kSelectItem,&iType,&iHndl,&iRect);
-	
+
 	/* truncate select name to fit in button */
-	
+
 	btnWidth = iRect.right - iRect.left;
 	BlockMove(gSelectString,tempLenStr,gSelectString[0]+1);
 	p2cstr(tempLenStr);
@@ -1397,24 +1397,24 @@ static void Share_SetSelectButtonName(StringPtr selName,Boolean hilited,DialogPt
 	c2pstr((char *)tempLenStr);
 	btnWidth -= StringWidth(tempLenStr);
 	TruncString(btnWidth,tempSelName,smTruncMiddle);
-	
+
 	BlockMove(gSelectString,storeName,gSelectString[0]+1);
 	p2cstr(storeName);
 	p2cstr(tempSelName);
 	strcat((char *)storeName," Ò");
 	strcat((char *)storeName,(char *)tempSelName);
 	strcat((char *)storeName,"Ó");
-	
+
 	c2pstr((char *)storeName);
 	c2pstr((char *)tempSelName);
 	SetCTitle((ControlHandle)iHndl,storeName);
-	
+
 	SetDItem(theDlg,kSelectItem,iType,iHndl,&iRect);
 
 	if (hilited)
 		HiliteControl((ControlHandle)iHndl,0);
 	else
-		HiliteControl((ControlHandle)iHndl,255);		
+		HiliteControl((ControlHandle)iHndl,255);
 }
 
 
@@ -1426,7 +1426,7 @@ static Boolean Share_SameFile(FSSpec *file1,FSSpec *file2)
 		return false;
 	if (!EqualString(file1->name,file2->name,false,true))
 		return false;
-	
+
 	return true;
 }
 
@@ -1435,18 +1435,18 @@ static OSErr Share_GetDeskFolderSpec(FSSpec *fSpec,short vRefNum)
 {
 	DirInfo infoPB;
 	OSErr err;
-	
+
 	if (!gHasFindFolder) {
 		fSpec->vRefNum = -9999;
 		return -1;
 	}
-	
+
 	fSpec->name[0] = '\0';
 	err = FindFolder(vRefNum,kDesktopFolderType,kDontCreateFolder,
 						&fSpec->vRefNum,&fSpec->parID);
 	if (err!=noErr)
 		return err;
-	
+
 	return Share_MakeCanonFSSpec(fSpec);
 }
 
@@ -1468,14 +1468,14 @@ static OSErr Share_MakeCanonFSSpec(FSSpec *fSpec)
 
 	if (fSpec->name[0] != '\0')
 		return;
-		
+
 	infoPB.dirInfo.ioNamePtr = fSpec->name;
 	infoPB.dirInfo.ioVRefNum = fSpec->vRefNum;
 	infoPB.dirInfo.ioDrDirID = fSpec->parID;
 	infoPB.dirInfo.ioFDirIndex = -1;
 	err = PBGetCatInfo(&infoPB,false);
 	fSpec->parID = infoPB.dirInfo.ioDrParID;
-	
+
 	return err;
 }
 
@@ -1490,9 +1490,9 @@ static void Share_ResolvePath (FSSpec *fSpec, char *path)
 	volname[0]=0;
 	strcpy(dirname,(char *)fSpec->name);
 	p2cstr((unsigned char *)dirname);
-	
+
 	strcpy(path,dirname);
-	
+
 	the_vRefNum=(fSpec->vRefNum);
 	the_parID=(fSpec->parID);
 
@@ -1505,14 +1505,14 @@ static void Share_ResolvePath (FSSpec *fSpec, char *path)
 	p2cstr((unsigned char *)volname);
 
 	while (strcmp(volname,dirname) != 0)
-	{		
+	{
 		infoPB.dirInfo.ioNamePtr = (unsigned char *)dirname;
 		infoPB.dirInfo.ioVRefNum = the_vRefNum;
 		infoPB.dirInfo.ioDrDirID = the_parID;
 		infoPB.dirInfo.ioFDirIndex = -1;
 		PBGetCatInfo(&infoPB,false);
 		the_parID = infoPB.dirInfo.ioDrParID;
-	
+
 		p2cstr((unsigned char *)dirname);
 		strcpy(path_copy,dirname);
 		strcat(path_copy,":");
@@ -1536,7 +1536,7 @@ Boolean ReadPrefs (char *share_path)
 	home = CurResFile();
 	preffile=0;
 	*share_path=0;
-	
+
 	err=FindFolder(kOnSystemDisk, kPreferencesFolderType, true, &prefvRefNum, &prefDirID);
 	if (err != noErr) return false;
 	FSMakeFSSpec(prefvRefNum, prefDirID, prefsName, &spec);
@@ -1558,7 +1558,7 @@ Boolean ReadPrefs (char *share_path)
 	if (ResError() == noErr && config_handle !=0)
 	{	BlockMove((Ptr) *config_handle,(Ptr) config_sets,128);
 		ReleaseResource(config_handle);
-		
+
 		framerate=config_sets[0];
 		use_slow_mem=config_sets[1];
 		use_gfxlib=config_sets[2];
@@ -1583,17 +1583,17 @@ void CreatePrefs (void)
 	short prefvRefNum;
 	FSSpec spec;
 	short home,preffile;
-	
+
 	home = CurResFile();
 	preffile=0;
-	
+
 	err=FindFolder(kOnSystemDisk, kPreferencesFolderType, true, &prefvRefNum, &prefDirID);
 	if (err != noErr) return;
 	FSMakeFSSpec(prefvRefNum, prefDirID, prefsName, &spec);
-	
+
 	err=FSpCreate(&spec, 'mUAE', 'pref', 0);
 	if (err != noErr) return;
-	
+
 	FSpCreateResFile(&spec, 'mUAE', 'pref', 0);
 }
 
@@ -1608,19 +1608,19 @@ void WritePrefs (char *share_path)
 	Handle share_handle;
 	Handle config_handle;
 	int config_sets[128],count;
-	
+
 	home = CurResFile();
 	preffile=0;
-	
+
 	err=FindFolder(kOnSystemDisk, kPreferencesFolderType, true, &prefvRefNum, &prefDirID);
 	if (err != noErr) return;
 	FSMakeFSSpec(prefvRefNum, prefDirID, prefsName, &spec);
-	
+
 	preffile=FSpOpenResFile(&spec, fsRdWrPerm);
 	if (ResError() != noErr) return;
-	
+
 	for (count=0;count < 64;count++) config_sets[count]=0;
-	
+
 	config_sets[0]=framerate;
 	config_sets[1]=use_slow_mem;
 	config_sets[2]=my_use_gfxlib;
@@ -1630,10 +1630,10 @@ void WritePrefs (char *share_path)
 	config_sets[6]=my_screen_res;
 	config_sets[7]=my_use_quickdraw;
 	config_sets[8]=filesys_vRefNum;
-	
+
 	UseResFile(preffile);
-	
-	
+
+
 	if (share_path != 0)
 	{	share_handle=Get1Resource('STR ',128);
 		if (ResError() != noErr || share_handle == 0)
@@ -1650,7 +1650,7 @@ void WritePrefs (char *share_path)
 			ReleaseResource(share_handle);
 		}
 	}
-	
+
 	config_handle=Get1Resource('PREF',128);
 	if (ResError() != noErr || config_handle == 0)
 	{	config_handle=NewHandleClear(1024);
@@ -1665,7 +1665,7 @@ void WritePrefs (char *share_path)
 		WriteResource(config_handle);
 		ReleaseResource(config_handle);
 	}
-	
+
 	UseResFile(home);
 	CloseResFile(preffile);
 }

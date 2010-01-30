@@ -1,7 +1,10 @@
-This is version 0.8.24 of UAE, the UAE Amiga Emulator.
+This is version 0.8.25 of UAE-core, the UAE Amiga Emulator.
 
-Versions numbered 0.8.x are considered beta versions, but they generally
-tend to work better than the last "stable" release 0.7.
+This package used to be the master copy of UAE; it has somewhat lagged in
+development.  It is now intended to be a stable emulator core with a focus
+on running old A500 games and demos.  Certain extra features, such as a JIT
+compiler, will not be added - other packages such as WinUAE or E-UAE are
+available which include these patches.
 
 
 License

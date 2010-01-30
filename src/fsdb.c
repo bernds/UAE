@@ -54,7 +54,7 @@ char *fsdb_search_dir (const char *dirname, char *rel)
     /* This really shouldn't happen...  */
     if (! dir)
 	return 0;
-    
+
     while (p == 0 && (de = readdir (dir)) != 0) {
 	if (strcmp (de->d_name, rel) == 0)
 	    p = rel;
@@ -197,7 +197,7 @@ static int needs_dbentry (a_inode *aino)
 
     if (aino->deleted)
 	return 0;
-    
+
     if (! fsdb_mode_representable_p (aino) || aino->comment != 0)
 	return 1;
 

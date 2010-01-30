@@ -1,8 +1,8 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Interface to the Tcl/Tk GUI
-  * 
+  *
   * Copyright 1996 Bernd Schmidt
   */
 
@@ -63,7 +63,7 @@ static void InitToolbox(void)
 int gui_init(void)
 {	char pathString[1024];
 	Handle menuBar;
-	
+
 	InitToolbox();
 
 	SIOUXSettings.initializeTB=false;
@@ -77,7 +77,7 @@ int gui_init(void)
 	SIOUXSettings.leftpixel=0;
 	fprintf(stderr,"Starting up the GUIÉ\n");
 	SIOUXSetTitle("\pInfo Window");
-	
+
 	if (ReadPrefs(pathString))
 	{	if (*pathString != 0) add_filesys_unit("HD0", (char *)pathString, false);
 	}
@@ -87,11 +87,11 @@ int gui_init(void)
 			WritePrefs(0);
 		}
 	}
-	
+
 	menuBar=GetNewMBar(128);
 	SetMenuBar(menuBar);
 	DisposeHandle(menuBar);
-	
+
 	AddResMenu(GetMenuHandle(kAppleMenuID), 'DRVR');
 
 	if (screen_res != 4) DisableItem (GetMenuHandle(kFileMenuID), 3);
@@ -103,26 +103,26 @@ int gui_init(void)
 	else SetMenuItemText(GetMenuHandle(kFileMenuID), 9, "\pTurn Sound On");
     if (fake_joystick) SetMenuItemText(GetMenuHandle(kFileMenuID), 11, "\pTurn Joystick Off");
 	else SetMenuItemText(GetMenuHandle(kFileMenuID), 11, "\pTurn Joystick On");
-    
+
     rateMenu=GetMenu(kRateMenuID);
 	InsertMenu(rateMenu, -1);
 	if (framerate == 1) CheckItem(rateMenu,1,true);
 	if (framerate == 3) CheckItem(rateMenu,2,true);
 	if (framerate == 5) CheckItem(rateMenu,3,true);
 	if (framerate == 7) CheckItem(rateMenu,4,true);
-    
+
     resMenu=GetMenu(kResMenuID);
 	InsertMenu(resMenu, -1);
 	CheckItem(resMenu,(unsigned char)screen_res+1,true);
-    
+
     DrawMenuBar();
-    
+
     macLedState[0]=false;
     macLedState[1]=false;
     macLedState[2]=false;
     macLedState[3]=false;
     macLedState[4]=false;
-    
+
     quit_program = 0;
 }
 
@@ -144,7 +144,7 @@ void gui_exit(void)
 }
 
 void gui_prepare_leds(long screenV)
-{	
+{
 	if (screen_res >= 3)
 	{	SetRect(&powerRect,70,(short)screenV+1,110,(short)screenV+11);
 		SetRect(&driveDf0Rect,220,(short)screenV+1,260,(short)screenV+11);
@@ -168,7 +168,7 @@ void gui_update_leds(void)
 }
 
 void gui_led(int led, int on)
-{	
+{
 	macLedState[led]=on;
 	if (dont_want_aspect || screen_res == 2)
 	{	if (led == 0)
@@ -193,7 +193,7 @@ void gui_led(int led, int on)
 						PaintRect(&driveDf0Rect);
 					}
 				break;
-				
+
 				case 2:
 					if (on)
 					{	ForeColor(greenColor);
@@ -204,7 +204,7 @@ void gui_led(int led, int on)
 						PaintRect(&driveDf1Rect);
 					}
 				break;
-				
+
 				case 3:
 					if (on)
 					{	ForeColor(greenColor);
@@ -215,7 +215,7 @@ void gui_led(int led, int on)
 						PaintRect(&driveDf2Rect);
 					}
 				break;
-				
+
 				case 4:
 					if (on)
 					{	ForeColor(greenColor);
@@ -241,5 +241,5 @@ static void getline(char *p)
 }
 
 void gui_handle_events(void)
-{	
+{
 }

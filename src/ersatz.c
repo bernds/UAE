@@ -179,7 +179,7 @@ static void ersatz_init (void)
 
 	m68k_setpc (0xFC0002);
 	fill_prefetch_slow ();
-	uae_reset ();
+	uae_reset (0);
 	ersatzkickfile = 0;
 	return;
     }

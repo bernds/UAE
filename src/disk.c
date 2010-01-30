@@ -121,11 +121,11 @@ static char *drive_id_name(drive *drv)
     case DRIVE_ID_525DD: return "5.25DD";
     case DRIVE_ID_35DD : return "3.5DD";
     }
-    return "UNKNOWN"; 
+    return "UNKNOWN";
 }
 #endif
 
-/* Simulate exact behaviour of an A3000T 3.5 HD disk drive. 
+/* Simulate exact behaviour of an A3000T 3.5 HD disk drive.
  * The drive reports to be a 3.5 DD drive whenever there is no
  * disk or a 3.5 DD disk is inserted. Only 3.5 HD drive id is reported
  * when a real 3.5 HD disk is inserted. -Adil
@@ -791,7 +791,7 @@ void DISK_select (uae_u8 data)
     }
     for (dr = 0; dr < 4; dr++) {
 	/* motor on/off workings tested with small assembler code on real Amiga 1200. */
-	/* motor flipflop is set only when drive select goes from high to low */ 
+	/* motor flipflop is set only when drive select goes from high to low */
 	if (!(selected & (1 << dr)) && (lastselected & (1 << dr)) ) {
 	    if (floppy[dr].motoroff) {
 		/* motor off: if motor bit = 0 in prevdata or data -> turn motor on */
@@ -829,7 +829,7 @@ uae_u8 DISK_status (void)
 		    st |= 0x20;
 		else
 		    st &= ~0x20;
-#ifdef DEBUG_DRIVE_ID		
+#ifdef DEBUG_DRIVE_ID
 		write_log("DISK_status: sel %d id %s [0x%08lx, bit #%02d: %d]\n",
 		    dr,drive_id_name(drv), drv->drive_id << drv->drive_id_scnt, 31 - drv->drive_id_scnt, st & 0x20 ? 1:0);
 #endif
@@ -843,7 +843,7 @@ uae_u8 DISK_status (void)
 		st &= ~8;
 	    if (drv->dskchange)
 		st &= ~4;
-	} 
+	}
     }
     return st;
 }
@@ -870,7 +870,7 @@ static void disk_dmafinished (void)
 #ifdef DISK_DEBUG
     write_log("disk dma finished %08.8X\n", dskpt);
 #endif
-}    
+}
 
 static void disk_events (int last)
 {
@@ -1097,7 +1097,7 @@ static int linecounter;
 void DISK_update (void)
 {
     int dr;
-    
+
     for (dr = 0; dr < 4; dr++) {
 	drive *drv = &floppy[dr];
 	if (drv->steplimit)
@@ -1347,13 +1347,16 @@ uae_u8 *restore_disk(int num,uae_u8 *src)
     return src;
 }
 
-uae_u8 *save_disk(int num,int *len)
+uae_u8 *save_disk(int num, int *len, uae_u8 *dstptr)
 {
     uae_u8 *dstbak,*dst;
     drive *drv;
 
     drv = &floppy[num];
-    dstbak = dst = malloc (2+1+1+1+1+4+4+256);
+    if (dstptr)
+	dstbak = dst = dstptr;
+    else
+	dstbak = dst = malloc (2+1+1+1+1+4+4+256);
     save_u32 (drv->drive_id);	    /* drive type ID */
     save_u8 ((drv->motoroff ? 0:1) | ((disabled & (1 << num)) ? 2 : 0));  /* state */
     save_u8 (drv->cyl);		    /* cylinder */
@@ -1382,14 +1385,17 @@ uae_u8 *restore_floppy(uae_u8 *src)
     return src;
 }
 
-uae_u8 *save_floppy(int *len)
+uae_u8 *save_floppy(int *len, uae_u8 *dstptr)
 {
     uae_u8 *dstbak, *dst;
 
     /* flush dma buffer before saving */
     dodmafetch();
 
-    dstbak = dst = malloc(2+1+1+1+1+2);
+    if (dstptr)
+	dstbak = dst = dstptr;
+    else
+	dstbak = dst = malloc(2+1+1+1+1+2);
     save_u16 (word);		/* current fifo (low word) */
     save_u8 (bitoffset);	/* dma bit offset */
     save_u8 (dma_enable);	/* disk sync found */

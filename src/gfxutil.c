@@ -16,7 +16,6 @@
 #include "custom.h"
 #include "keyboard.h"
 #include "xwin.h"
-#include "keybuf.h"
 
 #define	RED 	0
 #define	GRN	1
