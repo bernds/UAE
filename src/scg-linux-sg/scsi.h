@@ -1,0 +1,3 @@
+#ifndef SCSI_IS_THREAD_SAFE
+#define SCSI_IS_THREAD_SAFE
+#endif

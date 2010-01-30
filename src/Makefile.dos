@@ -1,0 +1,285 @@
+#
+# Makefile.dos for DosUAE
+#
+
+CC        = gcc
+CPP       = gcc -E
+CFLAGS    = -O3 -fomit-frame-pointer -Wall -Wtraditional -Wno-unused -Wno-format -W -Wmissing-prototypes -Wstrict-prototypes -DGCCCONSTFUNC="__attribute__((const))" -DX86_ASSEMBLY -DUSE_UNDERSCORE -fno-strength-reduce -DINTEL_FLAG_OPT=1 -DREGPARAM="__attribute__((regparm(3)))" -DUSE_ZFILE -D__inline__=inline -DSTATFS_NO_ARGS=2 -DSTATBUF_BAVAIL=f_bfree -D__DOS__
+GFXOBJS   = tui.o machdep/video/conio-ui.o machdep/video/vbe.o machdep/video/video.o
+SNDOBJS   = machdep/sound/dma.o machdep/sound/sb.o machdep/sound/gus.o
+MISCOBJS  = machdep/misc/misc.o machdep/misc/handlers.o
+ASMOBJS   = X86.o
+CPUOBJS   = cpu_f0.o cpu_f1.o cpu_f2.o cpu_f3.o cpu_f4.o cpu_f5.o cpu_f6.o cpu_f7.o cpu_f8.o cpu_f9.o cpu_fA.o cpu_fB.o cpu_fC.o cpu_fD.o cpu_fE.o cpu_fF.o
+DEBUGOBJS = debug.o
+MATHLIB   = -lm
+
+.SUFFIXES: .o .c .h .m .i
+
+INCLUDES=-I../src/include/ -I../src/ -I../src/machdep/
+
+OBJS = main.o newcpu.o memory.o custom.o cia.o serial.o disk.o blitter.o os.o \
+       autoconf.o ersatz.o filesys.o hardfile.o keybuf.o expansion.o zfile.o \
+       fpp.o readcpu.o cpudefs.o gfxutil.o gfxlib.o blitfunc.o blittable.o \
+       compiler.o uaelib.o execlib.o timerdev.o machdep/support.o cpustbl.o \
+       $(ASMOBJS) $(CPUOBJS) $(GFXOBJS) $(DEBUGOBJS) $(SNDOBJS) $(MISCOBJS) \
+
+all: uae.exe readdisk.exe
+
+readdisk.exe: readdisk.o
+	$(CC) readdisk.o -o readdisk
+	strip readdisk
+	coff2exe readdisk
+
+uae.exe: $(OBJS)
+	$(CC) $(OBJS) -o uae $(MATHLIB)
+	strip uae
+	coff2exe uae
+
+clean:
+	del *.o
+	del machdep\*.o
+	del machdep\video\*.o
+	del machdep\sound\*.o
+	del machdep\misc\*.o
+	del uae
+	del uae.exe
+	del readdisk
+	del readdisk.exe
+	del gencpu.exe
+	del genblitter.exe
+	del build68k.exe
+	del cpudefs.c
+	del cpuopti.exe
+	del cpu?.c
+	del blit.h
+	del cputbl.h
+	del cpustbl.c
+	del cpu_f?.s
+	del blitfunc.c
+	del blitfunc.h
+	del blittable.c
+	del config.h
+
+halfclean:
+	del *.o
+	del machdep\*.o
+	del machdep\video\*.o
+	del machdep\sound\*.o
+	del machdep\misc\*.o
+
+blit.h: genblitter.exe
+	genblitter i >blit.h
+blitfunc.c: genblitter.exe blitfunc.h
+	genblitter f >blitfunc.c
+blitfunc.h: genblitter.exe
+	genblitter h >blitfunc.h
+blittable.c: genblitter.exe blitfunc.h
+	genblitter t >blittable.c
+
+genblitter.exe: genblitter.o blitops.o
+	$(CC) -o genblitter.exe genblitter.o blitops.o
+build68k.exe: build68k.o
+	$(CC) -o build68k.exe build68k.o
+cpuopti.exe: cpuopti.o
+	$(CC) -o cpuopti.exe cpuopti.o
+gencpu.exe: gencpu.o readcpu.o cpudefs.o
+	$(CC) -o gencpu.exe gencpu.o readcpu.o cpudefs.o
+
+custom.o: blit.h
+
+cpudefs.c: build68k.exe table68k
+	build68k.exe >cpudefs.c
+cpustbl.c: gencpu.exe
+	gencpu s >cpustbl.c
+cputbl.c: gencpu.exe
+	gencpu t >cputbl.c
+cputbl.h: gencpu.exe
+	gencpu h >cputbl.h
+
+cpu0.c: gencpu.exe
+	gencpu f 0 >cpu0.c
+cpu1.c: gencpu.exe
+	gencpu f 1 >cpu1.c
+cpu2.c: gencpu.exe
+	gencpu f 2 >cpu2.c
+cpu3.c: gencpu.exe
+	gencpu f 3 >cpu3.c
+cpu4.c: gencpu.exe
+	gencpu f 4 >cpu4.c
+cpu5.c: gencpu.exe
+	gencpu f 5 >cpu5.c
+cpu6.c: gencpu.exe
+	gencpu f 6 >cpu6.c
+cpu7.c: gencpu.exe
+	gencpu f 7 >cpu7.c
+cpu8.c: gencpu.exe
+	gencpu f 8 >cpu8.c
+cpu9.c: gencpu.exe
+	gencpu f 9 >cpu9.c
+cpuA.c: gencpu.exe
+	gencpu f 10 >cpuA.c
+cpuB.c: gencpu.exe
+	gencpu f 11 >cpuB.c
+cpuC.c: gencpu.exe
+	gencpu f 12 >cpuC.c
+cpuD.c: gencpu.exe
+	gencpu f 13 >cpuD.c
+cpuE.c: gencpu.exe
+	gencpu f 14 >cpuE.c
+cpuF.c: gencpu.exe
+	gencpu f 15 >cpuF.c
+
+cpu0.o: cpu0.c cputbl.h
+	$(CC) $(INCLUDES) -c $(CFLAGS) $*.c
+cpu1.o: cpu1.c cputbl.h
+	$(CC) $(INCLUDES) -c $(CFLAGS) $*.c
+cpu2.o: cpu2.c cputbl.h
+	$(CC) $(INCLUDES) -c $(CFLAGS) $*.c
+cpu3.o: cpu3.c cputbl.h
+	$(CC) $(INCLUDES) -c $(CFLAGS) $*.c
+cpu4.o: cpu4.c cputbl.h
+	$(CC) $(INCLUDES) -c $(CFLAGS) $*.c
+cpu5.o: cpu5.c cputbl.h
+	$(CC) $(INCLUDES) -c $(CFLAGS) $*.c
+cpu6.o: cpu6.c cputbl.h
+	$(CC) $(INCLUDES) -c $(CFLAGS) $*.c
+cpu7.o: cpu7.c cputbl.h
+	$(CC) $(INCLUDES) -c $(CFLAGS) $*.c
+cpu8.o: cpu8.c cputbl.h
+	$(CC) $(INCLUDES) -c $(CFLAGS) $*.c
+cpu9.o: cpu9.c cputbl.h
+	$(CC) $(INCLUDES) -c $(CFLAGS) $*.c
+cpuA.o: cpuA.c cputbl.h
+	$(CC) $(INCLUDES) -c $(CFLAGS) $*.c
+cpuB.o: cpuB.c cputbl.h
+	$(CC) $(INCLUDES) -c $(CFLAGS) $*.c
+cpuC.o: cpuC.c cputbl.h
+	$(CC) $(INCLUDES) -c $(CFLAGS) $*.c
+cpuD.o: cpuD.c cputbl.h
+	$(CC) $(INCLUDES) -c $(CFLAGS) $*.c
+cpuE.o: cpuE.c cputbl.h
+	$(CC) $(INCLUDES) -c $(CFLAGS) $*.c
+cpuF.o: cpuF.c cputbl.h
+	$(CC) $(INCLUDES) -c $(CFLAGS) $*.c
+
+cpu_f0.s: cpu0.c cputbl.h cpuopti.exe
+	$(CC) $(INCLUDES) -S $(CFLAGS) $< -o cpu-tmp.s
+	cpuopti <cpu-tmp.s >$@
+	del cpu-tmp.s
+cpu_f1.s: cpu1.c cputbl.h cpuopti.exe
+	$(CC) $(INCLUDES) -S $(CFLAGS) $< -o cpu-tmp.s
+	cpuopti <cpu-tmp.s >$@
+	del cpu-tmp.s
+cpu_f2.s: cpu2.c cputbl.h cpuopti.exe
+	$(CC) $(INCLUDES) -S $(CFLAGS) $< -o cpu-tmp.s
+	cpuopti <cpu-tmp.s >$@
+	del cpu-tmp.s
+cpu_f3.s: cpu3.c cputbl.h cpuopti.exe
+	$(CC) $(INCLUDES) -S $(CFLAGS) $< -o cpu-tmp.s
+	cpuopti <cpu-tmp.s >$@
+	del cpu-tmp.s
+cpu_f4.s: cpu4.c cputbl.h cpuopti.exe
+	$(CC) $(INCLUDES) -S $(CFLAGS) $< -o cpu-tmp.s
+	cpuopti <cpu-tmp.s >$@
+	del cpu-tmp.s
+cpu_f5.s: cpu5.c cputbl.h cpuopti.exe
+	$(CC) $(INCLUDES) -S $(CFLAGS) $< -o cpu-tmp.s
+	cpuopti <cpu-tmp.s >$@
+	del cpu-tmp.s
+cpu_f6.s: cpu6.c cputbl.h cpuopti.exe
+	$(CC) $(INCLUDES) -S $(CFLAGS) $< -o cpu-tmp.s
+	cpuopti <cpu-tmp.s >$@
+	del cpu-tmp.s
+cpu_f7.s: cpu7.c cputbl.h cpuopti.exe
+	$(CC) $(INCLUDES) -S $(CFLAGS) $< -o cpu-tmp.s
+	cpuopti <cpu-tmp.s >$@
+	del cpu-tmp.s
+cpu_f8.s: cpu8.c cputbl.h cpuopti.exe
+	$(CC) $(INCLUDES) -S $(CFLAGS) $< -o cpu-tmp.s
+	cpuopti <cpu-tmp.s >$@
+	del cpu-tmp.s
+cpu_f9.s: cpu9.c cputbl.h cpuopti.exe
+	$(CC) $(INCLUDES) -S $(CFLAGS) $< -o cpu-tmp.s
+	cpuopti <cpu-tmp.s >$@
+	del cpu-tmp.s
+cpu_fA.s: cpuA.c cputbl.h cpuopti.exe
+	$(CC) $(INCLUDES) -S $(CFLAGS) $< -o cpu-tmp.s
+	cpuopti <cpu-tmp.s >$@
+	del cpu-tmp.s
+cpu_fB.s: cpuB.c cputbl.h cpuopti.exe
+	$(CC) $(INCLUDES) -S $(CFLAGS) $< -o cpu-tmp.s
+	cpuopti <cpu-tmp.s >$@
+	del cpu-tmp.s
+cpu_fC.s: cpuC.c cputbl.h cpuopti.exe
+	$(CC) $(INCLUDES) -S $(CFLAGS) $< -o cpu-tmp.s
+	cpuopti <cpu-tmp.s >$@
+	del cpu-tmp.s
+cpu_fD.s: cpuD.c cputbl.h cpuopti.exe
+	$(CC) $(INCLUDES) -S $(CFLAGS) $< -o cpu-tmp.s
+	cpuopti <cpu-tmp.s >$@
+	del cpu-tmp.s
+cpu_fE.s: cpuE.c cputbl.h cpuopti.exe
+	$(CC) $(INCLUDES) -S $(CFLAGS) $< -o cpu-tmp.s
+	cpuopti <cpu-tmp.s >$@
+	del cpu-tmp.s
+cpu_fF.s: cpuF.c cputbl.h cpuopti.exe
+	$(CC) $(INCLUDES) -S $(CFLAGS) $< -o cpu-tmp.s
+	cpuopti <cpu-tmp.s >$@
+	del cpu-tmp.s
+
+X86.o: X86.S
+	$(CC) $(INCLUDES) -c $(CFLAGS) X86.S
+
+.m.o:
+	$(CC) $(INCLUDES) -c $(CFLAGS) $*.m
+.c.o:
+	$(CC) $(INCLUDES) -c $(CFLAGS) $*.c -o $@
+.c.s:
+	$(CC) $(INCLUDES) -S $(CFLAGS) $*.c
+.c.i:
+	$(CC) $(INCLUDES) -E $(CFLAGS) $*.c > $@
+.S.o:
+	$(CC) $(INCLUDES) -c $(CFLAGS) $*.S
+.s.o:
+	$(CC) $(INCLUDES) -c $(CFLAGS) $*.s
+
+# Saves recompiling...
+touch:
+	touch *.o
+	touch machdep\*.o
+	touch machdep\video\*.o
+	touch machdep\sound\*.o
+	touch machdep\misc\*.o
+	touch build68k.exe
+	touch cpudefs.c
+	touch gencpu.exe
+	touch cpu*.*
+
+# Some more dependencies...
+cpustbl.o: cputbl.h
+cputbl.o: cputbl.h
+
+build68k.o: include/readcpu.h
+readcpu.o: include/readcpu.h
+
+main.o: config.h
+cia.o: config.h include/events.h
+custom.o: config.h include/events.h
+newcpu.o: config.h include/events.h
+autoconf.o: config.h
+expansion.o: config.h
+xwin.o: config.h
+svga.o: config.h
+bebox.o: config.h
+os.o: config.h
+memory.o: config.h
+debug.o: config.h
+fpp.o: config.h
+ersatz.o: config.h
+filesys.o: config.h
+execlib.o: config.h
+disk.o: config.h include/events.h
+blitter.o: config.h include/events.h
+
+config.h: ../config.h
+	copy ..\config.h

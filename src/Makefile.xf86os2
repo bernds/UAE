@@ -1,0 +1,197 @@
+# Generated automatically from Makefile.in by configure.
+#
+# Makefile.in for UAE
+#
+
+CC        = gcc
+CPP       = gcc -E
+CFLAGS    = -O3 -fomit-frame-pointer -Wall -Wno-unused -Wno-format -W -Wmissing-prototypes -Wstrict-prototypes -D__inline__=inline -DSTATFS_NO_ARGS=2 -DSTATBUF_BAVAIL=f_bavail -DBROKEN_JOYSTICK_H= -DXF86OS2 -D__unix
+X_CFLAGS  =  -I/XFree86/includ -Zmtd
+TARGET    = x11
+LIBRARIES =  -L/XFree86/li  -lSM -lICE -lXext -lX11  
+GFXOBJS   = xwin.o nogui.o
+ASMOBJS   = 
+#X86.o
+
+INSTALL         = @INSTALL@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_DATA    = @INSTALL_DATA@
+prefix          = /usr/local
+exec_prefix     = ${prefix}
+bindir          = ${exec_prefix}/bin
+libdir          = ${exec_prefix}/lib
+sysconfdir      = ${prefix}/etc
+
+.SUFFIXES: .o .c .h .m
+
+
+INCLUDES=-Iinclude
+
+OBJS = main.o newcpu.o memory.o debug.o custom.o cia.o disk.o blitter.o $(GFXOBJS) \
+       autoconf.o os.o ersatz.o filesys.o hardfile.o keybuf.o expansion.o zfile.o \
+       readcpu.o cpudefs.o gfxutil.o gfxlib.o blitfunc.o blittable.o $(ASMOBJS) \
+       cpu0.o cpu1.o cpu2.o cpu3.o cpu4.o cpu5.o cpu6.o cpu7.o \
+       cpu8.o cpu9.o cpuA.o cpuB.o cpuC.o cpuD.o cpuE.o cpuF.o cpustbl.o
+       
+all: include/sysconfig.h $(TARGET)
+
+include/sysconfig.h: include/sysconfig.h.xf86os2
+	cp include/sysconfig.h.xf86os2 include/sysconfig.h
+
+x11: progs
+
+progs: uae readdisk
+
+install:
+
+readdisk: readdisk.o
+	$(CC) readdisk.o -o readdisk $(LDFLAGS) $(DEBUGFLAGS) -Zmtd -Zexe
+
+uae: $(OBJS)
+	$(CC) $(OBJS) -o uae $(GFXLDFLAGS) $(LDFLAGS) $(DEBUGFLAGS) $(LIBRARIES) -Zmtd -Zexe
+
+clean:
+	-rm -f *.o uae readdisk
+	-rm -f gencpu genblitter build68k cpudefs.c
+	-rm -f cpu?.c blit.h
+	-rm -f cputbl.h cpustbl.c
+	-rm -f blitfunc.c blitfunc.h blittable.c
+
+halfclean:
+	-rm -f $(OBJS) $(GFXOBJS)
+
+streifenfrei: clean
+	-rm -f Makefile config.cache config.log config.status
+
+blit.h: genblitter
+	genblitter i >blit.h
+blitfunc.c: genblitter blitfunc.h
+	genblitter f >blitfunc.c
+blitfunc.h: genblitter
+	genblitter h >blitfunc.h
+blittable.c: genblitter blitfunc.h
+	genblitter t >blittable.c
+
+genblitter: genblitter.o
+	$(CC) $(LDFLAGS) -o $@ $? -Zmtd -Zexe
+build68k: build68k.o
+	$(CC) $(LDFLAGS) -o $@ $? -Zmtd -Zexe
+gencpu: gencpu.o readcpu.o cpudefs.o
+	$(CC) $(LDFLAGS) -o $@ gencpu.o readcpu.o cpudefs.o -Zmtd -Zexe
+
+custom.o: blit.h
+
+cpudefs.c: build68k table68k
+	build68k >cpudefs.c
+cpustbl.c: gencpu
+	gencpu s >cpustbl.c
+cputbl.c: gencpu
+	gencpu t >cputbl.c
+cputbl.h: gencpu
+	gencpu h >cputbl.h
+
+cpu0.c: gencpu
+	gencpu f 0 >cpu0.c
+cpu1.c: gencpu
+	gencpu f 1 >cpu1.c
+cpu2.c: gencpu
+	gencpu f 2 >cpu2.c
+cpu3.c: gencpu
+	gencpu f 3 >cpu3.c
+cpu4.c: gencpu
+	gencpu f 4 >cpu4.c
+cpu5.c: gencpu
+	gencpu f 5 >cpu5.c
+cpu6.c: gencpu
+	gencpu f 6 >cpu6.c
+cpu7.c: gencpu
+	gencpu f 7 >cpu7.c
+cpu8.c: gencpu
+	gencpu f 8 >cpu8.c
+cpu9.c: gencpu
+	gencpu f 9 >cpu9.c
+cpuA.c: gencpu
+	gencpu f 10 >cpuA.c
+cpuB.c: gencpu
+	gencpu f 11 >cpuB.c
+cpuC.c: gencpu
+	gencpu f 12 >cpuC.c
+cpuD.c: gencpu
+	gencpu f 13 >cpuD.c
+cpuE.c: gencpu
+	gencpu f 14 >cpuE.c
+cpuF.c: gencpu
+	gencpu f 15 >cpuF.c
+
+cpu0.o: cpu0.c cputbl.h
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $*.c
+cpu1.o: cpu1.c cputbl.h
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $*.c
+cpu2.o: cpu2.c cputbl.h
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $*.c
+cpu3.o: cpu3.c cputbl.h
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $*.c
+cpu4.o: cpu4.c cputbl.h
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $*.c
+cpu5.o: cpu5.c cputbl.h
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $*.c
+cpu6.o: cpu6.c cputbl.h
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $*.c
+cpu7.o: cpu7.c cputbl.h
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $*.c
+cpu8.o: cpu8.c cputbl.h
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $*.c
+cpu9.o: cpu9.c cputbl.h
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $*.c
+cpuA.o: cpuA.c cputbl.h
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $*.c
+cpuB.o: cpuB.c cputbl.h
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $*.c
+cpuC.o: cpuC.c cputbl.h
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $*.c
+cpuD.o: cpuD.c cputbl.h
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $*.c
+cpuE.o: cpuE.c cputbl.h
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $*.c
+cpuF.o: cpuF.c cputbl.h
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $*.c
+       
+bebox.o: bebox.cpp
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) bebox.cpp
+
+.m.o:
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $*.m
+.c.o:
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $*.c
+.c.s:
+	$(CC) $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $*.c
+.S.o:
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $*.S
+
+# Saves recompiling...
+touch:
+	touch *.o; touch build68k; touch cpudefs.c; touch cpudefs.o; touch gencpu genblitter; touch cpu?.c cpu*tbl.[ch]; touch cpu?.o cpu*tbl.o
+
+# Some more dependencies...
+cpustbl.o: cputbl.h
+cputbl.o: cputbl.h
+
+build68k.o: include/readcpu.h
+readcpu.o: include/readcpu.h
+
+main.o: config.h
+cia.o: config.h include/events.h
+custom.o: config.h include/events.h
+newcpu.o: config.h include/events.h
+autoconf.o: config.h
+expansion.o: config.h
+xwin.o: config.h
+svga.o: config.h
+bebox.o: config.h
+os.o: config.h
+memory.o: config.h
+debug.o: config.h
+ersatz.o: config.h
+disk.o: config.h include/events.h
+blitter.o: config.h include/events.h
+

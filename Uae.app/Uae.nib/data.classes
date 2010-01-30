@@ -1,0 +1,11 @@
+AmigaView = {
+    ACTIONS = {
+	"eject:" = "eject:"; 
+	"insert:" = "insert:"; 
+	"joystick:" = "joystick:"; 
+	"quit:" = "quit:"; 
+	"reset:" = "reset:"; 
+    }; 
+    SUPERCLASS = View; 
+};
+FirstResponder = {ACTIONS = {}; SUPERCLASS = Object; };
