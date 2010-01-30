@@ -663,7 +663,7 @@ static void recycle_aino (Unit *unit, a_inode *new_aino)
 	    a_inode **aip;
 	    aip = &parent->child;
 
-	    if (! parent->locked_children)
+	    if (! parent->locked_children) {
 		for (;;) {
 		    a_inode *aino = *aip;
 		    if (aino == 0)
@@ -672,9 +672,9 @@ static void recycle_aino (Unit *unit, a_inode *new_aino)
 		    /* Not recyclable if next == 0 (i.e., not chained into
 		       recyclable list), or if parent directory is being
 		       ExNext()ed.  */
-		    if (aino->next == 0)
+		    if (aino->next == 0) {
 			aip = &aino->sibling;
-		    else {
+		    } else {
 			if (aino->shlock > 0 || aino->elock)
 			    write_log ("panic: freeing locked a_inode!\n");
 
@@ -683,6 +683,7 @@ static void recycle_aino (Unit *unit, a_inode *new_aino)
 			i++;
 		    }
 		}
+	    }
 	    /* In the previous loop, we went through all children of one
 	       parent.  Re-arrange the recycled list so that we'll find a
 	       different parent the next time around.  */
@@ -748,7 +749,6 @@ static void move_aino_children (Unit *unit, a_inode *from, a_inode *to)
 static void delete_aino (Unit *unit, a_inode *aino)
 {
     a_inode **aip;
-    int hash;
 
     TRACE(("deleting aino %x\n", aino->uniq));
 
@@ -1778,8 +1778,6 @@ static void populate_directory (Unit *unit, a_inode *base)
 
 static void do_examine (Unit *unit, dpacket packet, ExamineKey *ek, uaecptr info)
 {
-    a_inode *aino;
-
     if (ek->curr_file == 0)
 	goto no_more_entries;
 
@@ -3054,6 +3052,14 @@ static int get_new_device (char **devname, uaecptr *devname_amiga, int cdrom)
     return result;
 }
 
+static void init_filesys_diagentry (void)
+{
+    do_put_mem_long ((uae_u32 *)(filesysory + 0x2100), EXPANSION_explibname);
+    do_put_mem_long ((uae_u32 *)(filesysory + 0x2104), filesys_configdev);
+    do_put_mem_long ((uae_u32 *)(filesysory + 0x2108), EXPANSION_doslibname);
+    do_put_mem_long ((uae_u32 *)(filesysory + 0x210c), current_mountinfo->num_units);
+}
+
 void filesys_start_threads (void)
 {
     UnitInfo *uip;
@@ -3102,11 +3108,10 @@ void filesys_reset (void)
 
 static void free_all_ainos (Unit *u, a_inode *parent)
 {
-  a_inode *a;
-  while (a = parent->child)
-    {
-      free_all_ainos (u, a);
-      dispose_aino (u, &parent->child, a);
+    a_inode *a;
+    while (a = parent->child) {
+	free_all_ainos (u, a);
+	dispose_aino (u, &parent->child, a);
     }
 }
 
@@ -3149,10 +3154,7 @@ static uae_u32 filesys_diagentry (void)
 
     filesys_configdev = m68k_areg (regs, 3);
 
-    do_put_mem_long ((uae_u32 *)(filesysory + 0x2100), EXPANSION_explibname);
-    do_put_mem_long ((uae_u32 *)(filesysory + 0x2104), filesys_configdev);
-    do_put_mem_long ((uae_u32 *)(filesysory + 0x2108), EXPANSION_doslibname);
-    do_put_mem_long ((uae_u32 *)(filesysory + 0x210c), current_mountinfo->num_units);
+    init_filesys_diagentry ();
 
     uae_sem_init (&singlethread_int_sem, 0, 1);
     if (ROM_hardfile_resid != 0) {

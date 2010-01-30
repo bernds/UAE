@@ -63,7 +63,9 @@ struct socketbase {
     void *hEvent;		/* thread event handle */
     unsigned int *mtable;	/* window messages allocated for asynchronous event notification */
 #endif
-} *socketbases;
+};
+
+extern struct socketbase *socketbases;
 
 
 #define LIBRARY_SIZEOF 36

@@ -146,7 +146,6 @@ void default_prefs (struct uae_prefs *p)
 
     p->immediate_blits = 0;
     p->collision_level = 1;
-    p->fast_copper = 1;
 
     strcpy (p->df[0], "df0.adf");
     strcpy (p->df[1], "df1.adf");

@@ -83,7 +83,7 @@ static void RethinkICRA (void)
 {
     if (ciaaimask & ciaaicr) {
 	ciaaicr |= 0x80;
-	INTREQ_0 (0x8008);
+	INTREQ_0 (0x8000 | 0x0008);
     } else {
 	ciaaicr &= 0x7F;
 /*	custom_bank.wput(0xDFF09C,0x0008);*/
@@ -92,17 +92,11 @@ static void RethinkICRA (void)
 
 static void RethinkICRB (void)
 {
-#if 0 /* ??? What's this then? */
-    if (ciabicr & 0x10) {
-	custom_bank.wput(0xDFF09C,0x9000);
-    }
-#endif
     if (ciabimask & ciabicr) {
 	ciabicr |= 0x80;
-	INTREQ_0 (0xA000);
+	INTREQ_0 (0x8000 | 0x2000);
     } else {
 	ciabicr &= 0x7F;
-/*	custom_bank.wput(0xDFF09C,0x2000);*/
     }
 }
 
@@ -215,7 +209,7 @@ static void CIA_update (void)
 
 static void CIA_calctimers (void)
 {
-    long ciaatimea = -1, ciaatimeb = -1, ciabtimea = -1, ciabtimeb = -1;
+    long int ciaatimea = -1, ciaatimeb = -1, ciabtimea = -1, ciabtimeb = -1;
 
     eventtab[ev_cia].oldcycles = get_cycles ();
     if ((ciaacra & 0x21) == 0x01) {
@@ -313,9 +307,9 @@ void CIA_hsync_handler (void)
 	 * or no lossage, and the mouse doesn't get stuck.  The tradeoff is
 	 * that the total slowness of typing appearing on screen is worse.
 	 */
-	if (ciaasdr_unread == 2)
+	if (ciaasdr_unread == 2) {
 	    ciaasdr_unread = 0;
-	else if (ciaasdr_unread == 0) {
+	} else if (ciaasdr_unread == 0) {
 	    switch (kbstate) {
 	     case 0:
 		ciaasdr = (uae_s8)~0xFB; /* aaarghh... stupid compiler */
@@ -333,8 +327,9 @@ void CIA_hsync_handler (void)
 	    ciaaicr |= 8;
 	    RethinkICRA();
 	    sleepyhead = 0;
-	} else if (!(++sleepyhead & 15))
+	} else if (!(++sleepyhead & 15)) {
 	    ciaasdr_unread = 0;          /* give up on this key event after unread for a long time */
+	}
     }
 }
 
@@ -405,7 +400,8 @@ static uae_u8 ReadCIAA (unsigned int addr)
 	if (ciaasdr == 1) ciaasdr_unread = 2;
 	return ciaasdr;
     case 13:
-	tmp = ciaaicr; ciaaicr = 0; RethinkICRA(); return tmp;
+	tmp = ciaaicr; ciaaicr = 0; RethinkICRA();
+	return tmp;
     case 14:
 	return ciaacra;
     case 15:
@@ -530,9 +526,11 @@ static void WriteCIAA (uae_u16 addr,uae_u8 val)
 	ciaaicr |= 0x10;
 	break;
     case 2:
-	ciaadra = val; break;
+	ciaadra = val;
+	break;
     case 3:
-	ciaadrb = val; break;
+	ciaadrb = val;
+	break;
     case 4:
 	CIA_update ();
 	ciaala = (ciaala & 0xff00) | val;
@@ -590,9 +588,11 @@ static void WriteCIAA (uae_u16 addr,uae_u8 val)
 	}
 	break;
     case 12:
-	ciaasdr = val; break;
+	ciaasdr = val;
+	break;
     case 13:
-	setclr(&ciaaimask,val); break; /* ??? call RethinkICR() ? */
+	setclr(&ciaaimask,val);
+	break;
     case 14:
 	CIA_update ();
 	ciaacra = val;
@@ -600,9 +600,8 @@ static void WriteCIAA (uae_u16 addr,uae_u8 val)
 	    ciaacra &= ~0x10;
 	    ciaata = ciaala;
 	}
-	if (ciaacra & 0x40) {
+	if (ciaacra & 0x40)
 	    kback = 1;
-	}
 	CIA_calctimers ();
 	break;
     case 15:

@@ -317,8 +317,6 @@ void sample16s_handler (void)
 
 void sample16si_crux_handler (void)
 {
-    unsigned long delta, ratio;
-
     uae_u32 data0 = audio_channel[0].current_sample;
     uae_u32 data1 = audio_channel[1].current_sample;
     uae_u32 data2 = audio_channel[2].current_sample;

@@ -41,6 +41,133 @@ static long chip_filepos;
 static long bogo_filepos;
 static long rom_filepos;
 
+/* ROM management.  */
+struct romlist {
+    char *path;
+    struct romdata *rd;
+};
+
+static struct romlist *rl;
+static int romlist_cnt;
+
+void romlist_add (char *path, struct romdata *rd)
+{
+    struct romlist *rl2;
+
+    romlist_cnt++;
+    rl = realloc (rl, sizeof (struct romlist) * romlist_cnt);
+    rl2 = rl + romlist_cnt - 1;
+    rl2->path = my_strdup (path);
+    rl2->rd = rd;
+}
+
+char *romlist_get (struct romdata *rd)
+{
+    int i;
+    
+    if (!rd)
+	return 0;
+    for (i = 0; i < romlist_cnt; i++) {
+	if (rl[i].rd == rd)
+	    return rl[i].path;
+    }
+    return 0;
+}
+
+void romlist_clear (void)
+{
+    free (rl);
+    rl = 0;
+    romlist_cnt = 0;
+}
+
+static struct romdata roms[] = {
+    { "Cloanto Amiga Forever ROM key", 0, 0, 0x869ae1b1, 2069, 0, 0, 1, ROMTYPE_KEY },
+
+    { "Kickstart v1.0 (A1000)(NTSC)", 0, 0, 0x299790ff, 262144, 1, 0, 0, ROMTYPE_KICK },
+    { "Kickstart v1.1 (A1000)(NTSC)", 31, 34, 0xd060572a, 262144, 2, 0, 0, ROMTYPE_KICK },
+    { "Kickstart v1.1 (A1000)(PAL)", 31, 34, 0xec86dae2, 262144, 3, 0, 0, ROMTYPE_KICK },
+    { "Kickstart v1.2 (A1000)", 33, 166, 0x9ed783d0, 262144, 4, 0, 0, ROMTYPE_KICK },
+    { "Kickstart v1.2 (A500,A1000,A2000)", 33, 180, 0xa6ce1636, 262144, 5, 0, 0, ROMTYPE_KICK },
+    { "Kickstart v1.3 (A500,A1000,A2000)", 34, 5, 0xc4f0f55f, 262144, 6, 60, 0, ROMTYPE_KICK },
+    { "Kickstart v1.3 (A3000)", 34, 5, 0xe0f37258, 262144, 32, 0, 0, ROMTYPE_KICK },
+
+    { "Kickstart v2.04 (A500+)", 37, 175, 0xc3bdb240, 524288, 7, 0, 0, ROMTYPE_KICK },
+    { "Kickstart v2.05 (A600)", 37, 299, 0x83028fb5, 524288, 8, 0, 0, ROMTYPE_KICK },
+    { "Kickstart v2.05 (A600HD)", 37, 300, 0x64466c2a, 524288, 9, 0, 0, ROMTYPE_KICK },
+    { "Kickstart v2.05 (A600HD)", 37, 350, 0x43b0df7b, 524288, 10, 0, 0, ROMTYPE_KICK },
+
+    { "Kickstart v3.0 (A1200)", 39, 106, 0x6c9b07d2, 524288, 11, 0, 0, ROMTYPE_KICK },
+    { "Kickstart v3.0 (A4000)", 39, 106, 0x9e6ac152, 524288, 12, 2, 0, ROMTYPE_KICK },
+    { "Kickstart v3.1 (A4000)", 40, 70, 0x2b4566f1, 524288, 13, 2, 0, ROMTYPE_KICK },
+    { "Kickstart v3.1 (A500,A600,A2000)", 40, 63, 0xfc24ae0d, 524288, 14, 0, 0, ROMTYPE_KICK },
+    { "Kickstart v3.1 (A1200)", 40, 68, 0x1483a091, 524288, 15, 1, 0, ROMTYPE_KICK },
+    { "Kickstart v3.1 (A4000)(Cloanto)", 40, 68, 0x43b6dd22, 524288, 31, 2, 1, ROMTYPE_KICK },
+    { "Kickstart v3.1 (A4000)", 40, 68, 0xd6bae334, 524288, 16, 2, 0, ROMTYPE_KICK },
+    { "Kickstart v3.1 (A4000T)", 40, 70, 0x75932c3a, 524288, 17, 2, 0, ROMTYPE_KICK },
+
+    { "CD32 Kickstart v3.1", 40, 60, 0x1e62d4a5, 524288, 18, 1, 0, ROMTYPE_KICKCD32 },
+    { "CD32 Extended", 40, 60, 0x87746be2, 524288, 19, 1, 0, ROMTYPE_EXTCD32 },
+
+    { "CDTV Extended v1.00", 0, 0, 0x42baa124, 262144, 20, 0, 0, ROMTYPE_EXTCDTV },
+    { "CDTV Extended v2.30", 0, 0, 0x30b54232, 262144, 21, 0, 0, ROMTYPE_EXTCDTV },
+    { "CDTV Extended v2.07", 0, 0, 0xceae68d2, 262144, 22, 0, 0, ROMTYPE_EXTCDTV },
+
+    { "A1000 Bootstrap", 0, 0, 0x62f11c04, 8192, 23, 0, 0, ROMTYPE_KICK },
+    { "A1000 Bootstrap", 0, 0, 0x0b1ad2d0, 65536, 24, 0, 0, ROMTYPE_KICK },
+
+    { "Action Replay Mk I v1.50", 0, 0, 0xd4ce0675, 65536, 25, 0, 0, ROMTYPE_AR },
+    { "Action Replay Mk II v2.05", 0, 0, 0x1287301f , 131072, 26, 0, 0, ROMTYPE_AR },
+    { "Action Replay Mk II v2.12", 0, 0, 0x804d0361 , 131072, 27, 0, 0, ROMTYPE_AR },
+    { "Action Replay Mk II v2.14", 0, 0, 0x49650e4f, 131072, 28, 0, 0, ROMTYPE_AR },
+    { "Action Replay Mk III v3.09", 0, 0, 0x0ed9b5aa, 262144, 29, 0, 0, ROMTYPE_AR },
+    { "Action Replay Mk III v3.17", 0, 0, 0xc8a16406, 262144, 30, 0, 0, ROMTYPE_AR },
+
+    { "SportTime Table Hockey\0ar_airh", 0, 0, 0, 0, 33, 0, 0, ROMTYPE_ARCADIA },
+    { "SportTime Bowling\0ar_bowl", 0, 0, 0, 0, 34, 0, 0, ROMTYPE_ARCADIA },
+    { "World Darts\0ar_dart", 0, 0, 0, 0, 35, 0, 0, ROMTYPE_ARCADIA },
+    { "Magic Johnson's Fast Break\0ar_fast", 0, 0, 0, 0, 36, 0, 0, ROMTYPE_ARCADIA },
+    { "Leader Board Golf\0ar_ldrb", 0, 0, 0, 0, 37, 0, 0, ROMTYPE_ARCADIA },
+    { "Leader Board Golf (alt)\0ar_ldrba", 0, 0, 0, 0, 38, 0, 0, ROMTYPE_ARCADIA },
+    { "Ninja Mission\0ar_ninj", 0, 0, 0, 0, 39, 0, 0, ROMTYPE_ARCADIA },
+    { "Road Wars\0ar_rdwr", 0, 0, 0, 0, 40, 0, 0, ROMTYPE_ARCADIA },
+    { "Sidewinder\0ar_sdwr", 0, 0, 0, 0, 41, 0, 0, ROMTYPE_ARCADIA },
+    { "Cool Spot\0ar_spot", 0, 0, 0, 0, 42, 0, 0, ROMTYPE_ARCADIA },
+    { "Space Ranger\0ar_sprg", 0, 0, 0, 0, 43, 0, 0, ROMTYPE_ARCADIA },
+    { "Xenon\0ar_xeon", 0, 0, 0, 0, 44, 0, 0, ROMTYPE_ARCADIA },
+
+    { NULL, 0, 0, 0, 0, 0, 0, 0, 0 }
+};
+
+static int decode_cloanto_rom (uae_u8 *mem, int size, int real_size)
+{
+    FILE *keyf;
+    uae_u8 *p;
+    long cnt, t;
+    int keysize;
+
+    if (strlen (currprefs.keyfile) == 0) {
+	write_log ("No filename given for ROM key file and ROM image is an encrypted \"Amiga Forever\" ROM file.\n");
+	return 0;
+    }
+    keyf = zfile_open (currprefs.keyfile, "rb");
+    if (keyf == 0) {
+	write_log ("Could not find specified ROM key-file.\n");
+	return 0;
+    }
+
+    p = (uae_u8 *) xmalloc (524288);
+    keysize = fread (p, 1, 524288, keyf);
+    for (t = cnt = 0; cnt < size; cnt++, t = (t + 1) % keysize) {
+	mem[cnt] ^= p[t];
+	if (real_size == cnt + 1)
+	    t = keysize - 1;
+    }
+    fclose (keyf);
+    free (p);
+    return 1;
+}
+
 addrbank *mem_banks[65536];
 
 /* This has two functions. It either holds a host address that, when added
@@ -734,35 +861,6 @@ addrbank extendedkickmem_bank = {
     extendedkickmem_lput, extendedkickmem_wput, extendedkickmem_bput,
     extendedkickmem_xlate, extendedkickmem_check, NULL
 };
-
-static int decode_cloanto_rom (uae_u8 *mem, int size, int real_size)
-{
-    FILE *keyf;
-    uae_u8 *p;
-    long cnt, t;
-    int keysize;
-
-    if (strlen (currprefs.keyfile) == 0) {
-	write_log ("No filename given for ROM key file and ROM image is an encrypted \"Amiga Forever\" ROM file.\n");
-	return 0;
-    }
-    keyf = zfile_open (currprefs.keyfile, "rb");
-    if (keyf == 0) {
-	write_log ("Could not find specified ROM key-file.\n");
-	return 0;
-    }
-
-    p = (uae_u8 *) xmalloc (524288);
-    keysize = fread (p, 1, 524288, keyf);
-    for (t = cnt = 0; cnt < size; cnt++, t = (t + 1) % keysize) {
-	mem[cnt] ^= p[t];
-	if (real_size == cnt + 1)
-	    t = keysize - 1;
-    }
-    fclose (keyf);
-    free (p);
-    return 1;
-}
 
 static int kickstart_checksum (uae_u8 *mem, int size)
 {

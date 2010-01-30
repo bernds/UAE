@@ -182,7 +182,6 @@ static void set_chipset_state (void)
     else if (currprefs.chipset_mask & CSMASK_ECS_AGNUS)
 	t0 = 1;
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (cslevel_widget[t0]), TRUE);
-    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (fcop_widget), currprefs.fast_copper != 0);
 }
 
 static void set_sound_state (void)
@@ -416,7 +415,6 @@ static void custom_changed (void)
 {
     changed_prefs.gfx_framerate = framerate_adj->value;
     changed_prefs.immediate_blits = GTK_TOGGLE_BUTTON (bimm_widget)->active;
-    changed_prefs.fast_copper = GTK_TOGGLE_BUTTON (fcop_widget)->active;
 #if 0
     changed_prefs.blits_32bit_enabled = GTK_TOGGLE_BUTTON (b32_widget)->active;
     changed_prefs.gfx_afullscreen = GTK_TOGGLE_BUTTON (afscr_widget)->active;
@@ -1155,13 +1153,6 @@ static void make_chipset_widgets (GtkWidget *vbox)
     gtk_widget_show (newbox);
     gtk_box_pack_start (GTK_BOX (hbox), newbox, FALSE, TRUE, 0);
 
-    fcop_widget = gtk_check_button_new_with_label ("Enable copper speedup code");
-    add_centered_to_vbox (vbox, fcop_widget);
-    gtk_widget_show (fcop_widget);
-
-    gtk_signal_connect (GTK_OBJECT (fcop_widget), "clicked",
-			(GtkSignalFunc) custom_changed, NULL);
-
     add_empty_vbox (vbox);
 }
 
@@ -1490,7 +1481,9 @@ static void make_about_widgets (GtkWidget *dvbox)
 {
     GtkWidget *lab_version;
     GtkStyle *style;
+#if 0
     GdkFont *font;
+#endif
     char t[20];
 
     add_empty_vbox (dvbox);
@@ -1499,6 +1492,7 @@ static void make_about_widgets (GtkWidget *dvbox)
     lab_version = gtk_label_new (t);
     lab_info = gtk_label_new ("Choose your settings, then deselect the Pause button to start!");
 
+#if 0
     font = gdk_font_load ("-*-helvetica-medium-r-normal--*-240-*-*-*-*-*-*");
     if (font) {
 	style = gtk_style_new ();
@@ -1508,6 +1502,7 @@ static void make_about_widgets (GtkWidget *dvbox)
 	gtk_widget_set_style (lab_version, style);
 	/*gtk_widget_set_style (lab_info, style); */
     }
+#endif
 
     add_centered_to_vbox (dvbox, lab_version);
     add_centered_to_vbox (dvbox, lab_info);

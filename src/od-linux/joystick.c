@@ -93,7 +93,7 @@ void read_joystick(int nr, unsigned int *dir, int *button)
 #ifdef HAVE_MACHINE_JOYSTICK_H
     *button = buffer.b1 || buffer.b2;
 #else
-    *button = buffer.buttons & 3;
+    *button = buffer.buttons & 7;
 #endif
 }
 

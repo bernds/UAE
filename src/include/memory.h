@@ -209,3 +209,26 @@ extern int canbang;
 
 extern uae_u8 *mapped_malloc (size_t, char *);
 extern void mapped_free (uae_u8 *);
+
+#define ROMTYPE_KICK 1
+#define ROMTYPE_KICKCD32 2
+#define ROMTYPE_EXTCD32 4
+#define ROMTYPE_EXTCDTV 8
+#define ROMTYPE_AR 16
+#define ROMTYPE_KEY 32
+#define ROMTYPE_ARCADIA 64
+
+struct romdata {
+    char *name;
+    int version, revision;
+    uae_u32 crc32;
+    uae_u32 size;
+    int id;
+    int cpu;
+    int cloanto;
+    int type;
+};
+
+extern void romlist_add (char *path, struct romdata *rd);
+extern char *romlist_get (struct romdata *rd);
+extern void romlist_clear (void);

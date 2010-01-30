@@ -110,6 +110,7 @@ extern unsigned long syncbase;
 #define DMA_BLITPRI   0x0400
 
 extern unsigned long frametime, timeframes;
+extern int plfstrt, plfstop, plffirstline, plflastline;
 
 /* 100 words give you 1600 horizontal pixels. Should be more than enough for
  * superhires. Don't forget to update the definition in genp2c.c as well.

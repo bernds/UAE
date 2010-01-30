@@ -52,11 +52,11 @@ void getjoystate(int nr, unsigned int *st, int *button)
 	if (left) top = !top;
 	if (right) bot = !bot;
 	*st = bot | (right << 1) | (top << 8) | (left << 9);
-	*button = fake[4];
-	if (! fake[4] && fake[5] && (n_frames & 1))
-	    *button = 1;
+	*button = fake[4] | (!!fake[5] << 2);
     } else
 	read_joystick (nr, st, button);
+    if ((*button & 5) == 4 && (n_frames & 1))
+	*button |= 1;
 }
 
 /* Not static so the DOS code can mess with them */

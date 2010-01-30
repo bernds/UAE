@@ -1037,6 +1037,35 @@ static void dodmafetch (void)
     dma_tab[0] = 0xffffffff;
 }
 
+/* this is very unoptimized. DSKBYTR is used very rarely, so it should not matter. */
+
+uae_u16 DSKBYTR (int hpos)
+{
+    uae_u16 v;
+    int i;
+
+    i = 0;
+    while (hpos > dskbytr_cycle[i + 1])
+	i++;
+    v = dskbytr_tab[i];
+    dskbytr_tab[i] &= ~0x8000;
+    if (wordsync_cycle[0] != 255) {
+	i = 0;
+	while (hpos < wordsync_cycle[i])
+	    i++;
+	if (hpos - wordsync_cycle[i] <= WORDSYNC_CYCLES)
+	    v |= 0x1000;
+    }
+    if (dskdmaen && (dmacon & 0x210) == 0x210)
+	v |= 0x4000;
+    if (dskdmaen == 3)
+	v |= 0x2000;
+
+    disk_data_used = 0;
+
+    return v;
+}
+
 static void DISK_start (void)
 {
     int dr;
@@ -1193,35 +1222,6 @@ void DSKLEN (uae_u16 v, int hpos)
 	    }
 	}
     }
-}
-
-/* this is very unoptimized. DSKBYTR is used very rarely, so it should not matter. */
-
-uae_u16 DSKBYTR (int hpos)
-{
-    uae_u16 v;
-    int i;
-
-    i = 0;
-    while (hpos > dskbytr_cycle[i + 1])
-	i++;
-    v = dskbytr_tab[i];
-    dskbytr_tab[i] &= ~0x8000;
-    if (wordsync_cycle[0] != 255) {
-	i = 0;
-	while (hpos < wordsync_cycle[i])
-	    i++;
-	if (hpos - wordsync_cycle[i] <= WORDSYNC_CYCLES)
-	    v |= 0x1000;
-    }
-    if (dskdmaen && (dmacon & 0x210) == 0x210)
-	v |= 0x4000;
-    if (dskdmaen == 3)
-	v |= 0x2000;
-
-    disk_data_used = 0;
-
-    return v;
 }
 
 /* not a real hardware register */

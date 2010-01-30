@@ -1,3 +1,16 @@
+9F0629 Adapt autofire logic a little to work better with my new four-button
+       Competition Pro.
+       More small and relatively unimportant differences merged from WinUAE.
+       Delete more fast_copper pieces that escaped the previous purge.
+9F0317 Fix bsdsocket compilation problems.  Include picasso96.h in
+       inputdevice.c.
+9F0211 Add NOINLINE macro.  Turns out gcc-3.3.3 likes to inline large functions
+       but not small ones so we have to mess with noinline and always_inline
+       attributes.  Fish.
+9E1113 Compile with gtk-2.0.
+9E1024 Remove fast copper code.
+       Created inputdevice.c; moved over some code from custom.c.
+       Merge further small pieces from WinUAE.
 9E1011 ALSA sound and SDL sound fix from Heikki Orsila.
 9E1010 Remove AHI code from audio.c; WinUAE didn't end up using it so there's
        no point keeping it around.

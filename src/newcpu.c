@@ -237,27 +237,27 @@ void init_m68k (void)
     write_log ("Building CPU table for configuration: 68");
     regs.address_space_mask = 0xffffffff;
     if (currprefs.address_space_24 && currprefs.cpu_level > 1)
-        write_log ("EC");
+	write_log ("EC");
     switch (currprefs.cpu_level) {
     case 1:
-        write_log ("010");
-        break;
+	write_log ("010");
+	break;
     case 2:
-        write_log ("020");
-        break;
+	write_log ("020");
+	break;
     case 3:
-        write_log ("020/881");
-        break;
+	write_log ("020/881");
+	break;
     case 4:
-        /* Who is going to miss the MMU anyway...? :-)  */
-        write_log ("040");
-        break;
+	/* Who is going to miss the MMU anyway...? :-)  */
+	write_log ("040");
+	break;
     default:
-        write_log ("000");
-        break;
+	write_log ("000");
+	break;
     }
     if (currprefs.cpu_compatible)
-        write_log (" (compatible mode)");
+	write_log (" (compatible mode)");
     if (currprefs.address_space_24) {
 	regs.address_space_mask = 0x00ffffff;
 	write_log (" 24-bit addressing");
@@ -785,8 +785,8 @@ void Exception_normal (int nr, uaecptr oldpc)
 		    m68k_areg(regs, 7) -= 2;
 		    put_word (m68k_areg(regs, 7), 0);
 		}
-	        m68k_areg(regs, 7) -= 4;
-	        put_long (m68k_areg(regs, 7), last_fault_for_exception_3);
+		m68k_areg(regs, 7) -= 4;
+		put_long (m68k_areg(regs, 7), last_fault_for_exception_3);
 		m68k_areg(regs, 7) -= 2;
 		put_word (m68k_areg(regs, 7), 0);
 		m68k_areg(regs, 7) -= 2;
@@ -822,7 +822,7 @@ void Exception_normal (int nr, uaecptr oldpc)
 	}
     } else if (nr == 2 || nr == 3) {
 	uae_u16 mode = (sv ? 4 : 0) | (last_instructionaccess_for_exception_3 ? 2 : 1);
-        mode |= last_writeaccess_for_exception_3 ? 0 : 16;
+	mode |= last_writeaccess_for_exception_3 ? 0 : 16;
 	m68k_areg(regs, 7) -= 14;
 	/* fixme: bit3=I/N */
 	put_word (m68k_areg(regs, 7) + 0, mode);
@@ -830,7 +830,7 @@ void Exception_normal (int nr, uaecptr oldpc)
 	put_word (m68k_areg(regs, 7) + 6, last_op_for_exception_3);
 	put_word (m68k_areg(regs, 7) + 8, regs.sr);
 	put_long (m68k_areg(regs, 7) + 10, last_addr_for_exception_3);
-        write_log ("Exception %d (%x) at %x -> %x!\n", nr, oldpc, currpc, get_long (regs.vbr + 4*nr));
+	write_log ("Exception %d (%x) at %x -> %x!\n", nr, oldpc, currpc, get_long (regs.vbr + 4*nr));
 	goto kludge_me_do;
     }
     m68k_areg(regs, 7) -= 4;
@@ -1201,7 +1201,7 @@ void m68k_reset (void)
     regs.kick_mask = 0x00F80000;
     regs.spcflags = 0;
     if (savestate_state == STATE_RESTORE) {
-        m68k_setpc (regs.pc);
+	m68k_setpc (regs.pc);
 	/* MakeFromSR() must not swap stack pointer */
 	regs.s = (regs.sr >> 13) & 1;
 	MakeFromSR();
@@ -1362,14 +1362,14 @@ static int do_specialties (int cycles)
 	    do_copper ();
     }
 
-    if (regs.spcflags & SPCFLAG_DOTRACE) {
+    if (regs.spcflags & SPCFLAG_DOTRACE)
 	Exception (9,last_trace_ad);
-    }
+
     while (regs.spcflags & SPCFLAG_STOP) {
 	do_cycles (4 * CYCLE_UNIT);
 	if (regs.spcflags & SPCFLAG_COPPER)
 	    do_copper ();
-	if (regs.spcflags & (SPCFLAG_INT | SPCFLAG_DOINT)){
+	if (regs.spcflags & (SPCFLAG_INT | SPCFLAG_DOINT)) {
 	    int intr = intlev ();
 	    unset_special (SPCFLAG_INT | SPCFLAG_DOINT);
 	    if (intr != -1 && intr > regs.intmask) {
@@ -1451,7 +1451,7 @@ static void m68k_run_2 (void)
 	/*n_insns++;*/
 	cycles &= cycles_mask;
 	cycles |= cycles_val;
-        do_cycles (cycles);
+	do_cycles (cycles);
 	if (regs.spcflags) {
 	    if (do_specialties (cycles))
 		return;

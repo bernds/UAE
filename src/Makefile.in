@@ -36,7 +36,7 @@ INCLUDES=-I. -I@top_srcdir@/src/include/
 OBJS = main.o newcpu.o memory.o @CPUOBJS@ custom.o cia.o serial.o blitter.o \
        autoconf.o ersatz.o filesys.o hardfile.o keybuf.o expansion.o zfile.o \
        fpp.o readcpu.o cpudefs.o gfxutil.o gfxlib.o blitfunc.o blittable.o \
-       disk.o audio.o uaelib.o drawing.o picasso96.o cpustbl.o \
+       disk.o audio.o uaelib.o drawing.o picasso96.o cpustbl.o inputdevice.o \
        uaeexe.o bsdsocket.o missing.o sd-sound.o od-joy.o md-support.o \
        fsusage.o cfgfile.o native2amiga.o @FSDBOBJS@ fsdb.o identify.o \
        savestate.o writelog.o @ASMOBJS@ @GFXOBJS@ @DEBUGOBJS@ @SCSIOBJS@

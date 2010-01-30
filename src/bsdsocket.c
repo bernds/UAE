@@ -26,6 +26,7 @@
 #ifdef BSDSOCKET_SUPPORTED
 
 static uae_u32 SockLibBase;
+struct socketbase *socketbases;
 
 #define SOCKPOOLSIZE 128
 #define UNIQUE_ID	(-1)

@@ -38,6 +38,7 @@
 #include "picasso96.h"
 #include "drawing.h"
 #include "savestate.h"
+#include "inputdevice.h"
 
 #define SPRITE_COLLISIONS
 
@@ -45,13 +46,6 @@ static uae_u16 last_custom_value;
 
 static unsigned int n_consecutive_skipped = 0;
 static unsigned int total_skipped = 0;
-
-/* Mouse and joystick emulation */
-
-int buttonstate[3];
-static int mouse_x, mouse_y;
-int joy0button, joy1button;
-unsigned int joy0dir, joy1dir;
 
 /* Events */
 
@@ -143,8 +137,7 @@ enum diw_states
     DIW_waiting_start, DIW_waiting_stop
 };
 
-static int plffirstline, plflastline;
-static int plfstrt, plfstop;
+int plffirstline, plflastline, plfstrt, plfstop;
 static int last_diw_pix_hpos, last_ddf_pix_hpos, last_decide_line_hpos;
 static int last_fetch_hpos, last_sprite_hpos;
 int diwfirstword, diwlastword;
@@ -182,30 +175,9 @@ struct copper {
     unsigned int ignore_next;
     int vcmp, hcmp;
 
-    /* When we schedule a copper event, knowing a few things about the future
-       of the copper list can reduce the number of sync_with_cpu calls
-       dramatically.  */
-    unsigned int first_sync;
-    unsigned int regtypes_modified;
+    int strobe; /* COPJMP1 / COPJMP2 accessed */
+    int last_write, last_write_hpos;
 };
-
-#define REGTYPE_NONE 0
-#define REGTYPE_COLOR 1
-#define REGTYPE_SPRITE 2
-#define REGTYPE_PLANE 4
-#define REGTYPE_BLITTER 8
-#define REGTYPE_JOYPORT 16
-#define REGTYPE_DISK 32
-#define REGTYPE_POS 64
-#define REGTYPE_AUDIO 128
-
-#define REGTYPE_ALL 255
-/* Always set in regtypes_modified, to enable a forced update when things like
-   DMACON, BPLCON0, COPJMPx get written.  */
-#define REGTYPE_FORCE 256
-
-
-static unsigned int regtypes[512];
 
 static struct copper cop_state;
 static int copper_enabled_thisline;
@@ -296,6 +268,11 @@ enum fetchstate {
 /*
  * helper functions
  */
+
+STATIC_INLINE int nodraw (void)
+{
+    return framecnt != 0;
+}
 
 uae_u32 get_copper_address (int copno)
 {
@@ -472,17 +449,40 @@ static void decide_diw (int hpos)
     last_diw_pix_hpos = pix_hpos;
 }
 
-/* The HRM says 0xD8, but that can't work... */
-#define HARD_DDF_STOP (0xD4)
 
-static void finish_playfield_line (void)
+static int fetchmode;
+static int maxplanes_ocs[]={ 6,4,0,0 };
+static int maxplanes_ecs[]={ 6,4,2,0 };
+static int maxplanes_aga[]={ 8,4,2,0, 8,8,4,0, 8,8,8,0 };
+
+static int get_maxplanes (int res)
+{
+    int *planes;
+    if (currprefs.chipset_mask & CSMASK_AGA)
+	planes = maxplanes_aga;
+    else if (! (currprefs.chipset_mask & CSMASK_ECS_DENISE))
+	planes = maxplanes_ocs;
+    else
+	planes = maxplanes_ecs;
+    return planes[fetchmode * 4 + res];
+}
+
+/* Disable bitplane DMA if planes > maxplanes.  This is needed e.g. by the
+       Sanity WOC demo (at the "Party Effect").  */
+STATIC_INLINE int GET_PLANES_LIMIT (uae_u16 v)
+{
+    if (GET_PLANES(v) > get_maxplanes (GET_RES(v)))
+	v &= ~0x7010;
+    return GET_PLANES (v);
+}
+
+/* The HRM says 0xD8, but that can't work... */
+#define HARD_DDF_STOP 0xd4
+#define HARD_DDF_START 0x18
+
+static void add_modulos (void)
 {
     int m1, m2;
-
-    /* The latter condition might be able to happen in interlaced frames. */
-    if (vpos >= minfirstline && (thisframe_first_drawn_line == -1 || vpos < thisframe_first_drawn_line))
-	thisframe_first_drawn_line = vpos;
-    thisframe_last_drawn_line = vpos;
 
     if ((currprefs.chipset_mask & CSMASK_AGA) && (fmode & 0x4000)) {
 	if (((diwstrt >> 8) ^ vpos) & 1)
@@ -505,6 +505,16 @@ static void finish_playfield_line (void)
 	case 2: bplpt[1] += m2;
 	case 1: bplpt[0] += m1;
 	}
+}
+
+static void finish_playfield_line (void)
+{
+    /* The latter condition might be able to happen in interlaced frames. */
+    if (vpos >= minfirstline && (thisframe_first_drawn_line == -1 || vpos < thisframe_first_drawn_line))
+	thisframe_first_drawn_line = vpos;
+    thisframe_last_drawn_line = vpos;
+
+    add_modulos ();
 
     /* These are for comparison. */
     thisline_decision.bplcon0 = bplcon0;
@@ -523,8 +533,6 @@ static void finish_playfield_line (void)
 #endif /* SMART_UPDATE */
 	thisline_changed = 1;
 }
-
-static int fetchmode;
 
 /* The fetch unit mainly controls ddf stop.  It's the number of cycles that
    are contained in an indivisible block during which ddf is active.  E.g.
@@ -548,9 +556,11 @@ static int fetchunits[] = { 8,8,8,0, 16,8,8,0, 32,16,8,0 };
 static int fetchstarts[] = { 3,2,1,0, 4,3,2,0, 5,4,3,0 };
 static int fm_maxplanes[] = { 3,2,1,0, 3,3,2,0, 3,3,3,0 }; 
 
-static int cycle_diagram_table[3][3][9][32];
-static int *curr_diagram;
-static int cycle_sequences[3*8] = { 2,1,2,1,2,1,2,1, 4,2,3,1,4,2,3,1, 8,4,6,2,7,3,5,1 };
+static uae_u8 cycle_diagram_table[3][3][9][32];
+static uae_u8 cycle_diagram_free_cycles[3][3][9];
+static uae_u8 cycle_diagram_total_cycles[3][3][9];
+static uae_u8 *curr_diagram;
+static uae_u8 cycle_sequences[3*8] = { 2,1,2,1,2,1,2,1, 4,2,3,1,4,2,3,1, 8,4,6,2,7,3,5,1 };
 
 static void debug_cycle_diagram(void)
 {
@@ -567,7 +577,8 @@ static void debug_cycle_diagram(void)
 		    if (v==0) aa='-'; else if(v>0) aa='1'; else aa='X';
 		    write_log("%c",aa);
 		}
-		write_log("\n");
+		write_log(" %d:%d\n",
+			  cycle_diagram_free_cycles[fm][res][planes], cycle_diagram_total_cycles[fm][res][planes]);
 	    }
 	    write_log("\n");
 	}
@@ -578,8 +589,8 @@ static void debug_cycle_diagram(void)
 static void create_cycle_diagram_table(void)
 {
     int fm, res, cycle, planes, v;
-    int fetch_start, max_planes;
-    int *cycle_sequence;
+    int fetch_start, max_planes, freecycles;
+    uae_u8 *cycle_sequence;
 
     for (fm = 0; fm <= 2; fm++) {
 	for (res = 0; res <= 2; res++) {
@@ -588,18 +599,22 @@ static void create_cycle_diagram_table(void)
 	    cycle_sequence = &cycle_sequences[(max_planes - 1) * 8];
 	    max_planes = 1 << max_planes;
 	    for (planes = 0; planes <= 8; planes++) {
+	        freecycles = 0;
 		for (cycle = 0; cycle < 32; cycle++)
 		    cycle_diagram_table[fm][res][planes][cycle] = -1;
 		if (planes <= max_planes) {
 		    for (cycle = 0; cycle < fetch_start; cycle++) {
 			if (cycle < max_planes && planes >= cycle_sequence[cycle & 7]) {
-			    v = 1;
+			    v = cycle_sequence[cycle & 7];
 			} else {
 			    v = 0;
+			    freecycles++;
 			}
 			cycle_diagram_table[fm][res][planes][cycle] = v;
 		    }
 		}
+		cycle_diagram_free_cycles[fm][res][planes] = freecycles;
+		cycle_diagram_total_cycles[fm][res][planes] = fetch_start;
 	    }
 	}
     }
@@ -681,10 +696,6 @@ static void expand_fmodes (void)
     fm_maxplane = 1 << fm_maxplane_shift;
 }
 
-static int maxplanes_ocs[]={ 6,4,0,0 };
-static int maxplanes_ecs[]={ 6,4,2,0 };
-static int maxplanes_aga[]={ 8,4,2,0, 8,8,4,0, 8,8,8,0 };
-
 /* Expand bplcon0/bplcon1 into the toscr_xxx variables.  */
 static void compute_toscr_delay_1 (void)
 {
@@ -702,23 +713,8 @@ static void compute_toscr_delay_1 (void)
 
 static void compute_toscr_delay (int hpos)
 {
-    int v = bplcon0;
-    int *planes;
-
-    if (currprefs.chipset_mask & CSMASK_AGA)
-	planes = maxplanes_aga;
-    else if (! (currprefs.chipset_mask & CSMASK_ECS_DENISE))
-	planes = maxplanes_ocs;
-    else
-	planes = maxplanes_ecs;
-    /* Disable bitplane DMA if planes > maxplanes.  This is needed e.g. by the
-       Sanity WOC demo (at the "Party Effect").  */
-    if (GET_PLANES(v) > planes[fetchmode*4 + GET_RES (v)])
-	v &= ~0x7010;
-    toscr_res = GET_RES (v);
-
-    toscr_nr_planes = GET_PLANES (v);
-
+    toscr_res = GET_RES (bplcon0);
+    toscr_nr_planes = GET_PLANES_LIMIT (bplcon0);
     compute_toscr_delay_1 ();
 }
 
@@ -961,7 +957,7 @@ STATIC_INLINE void flush_display (int fm)
 /* Called when all planes have been fetched, i.e. when a new block
    of data is available to be displayed.  The data in fetched[] is
    moved into todisplay[].  */
-STATIC_INLINE void beginning_of_plane_block (int pos, int dma, int fm)
+STATIC_INLINE void beginning_of_plane_block (int pos, int fm)
 {
     int i;
 
@@ -1264,7 +1260,7 @@ STATIC_INLINE void update_fetch (int until, int fm)
 
     int ddfstop_to_test;
 
-    if (framecnt != 0 || passed_plfstop == 3)
+    if (nodraw () || passed_plfstop == 3)
 	return;
 
     /* We need an explicit test against HARD_DDF_STOP here to guard against
@@ -1347,7 +1343,7 @@ STATIC_INLINE void update_fetch (int until, int fm)
 #endif
     for (; pos < until; pos++) {
 	if (fetch_state == fetch_was_plane0)
-	    beginning_of_plane_block (pos, dma, fm);
+	    beginning_of_plane_block (pos, fm);
 	fetch_state = fetch_started;
 
 	if (one_fetch_cycle (pos, ddfstop_to_test, dma, fm))
@@ -1412,7 +1408,7 @@ STATIC_INLINE void decide_line (int hpos)
 
 	    /* If someone already wrote BPL1DAT, clear the area between that point and
 	       the real fetch start.  */
-	    if (framecnt == 0) {
+	    if (!nodraw ()) {
 		if (thisline_decision.plfleft != -1) {
 		    out_nbits = (plfstrt - thisline_decision.plfleft) << (1 + toscr_res);
 		    out_offs = out_nbits >> 5;
@@ -1444,7 +1440,7 @@ static void record_color_change (int hpos, int regno, unsigned long value)
     }
 
     /* Early positions don't appear on-screen. */
-    if (framecnt != 0 || vpos < minfirstline || hpos < 0x18
+    if (nodraw () || vpos < minfirstline || hpos < 0x18
 	/*|| currprefs.emul_accuracy == 0*/)
 	return;
 
@@ -1708,7 +1704,7 @@ static void decide_sprites (int hpos)
     int width = sprite_width;
     int window_width = (width << lores_shift) >> sprres;
 
-    if (framecnt != 0 || hpos < 0x14 || nr_armed == 0 || point == last_sprite_point)
+    if (nodraw () || hpos < 0x14 || nr_armed == 0 || point == last_sprite_point)
 	return;
 
     decide_diw (hpos);
@@ -1748,7 +1744,7 @@ static void decide_sprites (int hpos)
 	count++;
     }
     for (i = 0; i < count; i++) {
-	int nr = nrs[i];    
+	int nr = nrs[i];
 	record_sprite (next_lineno, nr, spr[nr].xpos, sprdata[nr], sprdatb[nr], sprctl[nr]);
     }
     last_sprite_point = point;
@@ -1807,7 +1803,7 @@ static void finish_decisions (void)
     int changed;
     int hpos = current_hpos ();
 
-    if (framecnt != 0)
+    if (nodraw ())
 	return;
 
     decide_diw (hpos);
@@ -1875,7 +1871,7 @@ static void finish_decisions (void)
 /* Set the state of all decisions to "undecided" for a new scanline. */
 static void reset_decisions (void)
 {
-    if (framecnt != 0)
+    if (nodraw ())
 	return;
 
     thisline_decision.any_hires_sprites = 0;
@@ -1998,186 +1994,6 @@ static void calcdiw (void)
     plfstop = ddfstop;
     if (plfstrt < 0x18)
 	plfstrt = 0x18;
-}
-
-/* Mousehack stuff */
-
-#define defstepx (1<<16)
-#define defstepy (1<<16)
-#define defxoffs 0
-#define defyoffs 0
-
-static const int docal = 60, xcaloff = 40, ycaloff = 20;
-static const int calweight = 3;
-static int lastsampledmx, lastsampledmy;
-static int lastspr0x,lastspr0y,lastdiffx,lastdiffy,spr0pos,spr0ctl;
-static int mstepx,mstepy,xoffs=defxoffs,yoffs=defyoffs;
-static int sprvbfl;
-
-int lastmx, lastmy;
-int newmousecounters;
-int ievent_alive = 0;
-
-static enum { unknown_mouse, normal_mouse, dont_care_mouse, follow_mouse } mousestate;
-
-static void mousehack_setdontcare (void)
-{
-    if (mousestate == dont_care_mouse)
-	return;
-
-    write_log ("Don't care mouse mode set\n");
-    mousestate = dont_care_mouse;
-    lastspr0x = lastmx; lastspr0y = lastmy;
-    mstepx = defstepx; mstepy = defstepy;
-}
-
-static void mousehack_setfollow (void)
-{
-    if (mousestate == follow_mouse)
-	return;
-
-    write_log ("Follow sprite mode set\n");
-    mousestate = follow_mouse;
-    lastdiffx = lastdiffy = 0;
-    sprvbfl = 0;
-    spr0ctl = spr0pos = 0;
-    mstepx = defstepx; mstepy = defstepy;
-}
-
-static uae_u32 mousehack_helper (void)
-{
-    int mousexpos, mouseypos;
-
-#ifdef PICASSO96
-    if (picasso_on) {
-	picasso_clip_mouse (&lastmx, &lastmy);
-	mousexpos = lastmx;
-	mouseypos = lastmy;
-    } else
-#endif
-    {
-	/* @@@ This isn't completely right, it doesn't deal with virtual
-	   screen sizes larger than physical very well.  */
-	if (lastmy >= gfxvidinfo.height)
-	    lastmy = gfxvidinfo.height - 1;
-	if (lastmy < 0)
-	    lastmy = 0;
-	if (lastmx < 0)
-	    lastmx = 0;
-	if (lastmx >= gfxvidinfo.width)
-	    lastmx = gfxvidinfo.width - 1;
-	mouseypos = coord_native_to_amiga_y (lastmy) << 1;
-	mousexpos = coord_native_to_amiga_x (lastmx);
-    }
-
-    switch (m68k_dreg (regs, 0)) {
-    case 0:
-	return ievent_alive ? -1 : needmousehack ();
-    case 1:
-	ievent_alive = 10;
-	return mousexpos;
-    case 2:
-	return mouseypos;
-    }
-    return 0;
-}
-
-void togglemouse (void)
-{
-    switch (mousestate) {
-     case dont_care_mouse: mousehack_setfollow (); break;
-     case follow_mouse: mousehack_setdontcare (); break;
-     default: break; /* Nnnnnghh! */
-    }
-}
-
-STATIC_INLINE int adjust (int val)
-{
-    if (val > 127)
-	return 127;
-    else if (val < -127)
-	return -127;
-    return val;
-}
-
-static void do_mouse_hack (void)
-{
-    int spr0x = ((spr0pos & 0xff) << 2) | ((spr0ctl & 1) << 1);
-    int spr0y = ((spr0pos >> 8) | ((spr0ctl & 4) << 6)) << 1;
-    int diffx, diffy;
-
-    if (ievent_alive > 0) {
-	mouse_x = mouse_y = 0;
-	return;
-    }
-    switch (mousestate) {
-    case normal_mouse:
-	diffx = lastmx - lastsampledmx;
-	diffy = lastmy - lastsampledmy;
-	if (!newmousecounters) {
-	    if (diffx > 127) diffx = 127;
-	    if (diffx < -127) diffx = -127;
-	    mouse_x += diffx;
-	    if (diffy > 127) diffy = 127;
-	    if (diffy < -127) diffy = -127;
-	    mouse_y += diffy;
-	}
-	lastsampledmx += diffx; lastsampledmy += diffy;
-	break;
-
-    case dont_care_mouse:
-	diffx = adjust (((lastmx - lastspr0x) * mstepx) >> 16);
-	diffy = adjust (((lastmy - lastspr0y) * mstepy) >> 16);
-	lastspr0x = lastmx; lastspr0y = lastmy;
-	mouse_x += diffx; mouse_y += diffy;
-	break;
-
-    case follow_mouse:
-	if (sprvbfl && sprvbfl-- > 1) {
-	    int mousexpos, mouseypos;
-
-	    if ((lastdiffx > docal || lastdiffx < -docal)
-		&& lastspr0x != spr0x
-		&& spr0x > plfstrt*4 + 34 + xcaloff
-		&& spr0x < plfstop*4 - xcaloff)
-	    {
-		int val = (lastdiffx << 16) / (spr0x - lastspr0x);
-		if (val >= 0x8000)
-		    mstepx = (mstepx * (calweight - 1) + val) / calweight;
-	    }
-	    if ((lastdiffy > docal || lastdiffy < -docal)
-		&& lastspr0y != spr0y
-		&& spr0y > plffirstline + ycaloff
-		&& spr0y < plflastline - ycaloff)
-	    {
-		int val = (lastdiffy << 16) / (spr0y - lastspr0y);
-		if (val >= 0x8000)
-		    mstepy = (mstepy * (calweight - 1) + val) / calweight;
-	    }
-	    if (lastmy >= gfxvidinfo.height)
-		lastmy = gfxvidinfo.height-1;
-	    mouseypos = coord_native_to_amiga_y (lastmy) << 1;
-	    mousexpos = coord_native_to_amiga_x (lastmx);
-	    diffx = adjust ((((mousexpos + xoffs - spr0x) & ~1) * mstepx) >> 16);
-	    diffy = adjust ((((mouseypos + yoffs - spr0y) & ~1) * mstepy) >> 16);
-	    lastspr0x = spr0x; lastspr0y = spr0y;
-	    lastdiffx = diffx; lastdiffy = diffy;
-	    mouse_x += diffx; mouse_y += diffy;
-	}
-	break;
-	
-    default:
-	abort ();
-    }
-}
-
-static void mousehack_handle (unsigned int ctl, unsigned int pos)
-{
-    if (!sprvbfl && ((pos & 0xff) << 2) > 2 * DISPLAY_LEFT_SHIFT) {
-	spr0ctl = ctl;
-	spr0pos = pos;
-	sprvbfl = 2;
-    }
 }
 
 static int timehack_alive = 0;
@@ -2877,74 +2693,6 @@ static void COLOR_WRITE (int hpos, uae_u16 v, int num)
     }
 }
 
-static uae_u16 potgo_value;
-
-static void POTGO (uae_u16 v)
-{
-    potgo_value = v;
-}
-
-static uae_u16 POTGOR (void)
-{
-    uae_u16 v = (potgo_value | (potgo_value >> 1)) & 0x5500;
-
-    v |= (~potgo_value & 0xAA00) >> 1;
-
-    if (JSEM_ISMOUSE (0, &currprefs)) {
-	if (buttonstate[2])
-	    v &= 0xFBFF;
-
-	if (buttonstate[1])
-	    v &= 0xFEFF;
-    } else if (JSEM_ISJOY0 (0, &currprefs) || JSEM_ISJOY1 (0, &currprefs)) {
-	if (joy0button & 2) v &= 0xfbff;
-	if (joy0button & 4) v &= 0xfeff;
-    }
-
-    if (JSEM_ISJOY0 (1, &currprefs) || JSEM_ISJOY1 (1, &currprefs)) {
-	if (joy1button & 2) v &= 0xbfff;
-	if (joy1button & 4) v &= 0xefff;
-    }
-
-    return v;
-}
-
-static uae_u16 POT0DAT (void)
-{
-    static uae_u16 cnt = 0;
-    if (JSEM_ISMOUSE (0, &currprefs)) {
-	if (buttonstate[2])
-	    cnt = ((cnt + 1) & 0xFF) | (cnt & 0xFF00);
-	if (buttonstate[1])
-	    cnt += 0x100;
-    }
-
-    return cnt;
-}
-static uae_u16 JOY0DAT (void)
-{
-    if (JSEM_ISMOUSE (0, &currprefs)) {
-	do_mouse_hack ();
-	return ((uae_u8)mouse_x) + ((uae_u16)mouse_y << 8);
-    }
-    return joy0dir;
-}
-static uae_u16 JOY1DAT (void)
-{
-    if (JSEM_ISMOUSE (1, &currprefs)) {
-	do_mouse_hack ();
-	return ((uae_u8)mouse_x) + ((uae_u16)mouse_y << 8);
-    }
-    return joy1dir;
-}
-static void JOYTEST (uae_u16 v)
-{
-    if (JSEM_ISMOUSE (0, &currprefs)) {
-	mouse_x = v & 0xFC;
-	mouse_y = (v >> 8) & 0xFC;
-    }
-}
-
 /* The copper code.  The biggest nightmare in the whole emulator.
 
    Alright.  The current theory:
@@ -3015,145 +2763,6 @@ STATIC_INLINE int dangerous_reg (int reg)
     if (reg >= 0xE0 && reg < 0x1C0)
 	return 0;
     return 1;
-}
-
-#define FAST_COPPER 1
-
-/* The future, Conan?
-   We try to look ahead in the copper list to avoid doing continuous calls
-   to updat_copper (which is what happens when SPCFLAG_COPPER is set).  If
-   we find that the same effect can be achieved by setting a delayed event
-   and then doing multiple copper insns in one batch, we can get a massive
-   speedup.
-
-   We don't try to be precise here.  All copper reads take exactly 2 cycles,
-   the effect of bitplane contention is ignored.  Trying to get it exactly
-   right would be much more complex and as such carry a huge risk of getting
-   it subtly wrong; and it would also be more expensive - we want this code
-   to be fast.  */
-static void predict_copper (void)
-{
-    uaecptr ip = cop_state.ip;
-    unsigned int c_hpos = cop_state.hpos;
-    enum copper_states state = cop_state.state;
-    unsigned int w1, w2, cycle_count;
-
-    switch (state) {
-    case COP_read1_wr_in2:
-    case COP_read2_wr_in2:
-    case COP_read1_wr_in4:
-	if (dangerous_reg (cop_state.saved_i1))
-	    return;
-	state = state == COP_read2_wr_in2 ? COP_read2 : COP_read1;
-	break;
-
-    case COP_read1_in2:
-	c_hpos += 2;
-	state = COP_read1;
-	break;
-
-    case COP_stop:
-    case COP_bltwait:
-    case COP_wait1:
-    case COP_skip_in4:
-    case COP_skip_in2:
-	return;
-
-    case COP_wait_in4:
-	c_hpos += 2;
-	/* fallthrough */
-    case COP_wait_in2:
-	c_hpos += 2;
-	/* fallthrough */
-    case COP_wait:
-	state = COP_wait;
-	break;
-
-    default:
-	break;
-    }
-    /* Only needed for COP_wait, but let's shut up the compiler.  */
-    w1 = cop_state.saved_i1;
-    w2 = cop_state.saved_i2;
-    cop_state.first_sync = c_hpos;
-    cop_state.regtypes_modified = REGTYPE_FORCE;
-
-    /* Get this case out of the way, so that the loop below only has to deal
-       with read1 and wait.  */
-    if (state == COP_read2) {
-	w1 = cop_state.i1;
-	if (w1 & 1) {
-	    w2 = chipmem_wget (ip);
-	    if (w2 & 1)
-		goto done;
-	    state = COP_wait;
-	    c_hpos += 4;
-	} else if (dangerous_reg (w1)) {
-	    c_hpos += 4;
-	    goto done;
-	} else {
-	    cop_state.regtypes_modified |= regtypes[w1 & 0x1FE];
-	    state = COP_read1;
-	    c_hpos += 2;
-	}
-	ip += 2;	
-    }
-
-    while (c_hpos + 1 < maxhpos) {
-	if (state == COP_read1) {
-	    w1 = chipmem_wget (ip);
-	    if (w1 & 1) {
-		w2 = chipmem_wget (ip + 2);
-		if (w2 & 1)
-		    break;
-		state = COP_wait;
-		c_hpos += 6;
-	    } else if (dangerous_reg (w1)) {
-		c_hpos += 6;
-		goto done;
-	    } else {
-		cop_state.regtypes_modified |= regtypes[w1 & 0x1FE];
-		c_hpos += 4;
-	    }
-	    ip += 4;
-	} else if (state == COP_wait) {
-	    if ((w2 & 0xFE) != 0xFE)
-		break;
-	    else {
-		unsigned int vcmp = (w1 & (w2 | 0x8000)) >> 8;
-		unsigned int hcmp = (w1 & 0xFE);
-
-		unsigned int vp = vpos & (((w2 >> 8) & 0x7F) | 0x80);
-		if (vp < vcmp) {
-		    /* Whee.  We can wait until the end of the line!  */
-		    c_hpos = maxhpos;
-		} else if (vp > vcmp || hcmp <= c_hpos) {
-		    state = COP_read1;
-		    /* minimum wakeup time */
-		    c_hpos += 2;
-		} else {
-		    state = COP_read1;
-		    c_hpos = hcmp;
-		}
-		/* If this is the current instruction, remember that we don't
-		   need to sync CPU and copper anytime soon.  */
-		if (cop_state.ip == ip) {
-		    cop_state.first_sync = c_hpos;
-		}
-	    }
-	} else
-	    abort ();
-    }
-
-  done:
-    cycle_count = c_hpos - cop_state.hpos;
-    if (cycle_count >= 8) {
-	unset_special (SPCFLAG_COPPER);
-	eventtab[ev_copper].active = 1;
-	eventtab[ev_copper].oldcycles = get_cycles ();
-	eventtab[ev_copper].evtime = get_cycles () + cycle_count * CYCLE_UNIT;
-	events_schedule ();
-    }
 }
 
 static void perform_copper_write (int old_hpos)
@@ -3365,16 +2974,6 @@ static void update_copper (int until_hpos)
 	    hp = c_hpos & (cop_state.saved_i2 & 0xFE);
 	    if (vp == cop_state.vcmp && hp < cop_state.hcmp) {
 		/* Position not reached yet.  */
-		if (currprefs.fast_copper && (cop_state.saved_i2 & 0xFE) == 0xFE) {
-		    int wait_finish = cop_state.hcmp - 2;
-		    /* This will leave c_hpos untouched if it's equal to wait_finish.  */
-		    if (wait_finish < c_hpos)
-			abort ();
-		    else if (wait_finish <= until_hpos) {
-			c_hpos = wait_finish;
-		    } else
-			c_hpos = until_hpos;
-		}	      
 		break;
 	    }
 
@@ -3400,12 +2999,6 @@ static void update_copper (int until_hpos)
 
   out:
     cop_state.hpos = c_hpos;
-
-    /* The test against maxhpos also prevents us from calling predict_copper
-       when we are being called from hsync_handler, which would not only be
-       stupid, but actively harmful.  */
-    if (currprefs.fast_copper && (regs.spcflags & SPCFLAG_COPPER) && c_hpos + 8 < maxhpos)
-	predict_copper ();
 }
 
 static void compute_spcflag_copper (void)
@@ -3422,9 +3015,6 @@ static void compute_spcflag_copper (void)
 	    return;
     }
     copper_enabled_thisline = 1;
-
-    if (currprefs.fast_copper)
-	predict_copper ();
 
     if (! eventtab[ev_copper].active)
 	set_special (SPCFLAG_COPPER);
@@ -3460,22 +3050,11 @@ void do_copper (void)
 
 /* ADDR is the address that is going to be read/written; this access is
    the reason why we want to update the copper.  This function is also
-   used from hsync_handler to finish up the line; for this case, we check
-   hpos against maxhpos.  */
-STATIC_INLINE void sync_copper_with_cpu (int hpos, int do_schedule, unsigned int addr)
+   used from hsync_handler to finish up the line.  */
+STATIC_INLINE void sync_copper_with_cpu (int hpos, int do_schedule)
 {
     /* Need to let the copper advance to the current position.  */
     if (eventtab[ev_copper].active) {
-	if (hpos != maxhpos) {
-	    /* There might be reasons why we don't actually need to bother
-	       updating the copper.  */
-	    if (hpos < cop_state.first_sync)
-		return;
-
-	    if ((cop_state.regtypes_modified & regtypes[addr & 0x1FE]) == 0)
-		return;
-	}
-
 	eventtab[ev_copper].active = 0;
 	if (do_schedule)
 	    events_schedule ();
@@ -3794,19 +3373,6 @@ static void vsync_handler (void)
 	if (!bogusframe) {
 	    lastframetime = newtime - msecs;
 
-#if 0 /* This doesn't appear to work too well yet... later.  */
-	    if (n_consecutive_skipped > currprefs.sound_pri_cutoff
-		|| lastframetime < currprefs.sound_pri_time)
-	    {
-		n_consecutive_skipped = 0;
-		clear_inhibit_frame (IHF_SOUNDADJUST);
-	    } else {
-		n_consecutive_skipped++;
-		set_inhibit_frame (IHF_SOUNDADJUST);
-		total_skipped++;
-	    }
-#endif
-
 	    frametime += lastframetime;
 	    timeframes++;
 
@@ -3826,9 +3392,7 @@ static void vsync_handler (void)
 
 static void hsync_handler (void)
 {
-    /* Using 0x8A makes sure that we don't accidentally trip over the
-       modified_regtypes check.  */
-    sync_copper_with_cpu (maxhpos, 0, 0x8A);
+    sync_copper_with_cpu (maxhpos, 0);
 
     finish_decisions ();
     if (thisline_decision.plfleft != -1) {
@@ -3875,19 +3439,19 @@ static void hsync_handler (void)
        with vpos going into the thousands (and all the nasty consequences
        this has).  */
 
-    if (++vpos >= (maxvpos + (lof != 0))) {
+    if (++vpos >= (maxvpos + (lof == 0 ? 0 : 1))) {
 	vpos = 0;
 	vsync_handler ();
     }
 
     DISK_update ();
 
-    is_lastline = vpos + 1 == maxvpos + (lof != 0) && currprefs.m68k_speed == -1 && ! rpt_did_reset;
+    is_lastline = vpos + 1 == maxvpos + (lof == 0 ? 0 : 1) && currprefs.m68k_speed == -1 && ! rpt_did_reset;
 
     if ((bplcon0 & 4) && currprefs.gfx_linedbl)
 	notice_interlace_seen ();
 
-    if (framecnt == 0) {
+    if (!nodraw ()) {
 	int lineno = vpos;
 	nextline_how = nln_normal;
 	if (currprefs.gfx_linedbl) {
@@ -3912,57 +3476,6 @@ static void hsync_handler (void)
     /* See if there's a chance of a copper wait ending this line.  */
     cop_state.hpos = 0;
     compute_spcflag_copper ();
-}
-
-static void init_regtypes (void)
-{
-    int i;
-    for (i = 0; i < 512; i += 2) {
-	regtypes[i] = REGTYPE_ALL;
-	if ((i >= 0x20 && i < 0x28) || i == 0x08 || i == 0x7E)
-	    regtypes[i] = REGTYPE_DISK;
-	else if (i >= 0x68 && i < 0x70)
-	    regtypes[i] = REGTYPE_NONE;
-	else if (i >= 0x40 && i < 0x78)
-	    regtypes[i] = REGTYPE_BLITTER;
-	else if (i >= 0xA0 && i < 0xE0 && (i & 0xF) < 0xE)
-	    regtypes[i] = REGTYPE_AUDIO;
-	else if (i >= 0xA0 && i < 0xE0)
-	    regtypes[i] = REGTYPE_NONE;
-	else if (i >= 0xE0 && i < 0x100)
-	    regtypes[i] = REGTYPE_PLANE;
-	else if (i >= 0x120 && i < 0x180)
-	    regtypes[i] = REGTYPE_SPRITE;
-	else if (i >= 0x180 && i < 0x1C0)
-	    regtypes[i] = REGTYPE_COLOR;
-	else switch (i) {
-	case 0x02:
-	    /* DMACONR - setting this to REGTYPE_BLITTER will cause it to
-	       conflict with DMACON (since that is REGTYPE_ALL), and the
-	       blitter registers (for the BBUSY bit), but nothing else,
-	       which is (I think) what we want.  */
-	    regtypes[i] = REGTYPE_BLITTER;
-	    break;
-	case 0x04: case 0x06: case 0x2A: case 0x2C:
-	    regtypes[i] = REGTYPE_POS;
-	    break;
-	case 0x0A: case 0x0C:
-	case 0x12: case 0x14: case 0x16:
-	case 0x36:
-	    regtypes[i] = REGTYPE_JOYPORT;
-	    break;
-	case 0x104:
-	case 0x102:
-	    regtypes[i] = REGTYPE_PLANE;
-	    break;
-	case 0x88: case 0x8A:
-	case 0x8E: case 0x90: case 0x92: case 0x94:
-	case 0x96:
-	case 0x100:
-	    regtypes[i] |= REGTYPE_FORCE;
-	    break;
-	}
-    }
 }
 
 void init_eventtab (void)
@@ -4089,8 +3602,6 @@ void customreset (void)
     bogusframe = 1;
 #endif
 
-    init_regtypes ();
-
     sprite_buffer_res = currprefs.chipset_mask & CSMASK_AGA ? RES_HIRES : RES_LORES;
     if (savestate_state == STATE_RESTORE) {
 	uae_u16 v;
@@ -4143,12 +3654,13 @@ void dumpcustom (void)
 {
     write_log ("DMACON: %x INTENA: %x INTREQ: %x VPOS: %x HPOS: %x\n", DMACONR(),
 	       (unsigned int)intena, (unsigned int)intreq, (unsigned int)vpos, (unsigned int)current_hpos());
-    write_log ("COP1LC: %08lx, COP2LC: %08lx\n", (unsigned long)cop1lc, (unsigned long)cop2lc);
+    write_log ("COP1LC: %08lx, COP2LC: %08lx COPPTR: %08lx\n", (unsigned long)cop1lc, (unsigned long)cop2lc, cop_state.ip);
     write_log ("DIWSTRT: %04x DIWSTOP: %04x DDFSTRT: %04x DDFSTOP: %04x\n",
 	       (unsigned int)diwstrt, (unsigned int)diwstop, (unsigned int)ddfstrt, (unsigned int)ddfstop);
+    write_log ("BPLCON 0: %04x 1: %04x 2: %04x 3: %04x 4: %04x\n", bplcon0, bplcon1, bplcon2, bplcon3, bplcon4);
     if (timeframes) {
-	write_log ("Average frame time: %d ms [frames: %d time: %d]\n",
-		   frametime / timeframes, timeframes, frametime);
+	write_log ("Average frame time: %f ms [frames: %d time: %d]\n",
+		   (double)frametime / timeframes, timeframes, frametime);
 	if (total_skipped)
 	    write_log ("Skipped frames: %d\n", total_skipped);
     }
@@ -4173,7 +3685,6 @@ static void gen_custom_tables (void)
 {
     int i;
     for (i = 0; i < 256; i++) {
-	unsigned int j;
 	sprtaba[i] = ((((i >> 7) & 1) << 0)
 		      | (((i >> 6) & 1) << 2)
 		      | (((i >> 5) & 1) << 4)
@@ -4265,8 +3776,8 @@ STATIC_INLINE uae_u32 REGPARAM2 custom_wget_1 (uaecptr addr)
      case 0x008: v = DSKDATR (current_hpos ()); break;
 
      case 0x00A: v = JOY0DAT (); break;
-     case 0x00C: v =  JOY1DAT (); break;
-     case 0x00E: v =  CLXDAT (); break;
+     case 0x00C: v = JOY1DAT (); break;
+     case 0x00E: v = CLXDAT (); break;
      case 0x010: v = ADKCONR (); break;
 
      case 0x012: v = POT0DAT (); break;
@@ -4298,7 +3809,7 @@ STATIC_INLINE uae_u32 REGPARAM2 custom_wget_1 (uaecptr addr)
 
 uae_u32 REGPARAM2 custom_wget (uaecptr addr)
 {
-    sync_copper_with_cpu (current_hpos (), 1, addr);
+    sync_copper_with_cpu (current_hpos (), 1);
     return custom_wget_1 (addr);
 }
 
@@ -4487,7 +3998,7 @@ void REGPARAM2 custom_wput (uaecptr addr, uae_u32 value)
     int hpos = current_hpos ();
     special_mem |= S_WRITE;
 
-    sync_copper_with_cpu (hpos, 1, addr);
+    sync_copper_with_cpu (hpos, 1);
     custom_wput_1 (hpos, addr, value);
 }
 
@@ -4876,5 +4387,4 @@ void check_prefs_changed_custom (void)
     currprefs.immediate_blits = changed_prefs.immediate_blits;
     currprefs.blits_32bit_enabled = changed_prefs.blits_32bit_enabled;
     currprefs.collision_level = changed_prefs.collision_level;
-    currprefs.fast_copper = changed_prefs.fast_copper;
 }

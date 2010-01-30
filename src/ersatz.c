@@ -30,6 +30,8 @@
 #define EOP_ALLOCABS 7
 #define EOP_LOOP 8
 
+static int already_failed = 0;
+
 void init_ersatz_rom (uae_u8 *data)
 {
     write_log ("Trying to use Kickstart replacement.\n");
@@ -66,6 +68,18 @@ void init_ersatz_rom (uae_u8 *data)
     *data++ = 0x4E; *data++ = 0x75;
 }
 
+static void ersatz_failed (void)
+{
+    if (already_failed)
+	return;
+    already_failed = 1;
+#if 0
+    notify_user (NUMSG_KICKREPNO);
+    uae_restart (-1, NULL);
+#endif
+    uae_quit ();
+}
+
 static void ersatz_doio (void)
 {
     uaecptr request = m68k_areg(regs, 1);
@@ -76,7 +90,7 @@ static void ersatz_doio (void)
 
      default:
 	write_log ("Only CMD_READ supported in DoIO()\n");
-	abort();
+	ersatz_failed ();
     }
     {
 	uaecptr dest = get_long (request + 0x28);
@@ -225,8 +239,9 @@ void ersatz_perform (uae_u16 what)
 
      case EOP_NIMP:
 	write_log ("Unimplemented Kickstart function called\n");
-	uae_quit ();
-	
+	ersatz_failed ();
+	break;
+
 	/* fall through */
      case EOP_LOOP:
 	m68k_setpc (0xF80010);
@@ -235,6 +250,7 @@ void ersatz_perform (uae_u16 what)
      case EOP_OPENLIB:
      default:
 	write_log ("Internal error. Giving up.\n");
-	abort ();
+	ersatz_failed ();
+	break;
     }
 }

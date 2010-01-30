@@ -2,6 +2,10 @@ Note! This file only contains user-visible changes. There may be others. For a
 more detailed description of changes between releases, read src/ChangeLog, and
 for the full picture, make a diff between releases.
 
+User-visible changes in 0.8.24:
+  - More merging with WinUAE
+  - Now uses GTK2 for the GUI.
+
 User-visible changes in 0.8.23:
   - Moved over some features from WinUAE:
     * better m68k exception handling

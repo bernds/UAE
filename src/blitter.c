@@ -37,6 +37,26 @@ uae_u32 blit_masktable[BLITTER_MAX_WORDS];
 static uae_u16 blit_trashtable[BLITTER_MAX_WORDS];
 enum blitter_states bltstate;
 
+static uae_u8 blit_cycle_diagram_start[][10] =
+{
+    { 0, 1, 0 },		/* 0 */
+    { 0, 2, 4,0 },		/* 1 */
+    { 0, 2, 3,0 },		/* 2 */
+    { 2, 3, 3,0, 0,3,4 },	/* 3 */
+    { 0, 3, 2,0,0 },		/* 4 */
+    { 2, 3, 2,0, 0,2,4 },	/* 5 */
+    { 0, 3, 2,3,0 },		/* 6 */
+    { 3, 4, 2,3,0, 0,2,3,4 },	/* 7 */
+    { 0, 2, 1,0 },		/* 8 */
+    { 2, 2, 1,0, 1,4 },		/* 9 */
+    { 0, 2, 1,3 },		/* A */
+    { 3, 3, 1,3,0, 1,3,4 },	/* B */
+    { 2, 3, 1,2, 0,1,2 },	/* C */
+    { 3, 3, 1,2,0, 1,2,4 },	/* D */
+    { 0, 3, 1,2,3 },		/* E */
+    { 4, 4, 1,2,3,0, 1,2,3,4 }	/* F */
+};
+
 void build_blitfilltable(void)
 {
     unsigned int d, fillmask;
@@ -307,7 +327,9 @@ STATIC_INLINE void blitter_line_incy(void)
 
 static void blitter_line(void)
 {
-    uae_u16 blitahold = blinea >> blinea_shift, blitbhold = blineb & 1 ? 0xFFFF : 0, blitchold = blt_info.bltcdat;
+    uae_u16 blitahold = blinea >> blinea_shift;
+    uae_u16 blitbhold = blineb & 1 ? 0xFFFF : 0;
+    uae_u16 blitchold = blt_info.bltcdat;
     blt_info.bltddat = 0;
 
     if (blitsing && blitonedot) blitahold = 0;
@@ -434,26 +456,6 @@ void blitter_handler(void)
     eventtab[ev_blitter].active = 0;
     unset_special (SPCFLAG_BLTNASTY);
 }
-
-static uae_u8 blit_cycle_diagram_start[][10] =
-{
-    { 0, 1, 0 },		/* 0 */
-    { 0, 2, 4,0 },		/* 1 */
-    { 0, 2, 3,0 },		/* 2 */
-    { 2, 3, 3,0, 0,3,4 },	/* 3 */
-    { 0, 3, 2,0,0 },		/* 4 */
-    { 2, 3, 2,0, 0,2,4 },	/* 5 */
-    { 0, 3, 2,3,0 },		/* 6 */
-    { 3, 4, 2,3,0, 0,2,3,4 },	/* 7 */
-    { 0, 2, 1,0 },		/* 8 */
-    { 2, 2, 1,0, 1,4 },		/* 9 */
-    { 0, 2, 1,3 },		/* A */
-    { 3, 3, 1,3,0, 1,3,4 },	/* B */
-    { 2, 3, 1,2, 0,1,2 },	/* C */
-    { 3, 3, 1,2,0, 1,2,4 },	/* D */
-    { 0, 3, 1,2,3 },		/* E */
-    { 4, 4, 1,2,3,0, 1,2,3,4 }	/* F */
-};
 
 static long int blit_cycles;
 static long blit_firstline_cycles;

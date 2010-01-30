@@ -60,6 +60,7 @@ static struct cfg_lines opttable[] =
     {"gfx_colour_mode", "" },
     {"32bit_blits", "Enable 32 bit blitter emulation" },
     {"immediate_blits", "Perform blits immediately" },
+    {"show_leds", "LED display" },
     {"gfxlib_replacement", "Use graphics.library replacement?" },
     {"sound_output", "" },
     {"sound_frequency", "" },
@@ -204,6 +205,7 @@ void save_options (FILE *f, struct uae_prefs *p)
 
     fprintf (f, "immediate_blits=%s\n", p->immediate_blits ? "true" : "false");
     fprintf (f, "ntsc=%s\n", p->ntscmode ? "true" : "false");
+    fprintf (f, "show_leds=%s\n", p->leds_on_screen ? "true" : "false");
     if (p->chipset_mask & CSMASK_AGA)
 	fprintf (f, "chipset=aga\n");
     else if ((p->chipset_mask & CSMASK_ECS_AGNUS) && (p->chipset_mask & CSMASK_ECS_AGNUS))

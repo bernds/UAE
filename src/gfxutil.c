@@ -77,7 +77,7 @@ unsigned long doMask256 (int p, int bits, int shift)
     return val;
 }
 
-static unsigned int doColor(int i, int bits, int shift)
+static unsigned int doColor (int i, int bits, int shift)
 {
     int shift2;
     if(bits >= 8) shift2 = 0; else shift2 = 8 - bits;
@@ -94,7 +94,7 @@ void alloc_colors64k (int rw, int gw, int bw, int rs, int gs, int bs)
 	xcolors[i] = doMask(r, rw, rs) | doMask(g, gw, gs) | doMask(b, bw, bs);
     }
     /* create AGA color tables */
-    for(i=0; i<256; i++) {
+    for(i = 0; i < 256; i++) {
 	xredcolors[i] = doColor(i, rw, rs);
 	xgreencolors[i] = doColor(i, gw, gs);
 	xbluecolors[i] = doColor(i, bw, bs);
@@ -114,7 +114,7 @@ void alloc_colors256 (allocfunc_type allocfunc)
 {
     int nb_cols[3]; /* r,g,b */
     int maxcol = newmaxcol == 0 ? 256 : newmaxcol;
-    int i,j,k,l,t;
+    int i,j,k,l;
 
     xcolnr *map;
 

@@ -35,6 +35,7 @@
 #include "gui.h"
 #include "debug.h"
 #include "picasso96.h"
+#include "inputdevice.h"
 
 #ifdef __cplusplus
 #define VI_CLASS c_class

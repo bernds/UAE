@@ -533,7 +533,7 @@ static void build_insn (int insn)
 	    case 'R': destreg = bitval[bitR]; dstgather = 1; dstpos = bitpos[bitR]; break;
 	    default: abort();
 	    }
-            if (dstpos < 0 || dstpos >= 32)
+	    if (dstpos < 0 || dstpos >= 32)
 		abort ();
 	    break;
 	case 'A':
@@ -544,7 +544,7 @@ static void build_insn (int insn)
 	    case 'x': destreg = 0; dstgather = 0; dstpos = 0; break;
 	    default: abort();
 	    }
-            if (dstpos < 0 || dstpos >= 32)
+	    if (dstpos < 0 || dstpos >= 32)
 		abort ();
 	    switch (opcstr[pos]) {
 	    case 'p': destmode = Apdi; pos++; break;
