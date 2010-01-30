@@ -1,4 +1,4 @@
-This is version 0.8.21 of UAE, the UAE Amiga Emulator.
+This is version 0.8.22 of UAE, the UAE Amiga Emulator.
 
 Versions numbered 0.8.x are considered beta versions, but they generally
 tend to work better than the last "stable" release 0.7.
@@ -591,6 +591,16 @@ After that is complete, reboot, and you should be able to select the new
 modes from the ScreenModes program.
 
 
+AHI sound card emulation
+========================
+
+In the "amiga" subdirectory of the UAE distribution, you will find a "Devs"
+directory that contains the necessary files for AHI sound support.  This is
+at an early stage and will not work very well in this release.  It is
+included mainly in the hope that someone with a clue about AHI will pick up
+this work and finish it properly.
+
+
 Saving and restoring snapshots
 ==============================
 
@@ -795,9 +805,12 @@ Special thanks to:
 Authors/Maintainers
 ===================
 
-My address is (please read the section "Before you send email" below):
+My email address is (please read the section "Before you send email" below):
 
-crux@pool.informatik.rwth-aachen.de
+bernds@btinternet.com
+
+(please do not put this into your Outlook addressbook; I get enough viruses
+already)
 
 or, via snailmail
 
@@ -898,10 +911,8 @@ and the file FAQ contains about every piece of information I can give you. I
 try to help people who have questions, but sometimes it takes too much time.
 
 Please don't ask for Kickstart ROM files or other copyrighted software. Don't
-_send_ me stuff like this either. If you want to send me something else which
-is big (>= 50K), ask me before or put it somewhere in Webspace.  This
-university mail account has a limit on how big my mailbox can get before it
-risks getting deleted without warning, and I don't enjoy that happening.
+_send_ me stuff like this either.  Don't send large attachments, at least not
+without asking first.
 
 Oh, and another thing: If I promise to do things (like implement new
 features), and forget about them, pester me. That happens occasionally, it's

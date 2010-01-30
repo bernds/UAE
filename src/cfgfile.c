@@ -441,6 +441,7 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	    p->stereo = 1;
 	    p->mixed_stereo = 1;
 	}
+	return 1;
     }
 
     if (cfgfile_strval (option, value, "cpu_type", &p->cpu_level, cpumode, 0)) {
@@ -594,7 +595,11 @@ int cfgfile_load (struct uae_prefs *p, const char *filename)
 	return 0;
 
     while (fgets (line, 256, fh) != 0) {
-	line[strcspn (line, "\t \r\n")] = '\0';
+	int len = strlen (line);
+	/* Delete trailing whitespace.  */
+	while (len > 0 && strcspn (line + len - 1, "\t \r\n") == 0) {
+	    line[--len] = '\0';
+	}
 	if (strlen (line) > 0)
 	    cfgfile_parse_line (p, line);
     }

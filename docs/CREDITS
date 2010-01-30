@@ -43,8 +43,9 @@ Miscellaneous code contributions:
   - Holger Jakob: debugger cheat search
   - Philippe Gerin: fixed a bug in the CPU emulator
   - Jake Hamby: bug fixes
-  - Toni Wilen: AGA support, state save support, numerous floppy code fixes,
-    and miscellaneous other patches
+  - Toni Wilen: AGA support, state save support, massive amounts of debugging
+    and numerous fixes to improve compatibility in almost every part of the
+    emulation, and miscellaneous other patches.
   - Mathias Ortmann: BSD socket support.
   - Patrick Ohly: timehack; SCSI support
   - Richard Hoffmann: sound interpolation
@@ -56,9 +57,11 @@ Miscellaneous code contributions:
   - Jesper Bojesen: Danish keyboard support.
   - Gerald Schnabel: A1000 kickstart disk loader
   - Gwenole Beauchesne: Miscellaneuos CPU emulation fixes.
-  - Maik Qualmann: Correct implementation of BCD opcodes.
+  - Maik Qualmann: Bug fixes for various parts such as BCD opcodes or the gtk
+    UI.
   - Mark Cox: Debugger improvements.
   - Dr. Adil Temel: HD floppy support.
+  - István Fábián: helped with disk hardware information
 
 System specific fixes/ports (some of the fixes for various Unices are no
 longer present, though, since we now use autoconf):

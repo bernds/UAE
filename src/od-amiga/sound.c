@@ -303,9 +303,6 @@ int init_sound (void)
 	effect.eff.ahieci_Pad=0;
 
 	AHI_SetEffect(&effect,actrl);
-#elif defined(FRAME_RATE_HACK)
-/* reduce vsynctime a bit to give the sound emulation more room to breathe.*/
-    vsynctime = vsynctime * 9 / 10;
 #endif /* !AHI_DMA_MODE && ! FRAME_RATE_HACK */
     } else {
         buffers[0] = (void*)AllocMem(sndbufsize,MEMF_CHIP|MEMF_CLEAR);

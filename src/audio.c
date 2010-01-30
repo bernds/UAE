@@ -895,6 +895,7 @@ void check_prefs_changed_audio (void)
 		    changed_prefs.produce_sound = 0;
 		}
 	}
+	compute_vsynctime ();
     }
     /* Select the right interpolation method.  */
     if (sample_handler == sample16_handler

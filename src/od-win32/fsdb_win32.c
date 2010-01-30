@@ -63,7 +63,7 @@ int fsdb_name_invalid (const char *n)
 
 uae_u32 filesys_parse_mask(uae_u32 mask)
 {
-    return(mask ^ 0xf);
+    return mask ^ 0xf;
 }
 
 /* For an a_inode we have newly created based on a filename we found on the
@@ -75,8 +75,11 @@ void fsdb_fill_file_attrs (a_inode *aino)
     if((mode = GetFileAttributes(aino->nname)) == 0xFFFFFFFF) return;
 	
     aino->dir = (mode & FILE_ATTRIBUTE_DIRECTORY) ? 1 : 0;
-    aino->amigaos_mode = (FILE_ATTRIBUTE_ARCHIVE & mode) ? 0 : A_FIBF_ARCHIVE;
-    aino->amigaos_mode |= 0xf; /* set rwed by default */
+    aino->amigaos_mode = A_FIBF_EXECUTE | A_FIBF_READ;
+    if (FILE_ATTRIBUTE_ARCHIVE & mode)
+	aino->amigaos_mode |= A_FIBF_ARCHIVE;
+    if (! (FILE_ATTRIBUTE_READONLY & mode))
+	aino->amigaos_mode |= A_FIBF_WRITE | A_FIBF_DELETE;
     aino->amigaos_mode = filesys_parse_mask(aino->amigaos_mode);
 }
 
@@ -86,14 +89,15 @@ int fsdb_set_file_attrs (a_inode *aino, int mask)
     uae_u32 mode=0, tmpmask;
 
     tmpmask = filesys_parse_mask(mask);
-	
+
     if (stat (aino->nname, &statbuf) == -1)
 	return ERROR_OBJECT_NOT_AROUND;
-	
+
     /* Unix dirs behave differently than AmigaOS ones.  */
     /* windows dirs go where no dir has gone before...  */
     if (! aino->dir) {
-	
+	if ((tmpmask & (A_FIBF_READ | A_FIBF_DELETE)) == 0)
+	    mode |= FILE_ATTRIBUTE_READONLY;
 	if (tmpmask & A_FIBF_ARCHIVE)
 	    mode |= FILE_ATTRIBUTE_ARCHIVE;
 	else
@@ -111,14 +115,24 @@ int fsdb_set_file_attrs (a_inode *aino, int mask)
  * native FS.  Return zero if that is not possible.  */
 int fsdb_mode_representable_p (const a_inode *aino)
 {
+    int mask = aino->amigaos_mode;
+    int m1;
+
     if (aino->dir)
 	return aino->amigaos_mode == 0;
-    return (aino->amigaos_mode & (A_FIBF_DELETE
-				  | A_FIBF_SCRIPT
-				  | A_FIBF_PURE
-				  | A_FIBF_EXECUTE
-				  | A_FIBF_READ
-				  | A_FIBF_WRITE)) == 0;
+
+    /* P or S set, or E or R clear, means we can't handle it.  */
+    if (mask & (A_FIBF_SCRIPT | A_FIBF_PURE | A_FIBF_EXECUTE | A_FIBF_READ))
+	return 0;
+
+    m1 = A_FIBF_DELETE | A_FIBF_WRITE;
+    /* If it's rwed, we are OK... */
+    if ((mask & m1) == 0)
+	return 1;
+    /* We can also represent r-e-, by setting the host's readonly flag.  */
+    if ((mask & m1) == m1)
+	return 1;
+    return 0;
 }
 
 char *fsdb_create_unique_nname (a_inode *base, const char *suggestion)

@@ -45,8 +45,8 @@
 
 #ifdef PICASSO96
 
-/* #define P96TRACING_ENABLED */
-#ifdef P96TRACING_ENABLED
+#define P96TRACING_ENABLED 0
+#if P96TRACING_ENABLED
 #define P96TRACE(x)	do { write_log x; } while(0)
 #else
 #define P96TRACE(x)

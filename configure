@@ -5973,7 +5973,7 @@ if [ "x$WANT_UI" != "xno" ]; then
     if [ "x$no_gtk" = "xyes" ]; then
       echo "Did not find gtk+, disabling user interface"
       GTK_CFLAGS=
-      TK_LIBS=
+      GUIOBJS=nogui.o
       if [ "x$WANT_UI" = "xyes" ]; then
         NR_ERRORS=`expr $NR_ERRORS + 1`
       fi
@@ -6579,7 +6579,7 @@ fi
 
 if [ "x$WANT_SDL" = "xyes" ]; then
     OD_JOYSTICK=sdl-joystick.c
-else if [ "x$HAVE_MACHINE_JOYSTICK_H" = "xyes" ]; then
+else if [ "x$ac_cv_header_machine_joystick_h" = "xyes" ]; then
     cat > conftest.$ac_ext <<EOF
 #line 6585 "configure"
 #include "confdefs.h"

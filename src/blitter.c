@@ -397,7 +397,7 @@ static void blit_init(void)
 	if (blitfill && !blitdesc) {
 	    static int warn = 1;
 	    if (warn)
-	        write_log ("warning: blitter fill without desc (further messages suppressed)\n");
+		write_log ("warning: blitter fill without desc (further messages suppressed)\n");
 	    warn = 0;
 	}
     }
@@ -437,21 +437,22 @@ void blitter_handler(void)
 
 static uae_u8 blit_cycle_diagram_start[][10] =
 {
-    { 0, 1, 0 },
-    { 0, 2, 4,0 },
-    { 0, 2, 3,0 },
-    { 0, 3, 2,0,0 },
-    { 2, 3, 2,0, 0,2,4 },
-    { 0, 3, 2,3,0 },
-    { 3, 4, 2,3,0, 0,2,3,4 },
-    { 0, 2, 1,0 },
-    { 2, 2, 1,0, 1,2 },
-    { 0, 2, 1,3 },
-    { 3, 3, 1,3,0, 1,3,4 },
-    { 2, 3, 1,2, 0,1,2 },
-    { 3, 3, 1,2,0, 1,2,4 },
-    { 0, 3, 1,2,3 },
-    { 4, 4, 1,2,3,0, 1,2,3,4 }
+    { 0, 1, 0 },		/* 0 */
+    { 0, 2, 4,0 },		/* 1 */
+    { 0, 2, 3,0 },		/* 2 */
+    { 2, 3, 3,0, 0,3,4 },	/* 3 */
+    { 0, 3, 2,0,0 },		/* 4 */
+    { 2, 3, 2,0, 0,2,4 },	/* 5 */
+    { 0, 3, 2,3,0 },		/* 6 */
+    { 3, 4, 2,3,0, 0,2,3,4 },	/* 7 */
+    { 0, 2, 1,0 },		/* 8 */
+    { 2, 2, 1,0, 1,4 },		/* 9 */
+    { 0, 2, 1,3 },		/* A */
+    { 3, 3, 1,3,0, 1,3,4 },	/* B */
+    { 2, 3, 1,2, 0,1,2 },	/* C */
+    { 3, 3, 1,2,0, 1,2,4 },	/* D */
+    { 0, 3, 1,2,3 },		/* E */
+    { 4, 4, 1,2,3,0, 1,2,3,4 }	/* F */
 };
 
 static long int blit_cycles;
@@ -473,7 +474,7 @@ void do_blitter(void)
 	    blit_firstline_cycles += blit_cycles * blt_info.hblitsize * CYCLE_UNIT;
 	    blit_cycles *= blt_info.vblitsize * blt_info.hblitsize;
 	} else
-	     blit_cycles = 10; /* Desert Dream demo freezes if line draw is too fast */
+	     blit_cycles = 20; /* Desert Dream demo freezes if line draw is too fast */
     } else
 	blit_cycles = 1;
 
@@ -524,7 +525,7 @@ int blitnasty (void)
 	if (blit_last_cycle < blit_diag[0])
 	    c = blit_diag[blit_last_cycle + 2];
 	else
-	    c = blit_diag[((blit_last_cycle - blit_diag[0]) % blit_diag[1]) + 2];
+	    c = blit_diag[((blit_last_cycle - blit_diag[0]) % blit_diag[1]) + 2 + blit_diag[0]];
 	blit_last_cycle ++;
 	if (!c)
 	    return 0;

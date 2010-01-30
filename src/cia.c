@@ -228,7 +228,11 @@ static void CIA_calctimers (void)
 	     * one pulse, it will not underflow. */
 	    if (ciaatb == 0 || (ciaacra & 0x8) == 0) {
 		/* Otherwise, we can determine the time of the underflow. */
+		/* This may overflow, however.  So just ignore this timer and
+		   use the fact that we'll call CIA_handler for the A timer.  */
+#if 0
 		ciaatimeb = ciaatimea + ciaala * DIV10 * ciaatb;
+#endif
 	    }
 	}
     }
@@ -246,7 +250,9 @@ static void CIA_calctimers (void)
 	     * one pulse, it will not underflow. */
 	    if (ciabtb == 0 || (ciabcra & 0x8) == 0) {
 		/* Otherwise, we can determine the time of the underflow. */
+#if 0
 		ciabtimeb = ciabtimea + ciabla * DIV10 * ciabtb;
+#endif
 	    }
 	}
     }
@@ -771,47 +777,84 @@ addrbank cia_bank = {
     default_xlate, default_check, NULL
 };
 
-uae_u32 REGPARAM2 cia_lget (uaecptr addr)
+static void cia_wait (void)
 {
-    special_mem |= S_READ;
-    return cia_bget (addr + 3);
-}
-
-uae_u32 REGPARAM2 cia_wget (uaecptr addr)
-{
-    special_mem |= S_READ;
-    return cia_bget (addr + 1);
+    if (!div10)
+	return;
+    do_cycles (DIV10 - div10 + CYCLE_UNIT);
+    CIA_handler ();
 }
 
 uae_u32 REGPARAM2 cia_bget (uaecptr addr)
 {
+    int r = (addr & 0xf00) >> 8;
     special_mem |= S_READ;
-    if ((addr & 0x3001) == 0x2001)
-	return ReadCIAA((addr & 0xF00) >> 8);
-    if ((addr & 0x3001) == 0x1000)
-	return ReadCIAB((addr & 0xF00) >> 8);
-    return 0;
+    cia_wait ();
+    switch ((addr >> 12) & 3)
+    {
+    case 0:
+	return (addr & 1) ? ReadCIAA (r) : ReadCIAB (r);
+    case 1:
+	return (addr & 1) ? 0xff : ReadCIAB (r);
+    case 2:
+	return (addr & 1) ? ReadCIAA (r) : 0xff;
+    }
+    return 0xff;
+}
+
+uae_u32 REGPARAM2 cia_wget (uaecptr addr)
+{
+    int r = (addr & 0xf00) >> 8;
+    special_mem |= S_READ;
+    cia_wait ();
+    switch ((addr >> 12) & 3)
+    {
+    case 0:
+	return (ReadCIAB (r) << 8) | ReadCIAA (r);
+    case 1:
+	return (ReadCIAB (r) << 8) | 0xff;
+    case 2:
+	return (0xff << 8) | ReadCIAA (r);
+    }
+    return 0xffff;
+}
+
+uae_u32 REGPARAM2 cia_lget (uaecptr addr)
+{
+    uae_u32 v;
+    special_mem |= S_READ;
+    v = cia_wget (addr) << 16;
+    v |= cia_wget (addr + 2);
+    return v;
+}
+
+void REGPARAM2 cia_bput (uaecptr addr, uae_u32 value)
+{
+    int r = (addr & 0xf00) >> 8;
+    special_mem |= S_WRITE;
+    cia_wait ();
+    if ((addr & 0x2000) == 0)
+	WriteCIAB (r, value);
+    if ((addr & 0x1000) == 0)
+	WriteCIAA (r, value);
+}
+
+void REGPARAM2 cia_wput (uaecptr addr, uae_u32 value)
+{
+    int r = (addr & 0xf00) >> 8;
+    special_mem |= S_WRITE;
+    cia_wait ();
+    if ((addr & 0x2000) == 0)
+	WriteCIAB (r, value >> 8);
+    if ((addr & 0x1000) == 0)
+	WriteCIAA (r, value & 0xff);
 }
 
 void REGPARAM2 cia_lput (uaecptr addr, uae_u32 value)
 {
     special_mem |= S_WRITE;
-    cia_bput (addr + 3, value); /* FIXME ? */
-}
-
-void REGPARAM2 cia_wput (uaecptr addr, uae_u32 value)
-{
-    special_mem |= S_WRITE;
-    cia_bput (addr + 1, value);
-}
-
-void REGPARAM2 cia_bput (uaecptr addr, uae_u32 value)
-{
-    special_mem |= S_WRITE;
-    if ((addr & 0x3001) == 0x2001)
-	WriteCIAA ((addr & 0xF00) >> 8, value);
-    if ((addr & 0x3001) == 0x1000)
-	WriteCIAB ((addr & 0xF00) >> 8, value);
+    cia_wput (addr, value >> 16);
+    cia_wput (addr + 2, value & 0xffff);
 }
 
 /* battclock memory access */

@@ -15,6 +15,8 @@ extern frame_time_t vsynctime, vsyncmintime;
 extern void reset_frame_rate_hack (void);
 extern int rpt_available;
 
+extern void compute_vsynctime (void);
+
 extern unsigned long currcycle, nextevent, is_lastline;
 extern unsigned long sample_evtime;
 typedef void (*evfunc)(void);

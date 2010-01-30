@@ -1,3 +1,35 @@
+9C0702 Correct an overflow problem in the CIA code.
+9C0407 Sprite code updates; correct CIA memory access handlers (Toni).
+9C0306 Make w/d representable for fsdb_win32.
+       Don't reorder children of directories; this causes duplicates in
+       exnext.
+       Reorder the code for the 9/10 vsynctime hack a bit.
+       Add code from Toni to remember the last value written to a custom
+       register and to return it when reading from a write-only reg - this
+       seems to match actual hardware behaviour.
+       Add some more blitter tweaks (Toni).
+9C0227 When waking up the copper from a blitter wait, recheck that vpos is
+       larger than vcmp - especially with masking going on, this may not be
+       the case.
+       X11: When changing picasso resolution, reinitialize everything - our
+       bitmap might be too small otherwise.
+       When configuring hardfiles, use specified blocksize, not 512 (Toni).
+       In SPRxCTL_1, don't examine vstart position before computing it (Toni).
+9C0225 Some cfgfile fixes, more blitter timing changes and one big sprite
+       statemachine update from Toni.
+       Some copper timing fixes.
+       Fix flag bit confusion in action_fh_from_lock (taken from earlier
+       WinUAE).
+9C0220 Blitter timing update from Toni.
+       Copper timing "theory" changed (me/Toni).
+       If we have a rdtsc insn, always synchronize with realtime in
+       vsync_handler.
+       Don't reset the lof bit when restoring state.
+       When restoring disk image names, put them in changed_prefs (Toni)
+       Return error in action_seek if trying to seek past end of file (Bernd
+       Roesch).
+       SDL fixes by Maik Qualmann.
+       Fix for gtk warnings when updating floppy LEDs (Maik Qualmann).
 9C0216 Fix the clockspeed detection - we were getting lots of alarm signals
        even after it had finished.
        Some tweaks for the GUI - and also fix the problem with waiting on the

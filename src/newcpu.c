@@ -1237,16 +1237,20 @@ static void do_trace (void)
     }
 }
 
-static int do_specialties (void)
+static int do_specialties (int cycles)
 {
     if (regs.spcflags & SPCFLAG_COPPER)
 	do_copper ();
 
     /*n_spcinsns++;*/
-    while (regs.spcflags & SPCFLAG_BLTNASTY) {
+    while ((regs.spcflags & SPCFLAG_BLTNASTY) && cycles > 0) {
 	int c = blitnasty();
-	if (!c)
-	    break;
+	if (!c) {
+	    cycles -= 2 * CYCLE_UNIT;
+	    if (cycles < CYCLE_UNIT)
+		cycles = 0;
+	    c = 1;
+	}
 	do_cycles (c * CYCLE_UNIT);
 	if (regs.spcflags & SPCFLAG_COPPER)
 	    do_copper ();
@@ -1340,7 +1344,7 @@ static void m68k_run_1 (void)
 	cycles |= cycles_val;
 	do_cycles (cycles);
 	if (regs.spcflags) {
-	    if (do_specialties ())
+	    if (do_specialties (cycles))
 		return;
 	}
     }
@@ -1375,9 +1379,9 @@ static void m68k_run_2 (void)
 	/*n_insns++;*/
 	cycles &= cycles_mask;
 	cycles |= cycles_val;
-	do_cycles (cycles);
+        do_cycles (cycles);
 	if (regs.spcflags) {
-	    if (do_specialties ())
+	    if (do_specialties (cycles))
 		return;
 	}
     }
@@ -1425,7 +1429,7 @@ void m68k_go (int may_quit)
 	    savestate_restore_finish ();
 	    handle_active_events ();
 	    if (regs.spcflags)
-		do_specialties ();
+		do_specialties (0);
 	}
 
 	if (debugging)

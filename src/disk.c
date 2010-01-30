@@ -1340,8 +1340,9 @@ uae_u8 *restore_disk(int num,uae_u8 *src)
     drv->drive_id_scnt = restore_u8 ();
     drv->mfmpos = restore_u32 ();
     restore_u32 ();
-    strncpy(currprefs.df[num],src,255);
-    src+=strlen(src)+1;
+    strncpy(changed_prefs.df[num],src,255);
+    changed_prefs.df[num][255] = 0;
+    src += strlen(src) + 1;
 
     return src;
 }

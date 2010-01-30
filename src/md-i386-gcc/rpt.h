@@ -16,3 +16,5 @@ static inline frame_time_t read_processor_time (void)
     __asm__ __volatile__ (".byte 0x0f,0x31" : "=a" (foo), "=d" (dummy) :);
     return foo;
 }
+
+#define RPT_WORKS_OK 1

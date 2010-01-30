@@ -43,8 +43,8 @@
 #include "scsidev.h"
 #include "fsdb.h"
 
-/* #define TRACING_ENABLED */
-#ifdef TRACING_ENABLED
+#define TRACING_ENABLED 0
+#if TRACING_ENABLED
 #define TRACE(x)	do { write_log x; } while(0)
 #define DUMPLOCK(u,x)	dumplock(u,x)
 #else
@@ -354,7 +354,8 @@ void write_filesys_config (struct uaedev_mount_info *mountinfo,
 	} else {
 	    fprintf (f, "hardfile=%s,%d,%d,%d,%d,%s\n",
 		     uip[i].readonly ? "ro" : "rw", uip[i].hf.secspertrack,
-		     uip[i].hf.surfaces, uip[i].hf.reservedblocks, 512, str);
+		     uip[i].hf.surfaces, uip[i].hf.reservedblocks,
+		     uip[i].hf.blocksize, str);
 	}
 	free (str);
     }
@@ -759,13 +760,17 @@ static void delete_aino (Unit *unit, a_inode *aino)
     /* If any ExKeys are currently pointing at us, advance them.  */
     if (aino->parent->exnext_count > 0) {
 	int i;
+	TRACE(("entering exkey validation\n"));
 	for (i = 0; i < EXKEYS; i++) {
 	    ExamineKey *k = unit->examine_keys + i;
 	    if (k->uniq == 0)
 		continue;
 	    if (k->aino == aino->parent) {
-		if (k->curr_file == aino)
+		TRACE(("Same parent found for %d\n", i));
+		if (k->curr_file == aino) {
 		    k->curr_file = aino->sibling;
+		    TRACE(("Advancing curr_file\n"));
+		}
 	    }
 	}
     }
@@ -803,9 +808,14 @@ static a_inode *lookup_sub (a_inode *dir, uae_u32 uniq)
 	}
 	cp = &c->sibling;
     }
-    *cp = c->sibling;
-    c->sibling = dir->child;
-    dir->child = c;
+    if (! dir->locked_children) {
+	/* Move to the front to speed up repeated lookups.  Don't do this if
+	   an ExNext is going on in this directory, or we'll terminally
+	   confuse it.  */
+	*cp = c->sibling;
+	c->sibling = dir->child;
+	dir->child = c;
+    }
     return retval;
 }
 
@@ -980,7 +990,7 @@ static a_inode *new_child_aino (Unit *unit, a_inode *base, char *rel)
     init_child_aino (unit, base, aino);
 
     recycle_aino (unit, aino);
-    TRACE(("created aino %x, lookup\n", aino->uniq));
+    TRACE(("created aino %x, lookup, amigaos_mode %d\n", aino->uniq, aino->amigaos_mode));
     return aino;
 }
 
@@ -1746,6 +1756,8 @@ static void populate_directory (Unit *unit, a_inode *base)
 	base->locked_children++;
 	unit->total_locked_ainos++;
     }
+    TRACE(("Populating directory, child %p, locked_children %d\n",
+	   base->child, base->locked_children));
     for (;;) {
 	struct dirent de_space;
 	struct dirent *de;
@@ -1774,6 +1786,8 @@ static void do_examine (Unit *unit, dpacket packet, ExamineKey *ek, uaecptr info
 
     get_fileinfo (unit, packet, info, ek->curr_file);
     ek->curr_file = ek->curr_file->sibling;
+    TRACE (("curr_file set to %p %s\n", ek->curr_file,
+	    ek->curr_file ? ek->curr_file->aname : "NULL"));
     return;
 
   no_more_entries:
@@ -1806,14 +1820,19 @@ static void action_examine_next (Unit *unit, dpacket packet)
     } else if (uniq == 0xFFFFFFFE)
 	goto no_more_entries;
     else if (uniq == 0xFFFFFFFF) {
+	TRACE(("Creating new ExKey\n"));
 	ek = new_exkey (unit, aino);
 	if (ek) {
 	    if (aino->exnext_count++ == 0)
 		populate_directory (unit, aino);
 	}
 	ek->curr_file = aino->child;
-    } else
+	TRACE(("Initial curr_file: %p %s\n", ek->curr_file,
+	       ek->curr_file ? ek->curr_file->aname : "NULL"));
+    } else {
+	TRACE(("Looking up ExKey\n"));
 	ek = lookup_exkey (unit, get_long (info));
+    }
     if (ek == 0) {
 	write_log ("Couldn't find a matching ExKey. Prepare for trouble.\n");
 	goto no_more_entries;
@@ -1964,9 +1983,9 @@ action_fh_from_lock (Unit *unit, dpacket packet)
     mode = aino->amigaos_mode; /* Use same mode for opened filehandle as existing Lock() */
 
     prepare_for_open (aino->nname);
-
-    openmode = (((mode & A_FIBF_READ) == 0 ? O_WRONLY
-		 : (mode & A_FIBF_WRITE) == 0 ? O_RDONLY
+    TRACE (("  mode is %d\n", mode));
+    openmode = (((mode & A_FIBF_READ) ? O_WRONLY
+		 : (mode & A_FIBF_WRITE) ? O_RDONLY
 		 : O_RDWR));
 
    /* the files on CD really can have the write-bit set.  */
@@ -2174,6 +2193,22 @@ action_seek (Unit *unit, dpacket packet)
     TRACE(("ACTION_SEEK(%s,%d,%d)\n", k->aino->nname, pos, mode));
 
     old = lseek (k->fd, 0, SEEK_CUR);
+    {      
+	uae_s32 temppos;
+	long filesize = lseek (k->fd, 0, SEEK_END);
+	lseek (k->fd, old, SEEK_SET);
+
+	if (whence == SEEK_CUR) temppos = old + pos;
+	if (whence == SEEK_SET) temppos = pos;
+	if (whence == SEEK_END) temppos = filesize + pos;
+	if (filesize < temppos) {
+	    res = -1;
+	    PUT_PCK_RES1 (packet,res);
+	    PUT_PCK_RES2 (packet, ERROR_SEEK_ERROR);
+	    return;
+	}
+    }
+
     res = lseek (k->fd, pos, whence);
 
     if (-1 == res) {

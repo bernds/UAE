@@ -37,7 +37,6 @@
 #include "debug.h"
 #include "picasso96.h"
 
-#define DEBUG
 /* Uncomment for debugging output */
 /* #define DEBUG */
 
@@ -273,7 +272,6 @@ int graphics_setup (void)
 
 static void graphics_subinit (void)
 {
-	int i, j;
 	Uint32 uiSDLVidModFlags;
 
 #ifdef DEBUG
@@ -305,7 +303,7 @@ static void graphics_subinit (void)
 		fprintf(stderr, "Bytes per Line: %d\n", prSDLScreen->pitch);
 #endif
 		SDL_LockSurface(prSDLScreen);
-		memset(prSDLScreen->pixels, 0xff, current_width * current_height * prSDLScreen->format->BytesPerPixel);
+		memset(prSDLScreen->pixels, 0, current_width * current_height * prSDLScreen->format->BytesPerPixel);
 		SDL_UnlockSurface(prSDLScreen);
 		SDL_UpdateRect(prSDLScreen, 0, 0, current_width, current_height);
 		/* Set UAE window title and icon name */
@@ -434,7 +432,7 @@ void graphics_leave (void)
 
     graphics_subshutdown ();
 
-	SDL_Quit();
+	SDL_VideoQuit();
 
     dumpcustom ();
 }
@@ -1104,6 +1102,8 @@ static void set_window_for_picasso (void)
 
     current_width = picasso_vidinfo.width;
     current_height = picasso_vidinfo.height;
+    graphics_subshutdown ();
+    graphics_subinit ();
 //	XResizeWindow (display, mywin, current_width, current_height);
 }
 

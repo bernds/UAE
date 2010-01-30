@@ -87,6 +87,7 @@ static GtkWidget *dirdlg;
 static char dirdlg_volname[256], dirdlg_path[256];
 
 static GtkWidget *lab_info;
+static GtkWidget *notebook;
 
 static smp_comm_pipe to_gui_pipe, from_gui_pipe;
 static uae_sem_t gui_sem, gui_init_sem, gui_quit_sem; /* gui_sem protects the DFx fields */
@@ -326,11 +327,11 @@ static int my_idle (void)
 	int cmd = read_comm_pipe_int_blocking (&to_gui_pipe);
 	int n;
 	switch (cmd) {
-	 case 0:
+	case 0:
 	    n = read_comm_pipe_int_blocking (&to_gui_pipe);
 	    gtk_label_set_text (GTK_LABEL (disk_text_widget[n]), currprefs.df[n]);
 	    break;
-	 case 1:
+	case 1:
 	    /* Initialization.  */
 	    set_cpu_widget ();
 	    set_cpu_state ();
@@ -345,29 +346,31 @@ static int my_idle (void)
 	    uae_sem_post (&gui_init_sem);
 	    gui_active = 1;
 	    break;
-	 case 2:
+	case 2:
 	    /* Set Pause-Button active */
 	    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (pause_uae_widget), TRUE);
 	    break;
-	 case 3:
+	case 3:
 	    /* Set Pause-Button inactive */
 	    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (pause_uae_widget), FALSE);
 	    break;
 	}
     }
 
-    for (i = 0; i < 5; i++) {
-	unsigned int mask = 1 << i;
-	unsigned int on = leds & mask;
+    if (gtk_notebook_get_current_page (GTK_NOTEBOOK (notebook)) == 0) {
+	for (i = 0; i < 5; i++) {
+	    unsigned int mask = 1 << i;
+	    unsigned int on = leds & mask;
 
-	if (on == (prevledstate & mask))
-	    continue;
+	    if (on == (prevledstate & mask))
+		continue;
 
-/*	printf(": %d %d\n", i, on);*/
-	draw_led (i);
+	    /*	printf(": %d %d\n", i, on);*/
+	    draw_led (i);
+   	}
+	prevledstate = leds;
     }
-    prevledstate = leds;
-out:
+  out:
     return 1;
 }
 
@@ -905,7 +908,7 @@ static GtkWidget *make_led (int nr)
     thing = gtk_preview_new (GTK_PREVIEW_COLOR);
     gtk_box_pack_start (GTK_BOX (the_led), thing, TRUE, TRUE, 0);
     gtk_widget_show (thing);
-    
+
     return the_led;
 }
 
@@ -1517,7 +1520,7 @@ static void make_about_widgets (GtkWidget *dvbox)
 
 static void create_guidlg (void)
 {
-    GtkWidget *window, *notebook;
+    GtkWidget *window;
     GtkWidget *buttonbox, *vbox, *hbox;
     GtkWidget *thing;
     unsigned int i;

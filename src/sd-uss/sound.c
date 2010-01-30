@@ -147,9 +147,5 @@ int init_sound (void)
 	    dspbits, rate, sndbufsize);
     sndbufpt = sndbuffer;
     
-#ifdef FRAME_RATE_HACK
-    vsynctime = vsynctime * 9 / 10;
-#endif	
-
     return 1;
 }

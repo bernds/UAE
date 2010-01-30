@@ -2,6 +2,11 @@ Note! This file only contains user-visible changes. There may be others. For a
 more detailed description of changes between releases, read src/ChangeLog, and
 for the full picture, make a diff between releases.
 
+User-visible changes in 0.8.22:
+  - Mostly bug fixes
+  - Extensive updates for the sprite emulation and blitter timing code.
+    Hopefully more accurate than before.
+
 User-visible changes in 0.8.21:
   - Several bug fixes, including some serious filesystem emulation bugs.
   - Support for A1000 boot ROMs.

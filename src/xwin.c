@@ -1800,13 +1800,10 @@ static void set_window_for_picasso (void)
     if (current_width == picasso_vidinfo.width && current_height == picasso_vidinfo.height)
 	return;
 
+    graphics_subshutdown ();
     current_width = picasso_vidinfo.width;
     current_height = picasso_vidinfo.height;
-    XResizeWindow (display, mywin, current_width, current_height);
-#if defined USE_DGA_EXTENSION && defined USE_VIDMODE_EXTENSION
-    if (dgamode && vidmodeavail)
-	switch_to_best_mode ();
-#endif
+    graphics_subinit ();
 }
 
 void gfx_set_picasso_modeinfo (int w, int h, int depth, int rgbfmt)
