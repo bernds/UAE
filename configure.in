@@ -7,7 +7,7 @@ dnl this into the public domain.
 dnl There are still many uncaught errors (e.g. --enable-dga on an Amiga)
 dnl I didn't have the nerve to track them all down.
 
-AC_INIT(UAE, 0.8.27, , uae)
+AC_INIT(UAE, 0.8.28, , uae)
 AC_CONFIG_SRCDIR([amiga/source/transdisk.c])
 AC_PREREQ(2.59)
 
@@ -74,7 +74,6 @@ AC_CHECK_LIB(NeXT_s, main, HAVE_NEXT_LIB=yes, HAVE_NEXT_LIB=no)
 AC_CHECK_LIB(moto, cos, HAVE_MOTO_LIB=yes, HAVE_MOTO_LIB=no)
 AC_CHECK_LIB(amiga, OpenLibrary, HAVE_AMIGA_LIB=yes, HAVE_AMIGA_LIB=n)
 AC_CHECK_LIB(vga, vga_setmode, HAVE_SVGA_LIB=yes, HAVE_SVGA_LIB=no)
-AC_CHECK_LIB(AF, AFOpenAudioConn, HAVE_AF_LIB=yes, HAVE_AF_LIB=no)
 AC_CHECK_LIB(mme, waveOutGetNumDevs, HAVE_MME_LIB=yes, HAVE_MME_LIB=no)
 AC_CHECK_LIB(ncurses, waddch, HAVE_NCURSES_LIB=yes, HAVE_NCURSES_LIB=no)
 AC_CHECK_LIB(posix4, sem_init, HAVE_POSIX4_LIB=yes, HAVE_POSIX4_LIB=no)
@@ -96,7 +95,6 @@ AC_CHECK_HEADERS(windows.h ddraw.h)
 AC_CHECK_HEADER(be_math.h, HAVE_BEOS=yes, HAVE_BEOS=no)
 AC_CHECK_HEADERS(machine/joystick.h)
 AC_CHECK_HEADERS(devices/ahi.h)
-AC_CHECK_HEADERS(dmedia/audio.h)
 AC_CHECK_HEADERS(libraries/cybergraphics.h cybergraphx/cybergraphics.h)
 
 AC_CHECK_SIZEOF(char, 1)
@@ -227,10 +225,6 @@ if [[ "x$ac_cv_header_sys_soundcard_h" = "xyes" -o "x$ac_cv_header_machine_sound
 #include <sys/ioctl.h>
 ]], [[int soundfd; ioctl (soundfd, SNDCTL_DSP_GETFMTS, 0);]])],[AC_MSG_RESULT(yes)
 HAVE_OSS_SOUND=yes],[AC_MSG_RESULT(no)])
-fi
-
-if [[ "x$ac_cv_header_dmedia_audio.h" = "xno" ]]; then
-  HAVE_SGIAUDIO_LIB=no
 fi
 
 DO_PROFILING=no
@@ -885,16 +879,6 @@ else if [[ "x$ac_cv_header_sys_audioio_h" = "xyes" -o "x$ac_cv_header_sun_audioi
   AC_MSG_RESULT(Solaris/NetBSD)
   SOUNDDEP=sd-solaris
   USE_SOUND=yes
-else if [[ "x$HAVE_AF_LIB" = "xyes" ]]; then
-  AC_MSG_RESULT(AF sound)
-  SOUNDDEP=sd-af
-  LIBS="$LIBS -lAF"
-  USE_SOUND=yes
-else if [[ "x$HAVE_SGIAUDIO_LIB" = "xyes" ]]; then
-  AC_MSG_RESULT(SGI sound)
-  SOUNDDEP=sd-sgi
-  LIBS="$LIBS -laudio"
-  USE_SOUND=yes
 else if [[ "x$HAVE_MME_LIB" = "xyes" ]]; then
   AC_MSG_RESULT(MME sound)
   SOUNDDEP=sd-mme
@@ -919,8 +903,6 @@ else if [[ "x$TARGET" = "xwin32" ]]; then
 else
   echo "no known sound system found"
   NR_ERRORS=`expr $NR_ERRORS + 1`
-fi
-fi
 fi
 fi
 fi

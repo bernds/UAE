@@ -36,19 +36,6 @@
 #include <gtk/gtk.h>
 #include <gdk/gdk.h>
 
-/* One of the 1.1.6 "features" is a gratuitous name change */
-#ifndef HAVE_GTK_FEATURES_1_1_6
-#define gtk_container_set_border_width gtk_container_border_width
-#endif
-/* Likewise for 1.1.8.  */
-#ifndef HAVE_GTK_FEATURES_1_1_8
-#define gtk_label_set_text gtk_label_set
-#endif
-/* This is beginning to suck... */
-#ifndef HAVE_GTK_FEATURES_1_1_13
-#define gtk_toggle_button_set_active gtk_toggle_button_set_state
-#endif
-
 #include "util.h"
 
 static int gui_active, gui_available;
@@ -73,7 +60,7 @@ static GtkWidget *disk_type_widget[4];
 static GtkAdjustment *cpuspeed_adj;
 static GtkWidget *cpuspeed_widgets[4], *cpuspeed_scale;
 static GtkWidget *cpu_widget[7], *fpu_widget[5];
-static GtkWidget *sound_widget[4], *sound_ch_widget[3], *sound_interpol_widget[5];
+static GtkWidget *sound_widget[4], *sound_ch_widget[3], *sound_interpol_widget[3];
 static GtkWidget *sound_filter_widget[5];
 static GtkAdjustment *stereo_sep_adj, *stereo_delay_adj;
 static GtkWidget *stereo_sep_scale, *stereo_delay_scale;
@@ -509,13 +496,8 @@ static void set_chipset_state (void)
 static void set_sound_state (void)
 {
     int n;
-    int stereo = changed_prefs.sound_stereo;
-
-    gtk_widget_set_sensitive (stereo_sep_scale, changed_prefs.sound_stereo != SND_MONO);
-    gtk_widget_set_sensitive (stereo_delay_scale, changed_prefs.sound_stereo != SND_MONO);
 
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_widget[changed_prefs.produce_sound]), 1);
-    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_ch_widget[stereo]), 1);
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_interpol_widget[changed_prefs.sound_interpol]), 1);
     n = (changed_prefs.sound_filter == FILTER_SOUND_OFF ? 0
 	 : ((changed_prefs.sound_filter == FILTER_SOUND_EMUL ? 1 : 2)
@@ -775,6 +757,10 @@ static int my_idle (void)
 	    n = read_comm_pipe_int_blocking (&to_gui_pipe);
 	    gtk_label_set_text (GTK_LABEL (disk_text_widget[n]), currprefs.df[n]);
 	    break;
+	case GUICMD_SHOW:
+	    gtk_widget_show (gui_window);
+	    uae_sem_post (&gui_init_sem);
+	    break;
 	case GUICMD_UPDATE:
 	    /* Initialization.  */
 	    set_widgets_from_config ();
@@ -823,10 +809,12 @@ static int my_idle (void)
 
 static gint gui_delete_event (GtkWidget *widget, GdkEvent *event, gpointer data)
 {
-    gui_active = gui_available = 0;
-    gtk_widget_destroy (disk_selector);
+    gui_active = 0;
+    if (disk_selector)
+	gtk_widget_destroy (disk_selector);
     disk_selector = 0;
-    return FALSE;
+    gtk_widget_hide (gui_window);
+    return TRUE;
 }
 
 static void dftype_changed (GtkWidget *w, gpointer data)
@@ -1098,9 +1086,7 @@ static void sound_changed (void)
     int n;
 
     changed_prefs.produce_sound = find_current_toggle (sound_widget, 4);
-    n = find_current_toggle (sound_ch_widget, 3);
-    changed_prefs.sound_stereo = n == 0 ? SND_MONO : SND_STEREO;
-    changed_prefs.sound_interpol = find_current_toggle (sound_interpol_widget, 5);
+    changed_prefs.sound_interpol = find_current_toggle (sound_interpol_widget, 3);
     n = find_current_toggle (sound_filter_widget, 5);
     if (n == 0)
 	changed_prefs.sound_filter = FILTER_SOUND_OFF;
@@ -1110,9 +1096,6 @@ static void sound_changed (void)
     }
     changed_prefs.sound_mixed_stereo_delay = stereo_delay_adj->value;
     changed_prefs.sound_stereo_separation = stereo_sep_adj->value;
-
-    gtk_widget_set_sensitive (stereo_sep_scale, changed_prefs.sound_stereo == SND_STEREO);
-    gtk_widget_set_sensitive (stereo_delay_scale, changed_prefs.sound_stereo == SND_STEREO);
 }
 
 static void bootrom_changed (void)
@@ -1927,12 +1910,9 @@ static void make_sound_widgets (GtkWidget *vbox)
 	"None", "No output", "Normal", "Accurate",
 	NULL
     }, *soundlabels2[] = {
-	"None", "RH", "BS", "Sinc", "Anti",
+	"None", "Sinc", "Anti",
 	NULL
     }, *soundlabels3[] = {
-	"Mono", "Stereo",
-	NULL
-    }, *soundlabels4[] = {
 	"Off", "A500 (power LED)", "A500 (always on)",
 	"A1200 (power LED)", "A1200 (always on)",
 	NULL
@@ -1955,20 +1935,11 @@ static void make_sound_widgets (GtkWidget *vbox)
     gtk_widget_show (newbox);
     gtk_box_pack_start (GTK_BOX (hbox), newbox, FALSE, FALSE, 0);
 
-    frame = gtk_frame_new ("Channels");
-    gtk_widget_show (frame);
-    gtk_box_pack_start (GTK_BOX (hbox), frame, FALSE, FALSE, 0);
-    newbox = gtk_vbox_new (FALSE, 4);
-    gtk_widget_show (newbox);
-    gtk_container_set_border_width (GTK_CONTAINER (newbox), 4);
-    gtk_container_add (GTK_CONTAINER (frame), newbox);
-    make_radio_group (soundlabels3, newbox, sound_ch_widget, 0, 1, sound_changed, -1, NULL);
-
-    newbox = make_radio_group_box ("Interpolation", soundlabels2, sound_interpol_widget, 0, sound_changed, NULL);
+    newbox = make_radio_group_box ("Resampler", soundlabels2, sound_interpol_widget, 0, sound_changed, NULL);
     gtk_widget_show (newbox);
     gtk_box_pack_start (GTK_BOX (hbox), newbox, FALSE, TRUE, 0);
 
-    newbox = make_radio_group_box ("Filter", soundlabels4, sound_filter_widget, 0, sound_changed, NULL);
+    newbox = make_radio_group_box ("Filter", soundlabels3, sound_filter_widget, 0, sound_changed, NULL);
     gtk_widget_show (newbox);
     gtk_box_pack_start (GTK_BOX (hbox), newbox, FALSE, TRUE, 0);
 
@@ -2856,7 +2827,7 @@ static void create_guidlg (void)
 
 static void *gtk_gui_thread (void *dummy)
 {
-    gui_available = 1;
+    create_guidlg ();
     gtk_main ();
 
     gui_available = 0;
@@ -2870,7 +2841,7 @@ void gui_fps (int x)
 
 void gui_display (int shortcut)
 {
-    if (shortcut == -1 && !gui_available) {
+    if (shortcut == -1 && !gui_active) {
 	gui_init (0);
     }
 }
@@ -2990,42 +2961,6 @@ void gui_update_gfx (void)
     write_comm_pipe_int (&to_gui_pipe, GUICMD_FULLSCREEN, 1);
 }
 
-int gui_init (int at_start)
-{
-    uae_thread_id tid;
-
-    if (gui_available)
-	return 0;
-
-    if (at_start) {
-	init_comm_pipe (&to_gui_pipe, 20, 1);
-	init_comm_pipe (&from_gui_pipe, 20, 1);
-	uae_sem_init (&gui_sem, 0, 1);
-	uae_sem_init (&gui_init_sem, 0, 0);
-	uae_sem_init (&gui_quit_sem, 0, 0);
-    }
-
-    create_guidlg ();
-    if (at_start)
-	uae_start_thread (gtk_gui_thread, NULL, &tid);
-
-    gui_update ();
-
-    if (at_start && currprefs.start_gui == 1) {
-	write_comm_pipe_int (&to_gui_pipe, GUICMD_PAUSE, 1);
-	write_comm_pipe_int (&from_gui_pipe, 5, 1);
-	/* Handle events until Pause is unchecked.  */
-	gui_handle_events ();
-	/* Quit requested?  */
-	if (quit_program == -1) {
-	    gui_exit ();
-	    return -2;
-	}
-    }
-
-    return 1;
-}
-
 int gui_update (void)
 {
     if (!gui_available)
@@ -3034,6 +2969,16 @@ int gui_update (void)
     write_comm_pipe_int (&to_gui_pipe, GUICMD_UPDATE, 1);
     uae_sem_wait (&gui_init_sem);
     return 0;
+}
+
+static void gui_show (void)
+{
+    if (!gui_available)
+	return;
+
+    write_comm_pipe_int (&to_gui_pipe, GUICMD_SHOW, 1);
+    uae_sem_wait (&gui_init_sem);
+    return;
 }
 
 void gui_romlist_changed (void)
@@ -3067,4 +3012,42 @@ void gui_unlock (void)
 	return;
 
     uae_sem_post (&gui_sem);
+}
+
+int gui_init (int at_start)
+{
+    uae_thread_id tid;
+
+    if (gui_available) {
+	if (!gui_active) {
+	    gui_update ();
+	}
+	return 0;
+    }
+
+    gui_available = 1;
+    if (at_start) {
+	init_comm_pipe (&to_gui_pipe, 20, 1);
+	init_comm_pipe (&from_gui_pipe, 20, 1);
+	uae_sem_init (&gui_sem, 0, 1);
+	uae_sem_init (&gui_init_sem, 0, 0);
+	uae_sem_init (&gui_quit_sem, 0, 0);
+
+	uae_start_thread (gtk_gui_thread, NULL, &tid);
+    }
+    gui_update ();
+
+    if (at_start && currprefs.start_gui == 1) {
+	write_comm_pipe_int (&to_gui_pipe, GUICMD_PAUSE, 1);
+	write_comm_pipe_int (&from_gui_pipe, 5, 1);
+	/* Handle events until Pause is unchecked.  */
+	gui_handle_events ();
+	/* Quit requested?  */
+	if (quit_program == -1) {
+	    gui_exit ();
+	    return -2;
+	}
+    }
+
+    return 1;
 }

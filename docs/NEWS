@@ -2,6 +2,10 @@ Note! This file only contains user-visible changes. There may be others. For a
 more detailed description of changes between releases, read src/ChangeLog, and
 for the full picture, make a diff between releases.
 
+User-visible changes in 0.8.28:
+  - Stability fixes - the GTK UI caused hangs on some systems.
+  - Sound code cleanup - several useless options (such as mono sound) removed.
+
 User-visible changes in 0.8.27:
   - Better CPU type selection; now supports 68030, 68882, and more CPU/FPU
     combinations.  68060 is nominally supported but I've not got it to work.

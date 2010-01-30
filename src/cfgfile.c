@@ -117,7 +117,7 @@ static const char *soundmode[] = { "none", "interrupts", "normal", "exact", 0 };
 static const char *centermode1[] = { "none", "simple", "smart", 0 };
 static const char *centermode2[] = { "false", "true", "smart", 0 };
 static const char *stereomode[] = { "mono", "stereo", "mixed", 0 };
-static const char *interpolmode[] = { "none", "rh", "crux", "sinc", "anti", 0 };
+static const char *interpolmode[] = { "none", "sinc", "anti", 0 };
 static const char *soundfiltermode1[] = { "off", "emulated", "on", 0 };
 static const char *soundfiltermode2[] = { "standard", "enhanced", 0 };
 static const char *collmode[] = { "none", "sprites", "playfields", "full", 0 };
@@ -550,6 +550,12 @@ static int cfgfile_parse_host (struct uae_prefs *p, char *option, char *value)
 
     /* Tricky ones... */
     if (cfgfile_strval (option, value, "sound_channels", &p->sound_stereo, stereomode, 1)) {
+	if (p->sound_stereo == SND_MONO) {
+	    write_log ("Mono sound no longer supported, switching to stereo.\n");
+	    p->sound_stereo = SND_STEREO;
+	    p->sound_mixed_stereo_delay = 0;
+	    p->sound_stereo_separation = 15;
+	}
 	if (p->sound_stereo == SND_NONE) { /* "mixed stereo" compatibility hack */
 	    p->sound_stereo = SND_STEREO;
 	    p->sound_mixed_stereo_delay = 5;
@@ -942,13 +948,10 @@ static void parse_sound_spec (struct uae_prefs *p, char *spec)
     p->produce_sound = atoi (x0);
     if (x1) {
 	p->sound_mixed_stereo_delay = 0;
+	p->sound_stereo = SND_STEREO;
 	if (*x1 == 'S') {
-	    p->sound_stereo = SND_STEREO;
 	    p->sound_stereo_separation = 7;
-	} else if (*x1 == 's')
-	    p->sound_stereo = SND_STEREO;
-	else
-	    p->sound_stereo = SND_MONO;
+	}
     }
     /* x2 used to be bits, now fixed at 16 bit.  */
     if (x3)

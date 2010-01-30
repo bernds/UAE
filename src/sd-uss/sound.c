@@ -136,7 +136,7 @@ static void open_sound (void)
 	goto out_err;
     }
 
-    tmp = currprefs.sound_stereo;
+    tmp = 1;
     ioctl (sound_fd, SNDCTL_DSP_STEREO, &tmp);
 
     rate = currprefs.sound_freq;
@@ -149,7 +149,7 @@ static void open_sound (void)
     }
 
     tmp = 1 << exact_log2 (currprefs.sound_maxbsiz);
-    while (tmp * 1000 / (rate * 2 * (currprefs.sound_stereo ? 2 : 1)) < 6)
+    while (tmp * 1000 / (rate * 2 * 2) < 6)
 	tmp *= 2;
     if (tmp != currprefs.sound_maxbsiz) {
 	fprintf (stderr, "Increasing sound buffer size to sane minimum of %d bytes.\n",
@@ -164,11 +164,11 @@ static void open_sound (void)
     if (!(formats & AFMT_S16_NE))
 	goto out_err;
     init_sound_table16 ();
-    sample_handler = currprefs.sound_stereo ? sample16s_handler : sample16_handler;
+    sample_handler = sample16s_handler;
 
     sound_available = 1;
     printf ("Sound driver found and configured at %d Hz, buffer is %d bytes (%d ms).\n",
-	    rate, sndbufsize, sndbufsize * 1000 / (rate * 2 * (currprefs.sound_stereo ? 2 : 1)));
+	    rate, sndbufsize, sndbufsize * 1000 / (rate * 2 * 2));
     sndbufpt = sndbuf_base = sndbuffer[which_buffer = 0];
 
     sync_with_sound = 1;

@@ -93,7 +93,7 @@ int init_sound (void)
     buf[t+2] = (v>>16) & 255;
     buf[t+3] = (v>>24) & 255;
 
-    t = 20; v = 0x00010001 + (currprefs.stereo ? 0x10000 : 0);
+    t = 20; v = 0x00010001 + (/* currprefs.stereo */ 1 ? 0x10000 : 0);
     buf[t] = v & 255;
     buf[t+1] = (v>>8) & 255;
     buf[t+2] = (v>>16) & 255;
@@ -104,14 +104,12 @@ int init_sound (void)
     buf[t+1] = (v>>8) & 255;
     buf[t+2] = (v>>16) & 255;
     buf[t+3] = (v>>24) & 255;
-    t = 32; v = ((currprefs.sound_bits == 8 ? 1 : 2)
-		 * (currprefs.stereo ? 2 : 1)) + 65536*currprefs.sound_bits;
+    t = 32; v = (2 * 2) + 65536 * 16;
     buf[t] = v & 255;
     buf[t+1] = (v>>8) & 255;
     buf[t+2] = (v>>16) & 255;
     buf[t+3] = (v>>24) & 255;
-    t = 28; v = (currprefs.sound_freq * (currprefs.sound_bits == 8 ? 1 : 2)
-		 * (currprefs.stereo ? 2 : 1));
+    t = 28; v = (currprefs.sound_freq * 2 * 2);
     buf[t] = v & 255;
     buf[t+1] = (v>>8) & 255;
     buf[t+2] = (v>>16) & 255;
@@ -120,17 +118,12 @@ int init_sound (void)
 
     obtained_freq = currprefs.sound_freq;
 
-    if (currprefs.sound_bits == 16) {
-	init_sound_table16 ();
-	sample_handler = currprefs.stereo ? sample16s_handler : sample16_handler;
-    } else {
-	init_sound_table8 ();
-	sample_handler = currprefs.stereo ? sample8s_handler : sample8_handler;
-    }
+    init_sound_table16 ();
+    sample_handler = sample16s_handler;
     sound_available = 1;
     sndbufsize = 44100;
-    printf ("Writing sound into \"sound.output\"; %d bits at %d Hz\n",
-	    currprefs.sound_bits, currprefs.sound_freq, sndbufsize);
+    printf ("Writing sound into \"sound.output\"; 16 bits at %d Hz\n",
+	    currprefs.sound_freq, sndbufsize);
     sndbufpt = sndbuffer;
     return 1;
 }

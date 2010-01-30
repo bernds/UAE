@@ -229,7 +229,7 @@ static void open_sound (void)
 
     snd_output_stdio_attach (&alsa_out, stderr, 0);
 
-    channels = currprefs.sound_stereo ? 2 : 1;
+    channels = 2;
     rate = currprefs.sound_freq;
 
     have_sound = 0;
@@ -288,7 +288,7 @@ static void open_sound (void)
     obtainedfreq = rate;
 
     init_sound_table16 ();
-    sample_handler = currprefs.sound_stereo ? sample16s_handler : sample16_handler;
+    sample_handler = sample16s_handler;
 
     have_sound = 1;
     sound_available = 1;

@@ -6,6 +6,7 @@
   * Copyright 1995, 1996, 1997 Bernd Schmidt
   * Copyright 1996 Marcus Sundberg
   * Copyright 1996 Manfred Thole
+  * Copyright 2005 Heikki Orsila
   * Copyright 2006 Toni Wilen
   *
   * new filter algorithm and anti&sinc interpolators by Antti S. Lankila
@@ -80,7 +81,7 @@ void init_sound_table16 (void)
 
     for (i = 0; i < 256; i++)
 	for (j = 0; j < 64; j++)
-	    sound_table[j][i] = j * (uae_s8)i * (get_audio_ismono () ? 1 : 2);
+	    sound_table[j][i] = j * (uae_s8)i * 2;
 }
 
 #ifdef MULTIPLICATION_PROFITABLE
@@ -333,188 +334,6 @@ STATIC_INLINE void samplexx_sinc_handler (int *datasp)
     }
 }
 
-static void sample16i_sinc_handler (void)
-{
-    int datas[4], data1;
-
-    samplexx_sinc_handler (datas);
-    data1 = datas[0] + datas[3] + datas[1] + datas[2];
-    FINISH_DATA (data1, 16, 2);
-    PUT_SOUND_WORD (data1);
-    check_sound_buffers ();
-}
-
-void sample16_handler (void)
-{
-    uae_u32 data0 = audio_channel[0].current_sample;
-    uae_u32 data1 = audio_channel[1].current_sample;
-    uae_u32 data2 = audio_channel[2].current_sample;
-    uae_u32 data3 = audio_channel[3].current_sample;
-    DO_CHANNEL_1 (data0, 0);
-    DO_CHANNEL_1 (data1, 1);
-    DO_CHANNEL_1 (data2, 2);
-    DO_CHANNEL_1 (data3, 3);
-    data0 &= audio_channel[0].adk_mask;
-    data1 &= audio_channel[1].adk_mask;
-    data2 &= audio_channel[2].adk_mask;
-    data3 &= audio_channel[3].adk_mask;
-    data0 += data1;
-    data0 += data2;
-    data0 += data3;
-    {
-	uae_u32 data = SBASEVAL16(2) + data0;
-	FINISH_DATA (data, 16, 2);
-	if (sound_use_filter)
-	    data = filter (data, &sound_filter_state[0]);
-	PUT_SOUND_WORD (data);
-    }
-    check_sound_buffers ();
-}
-
-/* This interpolator examines sample points when Paula switches the output
- * voltage and computes the average of Paula's output */
-static void sample16i_anti_handler (void)
-{
-    int datas[4], data1;
-
-    samplexx_anti_handler (datas);
-    data1 = datas[0] + datas[3] + datas[1] + datas[2];
-    FINISH_DATA (data1, 16, 2);
-    if (sound_use_filter)
-	data1 = filter (data1, &sound_filter_state[0]);
-    PUT_SOUND_WORD (data1);
-    check_sound_buffers ();
-}
-
-static void sample16i_rh_handler (void)
-{
-    unsigned long delta, ratio;
-
-    uae_u32 data0 = audio_channel[0].current_sample;
-    uae_u32 data1 = audio_channel[1].current_sample;
-    uae_u32 data2 = audio_channel[2].current_sample;
-    uae_u32 data3 = audio_channel[3].current_sample;
-    uae_u32 data0p = audio_channel[0].last_sample;
-    uae_u32 data1p = audio_channel[1].last_sample;
-    uae_u32 data2p = audio_channel[2].last_sample;
-    uae_u32 data3p = audio_channel[3].last_sample;
-    DO_CHANNEL_1 (data0, 0);
-    DO_CHANNEL_1 (data1, 1);
-    DO_CHANNEL_1 (data2, 2);
-    DO_CHANNEL_1 (data3, 3);
-    DO_CHANNEL_1 (data0p, 0);
-    DO_CHANNEL_1 (data1p, 1);
-    DO_CHANNEL_1 (data2p, 2);
-    DO_CHANNEL_1 (data3p, 3);
-
-    data0 &= audio_channel[0].adk_mask;
-    data0p &= audio_channel[0].adk_mask;
-    data1 &= audio_channel[1].adk_mask;
-    data1p &= audio_channel[1].adk_mask;
-    data2 &= audio_channel[2].adk_mask;
-    data2p &= audio_channel[2].adk_mask;
-    data3 &= audio_channel[3].adk_mask;
-    data3p &= audio_channel[3].adk_mask;
-
-    /* linear interpolation and summing up... */
-    delta = audio_channel[0].per;
-    ratio = ((audio_channel[0].evtime % delta) << 8) / delta;
-    data0 = (data0 * (256 - ratio) + data0p * ratio) >> 8;
-    delta = audio_channel[1].per;
-    ratio = ((audio_channel[1].evtime % delta) << 8) / delta;
-    data0 += (data1 * (256 - ratio) + data1p * ratio) >> 8;
-    delta = audio_channel[2].per;
-    ratio = ((audio_channel[2].evtime % delta) << 8) / delta;
-    data0 += (data2 * (256 - ratio) + data2p * ratio) >> 8;
-    delta = audio_channel[3].per;
-    ratio = ((audio_channel[3].evtime % delta) << 8) / delta;
-    data0 += (data3 * (256 - ratio) + data3p * ratio) >> 8;
-
-    {
-	uae_u32 data = SBASEVAL16(2) + data0;
-	FINISH_DATA (data, 16, 2);
-	if (sound_use_filter)
-	    data = filter (data, &sound_filter_state[0]);
-	PUT_SOUND_WORD (data);
-    }
-
-    check_sound_buffers ();
-}
-
-static void sample16i_crux_handler (void)
-{
-    uae_u32 data0 = audio_channel[0].current_sample;
-    uae_u32 data1 = audio_channel[1].current_sample;
-    uae_u32 data2 = audio_channel[2].current_sample;
-    uae_u32 data3 = audio_channel[3].current_sample;
-    uae_u32 data0p = audio_channel[0].last_sample;
-    uae_u32 data1p = audio_channel[1].last_sample;
-    uae_u32 data2p = audio_channel[2].last_sample;
-    uae_u32 data3p = audio_channel[3].last_sample;
-    DO_CHANNEL_1 (data0, 0);
-    DO_CHANNEL_1 (data1, 1);
-    DO_CHANNEL_1 (data2, 2);
-    DO_CHANNEL_1 (data3, 3);
-    DO_CHANNEL_1 (data0p, 0);
-    DO_CHANNEL_1 (data1p, 1);
-    DO_CHANNEL_1 (data2p, 2);
-    DO_CHANNEL_1 (data3p, 3);
-
-    data0 &= audio_channel[0].adk_mask;
-    data0p &= audio_channel[0].adk_mask;
-    data1 &= audio_channel[1].adk_mask;
-    data1p &= audio_channel[1].adk_mask;
-    data2 &= audio_channel[2].adk_mask;
-    data2p &= audio_channel[2].adk_mask;
-    data3 &= audio_channel[3].adk_mask;
-    data3p &= audio_channel[3].adk_mask;
-
-    {
-	struct audio_channel_data *cdp;
-	unsigned long ratio, ratio1;
-#define INTERVAL (scaled_sample_evtime * 3)
-	cdp = audio_channel + 0;
-	ratio1 = cdp->per - cdp->evtime;
-	ratio = (ratio1 << 12) / INTERVAL;
-	if (cdp->evtime < scaled_sample_evtime || ratio1 >= INTERVAL)
-	    ratio = 4096;
-	data0 = (data0 * ratio + data0p * (4096 - ratio)) >> 12;
-
-	cdp = audio_channel + 1;
-	ratio1 = cdp->per - cdp->evtime;
-	ratio = (ratio1 << 12) / INTERVAL;
-	if (cdp->evtime < scaled_sample_evtime || ratio1 >= INTERVAL)
-	    ratio = 4096;
-	data1 = (data1 * ratio + data1p * (4096 - ratio)) >> 12;
-
-	cdp = audio_channel + 2;
-	ratio1 = cdp->per - cdp->evtime;
-	ratio = (ratio1 << 12) / INTERVAL;
-	if (cdp->evtime < scaled_sample_evtime || ratio1 >= INTERVAL)
-	    ratio = 4096;
-	data2 = (data2 * ratio + data2p * (4096 - ratio)) >> 12;
-
-	cdp = audio_channel + 3;
-	ratio1 = cdp->per - cdp->evtime;
-	ratio = (ratio1 << 12) / INTERVAL;
-	if (cdp->evtime < scaled_sample_evtime || ratio1 >= INTERVAL)
-	    ratio = 4096;
-	data3 = (data3 * ratio + data3p * (4096 - ratio)) >> 12;
-    }
-    data1 += data2;
-    data0 += data3;
-    data0 += data1;
-    {
-	uae_u32 data = SBASEVAL16(2) + data0;
-	FINISH_DATA (data, 16, 2);
-	if (sound_use_filter)
-	    data = filter (data, &sound_filter_state[0]);
-	PUT_SOUND_WORD (data);
-    }
-    check_sound_buffers ();
-}
-
-#ifdef HAVE_STEREO_SUPPORT
 static void sample16si_anti_handler (void)
 {
     int datas[4], data1, data2;
@@ -584,181 +403,17 @@ void sample16s_handler (void)
     check_sound_buffers ();
 }
 
-static void sample16si_crux_handler (void)
-{
-    uae_u32 data0 = audio_channel[0].current_sample;
-    uae_u32 data1 = audio_channel[1].current_sample;
-    uae_u32 data2 = audio_channel[2].current_sample;
-    uae_u32 data3 = audio_channel[3].current_sample;
-    uae_u32 data0p = audio_channel[0].last_sample;
-    uae_u32 data1p = audio_channel[1].last_sample;
-    uae_u32 data2p = audio_channel[2].last_sample;
-    uae_u32 data3p = audio_channel[3].last_sample;
-
-    DO_CHANNEL_1 (data0, 0);
-    DO_CHANNEL_1 (data1, 1);
-    DO_CHANNEL_1 (data2, 2);
-    DO_CHANNEL_1 (data3, 3);
-    DO_CHANNEL_1 (data0p, 0);
-    DO_CHANNEL_1 (data1p, 1);
-    DO_CHANNEL_1 (data2p, 2);
-    DO_CHANNEL_1 (data3p, 3);
-
-    data0 &= audio_channel[0].adk_mask;
-    data0p &= audio_channel[0].adk_mask;
-    data1 &= audio_channel[1].adk_mask;
-    data1p &= audio_channel[1].adk_mask;
-    data2 &= audio_channel[2].adk_mask;
-    data2p &= audio_channel[2].adk_mask;
-    data3 &= audio_channel[3].adk_mask;
-    data3p &= audio_channel[3].adk_mask;
-
-    {
-	struct audio_channel_data *cdp;
-	unsigned long ratio, ratio1;
-#define INTERVAL (scaled_sample_evtime * 3)
-	cdp = audio_channel + 0;
-	ratio1 = cdp->per - cdp->evtime;
-	ratio = (ratio1 << 12) / INTERVAL;
-	if (cdp->evtime < scaled_sample_evtime || ratio1 >= INTERVAL)
-	    ratio = 4096;
-	data0 = (data0 * ratio + data0p * (4096 - ratio)) >> 12;
-
-	cdp = audio_channel + 1;
-	ratio1 = cdp->per - cdp->evtime;
-	ratio = (ratio1 << 12) / INTERVAL;
-	if (cdp->evtime < scaled_sample_evtime || ratio1 >= INTERVAL)
-	    ratio = 4096;
-	data1 = (data1 * ratio + data1p * (4096 - ratio)) >> 12;
-
-	cdp = audio_channel + 2;
-	ratio1 = cdp->per - cdp->evtime;
-	ratio = (ratio1 << 12) / INTERVAL;
-	if (cdp->evtime < scaled_sample_evtime || ratio1 >= INTERVAL)
-	    ratio = 4096;
-	data2 = (data2 * ratio + data2p * (4096 - ratio)) >> 12;
-
-	cdp = audio_channel + 3;
-	ratio1 = cdp->per - cdp->evtime;
-	ratio = (ratio1 << 12) / INTERVAL;
-	if (cdp->evtime < scaled_sample_evtime || ratio1 >= INTERVAL)
-	    ratio = 4096;
-	data3 = (data3 * ratio + data3p * (4096 - ratio)) >> 12;
-    }
-    data1 += data2;
-    data0 += data3;
-    {
-	uae_u32 data = SBASEVAL16 (1) + data0;
-	FINISH_DATA (data, 16, 1);
-	if (sound_use_filter)
-	    data = filter (data, &sound_filter_state[0]);
-	put_sound_word_right (data);
-    }
-
-    {
-	uae_u32 data = SBASEVAL16 (1) + data1;
-	FINISH_DATA (data, 16, 1);
-	if (sound_use_filter)
-	    data = filter (data, &sound_filter_state[1]);
-	put_sound_word_left (data);
-    }
-    check_sound_buffers ();
-}
-
-static void sample16si_rh_handler (void)
-{
-    unsigned long delta, ratio;
-
-    uae_u32 data0 = audio_channel[0].current_sample;
-    uae_u32 data1 = audio_channel[1].current_sample;
-    uae_u32 data2 = audio_channel[2].current_sample;
-    uae_u32 data3 = audio_channel[3].current_sample;
-    uae_u32 data0p = audio_channel[0].last_sample;
-    uae_u32 data1p = audio_channel[1].last_sample;
-    uae_u32 data2p = audio_channel[2].last_sample;
-    uae_u32 data3p = audio_channel[3].last_sample;
-
-    DO_CHANNEL_1 (data0, 0);
-    DO_CHANNEL_1 (data1, 1);
-    DO_CHANNEL_1 (data2, 2);
-    DO_CHANNEL_1 (data3, 3);
-    DO_CHANNEL_1 (data0p, 0);
-    DO_CHANNEL_1 (data1p, 1);
-    DO_CHANNEL_1 (data2p, 2);
-    DO_CHANNEL_1 (data3p, 3);
-
-    data0 &= audio_channel[0].adk_mask;
-    data0p &= audio_channel[0].adk_mask;
-    data1 &= audio_channel[1].adk_mask;
-    data1p &= audio_channel[1].adk_mask;
-    data2 &= audio_channel[2].adk_mask;
-    data2p &= audio_channel[2].adk_mask;
-    data3 &= audio_channel[3].adk_mask;
-    data3p &= audio_channel[3].adk_mask;
-
-    /* linear interpolation and summing up... */
-    delta = audio_channel[0].per;
-    ratio = ((audio_channel[0].evtime % delta) << 8) / delta;
-    data0 = (data0 * (256 - ratio) + data0p * ratio) >> 8;
-    delta = audio_channel[1].per;
-    ratio = ((audio_channel[1].evtime % delta) << 8) / delta;
-    data1 = (data1 * (256 - ratio) + data1p * ratio) >> 8;
-    delta = audio_channel[2].per;
-    ratio = ((audio_channel[2].evtime % delta) << 8) / delta;
-    data1 += (data2 * (256 - ratio) + data2p * ratio) >> 8;
-    delta = audio_channel[3].per;
-    ratio = ((audio_channel[3].evtime % delta) << 8) / delta;
-    data0 += (data3 * (256 - ratio) + data3p * ratio) >> 8;
-    {
-	uae_u32 data = SBASEVAL16 (1) + data0;
-	FINISH_DATA (data, 16, 1);
-	if (sound_use_filter)
-	    data = filter (data, &sound_filter_state[0]);
-	put_sound_word_right (data);
-    }
-
-    {
-	uae_u32 data = SBASEVAL16 (1) + data1;
-	FINISH_DATA (data, 16, 1);
-	if (sound_use_filter)
-	    data = filter (data, &sound_filter_state[1]);
-	put_sound_word_left (data);
-    }
-    check_sound_buffers ();
-}
-
-#else
-void sample16s_handler (void)
-{
-    sample16_handler ();
-}
-static void sample16si_crux_handler (void)
-{
-    sample16i_crux_handler ();
-}
-static void sample16si_rh_handler (void)
-{
-    sample16i_rh_handler ();
-}
-#endif
-
 void switch_audio_interpol (void)
 {
     if (currprefs.sound_interpol == 0) {
 	changed_prefs.sound_interpol = 1;
-	write_log ("Interpol on: rh\n");
+	write_log ("Resampler on: sinc\n");
     } else if (currprefs.sound_interpol == 1) {
 	changed_prefs.sound_interpol = 2;
-	write_log ("Interpol on: crux\n");
-    } else if (currprefs.sound_interpol == 2) {
-	changed_prefs.sound_interpol = 3;
-	write_log ("Interpol on: sinc\n");
-    } else if (currprefs.sound_interpol == 3) {
-	changed_prefs.sound_interpol = 4;
-	write_log ("Interpol on: anti\n");
+	write_log ("Resampler on: anti\n");
     } else {
 	changed_prefs.sound_interpol = 0;
-	write_log ("Interpol off\n");
+	write_log ("Resampler off\n");
     }
     return;
 }
@@ -1050,33 +705,20 @@ void check_prefs_changed_audio (void)
     led_filter_audio();
 
     /* Select the right interpolation method.  */
-    if (sample_handler == sample16_handler
-	|| sample_handler == sample16i_crux_handler
-	|| sample_handler == sample16i_rh_handler
-	|| sample_handler == sample16i_sinc_handler
-	|| sample_handler == sample16i_anti_handler)
+    if (sample_handler == sample16s_handler
+	|| sample_handler == sample16si_sinc_handler
+	|| sample_handler == sample16si_anti_handler)
     {
-	sample_handler = (currprefs.sound_interpol == 0 ? sample16_handler
-			  : currprefs.sound_interpol == 1 ? sample16i_rh_handler
-			  : currprefs.sound_interpol == 2 ? sample16i_crux_handler
-			  : currprefs.sound_interpol == 3 ? sample16i_sinc_handler
-			  : sample16i_anti_handler);
-    } else if (sample_handler == sample16s_handler
-	       || sample_handler == sample16si_crux_handler
-	       || sample_handler == sample16si_rh_handler
-	       || sample_handler == sample16si_sinc_handler
-	       || sample_handler == sample16si_anti_handler)
 	sample_handler = (currprefs.sound_interpol == 0 ? sample16s_handler
-			  : currprefs.sound_interpol == 1 ? sample16si_rh_handler
-			  : currprefs.sound_interpol == 2 ? sample16si_crux_handler
-			  : currprefs.sound_interpol == 3 ? sample16si_sinc_handler
+			  : currprefs.sound_interpol == 1 ? sample16si_sinc_handler
 			  : sample16si_anti_handler);
+    }
     sample_prehandler = NULL;
-    if (currprefs.sound_interpol == 3) {
+    if (currprefs.sound_interpol == 1) {
 	sound_use_filter_sinc = sound_use_filter;
 	sound_use_filter = 0;
 	sample_prehandler = sinc_prehandler;
-    } else if (currprefs.sound_interpol == 4) {
+    } else if (currprefs.sound_interpol == 2) {
 	sample_prehandler = anti_prehandler;
     }
 }

@@ -16,7 +16,7 @@ static void sigchldhandler(int foo)
 {
 }
 
-int gui_init (void)
+int gui_init (int foo)
 {
     return 0;
 }

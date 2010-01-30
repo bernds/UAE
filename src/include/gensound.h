@@ -22,7 +22,6 @@ extern void close_sound (void);
 
 extern void switch_audio_interpol (void);
 
-extern void sample16_handler (void);
 extern void sample16s_handler (void);
 extern void init_sound_table16 (void);
 

@@ -75,7 +75,7 @@ int setup_sound (void)
 
     spec.freq = currprefs.sound_freq;
     spec.format = AUDIO_S16;
-    spec.channels = currprefs.sound_stereo ? 2 : 1;
+    spec.channels = 2;
     size >>= spec.channels - 1;
     size >>= 1;
     while (size & (size - 1))
@@ -104,7 +104,7 @@ static int open_sound (void)
 
     spec.freq = currprefs.sound_freq;
     spec.format = AUDIO_S16;
-    spec.channels = currprefs.sound_stereo ? 2 : 1;
+    spec.channels = 2;
 
     /* Always interpret buffer size as number of samples, not as actual
        buffer size.  Of course, since 8192 is the default, we'll have to
@@ -130,7 +130,7 @@ static int open_sound (void)
     obtainedfreq = obtained.freq;
 
     init_sound_table16 ();
-    sample_handler = obtained.channels == 2 ? sample16s_handler : sample16_handler;
+    sample_handler = sample16s_handler;
 
     sound_available = 1;
     sndbufpt = sndbuf_base = sndbuffer[which_buffer = 0];

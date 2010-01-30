@@ -64,6 +64,7 @@ Miscellaneous code contributions:
   - István Fábián: helped with disk hardware information
   - Richard Drummond: kept the code base up-to-date in E-UAE when I stopped
     working on UAE on a regular basis.
+  - Heikki Orsila: Sound filter infrastructure.
 
 System specific fixes/ports (some of the fixes for various Unices are no
 longer present, though, since we now use autoconf):

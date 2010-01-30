@@ -1,3 +1,12 @@
+A11120 Remove some gtk1-specific workarounds.
+       Make sure all gtk operations happen from the same thread (i.e. the
+       GUI thread).
+       Hide GUI window on delete event, and implement GUICMD_SHOW to unhide
+       it.
+       Fix a nogui compilation failure.
+       Suggestions by Heikki Orsila: "anti" resampler now the default.  Rename
+       "interpolation" to "resampling" in the GUI, remove "crux" and "rh"
+       methods.
 A11111 Disable mousehack-in-ROM for the next release.
        Fix a compile error in custom.c
 A10828 Disallow mousehack utility to start if we have a bootrom.
