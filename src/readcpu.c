@@ -193,6 +193,7 @@ static void build_insn (int insn)
 {
     int find = -1;
     int variants;
+    int isjmp = 0;
     struct instr_def id;
     const char *opcstr;
     int i;
@@ -201,29 +202,36 @@ static void build_insn (int insn)
 
     id = defs68k[insn];
 
+    /* Note: We treat anything with unknown flags as a jump. That
+       is overkill, but "the programmer" was lazy quite often, and
+       *this* programmer can't be bothered to work out what can and
+       can't trap. Usually, this will be overwritten with the gencomp
+       based information, anyway. */
+
     for (i = 0; i < 5; i++) {
 	switch (id.flaginfo[i].flagset){
-	 case fa_unset: break;
-	 case fa_isjmp: break;
-	 case fa_zero: flagdead |= 1 << i; break;
-	 case fa_one: flagdead |= 1 << i; break;
-	 case fa_dontcare: flagdead |= 1 << i; break;
-	 case fa_unknown: flagdead = -1; goto out1;
-	 case fa_set: flagdead |= 1 << i; break;
+	case fa_unset: break;
+	case fa_isjmp: isjmp = 1; break;
+	case fa_isbranch: isjmp = 1; break;
+	case fa_zero: flagdead |= 1 << i; break;
+	case fa_one: flagdead |= 1 << i; break;
+	case fa_dontcare: flagdead |= 1 << i; break;
+	case fa_unknown: isjmp = 1; flagdead = -1; goto out1;
+	case fa_set: flagdead |= 1 << i; break;
 	}
     }
 
-    out1:
+  out1:
     for (i = 0; i < 5; i++) {
 	switch (id.flaginfo[i].flaguse) {
-	 case fu_unused: break;
-	 case fu_isjmp: flaglive |= 1 << i; break;
-	 case fu_maybecc: flaglive |= 1 << i; break;
-	 case fu_unknown: flaglive = -1; goto out2;
-	 case fu_used: flaglive |= 1 << i; break;
+	case fu_unused: break;
+	case fu_isjmp: isjmp = 1; flaglive |= 1 << i; break;
+	case fu_maybecc: isjmp = 1; flaglive |= 1 << i; break;
+	case fu_unknown: isjmp = 1; flaglive |= 1 << i; break;
+	case fu_used: flaglive |= 1 << i; break;
 	}
     }
-    out2:
+  out2:
 
     opcstr = id.opcstr;
     for (variants = 0; variants < (1 << id.n_variable); variants++) {
@@ -287,27 +295,27 @@ static void build_insn (int insn)
 		pos++;
 		switch (opcstr[pos]) {
 
-		 case 'B': sz = sz_byte; break;
-		 case 'W': sz = sz_word; break;
-		 case 'L': sz = sz_long; break;
-		 case 'z':
+		case 'B': sz = sz_byte; break;
+		case 'W': sz = sz_word; break;
+		case 'L': sz = sz_long; break;
+		case 'z':
 		    switch (bitval[bitz]) {
-		     case 0: sz = sz_byte; break;
-		     case 1: sz = sz_word; break;
-		     case 2: sz = sz_long; break;
-		     default: abort();
+		    case 0: sz = sz_byte; break;
+		    case 1: sz = sz_word; break;
+		    case 2: sz = sz_long; break;
+		    default: abort();
 		    }
 		    break;
-		 default: abort();
+		default: abort();
 		}
 	    } else {
 		mnemonic[mnp] = opcstr[pos];
 		if (mnemonic[mnp] == 'f') {
 		    find = -1;
 		    switch (bitval[bitf]) {
-		     case 0: mnemonic[mnp] = 'R'; break;
-		     case 1: mnemonic[mnp] = 'L'; break;
-		     default: abort();
+		    case 0: mnemonic[mnp] = 'R'; break;
+		    case 1: mnemonic[mnp] = 'L'; break;
+		    default: abort();
 		    }
 		}
 		mnp++;
@@ -327,34 +335,36 @@ static void build_insn (int insn)
 	/* parse the source address */
 	usesrc = 1;
 	switch (opcstr[pos++]) {
-	 case 'D':
+	case 'D':
 	    srcmode = Dreg;
 	    switch (opcstr[pos++]) {
-	     case 'r': srcreg = bitval[bitr]; srcgather = 1; srcpos = bitpos[bitr]; break;
-	     case 'R': srcreg = bitval[bitR]; srcgather = 1; srcpos = bitpos[bitR]; break;
-	     default: abort();
+	    case 'r': srcreg = bitval[bitr]; srcgather = 1; srcpos = bitpos[bitr]; break;
+	    case 'R': srcreg = bitval[bitR]; srcgather = 1; srcpos = bitpos[bitR]; break;
+	    default: abort();
 	    }
-
 	    break;
-	 case 'A':
+	case 'A':
 	    srcmode = Areg;
 	    switch (opcstr[pos++]) {
-	     case 'r': srcreg = bitval[bitr]; srcgather = 1; srcpos = bitpos[bitr]; break;
-	     case 'R': srcreg = bitval[bitR]; srcgather = 1; srcpos = bitpos[bitR]; break;
-	     default: abort();
+	    case 'r': srcreg = bitval[bitr]; srcgather = 1; srcpos = bitpos[bitr]; break;
+	    case 'R': srcreg = bitval[bitR]; srcgather = 1; srcpos = bitpos[bitR]; break;
+	    default: abort();
 	    }
 	    switch (opcstr[pos]) {
-	     case 'p': srcmode = Apdi; pos++; break;
-	     case 'P': srcmode = Aipi; pos++; break;
+	    case 'p': srcmode = Apdi; pos++; break;
+	    case 'P': srcmode = Aipi; pos++; break;
 	    }
 	    break;
-	 case '#':
+	case 'L':
+	    srcmode = absl;
+	    break;
+	case '#':
 	    switch (opcstr[pos++]) {
-	     case 'z': srcmode = imm; break;
-	     case '0': srcmode = imm0; break;
-	     case '1': srcmode = imm1; break;
-	     case '2': srcmode = imm2; break;
-	     case 'i': srcmode = immi; srcreg = (uae_s32)(uae_s8)bitval[biti];
+	    case 'z': srcmode = imm; break;
+	    case '0': srcmode = imm0; break;
+	    case '1': srcmode = imm1; break;
+	    case '2': srcmode = imm2; break;
+	    case 'i': srcmode = immi; srcreg = (uae_s32)(uae_s8)bitval[biti];
 		if (CPU_EMU_SIZE < 4) {
 		    /* Used for branch instructions */
 		    srctype = 1;
@@ -362,7 +372,7 @@ static void build_insn (int insn)
 		    srcpos = bitpos[biti];
 		}
 		break;
-	     case 'j': srcmode = immi; srcreg = bitval[bitj];
+	    case 'j': srcmode = immi; srcreg = bitval[bitj];
 		if (CPU_EMU_SIZE < 3) {
 		    /* 1..8 for ADDQ/SUBQ and rotshi insns */
 		    srcgather = 1;
@@ -370,7 +380,7 @@ static void build_insn (int insn)
 		    srcpos = bitpos[bitj];
 		}
 		break;
-	     case 'J': srcmode = immi; srcreg = bitval[bitJ];
+	    case 'J': srcmode = immi; srcreg = bitval[bitJ];
 		if (CPU_EMU_SIZE < 5) {
 		    /* 0..15 */
 		    srcgather = 1;
@@ -378,14 +388,14 @@ static void build_insn (int insn)
 		    srcpos = bitpos[bitJ];
 		}
 		break;
-	     case 'k': srcmode = immi; srcreg = bitval[bitk];
+	    case 'k': srcmode = immi; srcreg = bitval[bitk];
 		if (CPU_EMU_SIZE < 3) {
 		    srcgather = 1;
 		    srctype = 4;
 		    srcpos = bitpos[bitk];
 		}
 		break;
-	     case 'K': srcmode = immi; srcreg = bitval[bitK];
+	    case 'K': srcmode = immi; srcreg = bitval[bitK];
 		if (CPU_EMU_SIZE < 5) {
 		    /* 0..15 */
 		    srcgather = 1;
@@ -393,10 +403,18 @@ static void build_insn (int insn)
 		    srcpos = bitpos[bitK];
 		}
 		break;
-	     default: abort();
+	    case 'p': srcmode = immi; srcreg = bitval[bitK];
+		if (CPU_EMU_SIZE < 5) {
+		    /* 0..3 */
+		    srcgather = 1;
+		    srctype = 7;
+		    srcpos = bitpos[bitp];
+		}
+		break;
+	    default: abort();
 	    }
 	    break;
-	 case 'd':
+	case 'd':
 	    srcreg = bitval[bitD];
 	    srcmode = mode_from_mr(bitval[bitd],bitval[bitD]);
 	    if (srcmode == am_illg)
@@ -405,9 +423,9 @@ static void build_insn (int insn)
 		(srcmode == Areg || srcmode == Dreg || srcmode == Aind
 		 || srcmode == Ad16 || srcmode == Ad8r || srcmode == Aipi
 		 || srcmode == Apdi))
-	    {
-		srcgather = 1; srcpos = bitpos[bitD];
-	    }
+		{
+		    srcgather = 1; srcpos = bitpos[bitD];
+		}
 	    if (opcstr[pos] == '[') {
 		pos++;
 		if (opcstr[pos] == '!') {
@@ -445,7 +463,7 @@ static void build_insn (int insn)
 	    if (srcmode == imm || srcmode == PC16 || srcmode == PC8r)
 		goto nomatch;
 	    break;
-	 case 's':
+	case 's':
 	    srcreg = bitval[bitS];
 	    srcmode = mode_from_mr(bitval[bits],bitval[bitS]);
 
@@ -455,9 +473,9 @@ static void build_insn (int insn)
 		(srcmode == Areg || srcmode == Dreg || srcmode == Aind
 		 || srcmode == Ad16 || srcmode == Ad8r || srcmode == Aipi
 		 || srcmode == Apdi))
-	    {
-		srcgather = 1; srcpos = bitpos[bitS];
-	    }
+		{
+		    srcgather = 1; srcpos = bitpos[bitS];
+		}
 	    if (opcstr[pos] == '[') {
 		pos++;
 		if (opcstr[pos] == '!') {
@@ -491,15 +509,15 @@ static void build_insn (int insn)
 		}
 	    }
 	    break;
-	 default: abort();
+	default: abort();
 	}
 	/* safety check - might have changed */
 	if (srcmode != Areg && srcmode != Dreg && srcmode != Aind
 	    && srcmode != Ad16 && srcmode != Ad8r && srcmode != Aipi
 	    && srcmode != Apdi && srcmode != immi)
-	{
-	    srcgather = 0;
-	}
+	    {
+		srcgather = 0;
+	    }
 	if (srcmode == Areg && sz == sz_byte)
 	    goto nomatch;
 
@@ -510,41 +528,49 @@ static void build_insn (int insn)
 	/* parse the destination address */
 	usedst = 1;
 	switch (opcstr[pos++]) {
-	 case 'D':
+	case 'D':
 	    destmode = Dreg;
 	    switch (opcstr[pos++]) {
-	     case 'r': destreg = bitval[bitr]; dstgather = 1; dstpos = bitpos[bitr]; break;
-	     case 'R': destreg = bitval[bitR]; dstgather = 1; dstpos = bitpos[bitR]; break;
-	     default: abort();
+	    case 'r': destreg = bitval[bitr]; dstgather = 1; dstpos = bitpos[bitr]; break;
+	    case 'R': destreg = bitval[bitR]; dstgather = 1; dstpos = bitpos[bitR]; break;
+	    default: abort();
 	    }
+            if (dstpos < 0 || dstpos >= 32)
+		abort ();
 	    break;
-	 case 'A':
+	case 'A':
 	    destmode = Areg;
 	    switch (opcstr[pos++]) {
-	     case 'r': destreg = bitval[bitr]; dstgather = 1; dstpos = bitpos[bitr]; break;
-	     case 'R': destreg = bitval[bitR]; dstgather = 1; dstpos = bitpos[bitR]; break;
-	     default: abort();
+	    case 'r': destreg = bitval[bitr]; dstgather = 1; dstpos = bitpos[bitr]; break;
+	    case 'R': destreg = bitval[bitR]; dstgather = 1; dstpos = bitpos[bitR]; break;
+	    case 'x': destreg = 0; dstgather = 0; dstpos = 0; break;
+	    default: abort();
 	    }
+            if (dstpos < 0 || dstpos >= 32)
+		abort ();
 	    switch (opcstr[pos]) {
-	     case 'p': destmode = Apdi; pos++; break;
-	     case 'P': destmode = Aipi; pos++; break;
+	    case 'p': destmode = Apdi; pos++; break;
+	    case 'P': destmode = Aipi; pos++; break;
 	    }
 	    break;
-	 case '#':
+	case 'L':
+	    destmode = absl;
+	    break;
+	case '#':
 	    switch (opcstr[pos++]) {
-	     case 'z': destmode = imm; break;
-	     case '0': destmode = imm0; break;
-	     case '1': destmode = imm1; break;
-	     case '2': destmode = imm2; break;
-	     case 'i': destmode = immi; destreg = (uae_s32)(uae_s8)bitval[biti]; break;
-	     case 'j': destmode = immi; destreg = bitval[bitj]; break;
-	     case 'J': destmode = immi; destreg = bitval[bitJ]; break;
-	     case 'k': destmode = immi; destreg = bitval[bitk]; break;
-	     case 'K': destmode = immi; destreg = bitval[bitK]; break;
-	     default: abort();
+	    case 'z': destmode = imm; break;
+	    case '0': destmode = imm0; break;
+	    case '1': destmode = imm1; break;
+	    case '2': destmode = imm2; break;
+	    case 'i': destmode = immi; destreg = (uae_s32)(uae_s8)bitval[biti]; break;
+	    case 'j': destmode = immi; destreg = bitval[bitj]; break;
+	    case 'J': destmode = immi; destreg = bitval[bitJ]; break;
+	    case 'k': destmode = immi; destreg = bitval[bitk]; break;
+	    case 'K': destmode = immi; destreg = bitval[bitK]; break;
+	    default: abort();
 	    }
 	    break;
-	 case 'd':
+	case 'd':
 	    destreg = bitval[bitD];
 	    destmode = mode_from_mr(bitval[bitd],bitval[bitD]);
 	    if (destmode == am_illg)
@@ -553,9 +579,9 @@ static void build_insn (int insn)
 		(destmode == Areg || destmode == Dreg || destmode == Aind
 		 || destmode == Ad16 || destmode == Ad8r || destmode == Aipi
 		 || destmode == Apdi))
-	    {
-		dstgather = 1; dstpos = bitpos[bitD];
-	    }
+		{
+		    dstgather = 1; dstpos = bitpos[bitD];
+		}
 
 	    if (opcstr[pos] == '[') {
 		pos++;
@@ -594,7 +620,7 @@ static void build_insn (int insn)
 	    if (destmode == imm || destmode == PC16 || destmode == PC8r)
 		goto nomatch;
 	    break;
-	 case 's':
+	case 's':
 	    destreg = bitval[bitS];
 	    destmode = mode_from_mr(bitval[bits],bitval[bitS]);
 
@@ -604,9 +630,9 @@ static void build_insn (int insn)
 		(destmode == Areg || destmode == Dreg || destmode == Aind
 		 || destmode == Ad16 || destmode == Ad8r || destmode == Aipi
 		 || destmode == Apdi))
-	    {
-		dstgather = 1; dstpos = bitpos[bitS];
-	    }
+		{
+		    dstgather = 1; dstpos = bitpos[bitS];
+		}
 
 	    if (opcstr[pos] == '[') {
 		pos++;
@@ -641,15 +667,15 @@ static void build_insn (int insn)
 		}
 	    }
 	    break;
-	 default: abort();
+	default: abort();
 	}
 	/* safety check - might have changed */
 	if (destmode != Areg && destmode != Dreg && destmode != Aind
 	    && destmode != Ad16 && destmode != Ad8r && destmode != Aipi
 	    && destmode != Apdi)
-	{
-	    dstgather = 0;
-	}
+	    {
+		dstgather = 0;
+	    }
 
 	if (destmode == Areg && sz == sz_byte)
 	    goto nomatch;
@@ -658,7 +684,7 @@ static void build_insn (int insn)
 	    dstgather = 0;
 	}
 #endif
-	endofline:
+      endofline:
 	/* now, we have a match */
 	if (table68k[opc].mnemo != i_ILLG)
 	    fprintf(stderr, "Double match: %x: %s\n", opc, opcstr);
@@ -679,9 +705,9 @@ static void build_insn (int insn)
 	    || table68k[opc].mnemo == i_BSET
 	    || table68k[opc].mnemo == i_BCLR
 	    || table68k[opc].mnemo == i_BCHG)
-	{
-	    sz = destmode == Dreg ? sz_long : sz_byte;
-	}
+	    {
+		sz = destmode == Dreg ? sz_long : sz_byte;
+	    }
 	table68k[opc].size = sz;
 	table68k[opc].sreg = srcreg;
 	table68k[opc].dreg = destreg;
@@ -702,7 +728,8 @@ static void build_insn (int insn)
 #endif
 	table68k[opc].flagdead = flagdead;
 	table68k[opc].flaglive = flaglive;
-	nomatch:
+	table68k[opc].isjmp = isjmp;
+      nomatch:
 	/* FOO! */;
     }
 }
@@ -747,6 +774,8 @@ static void handle_merges (long int opcode)
 	    smsk = 7; sbitdst = 8; break;
 	 case 5:
 	    smsk = 63; sbitdst = 64; break;
+	 case 7:
+	    smsk = 3; sbitdst = 4; break;
 	 default:
 	    smsk = 0; sbitdst = 0;
 	    abort();

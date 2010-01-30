@@ -217,7 +217,8 @@ static void sync_m68k_pc (void)
 }
 
 /* getv == 1: fetch data; getv != 0: check for odd address. If movem != 0,
- * the calling routine handles Apdi and Aipi modes. */
+ * the calling routine handles Apdi and Aipi modes.
+ * gb-- movem == 2 means the same thing but for a MOVE16 instruction */
 static void genamode (amodes mode, char *reg, wordsizes size, char *name, int getv, int movem)
 {
     start_brace ();
@@ -914,22 +915,20 @@ static void gen_opcode (unsigned long int opcode)
 	genastore ("newv", curi->dmode, "dstreg", curi->size, "dst");
 	break;
     case i_SBCD:
-	/* Let's hope this works... */
 	genamode (curi->smode, "srcreg", curi->size, "src", 1, 0);
 	genamode (curi->dmode, "dstreg", curi->size, "dst", 1, 0);
 	start_brace ();
 	printf ("\tuae_u16 newv_lo = (dst & 0xF) - (src & 0xF) - (GET_XFLG ? 1 : 0);\n");
 	printf ("\tuae_u16 newv_hi = (dst & 0xF0) - (src & 0xF0);\n");
-	printf ("\tuae_u16 newv;\n");
-	printf ("\tint cflg;\n");
-	printf ("\tif (newv_lo > 9) { newv_lo-=6; newv_hi-=0x10; }\n");
-	printf ("\tnewv = newv_hi + (newv_lo & 0xF);");
-	printf ("\tcflg = (newv_hi & 0x1F0) > 0x90;\n");
-	printf ("\tSET_CFLG (cflg);\n");
+	printf ("\tuae_u16 newv, tmp_newv;\n");
+	printf ("\tint bcd = 0;\n");
+	printf ("\tnewv = tmp_newv = newv_hi + newv_lo;\n");
+	printf ("\tif (newv_lo & 0xF0) { newv -= 6; bcd = 6; };\n");
+	printf ("\tif ((((dst & 0xFF) - (src & 0xFF) - (GET_XFLG ? 1 : 0)) & 0x100) > 0xFF) { newv -= 0x60; }\n");
+	printf ("\tSET_CFLG ((((dst & 0xFF) - (src & 0xFF) - bcd - (GET_XFLG ? 1 : 0)) & 0x300) > 0xFF);\n");
 	duplicate_carry ();
-	printf ("\tif (cflg) newv -= 0x60;\n");
 	genflags (flag_zn, curi->size, "newv", "", "");
-	genflags (flag_sv, curi->size, "newv", "src", "dst");
+	printf ("\tSET_VFLG ((tmp_newv & 0x80) != 0 && (newv & 0x80) == 0);\n");
 	genastore ("newv", curi->dmode, "dstreg", curi->size, "dst");
 	break;
     case i_ADD:
@@ -961,16 +960,16 @@ static void gen_opcode (unsigned long int opcode)
 	start_brace ();
 	printf ("\tuae_u16 newv_lo = (src & 0xF) + (dst & 0xF) + (GET_XFLG ? 1 : 0);\n");
 	printf ("\tuae_u16 newv_hi = (src & 0xF0) + (dst & 0xF0);\n");
-	printf ("\tuae_u16 newv;\n");
+	printf ("\tuae_u16 newv, tmp_newv;\n");
 	printf ("\tint cflg;\n");
-	printf ("\tif (newv_lo > 9) { newv_lo +=6; }\n");
-	printf ("\tnewv = newv_hi + newv_lo;");
-	printf ("\tcflg = (newv & 0x1F0) > 0x90;\n");
+	printf ("\tnewv = tmp_newv = newv_hi + newv_lo;");
+	printf ("\tif (newv_lo > 9) { newv += 6; }\n");
+	printf ("\tcflg = (newv & 0x3F0) > 0x90;\n");
+	printf ("\tif (cflg) newv += 0x60;\n");
 	printf ("\tSET_CFLG (cflg);\n");
 	duplicate_carry ();
-	printf ("\tif (cflg) newv += 0x60;\n");
 	genflags (flag_zn, curi->size, "newv", "", "");
-	genflags (flag_sv, curi->size, "newv", "src", "dst");
+	printf ("\tSET_VFLG ((tmp_newv & 0x80) == 0 && (newv & 0x80) != 0);\n");
 	genastore ("newv", curi->dmode, "dstreg", curi->size, "dst");
 	break;
     case i_NEG:
@@ -994,12 +993,12 @@ static void gen_opcode (unsigned long int opcode)
 	printf ("\tuae_u16 newv_hi = - (src & 0xF0);\n");
 	printf ("\tuae_u16 newv;\n");
 	printf ("\tint cflg;\n");
-	printf ("\tif (newv_lo > 9) { newv_lo-=6; newv_hi-=0x10; }\n");
-	printf ("\tnewv = newv_hi + (newv_lo & 0xF);");
-	printf ("\tcflg = cflg = (newv_hi & 0x1F0) > 0x90;\n");
+	printf ("\tif (newv_lo > 9) { newv_lo -= 6; }\n");
+	printf ("\tnewv = newv_hi + newv_lo;");
+	printf ("\tcflg = (newv & 0x1F0) > 0x90;\n");
+	printf ("\tif (cflg) newv -= 0x60;\n");
 	printf ("\tSET_CFLG (cflg);\n");
 	duplicate_carry();
-	printf ("\tif (cflg) newv -= 0x60;\n");
 	genflags (flag_zn, curi->size, "newv", "", "");
 	genastore ("newv", curi->smode, "srcreg", curi->size, "src");
 	break;
@@ -1325,7 +1324,7 @@ static void gen_opcode (unsigned long int opcode)
 	printf ("\tm68k_incpc ((uae_s32)src + 2);\n");
 #endif
 	fill_prefetch_0 ();
-	printf ("\treturn 5;\n");
+	printf ("\treturn 5 * CYCLE_UNIT;\n");
 	printf ("didnt_jump:;\n");
 	need_endlabel = 1;
 	insn_n_cycles = curi->size == sz_byte ? 8 : 12;
@@ -1363,7 +1362,7 @@ static void gen_opcode (unsigned long int opcode)
 #endif
 	fill_prefetch_0 ();
 	/* ??? Cycle count is a guess.  */
-	printf ("\t\treturn 6;\n");
+	printf ("\t\treturn 6 * CYCLE_UNIT;\n");
 	printf ("\t\t}\n");
 	printf ("\t}\n");
 	insn_n_cycles = 12;
@@ -2142,16 +2141,34 @@ static void gen_opcode (unsigned long int opcode)
      case i_CPUSHA:
 	break;
      case i_MOVE16:
-	printf ("\tuaecptr mems = m68k_areg(regs, srcreg) & ~15, memd;\n");
-	printf ("\tdstreg = (%s >> 12) & 7;\n", gen_nextiword());
-	printf ("\tmemd = m68k_areg(regs, dstreg) & ~15;\n");
-	printf ("\tput_long(memd, get_long(mems));\n");
-	printf ("\tput_long(memd+4, get_long(mems+4));\n");
-	printf ("\tput_long(memd+8, get_long(mems+8));\n");
-	printf ("\tput_long(memd+12, get_long(mems+12));\n");
-	printf ("\tm68k_areg(regs, srcreg) += 16;\n");
-	printf ("\tm68k_areg(regs, dstreg) += 16;\n");
-	break;
+	 if ((opcode & 0xfff8) == 0xf620) {
+	     /* MOVE16 (Ax)+,(Ay)+ */
+	     printf ("\tuaecptr mems = m68k_areg(regs, srcreg) & ~15, memd;\n");
+	     printf ("\tdstreg = (%s >> 12) & 7;\n", gen_nextiword());
+	     printf ("\tmemd = m68k_areg(regs, dstreg) & ~15;\n");
+	     printf ("\tput_long(memd, get_long(mems));\n");
+	     printf ("\tput_long(memd+4, get_long(mems+4));\n");
+	     printf ("\tput_long(memd+8, get_long(mems+8));\n");
+	     printf ("\tput_long(memd+12, get_long(mems+12));\n");
+	     printf ("\tif (srcreg != dstreg)\n");
+	     printf ("\tm68k_areg(regs, srcreg) += 16;\n");
+	     printf ("\tm68k_areg(regs, dstreg) += 16;\n");
+	 } else {
+	     /* Other variants */
+	     genamode (curi->smode, "srcreg", curi->size, "mems", 0, 2);
+	     genamode (curi->dmode, "dstreg", curi->size, "memd", 0, 2);
+	     printf ("\tmemsa &= ~15;\n");
+	     printf ("\tmemda &= ~15;\n");
+	     printf ("\tput_long(memda, get_long(memsa));\n");
+	     printf ("\tput_long(memda+4, get_long(memsa+4));\n");
+	     printf ("\tput_long(memda+8, get_long(memsa+8));\n");
+	     printf ("\tput_long(memda+12, get_long(memsa+12));\n");
+	     if ((opcode & 0xfff8) == 0xf600)
+                 printf ("\tm68k_areg(regs, srcreg) += 16;\n");
+	     else if ((opcode & 0xfff8) == 0xf608)
+		 printf ("\tm68k_areg(regs, dstreg) += 16;\n");
+	 }
+	 break;
 
     case i_MMUOP:
 	genamode (curi->smode, "srcreg", curi->size, "extra", 1, 0);
@@ -2215,13 +2232,14 @@ static void generate_one_opcode (int rp)
     printf ("unsigned long REGPARAM2 CPUFUNC(op_%lx_%d)(uae_u32 opcode) /* %s */\n{\n", opcode, postfix, lookuptab[i].name);
 
     switch (table68k[opcode].stype) {
-     case 0: smsk = 7; break;
-     case 1: smsk = 255; break;
-     case 2: smsk = 15; break;
-     case 3: smsk = 7; break;
-     case 4: smsk = 7; break;
-     case 5: smsk = 63; break;
-     default: abort ();
+    case 0: smsk = 7; break;
+    case 1: smsk = 255; break;
+    case 2: smsk = 15; break;
+    case 3: smsk = 7; break;
+    case 4: smsk = 7; break;
+    case 5: smsk = 63; break;
+    case 7: smsk = 3; break;
+    default: abort ();
     }
     dmsk = 7;
 

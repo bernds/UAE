@@ -1,3 +1,69 @@
+9B0730 Some sprite state machine tweaks.  Fix sprite vs. DIW comparison.
+       HAM linebuffer was too small by half - oops.
+       Make absolutely, positively sure that when hsync_handler calls
+       sync_copper_with_cpu, we don't take any invalid shortcuts.
+9B0729 Silly mistake - need to call flush_plane_data unless plfleft is
+       -1, even if no planes were enabled.
+9B0728 Small hack to reduce the time we lose with unnecessary
+       disk_doupdate_read calls.
+       Avoid calling flush_plane_data if we have no bitplanes enabled.
+       Tweak the SPCFLAG_INT handling to make "Delirium" demo work.
+       Limit rate of DDF warning messages.
+       Adjust display parameters so that things are shifted to the left
+       even more.
+       Fix (hopefully) CIA & blitter saving code.
+9B0727 Copper code reorganized; speedup code rewritten.  Can now be
+       enabled with a GUI setting.
+       Fixed the delayoffset stuff.
+9B0725 AGA sprites, and some patches to sprite/playfield collision code,
+       mostly by Toni.
+       Fixed a small sprite restore problem; added missing code to map
+       fastmem banks when restoring them.
+       Some more state saving updates from Toni.
+9B0724 Fix a nasty bug in the copper SKIP instruction introduced by recent
+       changes.
+       Update the FAST_COPPER code.  Not quite enabled yet.
+       More work on the memory configuration stuff.
+       Fix CPU type writeout in cfgfile.c (taken from WinUAE source).
+       Move the WOC demo BPLCON0 fix to compute_toscr_delay (Toni).
+       Added Toni's new disk patches, which include HD disk support by
+       Adil Temel.
+       Rewrote the memory and audio save/restore code.
+       Mask DDFSTOP with 0xFE, not 0xFC.
+9B0723 Yet another new and correct copper state machine (this time for sure)
+       Fix some AGA problems in DDF speedup code.
+       In gencpu.c, branch insns return a hardcoded cycle count; this had
+       not been updated for the CYCLE_UNIT stuff.  Fixed.
+       xwin.c: If mouse is grabbed, we don't need mousehack.
+       Don't clear audio state if produce_sound == 0; this causes problems
+       if we want to turn the sound back on.
+       If an audio channel had a period of PERIOD_MAX, allow AUDxPER to
+       set its evtime back to a reasonable value.
+       Massive cleanup of memory initialization code; it will now use changed
+       prefs on reset.  Added some memory options to gtkui.c.
+       Added Toni's state saving code, then added gtkui options and code to
+       initiate saving/restoring.
+9B0722 filesys.c: Fix writeout of hardfile params (Bernie [2])
+       Add an A1000 Kickstart disk loader (Gerald Schnabel).  Got rid of
+       the automount_uaedev code; we can detect the Kickstart version and
+       do the right thing.
+       Deleted a few unused variables (Toni)
+       Avoid aborting in decode_ham if Amiga code turns on the HAM bit but
+       has too few bitplanes (found by Toni).
+       Make the dummy mem bank return other values than 0; helps some
+       stupid memory detection code.
+       Implemented a little exec task lister for the debugger.
+       Added new debugger commands from Mark Cox.  Improved his copper list
+       debugger by adding recorded timing information to it.
+       MOVE16 fixes from Gwenole Beauchesne.
+       xBCD fixes by Maik Qualmann, with some additional flag fixes by myself
+       (ABCD & SBCD behave exactly like on a 68000 now; dunno about NBCD).
+9B0520 AGA bscan2 fixes and disk.c kickstart speedup fixes from Toni.
+       Remove bogus changes I made to one of Toni's earlier disk.c updates.
+       Call RethinkICRA/B from INTREQ (suggested by Toni).
+       Properly save mixed_stereo setting.
+       NEGX uses X and Z (Bernd Roesch).
+       Danish keyboard support (Jesper Bojesen).
 9B0311 Repair "emulated but no output" sound setting.
 9B0310 Fix massive bug introduced in do_cycles_slow with the rescaling
        changes.

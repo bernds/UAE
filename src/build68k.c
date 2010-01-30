@@ -113,6 +113,7 @@ int main(int argc, char **argv)
 	     case 'r': currbit = bitr; break;
 	     case 'R': currbit = bitR; break;
 	     case 'z': currbit = bitz; break;
+	     case 'p': currbit = bitp; break;
 	     default: abort();
 	    }
 	    if (!(bitmask & 1)) {
@@ -161,6 +162,7 @@ int main(int argc, char **argv)
 	    switch(nextch){
 	     case '-': flagset[i] = fa_unset; break;
 	     case '/': flagset[i] = fa_isjmp; break;
+	     case '+': flagset[i] = fa_isbranch; break;
 	     case '0': flagset[i] = fa_zero; break;
 	     case '1': flagset[i] = fa_one; break;
 	     case 'x': flagset[i] = fa_dontcare; break;

@@ -38,8 +38,8 @@ OBJS = main.o newcpu.o memory.o @CPUOBJS@ custom.o cia.o serial.o blitter.o \
        fpp.o readcpu.o cpudefs.o gfxutil.o gfxlib.o blitfunc.o blittable.o \
        disk.o audio.o compiler.o uaelib.o drawing.o picasso96.o cpustbl.o \
        uaeexe.o bsdsocket.o missing.o sd-sound.o od-joy.o md-support.o \
-       fsusage.o cfgfile.o native2amiga.o fsdb.o fsdb_unix.o \
-       @ASMOBJS@ @GFXOBJS@ @DEBUGOBJS@ @SCSIOBJS@
+       fsusage.o cfgfile.o native2amiga.o fsdb.o fsdb_unix.o identify.o \
+       savestate.o @ASMOBJS@ @GFXOBJS@ @DEBUGOBJS@ @SCSIOBJS@
 
 all: $(TARGET)
 
@@ -159,6 +159,7 @@ svga.o: config.h
 audio.o: config.h include/events.h
 memory.o: config.h
 debug.o: config.h
+identify.o: config.h
 fpp.o: config.h
 ersatz.o: config.h
 filesys.o: config.h

@@ -26,10 +26,10 @@
 
 /* We ignore that many lores pixels at the start of the display. These are
  * invisible anyway due to hardware DDF limits. */
-#define DISPLAY_LEFT_SHIFT 0x38
+#define DISPLAY_LEFT_SHIFT 0x40
 #define PIXEL_XPOS(HPOS) (((HPOS)*2 - DISPLAY_LEFT_SHIFT + DIW_DDF_OFFSET - 1) << lores_shift)
 
-#define max_diwlastword (PIXEL_XPOS(maxhpos))
+#define max_diwlastword (PIXEL_XPOS(maxhpos) + 16)
 
 extern int lores_factor, lores_shift, sprite_width;
 
@@ -39,9 +39,21 @@ STATIC_INLINE int coord_hw_to_window_x (int x)
     return x << lores_shift;
 }
 
+STATIC_INLINE int coord_window_to_hw_x (int x)
+{
+    x >>= lores_shift;
+    return x + DISPLAY_LEFT_SHIFT;
+}
+
 STATIC_INLINE int coord_diw_to_window_x (int x)
 {
     return (x - DISPLAY_LEFT_SHIFT + DIW_DDF_OFFSET - 1) << lores_shift;
+}
+
+STATIC_INLINE int coord_window_to_diw_x (int x)
+{
+    x = coord_window_to_hw_x (x);
+    return x - DIW_DDF_OFFSET;
 }
 
 extern int framecnt;
@@ -124,8 +136,9 @@ struct color_change {
 /* 440 rather than 880, since sprites are always lores.  */
 #define MAX_PIXELS_PER_LINE 1760
 
-/* ((MAX_PIXELS_PER_LINE/2)/2 since sprites are always lores.  */
-#define MAX_SPR_PIXELS (((MAXVPOS + 1)*2 + 1) * (MAX_PIXELS_PER_LINE / 4))
+/* No divisors for MAX_PIXELS_PER_LINE; we support AGA and may one day
+   want to use SHRES sprites.  */
+#define MAX_SPR_PIXELS (((MAXVPOS + 1)*2 + 1) * MAX_PIXELS_PER_LINE)
 
 struct sprite_entry
 {
@@ -171,6 +184,7 @@ struct decision {
     uae_u16 bplcon3, bplcon4;
     uae_u8 nr_planes;
     uae_u8 bplres;
+    unsigned int any_hires_sprites:1;
 };
 
 /* Anything related to changes in hw registers during the DDF for one

@@ -4,14 +4,14 @@
   * Stuff
   *
   * Copyright 1995, 1996 Ed Hanway
-  * Copyright 1995-98 Bernd Schmidt
+  * Copyright 1995-2001 Bernd Schmidt
   */
 
 #define UAEMAJOR 0
 #define UAEMINOR 8
-#define UAESUBREV 16
+#define UAESUBREV 17
 
-typedef enum { KBD_LANG_US, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
+typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
 extern long int version;
 
@@ -32,7 +32,6 @@ struct uae_prefs {
     int use_serial;
     int serial_demand;
     int parallel_demand;
-    int automount_uaedev;
     int use_gfxlib;
     int socket_emu;
 
@@ -74,6 +73,7 @@ struct uae_prefs {
     unsigned int chipset_mask;
     int ntscmode;
     int collision_level;
+    int fast_copper;
 
     char df[4][256];
     char romfile[256];
@@ -280,4 +280,8 @@ STATIC_INLINE void fuzzy_memset_le32_1 (void *p, uae_u32 c, int offset, int len)
    We define this value here rather than in events.h so that gencpu.c sees
    it.  */
 #define CYCLE_UNIT 512
+
+/* This one is used by cfgfile.c.  We could reduce the CYCLE_UNIT back to 1,
+   I'm not 100% sure this code is bug free yet.  */
+#define OFFICIAL_CYCLE_UNIT 512
 

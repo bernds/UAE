@@ -6,7 +6,6 @@
   * Copyright 1995 Ed Hanway
   * Copyright 1995, 1996, 1997 Bernd Schmidt
   */
-
 #include "sysconfig.h"
 #include "sysdeps.h"
 #include <assert.h>
@@ -104,7 +103,6 @@ void default_prefs (struct uae_prefs *p)
     p->use_serial = 0;
     p->serial_demand = 0;
     p->parallel_demand = 0;
-    p->automount_uaedev = 1;
 
     p->jport0 = 2;
     p->jport1 = 0;
@@ -149,7 +147,8 @@ void default_prefs (struct uae_prefs *p)
 
     p->immediate_blits = 0;
     p->blits_32bit_enabled = 0;
-    p->collision_level = 0;
+    p->collision_level = 1;
+    p->fast_copper = 1;
 
     strcpy (p->df[0], "df0.adf");
     strcpy (p->df[1], "df1.adf");
@@ -285,6 +284,11 @@ static void fix_options (void)
 	currprefs.nr_floppies = 4;
 	err = 1;
     }
+    if (currprefs.collision_level < 0 || currprefs.collision_level > 3) {
+	fprintf (stderr, "Invalid collision support level.  Using 1.\n");
+	currprefs.collision_level = 1;
+	err = 1;
+    }
 
     if (err)
 	fprintf (stderr, "Please use \"uae -h\" to get usage information.\n");
@@ -415,6 +419,9 @@ void write_log_standard (const char *fmt, ...)
 
 void reset_all_systems (void)
 {
+    init_eventtab ();
+
+    memory_reset ();
     bsdlib_reset ();
     filesys_reset ();
     filesys_start_threads ();

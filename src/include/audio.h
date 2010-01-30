@@ -12,7 +12,7 @@ extern struct audio_channel_data {
     unsigned long adk_mask;
     unsigned long evtime;
     unsigned long per;
-    unsigned char dmaen, intreq2, data_written;
+    uae_u8 dmaen, intreq2, data_written;
     uaecptr lc, pt;
     int state, wper, wlen;
     int current_sample, last_sample;

@@ -351,7 +351,8 @@ void write_filesys_config (struct uaedev_mount_info *mountinfo,
 	    fprintf (f, "filesystem=%s,%s:%s\n", uip[i].readonly ? "ro" : "rw",
 		     uip[i].volname, str);
 	} else {
-	    fprintf (f, "hardfile=%s,%d,%d,%d,%d,%s\n", uip[i].hf.secspertrack,
+	    fprintf (f, "hardfile=%s,%d,%d,%d,%d,%s\n",
+		     uip[i].readonly ? "ro" : "rw", uip[i].hf.secspertrack,
 		     uip[i].hf.surfaces, uip[i].hf.reservedblocks, 512, str);
 	}
 	free (str);

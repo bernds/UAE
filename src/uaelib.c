@@ -93,7 +93,7 @@ static uae_u32 emulib_SetFrameRate (uae_u32 val)
  */
 static uae_u32 emulib_ChangeLanguage (uae_u32 which)
 {
-    if (which > 5)
+    if (which > 6)
 	return 0;
     else {
 	switch (which) {
@@ -101,18 +101,21 @@ static uae_u32 emulib_ChangeLanguage (uae_u32 which)
 	    currprefs.keyboard_lang = KBD_LANG_US;
 	    break;
 	 case 1:
-	    currprefs.keyboard_lang = KBD_LANG_DE;
+	    currprefs.keyboard_lang = KBD_LANG_DK;
 	    break;
 	 case 2:
-	    currprefs.keyboard_lang = KBD_LANG_SE;
+	    currprefs.keyboard_lang = KBD_LANG_DE;
 	    break;
 	 case 3:
-	    currprefs.keyboard_lang = KBD_LANG_FR;
+	    currprefs.keyboard_lang = KBD_LANG_SE;
 	    break;
 	 case 4:
-	    currprefs.keyboard_lang = KBD_LANG_IT;
+	    currprefs.keyboard_lang = KBD_LANG_FR;
 	    break;
 	 case 5:
+	    currprefs.keyboard_lang = KBD_LANG_IT;
+	    break;
+	 case 6:
 	    currprefs.keyboard_lang = KBD_LANG_ES;
 	    break;
 	 default:

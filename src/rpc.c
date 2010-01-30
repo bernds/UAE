@@ -517,7 +517,6 @@ void setsonst(int *reserved)
     blits_32bit_enabled=reserved[10];
     immediate_blits=reserved[11];
     fake_joystick=reserved[12];
-    automount_uaedev=1-reserved[13];
     bogomem_size=reserved[14];
     chipmem_size=reserved[15];
     fastmem_size=reserved[16];

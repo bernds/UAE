@@ -1214,6 +1214,35 @@ static int decode_de (KeySym ks)
     return -1;
 }
 
+static int decode_dk (KeySym ks)
+{
+    switch(ks) {
+	/* DK specific */
+    case XK_A: case XK_a: return AK_A;
+    case XK_M: case XK_m: return AK_M;
+    case XK_Q: case XK_q: return AK_Q;
+    case XK_W: case XK_w: return AK_W;
+    case XK_Y: case XK_y: return AK_Y;
+    case XK_Z: case XK_z: return AK_Z;
+    case XK_AE: case XK_ae: return AK_SEMICOLON;
+    case XK_Ooblique: case XK_oslash: return AK_QUOTE;
+    case XK_Aring: case XK_aring: return AK_LBRACKET;
+    case XK_apostrophe: case XK_asterisk: return AK_NUMBERSIGN;
+    case XK_dead_diaeresis: case XK_dead_circumflex: return AK_RBRACKET;
+    case XK_dead_acute: case XK_dead_grave: return AK_BACKSLASH;
+    case XK_onehalf: case XK_section: return AK_BACKQUOTE;
+    case XK_comma: return AK_COMMA;
+    case XK_period: return AK_PERIOD;
+    case XK_less: case XK_greater: return AK_LTGT;
+    case XK_numbersign: return AK_NUMBERSIGN;
+    case XK_plus: return AK_MINUS;
+    case XK_asciicircum: return AK_BACKQUOTE;
+    case XK_minus: return AK_SLASH;
+    }
+
+    return -1;
+}
+
 static int decode_se (KeySym ks)
 {
     switch(ks) {
@@ -1346,6 +1375,10 @@ static int keycode2amiga (XKeyEvent *event)
 
 	     case KBD_LANG_DE:
 		as = decode_de (ks);
+		break;
+
+	     case KBD_LANG_DK:
+		as = decode_dk (ks);
 		break;
 
 	     case KBD_LANG_SE:
@@ -1628,7 +1661,7 @@ int debuggable (void)
 
 int needmousehack (void)
 {
-    if (dgamode)
+    if (dgamode || grabbed)
 	return 0;
     else
 	return 1;

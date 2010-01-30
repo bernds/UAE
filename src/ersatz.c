@@ -137,6 +137,39 @@ static void ersatz_init (void)
     put_long (request + 0x24, 0x200 * 4);
     m68k_areg(regs, 1) = request;
     ersatz_doio ();
+    /* kickstart disk loader */
+    if (get_long(0x4000) == 0x4b49434b) {
+	/* a kickstart disk was found in drive 0! */
+	fprintf (stderr, "Loading Kickstart rom image from Kickstart disk\n");
+	/* print some notes... */
+	fprintf (stderr, "NOTE: if UAE crashes set CPU to 68000 and/or chipmem size to 512KB!\n");
+
+	/* read rom image from kickstart disk */
+	put_word (request + 0x1C, 2);
+	put_long (request + 0x28, 0xF80000);
+	put_long (request + 0x2C, 0x200);
+	put_long (request + 0x24, 0x200 * 512);
+	m68k_areg(regs, 1) = request;
+	ersatz_doio ();
+
+	/* read rom image once again to mirror address space.
+	   not elegant, but it works... */
+	put_word (request + 0x1C, 2);
+	put_long (request + 0x28, 0xFC0000);
+	put_long (request + 0x2C, 0x200);
+	put_long (request + 0x24, 0x200 * 512);
+	m68k_areg(regs, 1) = request;
+	ersatz_doio ();
+
+	disk_eject (0);
+
+	m68k_setpc (0xFC0002);
+	fill_prefetch_0 ();
+	uae_reset ();
+	ersatzkickfile = 0;
+	return;
+    }
+
     m68k_setpc (0x400C);
     fill_prefetch_0 ();
 

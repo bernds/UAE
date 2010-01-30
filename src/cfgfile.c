@@ -87,7 +87,7 @@ static const char *linemode2[] = { "n", "d", "s", 0 };
 static const char *speedmode[] = { "max", "real", 0 };
 static const char *cpumode[] = {
     "68000", "68000", "68010", "68010", "68ec020", "68020", "68ec020/68881", "68020/68881",
-    "68040", 0
+    "68040", "68040", 0
 };
 static const char *portmode[] = { "joy0", "joy1", "mouse", "kbd1", "kbd2", "kbd3", 0 };
 static const char *colormode1[] = { "8bit", "15bit", "16bit", "8bit_dither", "4bit_dither", "32bit", 0 };
@@ -99,7 +99,7 @@ static const char *stereomode1[] = { "mono", "stereo", "mixed", 0 };
 static const char *stereomode2[] = { "m", "s", "x", 0 };
 static const char *stereomode3[] = { "1", "2", "3", 0 };
 static const char *interpolmode[] = { "none", "rh", "crux", 0 };
-static const char *collmode[] = { "sprites", "full", 0 };
+static const char *collmode[] = { "none", "sprites", "playfields", "full", 0 };
 
 #define UNEXPANDED "$(FILE_PATH)"
 
@@ -167,7 +167,7 @@ void save_options (FILE *f, struct uae_prefs *p)
     fprintf (f, "serial_on_demand=%s\n", p->serial_demand ? "true" : "false");
 
     fprintf (f, "sound_output=%s\n", soundmode[p->produce_sound]);
-    fprintf (f, "sound_channels=%s\n", stereomode1[p->stereo]);
+    fprintf (f, "sound_channels=%s\n", stereomode1[p->stereo + p->mixed_stereo]);
     fprintf (f, "sound_bits=%d\n", p->sound_bits);
     fprintf (f, "sound_min_buff=%d\n", p->sound_minbsiz);
     fprintf (f, "sound_max_buff=%d\n", p->sound_maxbsiz);
@@ -223,12 +223,12 @@ void save_options (FILE *f, struct uae_prefs *p)
 
     fprintf (f, "cpu_type=%s\n", cpumode[p->cpu_level * 2 + !p->address_space_24]);
     fprintf (f, "cpu_compatible=%s\n", p->cpu_compatible ? "true" : "false");
-    fprintf (f, "autoconfig=%s\n", p->automount_uaedev ? "true" : "false");
 
     fprintf (f, "accuracy=%d\n", p->emul_accuracy);
     fprintf (f, "log_illegal_mem=%s\n", p->illegal_mem ? "true" : "false");
 
     fprintf (f, "kbd_lang=%s\n", (p->keyboard_lang == KBD_LANG_DE ? "de"
+				  : p->keyboard_lang == KBD_LANG_DK ? "dk"
 				  : p->keyboard_lang == KBD_LANG_ES ? "es"
 				  : p->keyboard_lang == KBD_LANG_US ? "us"
 				  : p->keyboard_lang == KBD_LANG_SE ? "se"
@@ -333,6 +333,7 @@ static void set_chipset_mask (struct uae_prefs *p, int val)
 int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 {
     int tmpval;
+    int dummy;
     char *section = 0;
     char *tmpp;
 
@@ -366,7 +367,8 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	|| cfgfile_yesno (option, value, "ntsc", &p->ntscmode)
 	|| cfgfile_yesno (option, value, "cpu_compatible", &p->cpu_compatible)
 	|| cfgfile_yesno (option, value, "cpu_24bit_addressing", &p->address_space_24)
-	|| cfgfile_yesno (option, value, "autoconfig", &p->automount_uaedev)
+	/* For backward compatibility.  */
+	|| cfgfile_yesno (option, value, "autoconfig", &dummy)
 	|| cfgfile_yesno (option, value, "parallel_on_demand", &p->parallel_demand)
 	|| cfgfile_yesno (option, value, "serial_on_demand", &p->serial_demand)
 	|| cfgfile_yesno (option, value, "log_illegal_mem", &p->illegal_mem))
@@ -444,12 +446,18 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
         p->m68k_speed *= CYCLE_UNIT;
 	return 1;
     }
-    if (cfgfile_intval (option, value, "finegrain_cpu_speed", &p->m68k_speed, 1))
+    if (cfgfile_intval (option, value, "finegrain_cpu_speed", &p->m68k_speed, 1)) {
+	if (OFFICIAL_CYCLE_UNIT > CYCLE_UNIT) {
+	    int factor = OFFICIAL_CYCLE_UNIT / CYCLE_UNIT;
+	    p->m68k_speed = (p->m68k_speed + factor - 1) / factor;
+	}
 	return 1;
+    }
 
     if (strcmp (option, "kbd_lang") == 0) {
 	KbdLang l;
 	if ((l = KBD_LANG_DE, strcasecmp (value, "de") == 0)
+	    || (l = KBD_LANG_DK, strcasecmp (value, "dk") == 0)
 	    || (l = KBD_LANG_SE, strcasecmp (value, "se") == 0)
 	    || (l = KBD_LANG_US, strcasecmp (value, "us") == 0)
 	    || (l = KBD_LANG_FR, strcasecmp (value, "fr") == 0)
@@ -870,7 +878,6 @@ int parse_cmdline_option (char c, char *arg)
     case 'x': currprefs.no_xhair = 1; break;
     case 'i': currprefs.illegal_mem = 1; break;
     case 'J': parse_joy_spec (arg); break;
-    case 'a': currprefs.automount_uaedev = 0; break;
 
     case 't': currprefs.test_drawing_speed = 1; break;
     case 'L': currprefs.x11_use_low_bandwidth = 1; break;
@@ -919,6 +926,8 @@ int parse_cmdline_option (char c, char *arg)
     case 'l':
 	if (0 == strcasecmp(arg, "de"))
 	    currprefs.keyboard_lang = KBD_LANG_DE;
+	else if (0 == strcasecmp(arg, "dk"))
+	    currprefs.keyboard_lang = KBD_LANG_DK;
 	else if (0 == strcasecmp(arg, "us"))
 	    currprefs.keyboard_lang = KBD_LANG_US;
 	else if (0 == strcasecmp(arg, "se"))

@@ -89,10 +89,26 @@ STATIC_INLINE void do_cycles_fast (void)
 
 }
 
+/* This is a special-case function.  Normally, all events should lie in the
+   future; they should only ever be active at the current cycle during
+   do_cycles.  However, a snapshot is saved during do_cycles, and so when
+   restoring it, we may have other events pending.  */
+STATIC_INLINE void handle_active_events (void)
+{
+    int i;
+    for (i = 0; i < ev_max; i++) {
+	if (eventtab[i].active && eventtab[i].evtime == currcycle) {
+	    (*eventtab[i].handler)();
+	}
+    }
+}
+
 STATIC_INLINE unsigned long get_cycles (void)
 {
     return currcycle;
 }
+
+extern void init_eventtab (void);
 
 #if /* M68K_SPEED == 1 */  0
 #define do_cycles do_cycles_fast

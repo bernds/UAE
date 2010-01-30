@@ -2,6 +2,24 @@ Note! This file only contains user-visible changes. There may be others. For a
 more detailed description of changes between releases, read src/ChangeLog, and
 for the full picture, make a diff between releases.
 
+User-visible changes in 0.8.17:
+  - AGA should be a bit faster.
+  - AGA sprites emulation added by Toni Wilen.
+  - Numerous bug fixes.
+  - In the Unix version, the gtk UI has a lot more options available.
+    There's a new option "Enable copper speedup code"; I'd be interested in
+    hearing whether there's any software out there that does not work (or
+    runs slower) if this option is enabled.
+  - Now supports image files of high density floppies (Dr. Adil Temel).
+  - Support for A1000 Kickstart disks (Gerald Schnabel).
+  - The option to disable autoconfig devices no longer exists; the emulator
+    automatically recognizes if the Kickstart version is too old.
+  - Numerous improvements for the integrated debugger.
+  - State save/restore implemented by Toni Wilen.  At the moment, this is
+    experimental, "use at your own risk" code.  It is not guaranteed that
+    future versions of the emulator will be able to read snapshots saved by
+    this version.  Test it and report bugs.
+
 User-visible changes in 0.8.16:
   - AGA playfield support (again) (Toni Wilen)
   - In addition to plain mono and stereo, there's a new sound setting "mixed".

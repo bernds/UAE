@@ -21,6 +21,7 @@
 #include "debug.h"
 #include "compiler.h"
 #include "gui.h"
+#include "savestate.h"
 
 /* Opcode of faulting instruction */
 uae_u16 last_op_for_exception_3;
@@ -1082,10 +1083,24 @@ static char* ccnames[] =
 
 void m68k_reset (void)
 {
+    regs.kick_mask = 0x00F80000;
+    regs.spcflags = 0;
+    if (savestate_state == STATE_RESTORE) {
+        m68k_setpc (regs.pc);
+	/* MakeFromSR() must not swap stack pointer */
+	regs.s = (regs.sr >> 13) & 1;
+	MakeFromSR();
+	/* set stack pointer */
+	if (regs.s)
+	    m68k_areg(regs, 7) = regs.isp;
+	else
+	    m68k_areg(regs, 7) = regs.usp;
+	return;
+    }
+
     m68k_areg (regs, 7) = get_long (0x00f80000);
     m68k_setpc (get_long (0x00f80004));
     fill_prefetch_0 ();
-    regs.kick_mask = 0xF80000;
     regs.s = 1;
     regs.m = 0;
     regs.stopped = 0;
@@ -1096,7 +1111,6 @@ void m68k_reset (void)
     SET_CFLG (0);
     SET_VFLG (0);
     SET_NFLG (0);
-    regs.spcflags = 0;
     regs.intmask = 7;
     regs.vbr = regs.sfc = regs.dfc = 0;
     regs.fpcr = regs.fpsr = regs.fpiar = 0;
@@ -1390,7 +1404,11 @@ void m68k_go (int may_quit)
 	    m68k_reset ();
 	    reset_all_systems ();
 	    customreset ();
+	    /* We may have been restoring state, but we're done now.  */
+	    savestate_restore_finish ();
+	    handle_active_events ();
 	}
+
 	if (debugging)
 	    debug ();
 	m68k_run1 (currprefs.cpu_compatible ? m68k_run_1 : m68k_run_2);
@@ -1519,4 +1537,96 @@ void m68k_dumpstate (FILE *f, uaecptr *nextpc)
     m68k_disasm (f, m68k_getpc (), nextpc, 1);
     if (nextpc)
 	fprintf (f, "next PC: %08lx\n", *nextpc);
+}
+
+
+/* CPU save/restore code */
+
+#define CPUTYPE_EC 1
+#define CPUMODE_HALT 1
+
+uae_u8 *restore_cpu (uae_u8 *src)
+{
+    int i,model,flags;
+    uae_u32 l;
+
+    model = restore_u32();
+    switch (model) {
+    case 68000:
+	currprefs.cpu_level = 0;
+	break;
+    case 68010:
+	currprefs.cpu_level = 1;
+	break;
+    case 68020:
+	currprefs.cpu_level = 2;
+	break;
+    default:
+	write_log ("Unknown cpu type %d\n", model);
+	break;
+    }
+
+    flags = restore_u32();
+    currprefs.address_space_24 = 0;
+    if (flags & CPUTYPE_EC)
+	currprefs.address_space_24 = 1;
+    for (i = 0; i < 15; i++)
+	regs.regs[i] = restore_u32 ();
+    regs.pc = restore_u32 ();
+    regs.prefetch = restore_u32 ();
+    regs.usp = restore_u32 ();
+    regs.isp = restore_u32 ();
+    regs.sr = restore_u16 ();
+    l = restore_u32();
+    if (l & CPUMODE_HALT)
+	regs.stopped = 1;
+    else
+	regs.stopped = 0;
+    if (model >= 68010) {
+	regs.dfc = restore_u32 ();
+	regs.sfc = restore_u32 ();
+	regs.vbr = restore_u32 ();
+    }
+    if (model >= 68020) {
+	caar = restore_u32 ();
+	cacr = restore_u32 ();
+	regs.msp = restore_u32 ();
+    }
+    write_log ("CPU %d%s%03d, PC=%08.8X\n",
+	       model/1000, flags & 1 ? "EC" : "", model % 1000, regs.pc);
+
+    return src;
+}
+
+static int cpumodel[] = { 68000, 68010, 68020, 68020 };
+
+uae_u8 *save_cpu (int *len)
+{
+    uae_u8 *dstbak,*dst;
+    int model,i;
+
+    dstbak = dst = malloc(4+4+15*4+4+4+4+4+2+4+4+4+4+4+4+4);
+    model = cpumodel[currprefs.cpu_level];
+    save_u32 (model);					/* MODEL */
+    save_u32 (currprefs.address_space_24 ? 1 : 0);	/* FLAGS */
+    for(i = 0;i < 15; i++) save_u32 (regs.regs[i]);	/* D0-D7 A0-A6 */
+    save_u32 (m68k_getpc ());				/* PC */
+    save_u32 (regs.prefetch);				/* prefetch */
+    MakeSR ();
+    save_u32 (!regs.s ? regs.regs[15] : regs.usp);	/* USP */
+    save_u32 (regs.s ? regs.regs[15] : regs.isp);	/* ISP */
+    save_u16 (regs.sr);				/* SR/CCR */
+    save_u32 (regs.stopped ? CPUMODE_HALT : 0);	/* flags */
+    if(model >= 68010) {
+	save_u32 (regs.dfc);				/* DFC */
+	save_u32 (regs.sfc);				/* SFC */
+	save_u32 (regs.vbr);				/* VBR */
+    }
+    if(model >= 68020) {
+	save_u32 (caar);				/* CAAR */
+	save_u32 (cacr);				/* CACR */
+	save_u32 (regs.msp);				/* MSP */
+    }
+    *len = dst - dstbak;
+    return dstbak;
 }

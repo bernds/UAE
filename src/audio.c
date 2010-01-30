@@ -21,6 +21,7 @@
 #include "sounddep/sound.h"
 #include "events.h"
 #include "audio.h"
+#include "savestate.h"
 
 struct audio_channel_data audio_channel[6];
 int sound_available = 0;
@@ -811,22 +812,37 @@ void aud3_handler (void)
 
 void audio_reset (void)
 {
-    memset (audio_channel, 0, sizeof audio_channel);
-    audio_channel[0].per = PERIOD_MAX;
-    audio_channel[1].per = PERIOD_MAX;
-    audio_channel[2].per = PERIOD_MAX;
-    audio_channel[3].per = PERIOD_MAX;
+    int i;
+    if (savestate_state != STATE_RESTORE) {
+	memset (audio_channel, 0, 4 * sizeof *audio_channel);
+	audio_channel[0].per = PERIOD_MAX;
+	audio_channel[1].per = PERIOD_MAX;
+	audio_channel[2].per = PERIOD_MAX;
+	audio_channel[3].per = PERIOD_MAX;
+	audio_channel[0].voltbl = sound_table[0];
+	audio_channel[1].voltbl = sound_table[0];
+	audio_channel[2].voltbl = sound_table[0];
+	audio_channel[3].voltbl = sound_table[0];
+    } else
+	for (i = 0; i < 4; i++)
+	    audio_channel[i].dmaen = (dmacon & 0x200) && (dmacon & (1 << i));
+
+
+    memset (audio_channel + 4, 0, 2 * sizeof *audio_channel);
     audio_channel[4].per = PERIOD_MAX;
     audio_channel[5].per = PERIOD_MAX;
-    audio_channel[0].voltbl = sound_table[0];
-    audio_channel[1].voltbl = sound_table[0];
-    audio_channel[2].voltbl = sound_table[0];
-    audio_channel[3].voltbl = sound_table[0];
+
+#ifndef MULTIPLICATION_PROFITABLE
+    for (i = 0; i < 6; i++)
+	audio_channel[nr].voltbl = sound_table[audio_channel[nr].vol];
+#endif
 
     last_cycles = 0;
     ahi_enabled = 0;
     ahi_interrupt_state = 0;
     next_sample_evtime = scaled_sample_evtime;
+
+    schedule_audio ();
 }
 
 STATIC_INLINE int sound_prefs_changed (void)
@@ -878,7 +894,6 @@ void check_prefs_changed_audio (void)
 			  : currprefs.sound_interpol == 1 ? sample16si_rh_handler
 			  : sample16si_crux_handler);
     if (currprefs.produce_sound == 0) {
-	memset (audio_channel, 0, sizeof audio_channel);
 	eventtab[ev_audio].active = 0;
 	events_schedule ();
     }
@@ -888,7 +903,7 @@ void update_audio (void)
 {
     unsigned long int n_cycles;
 
-    if (currprefs.produce_sound == 0)
+    if (currprefs.produce_sound == 0 || savestate_state == STATE_RESTORE)
 	return;
 
     n_cycles = get_cycles () - last_cycles;
@@ -995,6 +1010,13 @@ void AUDxPER (int nr, uae_u16 v)
     if (per < maxhpos * CYCLE_UNIT / 2 && currprefs.produce_sound < 3)
 	per = maxhpos * CYCLE_UNIT / 2;
 
+    if (audio_channel[nr].per == PERIOD_MAX
+	&& per != PERIOD_MAX)
+    {
+	audio_channel[nr].evtime = CYCLE_UNIT;
+	schedule_audio ();
+	events_schedule ();
+    }
     audio_channel[nr].per = per;
 }
 
@@ -1066,6 +1088,8 @@ static uae_u32 ahi_entry (void)
 	return 1;
     case 5:
 	return ahi_interrupt_state;
+    default:
+	return 0;
     }
 }
 
@@ -1076,4 +1100,56 @@ void ahi_install (void)
     calltrap (deftrap (ahi_entry));
     dw (RTS);
     org (a);
+}
+
+/* audio save/restore code FIXME: not working correctly */
+/* help needed */
+
+uae_u8 *restore_audio (uae_u8 *src, int i)
+{
+    struct audio_channel_data *acd;
+    uae_u16 p;
+
+    acd = audio_channel + i;
+    acd->state = restore_u8 ();
+    acd->vol = restore_u8 ();
+    acd->intreq2 = restore_u8 ();
+    acd->data_written = restore_u8 ();
+    acd->len = restore_u16 ();
+    acd->wlen = restore_u16 ();
+    p = restore_u16 ();
+    acd->per = p ? p * CYCLE_UNIT : PERIOD_MAX;
+    p = restore_u16 ();
+    acd->wper = p ? p * CYCLE_UNIT : PERIOD_MAX;
+    acd->lc = restore_u32 ();
+    acd->pt = restore_u32 ();
+    acd->evtime = restore_u32 ();
+
+    return src;
+}
+
+
+uae_u8 *save_audio (int *len, int i)
+{
+    struct audio_channel_data *acd;
+    uae_u8 *dst = malloc (100);
+    uae_u8 *dstbak = dst;
+    uae_u16 p;
+
+    acd = audio_channel + i;
+    save_u8 ((uae_u8)acd->state);
+    save_u8 (acd->vol);
+    save_u8 (acd->intreq2);
+    save_u8 (acd->data_written);
+    save_u16 (acd->len);
+    save_u16 (acd->wlen);
+    p = acd->per == PERIOD_MAX ? 0 : acd->per / CYCLE_UNIT;
+    save_u16 (p);
+    p = acd->per == PERIOD_MAX ? 0 : acd->wper / CYCLE_UNIT;
+    save_u16 (p);
+    save_u32 (acd->lc);
+    save_u32 (acd->pt);
+    save_u32 (acd->evtime);
+    *len = dst - dstbak;
+    return dstbak;
 }

@@ -24,6 +24,7 @@
 #include "cia.h"
 #include "xwin.h"
 #include "gui.h"
+#include "identify.h"
 
 static int debugger_active = 0;
 static uaecptr skipaddr;
@@ -78,6 +79,24 @@ static uae_u32 readhex (char **c)
 	}
     }
     return val;
+}
+
+static uae_u32 readint (char **c)
+{
+    uae_u32 val = 0;
+    char nc;
+    int negative = 0;
+
+    ignore_ws (c);
+
+    if (**c == '-')
+	negative = 1, (*c)++;
+    while (isdigit(nc = **c)) {
+	(*c)++;
+	val *= 10;
+	val += nc - '0';
+    }
+    return val * (negative ? -1 : 1);
 }
 
 static char next_char( char **c)
@@ -175,6 +194,124 @@ static void modulesearch (void)
     }
 }
 
+static void dump_traps (void)
+{
+    int i;
+    for (i = 0; trap_labels[i].name; i++) {
+	printf("$%02x: %s\t $%08x\n", trap_labels[i].adr,
+	       trap_labels[i].name, get_long (trap_labels[i].adr));
+    }
+}
+
+static void dump_ints (void)
+{
+    int i;	
+    for (i = 0; int_labels[i].name; i++) {
+	printf ("$%02x: %s\t $%08x\n", int_labels[i].adr,
+		int_labels[i].name, get_long (int_labels[i].adr));
+    }
+}
+
+static void disassemble_wait (FILE *file, unsigned long insn)
+{
+    uae_u8 vp,hp,ve,he,bfd,v_mask,h_mask;
+
+    vp = (insn & 0xff000000) >> 24;
+    hp = (insn & 0x00fe0000) >> 16;
+    ve = (insn & 0x00007f00) >> 8;
+    he = (insn & 0x000000fe);
+    bfd = insn & 0x00008000 >> 15;
+
+    /* bit15 can never be masked out*/
+    v_mask = vp & (ve | 0x80);
+    h_mask = hp & he;
+    if (v_mask > 0) {
+	fprintf (file, "vpos ");
+	if (ve != 0x7f) {
+	    fprintf (file, "& 0x%02x ", ve);
+	}
+	fprintf (file, ">= 0x%02x", v_mask);
+    }
+    if (he > 0) {
+	if (v_mask > 0) {
+	    fprintf (file," and");
+	}
+	fprintf (file, " hpos ");
+	if (he != 0xfe) {
+	    fprintf (file, "& 0x%02x ", he);
+	}
+	fprintf (file, ">= 0x%02x", h_mask);
+    } else {
+	fprintf (file, ", ignore horizontal");
+    }
+
+    fprintf (file, ".\n                        \t; VP %02x, VE %02x; HP %02x, HE %02x; BFD %d\n",
+	     vp, ve, hp, he, bfd);
+}
+
+/* simple decode copper by Mark Cox */
+static void decode_copper_insn (FILE* file, unsigned long insn, unsigned long addr)
+{
+    uae_u32 insn_type = insn & 0x00010001;
+    int hpos, vpos;
+    char record[] = "          ";
+    if (find_copper_record (addr, &hpos, &vpos)) {
+	sprintf (record, " [%03x %03x]", vpos, hpos);
+    }
+
+    fprintf (file, "%08lx: %04lx %04lx%s\t; ", addr, insn >> 16, insn & 0xFFFF, record);
+
+    switch (insn_type) {
+    case 0x00010000: /* WAIT insn */
+	fprintf (file, "Wait for ");
+	disassemble_wait (file, insn);
+
+	if (insn == 0xfffffffe)
+	    fprintf (file, "                           \t; End of Copperlist\n");
+
+	break;
+
+    case 0x00010001: /* SKIP insn */
+	fprintf (file, "Skip if ");
+	disassemble_wait (file, insn);
+	break;
+
+    case 0x00000000:
+    case 0x00000001: /* MOVE insn */
+	fprintf (file, "%s := 0x%04lx\n",
+		 custd[(insn & 0x01fe0000) >> 17].name,
+		 insn & 0x0000ffff);
+
+	if ((insn & 0xfe000000) != 0) {
+	    fprintf (file, "                        \t;OCS Compatibility warning: bits 15-9 should be 0 for compatibility with OCS\n");
+	}
+	/* 01fe0000 register destination address
+	   fe000000 should be 0 for compatibility (at least in ocs
+	   0000ffff data to be put in register destination */
+	break;
+
+    default:
+	abort ();
+    }
+
+}
+
+
+static uaecptr decode_copperlist (FILE* file, uaecptr address, int nolines)
+{
+    uae_u32 insn;
+    while (nolines-- > 0) {
+	insn = get_long (address);
+	decode_copper_insn (file, insn, address);
+	address += 4;
+    }
+    return address;
+    /* You may wonder why I don't stop this at the end of the copperlist?
+     * Well, often nice things are hidden at the end and it is debatable the actual 
+     * values that mean the end of the copperlist */
+}
+
+
 /* cheat-search by Holger Jakob */
 static void cheatsearch (char **c)
 {
@@ -271,9 +408,35 @@ static void writeintomem (char **c)
       p[addr+1] = val>>16 & 0xff;
       p[addr+2] = val>>8 & 0xff;
       p[addr+3] = val & 0xff;
-      printf("Wrote %d at %08x\n",val,addr);
+      printf ("Wrote %d at %08x\n",val,addr);
     } else
-      printf("Invalid address %08x\n",addr);
+      printf ("Invalid address %08x\n",addr);
+}
+
+static void show_exec_tasks (void)
+{
+    uaecptr execbase = get_long (4);
+    uaecptr taskready = get_long (execbase + 406);
+    uaecptr taskwait = get_long (execbase + 420);
+    uaecptr node, end;
+    printf ("execbase at 0x%08lx\n", (unsigned long) execbase);
+    printf ("Current:\n");
+    node = get_long (execbase + 276);
+    printf ("%08lx: %08lx %s\n", node, 0, get_real_address (get_long (node + 10)));
+    printf ("Ready:\n");
+    node = get_long (taskready);
+    end = get_long (taskready + 4);
+    while (node) {
+	printf ("%08lx: %08lx %s\n", node, 0, get_real_address (get_long (node + 10)));
+	node = get_long (node);
+    }
+    printf ("Waiting:\n");
+    node = get_long (taskwait);
+    end = get_long (taskwait + 4);
+    while (node) {
+	printf ("%08lx: %08lx %s\n", node, 0, get_real_address (get_long (node + 10)));
+	node = get_long (node);
+    }
 }
 
 static int trace_same_insn_count;
@@ -282,7 +445,7 @@ static struct regstruct trace_prev_regs;
 void debug (void)
 {
     char input[80];
-    uaecptr nextpc,nxdis,nxmem;
+    uaecptr nextpc,nxdis,nxmem,nxcopper;
 
     bogusframe = 1;
 
@@ -323,7 +486,7 @@ void debug (void)
     }
 
     m68k_dumpstate (stdout, &nextpc);
-    nxdis = nextpc; nxmem = 0;
+    nxdis = nextpc; nxmem = nxcopper = 0;
 
     for (;;) {
 	char cmd, *inptr;
@@ -335,79 +498,82 @@ void debug (void)
 	inptr = input;
 	cmd = next_char (&inptr);
 	switch (cmd) {
-	 case 'c': dumpcia (); dumpdisk (); dumpcustom (); break;
-	 case 'r': m68k_dumpstate (stdout, &nextpc); break;
-	 case 'M': modulesearch (); break;
-	 case 'C': cheatsearch (&inptr); break; 
-	 case 'W': writeintomem (&inptr); break;
-	 case 'S':
-	    {
-		uae_u8 *memp;
-		uae_u32 src, len;
-		char *name;
-		FILE *fp;
+	case 'c': dumpcia (); dumpdisk (); dumpcustom (); break;
+	case 'i': dump_ints (); break;
+	case 'e': dump_traps (); break;
+	case 'r': m68k_dumpstate (stdout, &nextpc); break;
+	case 'M': modulesearch (); break;
+	case 'C': cheatsearch (&inptr); break; 
+	case 'W': writeintomem (&inptr); break;
+	case 'S':
+	{
+	    uae_u8 *memp;
+	    uae_u32 src, len;
+	    char *name;
+	    FILE *fp;
 
-		if (!more_params (&inptr))
-		    goto S_argh;
+	    if (!more_params (&inptr))
+		goto S_argh;
 
-		name = inptr;
-		while (*inptr != '\0' && !isspace (*inptr))
-		    inptr++;
-		if (!isspace (*inptr))
-		    goto S_argh;
-
-		*inptr = '\0';
+	    name = inptr;
+	    while (*inptr != '\0' && !isspace (*inptr))
 		inptr++;
-		if (!more_params (&inptr))
-		    goto S_argh;
-		src = readhex (&inptr);
-		if (!more_params (&inptr))
-		    goto S_argh;
-		len = readhex (&inptr);
-		if (! valid_address (src, len)) {
-		    printf ("Invalid memory block\n");
-		    break;
-		}
-		memp = get_real_address (src);
-		fp = fopen (name, "w");
-		if (fp == NULL) {
-		    printf ("Couldn't open file\n");
-		    break;
-		}
-		if (fwrite (memp, 1, len, fp) != len) {
-		    printf ("Error writing file\n");
-		}
-		fclose (fp);
-		break;
+	    if (!isspace (*inptr))
+		goto S_argh;
 
-		S_argh:
-		printf ("S command needs more arguments!\n");
+	    *inptr = '\0';
+	    inptr++;
+	    if (!more_params (&inptr))
+		goto S_argh;
+	    src = readhex (&inptr);
+	    if (!more_params (&inptr))
+		goto S_argh;
+	    len = readhex (&inptr);
+	    if (! valid_address (src, len)) {
+		printf ("Invalid memory block\n");
 		break;
 	    }
-	 case 'd':
-	    {
-		uae_u32 daddr;
-		int count;
-
-		if (more_params(&inptr))
-		    daddr = readhex(&inptr);
-		else
-		    daddr = nxdis;
-		if (more_params(&inptr))
-		    count = readhex(&inptr);
-		else
-		    count = 10;
-		m68k_disasm (stdout, daddr, &nxdis, count);
+	    memp = get_real_address (src);
+	    fp = fopen (name, "w");
+	    if (fp == NULL) {
+		printf ("Couldn't open file\n");
+		break;
 	    }
+	    if (fwrite (memp, 1, len, fp) != len) {
+		printf ("Error writing file\n");
+	    }
+	    fclose (fp);
 	    break;
-	 case 't': set_special (SPCFLAG_BRK); return;
-	 case 'z':
+
+	  S_argh:
+	    printf ("S command needs more arguments!\n");
+	    break;
+	}
+	case 'd':
+	{
+	    uae_u32 daddr;
+	    int count;
+
+	    if (more_params(&inptr))
+		daddr = readhex(&inptr);
+	    else
+		daddr = nxdis;
+	    if (more_params(&inptr))
+		count = readhex(&inptr);
+	    else
+		count = 10;
+	    m68k_disasm (stdout, daddr, &nxdis, count);
+	}
+	break;
+	case 'T': show_exec_tasks (); break;
+	case 't': set_special (SPCFLAG_BRK); return;
+	case 'z':
 	    skipaddr = nextpc;
 	    do_skip = 1;
 	    set_special (SPCFLAG_BRK);
 	    return;
 
-	 case 'f':
+	case 'f':
 	    skipaddr = readhex (&inptr);
 	    do_skip = 1;
 	    set_special (SPCFLAG_BRK);
@@ -419,12 +585,12 @@ void debug (void)
 	    }
 	    return;
 
-	 case 'q': uae_quit();
+	case 'q': uae_quit();
 	    debugger_active = 0;
 	    debugging = 0;
 	    return;
 
-	 case 'g':
+	case 'g':
 	    if (more_params (&inptr))
 		m68k_setpc (readhex (&inptr));
 	    fill_prefetch_0 ();
@@ -432,78 +598,116 @@ void debug (void)
 	    debugging = 0;
 	    return;
 
-	 case 'H':
-	    {
-		int count;
-		int temp;
+	case 'H':
+	{
+	    int count;
+	    int temp;
 #ifdef NEED_TO_DEBUG_BADLY
-		struct regstruct save_regs = regs;
-		union flagu save_flags = regflags;
+	    struct regstruct save_regs = regs;
+	    union flagu save_flags = regflags;
 #endif
 
-		if (more_params(&inptr))
-		    count = readhex(&inptr);
-		else
-		    count = 10;
-		if (count < 0)
-		    break;
-		temp = lasthist;
-		while (count-- > 0 && temp != firsthist) {
-		    if (temp == 0) temp = MAX_HIST-1; else temp--;
-		}
-		while (temp != lasthist) {
+	    if (more_params(&inptr))
+		count = readhex(&inptr);
+	    else
+		count = 10;
+	    if (count < 0)
+		break;
+	    temp = lasthist;
+	    while (count-- > 0 && temp != firsthist) {
+		if (temp == 0) temp = MAX_HIST-1; else temp--;
+	    }
+	    while (temp != lasthist) {
 #ifdef NEED_TO_DEBUG_BADLY
-		    regs = history[temp];
-		    regflags = historyf[temp];
-		    m68k_dumpstate (NULL);
+		regs = history[temp];
+		regflags = historyf[temp];
+		m68k_dumpstate (NULL);
 #else
-		    m68k_disasm (stdout, history[temp], NULL, 1);
+		m68k_disasm (stdout, history[temp], NULL, 1);
 #endif
-		    if (++temp == MAX_HIST) temp = 0;
-		}
+		if (++temp == MAX_HIST) temp = 0;
+	    }
 #ifdef NEED_TO_DEBUG_BADLY
-		regs = save_regs;
-		regflags = save_flags;
+	    regs = save_regs;
+	    regflags = save_flags;
 #endif
+	}
+	break;
+	case 'm':
+	{
+	    uae_u32 maddr; int lines;
+	    if (more_params(&inptr))
+		maddr = readhex(&inptr);
+	    else
+		maddr = nxmem;
+	    if (more_params(&inptr))
+		lines = readhex(&inptr);
+	    else
+		lines = 16;
+	    dumpmem(maddr, &nxmem, lines);
+	}
+	break;
+	case 'o':
+	{
+	    uae_u32 maddr;
+	    int lines;
+ 
+	    if (more_params(&inptr)) {
+		maddr = readhex(&inptr);
+		if (maddr == 1 || maddr == 2)
+		    maddr = get_copper_address (maddr);		
 	    }
-	    break;
-	 case 'm':
-	    {
-		uae_u32 maddr; int lines;
-		if (more_params(&inptr))
-		    maddr = readhex(&inptr);
-		else
-		    maddr = nxmem;
-		if (more_params(&inptr))
-		    lines = readhex(&inptr);
-		else
-		    lines = 16;
-		dumpmem(maddr, &nxmem, lines);
-	    }
-	    break;
-	  case 'h':
-	  case '?':
-	    {
-		printf ("          HELP for UAE Debugger\n");
-		printf ("         -----------------------\n\n");
-		printf ("  g: <address>          Start execution at the current address or <address>\n");
-		printf ("  c:                    Dump state of the CIA and custom chips\n");
-		printf ("  r:                    Dump state of the CPU\n");
-		printf ("  m <address> <lines>:  Memory dump starting at <address>\n");
-		printf ("  d <address> <lines>:  Disassembly starting at <address>\n");
-		printf ("  t:                    Step one instruction\n");
-		printf ("  z:                    Step through one instruction - useful for JSR, DBRA etc\n");
-		printf ("  f <address>:          Step forward until PC == <address>\n");
-		printf ("  H <count>:            Show PC history <count> instructions\n");
-		printf ("  M:                    Search for *Tracker sound modules\n");
-		printf ("  C <value>:            Search for values like energy or lifes in games\n");
-		printf ("  W <address> <value>:  Write into Amiga memory\n");
-		printf ("  S <file> <addr> <n>:  Save a block of Amiga memory\n");
-		printf ("  h,?:                  Show this help page\n");
-		printf ("  q:                    Quit the emulator. You don't want to use this command.\n\n");
-	    }
-	    break;
+	    else
+		maddr = nxcopper;
 
+	    if (more_params (&inptr))
+		lines = readhex (&inptr);
+	    else
+		lines = 10;
+
+	    nxcopper = decode_copperlist (stdout, maddr, lines);
+	    break;
+	}
+	case 'O':
+	    if (more_params (&inptr)) {
+		int plane = readint (&inptr);
+		int offs = readint (&inptr);
+		if (plane >= 0 && plane < 8)
+		    bploff[plane] = offs;
+	    } else {
+		int i;
+		for (i = 0; i < 8; i++)
+		    printf ("Plane %d offset %d\n", i, bploff[i]);
+	    }
+	    break;
+	case 'h':
+	case '?':
+	{
+	    printf ("          HELP for UAE Debugger\n");
+	    printf ("         -----------------------\n\n");
+	    printf ("  g: <address>          Start execution at the current address or <address>\n");
+	    printf ("  c:                    Dump state of the CIA and custom chips\n");
+	    printf ("  r:                    Dump state of the CPU\n");
+	    printf ("  m <address> <lines>:  Memory dump starting at <address>\n");
+	    printf ("  d <address> <lines>:  Disassembly starting at <address>\n");
+	    printf ("  t:                    Step one instruction\n");
+	    printf ("  z:                    Step through one instruction - useful for JSR, DBRA etc\n");
+	    printf ("  f <address>:          Step forward until PC == <address>\n");
+	    printf ("  i:                    Dump contents of interrupt registers\n");
+	    printf ("  e:                    Dump contents of trap vectors\n");
+	    printf ("  o <1|2|addr> <lines>: View memory as Copper Instructions\n");
+	    printf ("  O:                    Display bitplane offsets\n");
+	    printf ("  O <plane> <offset>:   Offset a bitplane\n");
+	    printf ("  H <count>:            Show PC history <count> instructions\n");
+	    printf ("  M:                    Search for *Tracker sound modules\n");
+	    printf ("  C <value>:            Search for values like energy or lifes in games\n");
+	    printf ("  W <address> <value>:  Write into Amiga memory\n");
+	    printf ("  S <file> <addr> <n>:  Save a block of Amiga memory\n");
+	    printf ("  T:                    Show exec tasks and their PCs\n");
+	    printf ("  h,?:                  Show this help page\n");
+	    printf ("  q:                    Quit the emulator. You don't want to use this command.\n\n");
+	}
+	break;
 	}
     }
 }

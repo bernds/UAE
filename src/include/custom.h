@@ -12,6 +12,8 @@
 #define CSMASK_ECS_DENISE 2
 #define CSMASK_AGA 4
 
+uae_u32 get_copper_address(int copno);
+
 extern void custom_init (void);
 extern void customreset (void);
 extern int intlev (void);
@@ -23,6 +25,8 @@ extern void do_copper (void);
 extern void notice_new_xcolors (void);
 extern void notice_screen_contents_lost (void);
 extern void init_row_map (void);
+
+extern void custom_prepare_savestate (void);
 
 extern int picasso_requested_on;
 extern int picasso_on;
@@ -36,6 +40,8 @@ extern uae_u16 intena,intreq;
 
 extern int current_hpos (void);
 extern int vpos;
+
+extern int find_copper_record (uaecptr, int *, int *);
 
 extern int n_frames;
 
@@ -62,6 +68,7 @@ extern unsigned int joy0dir, joy1dir;
 extern int joy0button, joy1button;
 
 extern void INTREQ (uae_u16);
+extern void INTREQ_0 (uae_u16);
 extern uae_u16 INTREQR (void);
 
 /* maximums for statically allocated tables */
@@ -117,6 +124,8 @@ extern uae_u32 lorestab_l[256][2];
 
 /* AGA mode color lookup tables */
 extern unsigned int xredcolors[256], xgreencolors[256], xbluecolors[256];
+
+extern int bploff[8];
 
 /* get resolution from bplcon0 */
 #define GET_RES(CON0) (((CON0) & 0x8000) ? RES_HIRES : ((CON0) & 0x40) ? RES_SUPERHIRES : RES_LORES)

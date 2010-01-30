@@ -153,7 +153,6 @@ static struct bstring miscmenu[] = {
 
 static struct bstring hdmenu[] = {
 /*    { "Harddisk/CDROM emulation settings", 0 },*/
-    { "Enable/Disable _harddisks/fastmem", 'H' },
     { "_Add a mounted volume", 'A' },
     { "Add a mounted _volume r/o", 'V' },
     { "Add a hard_file", 'F' },
@@ -312,10 +311,6 @@ static void print_configuration (void)
     tui_gotoxy (OPTION_COLUMN,y++);
     tui_puts ("GAME PORT 2: "); tui_puts (gameport_state (1));
 
-    tui_gotoxy (OPTION_COLUMN,y++);
-    sprintf (tmp, "HARDDISK: (%s)", currprefs.automount_uaedev ? "enabled" : "disabled");
-    tui_puts (tmp);
-
     for (i = 0;; i++) {
 	char buf[256];
 
@@ -344,9 +339,6 @@ static void HDOptions (void)
 	    break;
 	else switch (c) {
 	 case 0:
-	    currprefs.automount_uaedev = !currprefs.automount_uaedev;
-	    break;
-	 case 1:
 	    tui_wgets (mountvol, "Enter mounted volume name", 10);
 	    if (strlen (mountvol) == 0)
 		break;
@@ -355,7 +347,7 @@ static void HDOptions (void)
 	    tui_wgets (mountdir, "Enter mounted volume path", 78);
 	    add_filesys_unit (currprefs.mountinfo, mountvol, mountdir, 0, 0, 0, 0, 0);
 	    break;
-	 case 2:
+	 case 1:
 	    tui_wgets (mountvol, "Enter mounted volume name", 10);
 	    if (strlen (mountvol) == 0)
 		break;
@@ -364,7 +356,7 @@ static void HDOptions (void)
 	    tui_wgets (mountdir, "Enter mounted volume path", 78);
 	    add_filesys_unit (currprefs.mountinfo, mountvol, mountdir, 1, 0, 0, 0, 0);
 	    break;
-	 case 3:
+	 case 2:
 	    buff = tui_filereq("*", "", "Select the hardfile to be mounted");
 	    if (buff == NULL)
 		break;
@@ -379,7 +371,7 @@ static void HDOptions (void)
 	    if (buff)
 		tui_errorbox (buff);
 	    break;
-	 case 4:
+	 case 3:
 	    tui_wgets (mountvol, "Enter number of volume to be removed (0 for UAE0:, etc.)", 2);
 	    if (kill_filesys_unit (currprefs.mountinfo, atoi (mountvol)) == -1)
 		tui_errorbox ("Volume does not exist");

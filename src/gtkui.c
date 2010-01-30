@@ -25,6 +25,7 @@
 #include "newcpu.h"
 #include "threaddep/penguin.h"
 #include "sounddep/sound.h"
+#include "savestate.h"
 
 #include <gtk/gtk.h>
 
@@ -43,7 +44,13 @@
 
 static int gui_active;
 
-static GtkWidget *pause_uae_widget;
+static GtkWidget *pause_uae_widget, *snap_save_widget, *snap_load_widget;
+
+static GtkWidget *chipsize_widget[5];
+static GtkWidget *bogosize_widget[4];
+static GtkWidget *fastsize_widget[5];
+static GtkWidget *z3size_widget[10];
+static GtkWidget *p96size_widget[7];
 
 static GtkWidget *disk_insert_widget[4], *disk_eject_widget[4], *disk_text_widget[4];
 static char *new_disk_string[4];
@@ -52,6 +59,9 @@ static GtkAdjustment *cpuspeed_adj;
 static GtkWidget *cpuspeed_widgets[4], *cpuspeed_scale;
 static GtkWidget *cpu_widget[5], *a24m_widget, *ccpu_widget;
 static GtkWidget *sound_widget[4], *sound_bits_widget[2], *sound_freq_widget[3], *sound_ch_widget[3];
+
+static GtkWidget *coll_widget[4], *cslevel_widget[4];
+static GtkWidget *fcop_widget;
 
 static GtkAdjustment *framerate_adj;
 static GtkWidget *bimm_widget, *b32_widget, *afscr_widget, *pfscr_widget;
@@ -104,29 +114,58 @@ static void enable_disk_buttons (int enable)
     }
 }
 
+static void enable_snap_buttons (int enable)
+{
+    gtk_widget_set_sensitive (snap_save_widget, enable);
+    gtk_widget_set_sensitive (snap_load_widget, enable);
+}
+
 static void set_cpu_state (void)
 {
+    int i;
+
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (a24m_widget), changed_prefs.address_space_24 != 0);
     gtk_widget_set_sensitive (a24m_widget, changed_prefs.cpu_level > 1 && changed_prefs.cpu_level < 4);
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (ccpu_widget), changed_prefs.cpu_compatible != 0);
     gtk_widget_set_sensitive (ccpu_widget, changed_prefs.cpu_level == 0);
     gtk_widget_set_sensitive (cpuspeed_scale, changed_prefs.m68k_speed > 0);
+    for (i = 0; i < 10; i++)
+	gtk_widget_set_sensitive (z3size_widget[i],
+				  changed_prefs.cpu_level >= 2 && ! changed_prefs.address_space_24);
 }
 
 static void set_cpu_widget (void)
 {
     int nr = changed_prefs.cpu_level;
+
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (cpu_widget[nr]), TRUE);
     nr = currprefs.m68k_speed + 1 < 3 ? currprefs.m68k_speed + 1 : 2;
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (cpuspeed_widgets[nr]), TRUE);
+
 }
 
 static void set_gfx_state (void)
 {
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (bimm_widget), currprefs.immediate_blits != 0);
+#if 0
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (b32_widget), currprefs.blits_32bit_enabled != 0);
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (afscr_widget), currprefs.gfx_afullscreen != 0);
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (pfscr_widget), currprefs.gfx_pfullscreen != 0);
+#endif
+}
+
+static void set_chipset_state (void)
+{
+    int t0 = 0;
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (coll_widget[currprefs.collision_level]), TRUE);
+    if (currprefs.chipset_mask & CSMASK_AGA)
+	t0 = 3;
+    else if (currprefs.chipset_mask & CSMASK_ECS_DENISE)
+	t0 = 2;
+    else if (currprefs.chipset_mask & CSMASK_ECS_AGNUS)
+	t0 = 1;
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (cslevel_widget[t0]), TRUE);
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (fcop_widget), currprefs.fast_copper != 0);
 }
 
 static void set_sound_state (void)
@@ -135,6 +174,41 @@ static void set_sound_state (void)
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_widget[currprefs.produce_sound]), 1);
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_ch_widget[stereo]), 1);
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_bits_widget[currprefs.sound_bits == 16]), 1);
+}
+
+static void set_mem_state (void)
+{
+    int t, t2;
+
+    t = 0;
+    t2 = currprefs.chipmem_size;
+    while (t < 4 && t2 > 0x80000)
+	t++, t2 >>= 1;
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (chipsize_widget[t]), 1);
+
+    t = 0;
+    t2 = currprefs.bogomem_size;
+    while (t < 3 && t2 >= 0x80000)
+	t++, t2 >>= 1;
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (bogosize_widget[t]), 1);
+
+    t = 0;
+    t2 = currprefs.fastmem_size;
+    while (t < 4 && t2 >= 0x100000)
+	t++, t2 >>= 1;
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (fastsize_widget[t]), 1);
+
+    t = 0;
+    t2 = currprefs.z3fastmem_size;
+    while (t < 9 && t2 >= 0x100000)
+	t++, t2 >>= 1;
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (z3size_widget[t]), 1);
+
+    t = 0;
+    t2 = currprefs.gfxmem_size;
+    while (t < 6 && t2 >= 0x100000)
+	t++, t2 >>= 1;
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (p96size_widget[t]), 1);
 }
 
 static void set_joy_state (void)
@@ -185,7 +259,6 @@ static int my_idle (void)
     while (comm_pipe_has_data (&to_gui_pipe)) {
 	int cmd = read_comm_pipe_int_blocking (&to_gui_pipe);
 	int n;
-	/*printf ("cmd %d\n", cmd);*/
 	switch (cmd) {
 	 case 0:
 	    n = read_comm_pipe_int_blocking (&to_gui_pipe);
@@ -198,12 +271,14 @@ static int my_idle (void)
 	    set_gfx_state ();
 	    set_joy_state ();
 	    set_sound_state ();
+	    set_mem_state ();
+	    set_chipset_state ();
 
 	    gui_active = 1;
 	    break;
 	}
     }
-    
+
     for (i = 0; i < 5; i++) {
 	unsigned int mask = 1 << i;
 	unsigned int on = leds & mask;
@@ -239,13 +314,34 @@ static void joy_changed (void)
     set_joy_state ();
 }
 
+static void coll_changed (void)
+{
+    changed_prefs.collision_level = find_current_toggle (coll_widget, 4);
+}
+
+static void cslevel_changed (void)
+{
+    int t = find_current_toggle (cslevel_widget, 4);
+    int t1 = 0;
+    if (t > 0)
+	t1 |= CSMASK_ECS_AGNUS;
+    if (t > 1)
+	t1 |= CSMASK_ECS_DENISE;
+    if (t > 2)
+	t1 |= CSMASK_AGA;
+    changed_prefs.chipset_mask = t1;
+}
+
 static void custom_changed (void)
 {
     changed_prefs.gfx_framerate = framerate_adj->value;
-    changed_prefs.blits_32bit_enabled = GTK_TOGGLE_BUTTON (b32_widget)->active;
     changed_prefs.immediate_blits = GTK_TOGGLE_BUTTON (bimm_widget)->active;
+    changed_prefs.fast_copper = GTK_TOGGLE_BUTTON (fcop_widget)->active;
+#if 0
+    changed_prefs.blits_32bit_enabled = GTK_TOGGLE_BUTTON (b32_widget)->active;
     changed_prefs.gfx_afullscreen = GTK_TOGGLE_BUTTON (afscr_widget)->active;
     changed_prefs.gfx_pfullscreen = GTK_TOGGLE_BUTTON (pfscr_widget)->active;
+#endif
 }
 
 static void cpuspeed_changed (void)
@@ -279,6 +375,42 @@ static void cputype_changed (void)
 	changed_prefs.address_space_24 = 0;
 
     set_cpu_state ();
+}
+
+static void chipsize_changed (void)
+{
+    int t = find_current_toggle (chipsize_widget, 5);
+    changed_prefs.chipmem_size = 0x80000 << t;
+    for (t = 0; t < 5; t++)
+	gtk_widget_set_sensitive (fastsize_widget[t], changed_prefs.chipmem_size <= 0x200000);
+    if (changed_prefs.chipmem_size > 0x200000) {
+	gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (fastsize_widget[0]), 1);
+	changed_prefs.fastmem_size = 0;
+    }
+}
+
+static void bogosize_changed (void)
+{
+    int t = find_current_toggle (bogosize_widget, 4);
+    changed_prefs.bogomem_size = (0x40000 << t) & ~0x40000;
+}
+
+static void fastsize_changed (void)
+{
+    int t = find_current_toggle (fastsize_widget, 5);
+    changed_prefs.fastmem_size = (0x80000 << t) & ~0x80000;
+}
+
+static void z3size_changed (void)
+{
+    int t = find_current_toggle (z3size_widget, 10);
+    changed_prefs.z3fastmem_size = (0x80000 << t) & ~0x80000;
+}
+
+static void p96size_changed (void)
+{
+    int t = find_current_toggle (p96size_widget, 7);
+    changed_prefs.gfxmem_size = (0x80000 << t) & ~0x80000;
 }
 
 static void sound_changed (void)
@@ -338,25 +470,29 @@ static void end_pause_uae (void)
 }
     
 static int filesel_active = -1;
-static GtkWidget *selector;
+static GtkWidget *disk_selector;
+
+static int snapsel_active = -1;
+static GtkWidget *snap_selector;
+static char *gui_snapname;
 
 static void did_close_insert (GtkObject *o, GtkWidget *w)
 {
     filesel_active = -1;
     enable_disk_buttons (1);
-    gtk_widget_hide (selector);
+    gtk_widget_hide (disk_selector);
 }
 
 static void did_cancel_insert (GtkObject *o)
 {
     filesel_active = -1;
     enable_disk_buttons (1);
-    gtk_widget_hide (selector);
+    gtk_widget_hide (disk_selector);
 }
 
 static void did_insert_select (GtkObject *o)
 {
-    char *s = gtk_file_selection_get_filename (GTK_FILE_SELECTION (selector));
+    char *s = gtk_file_selection_get_filename (GTK_FILE_SELECTION (disk_selector));
     printf ("%s\n", s);
     if (quit_gui)
 	return;
@@ -370,7 +506,7 @@ static void did_insert_select (GtkObject *o)
     write_comm_pipe_int (&from_gui_pipe, filesel_active, 1);
     filesel_active = -1;
     enable_disk_buttons (1);
-    gtk_widget_hide (selector);
+    gtk_widget_hide (disk_selector);
 }
 
 static char fsbuffer[100];
@@ -384,10 +520,10 @@ static void did_insert (GtkWidget *w, gpointer data)
     enable_disk_buttons (0);
 
     sprintf (fsbuffer, "Select a disk image file for DF%d", n);
-    gtk_window_set_title (GTK_WINDOW (selector), fsbuffer);
+    gtk_window_set_title (GTK_WINDOW (disk_selector), fsbuffer);
 
-    /*printf("%p\n", selector);*/
-    gtk_widget_show (selector);
+    /*printf("%p\n", disk_selector);*/
+    gtk_widget_show (disk_selector);
 }
 
 static gint driveled_event (GtkWidget *thing, GdkEvent *event)
@@ -406,6 +542,63 @@ static gint driveled_event (GtkWidget *thing, GdkEvent *event)
     }
 
   return 0;
+}
+
+static void did_close_snap (GtkObject *o, GtkWidget *w)
+{
+    snapsel_active = -1;
+    enable_snap_buttons (1);
+    gtk_widget_hide (snap_selector);
+}
+
+static void did_cancel_snap (GtkObject *o)
+{
+    snapsel_active = -1;
+    enable_snap_buttons (1);
+    gtk_widget_hide (snap_selector);
+}
+
+static void did_snap_select (GtkObject *o)
+{
+    char *s = gtk_file_selection_get_filename (GTK_FILE_SELECTION (snap_selector));
+    printf ("%s\n", s);
+    if (quit_gui)
+	return;
+
+    uae_sem_wait (&gui_sem);
+    gui_snapname = strdup (s);
+    uae_sem_post (&gui_sem);
+    write_comm_pipe_int (&from_gui_pipe, 7, 0);
+    write_comm_pipe_int (&from_gui_pipe, snapsel_active, 1);
+    snapsel_active = -1;
+    enable_snap_buttons (1);
+    gtk_widget_hide (snap_selector);
+}
+
+static void did_loadstate (void)
+{
+    if (snapsel_active != -1)
+	return;
+    snapsel_active = STATE_DORESTORE;
+    enable_snap_buttons (0);
+
+    gtk_window_set_title (GTK_WINDOW (snap_selector),
+			  "Select a state file to restore");
+
+    gtk_widget_show (snap_selector);
+}
+
+static void did_savestate (void)
+{
+    if (snapsel_active != -1)
+	return;
+    snapsel_active = STATE_DOSAVE;
+    enable_snap_buttons (0);
+
+    gtk_window_set_title (GTK_WINDOW (snap_selector),
+			  "Select a filename for the state file");
+
+    gtk_widget_show (snap_selector);
 }
 
 static void add_empty_vbox (GtkWidget *tobox)
@@ -452,22 +645,23 @@ static GtkWidget *add_labelled_widget_centered (const char *str, GtkWidget *thin
     return w;
 }
 
-static void make_radio_group (const char **labels, GtkWidget *tobox,
+static int make_radio_group (const char **labels, GtkWidget *tobox,
 			      GtkWidget **saveptr, gint t1, gint t2,
-			      void (*sigfunc) (void))
+			      void (*sigfunc) (void), int count, GSList *group)
 {
-    GtkWidget *thing = NULL;
+    int t = 0;
 
-    while (*labels) {
-	thing = gtk_radio_button_new_with_label ((thing
-						  ? gtk_radio_button_group (GTK_RADIO_BUTTON (thing))
-						  : 0),
-						 *labels++);
+    while (*labels && (count == -1 || count-- > 0)) {
+	GtkWidget *thing = gtk_radio_button_new_with_label (group, *labels++);
+	group = gtk_radio_button_group (GTK_RADIO_BUTTON (thing));
+
 	*saveptr++ = thing;
 	gtk_widget_show (thing);
 	gtk_box_pack_start (GTK_BOX (tobox), thing, t1, t2, 0);
 	gtk_signal_connect (GTK_OBJECT (thing), "clicked", (GtkSignalFunc) sigfunc, NULL);
+	t++;
     }
+    return t;
 }
 
 static GtkWidget *make_radio_group_box (const char *title, const char **labels,
@@ -481,7 +675,34 @@ static GtkWidget *make_radio_group_box (const char *title, const char **labels,
     gtk_widget_show (newbox);
     gtk_container_set_border_width (GTK_CONTAINER (newbox), 4);
     gtk_container_add (GTK_CONTAINER (frame), newbox);
-    make_radio_group (labels, newbox, saveptr, horiz, !horiz, sigfunc);
+    make_radio_group (labels, newbox, saveptr, horiz, !horiz, sigfunc, -1, NULL);
+    return frame;
+}
+
+static GtkWidget *make_radio_group_box_1 (const char *title, const char **labels,
+					  GtkWidget **saveptr, int horiz,
+					  void (*sigfunc) (void), int elts_per_column)
+{
+    GtkWidget *frame, *newbox;
+    GtkWidget *column;
+    GSList *group = 0;
+
+    frame = gtk_frame_new (title);
+    column = (horiz ? gtk_vbox_new : gtk_hbox_new) (FALSE, 4);
+    gtk_container_add (GTK_CONTAINER (frame), column);
+    gtk_widget_show (column);
+
+    while (*labels) {
+	int count;
+	newbox = (horiz ? gtk_hbox_new : gtk_vbox_new) (FALSE, 4);
+	gtk_widget_show (newbox);
+	gtk_container_set_border_width (GTK_CONTAINER (newbox), 4);
+	gtk_container_add (GTK_CONTAINER (column), newbox);
+	count = make_radio_group (labels, newbox, saveptr, horiz, !horiz, sigfunc, elts_per_column, group);
+	labels += count;
+	saveptr += count;
+	group = gtk_radio_button_group (GTK_RADIO_BUTTON (saveptr[-1]));
+    }
     return frame;
 }
 
@@ -583,6 +804,7 @@ static void make_floppy_disks (GtkWidget *vbox)
 
 static GtkWidget *make_cpu_speed_sel (void)
 {
+    int t;
     static const char *labels[] = {
 	"Optimize for host CPU speed","Approximate 68000/7MHz speed", "Adjustable",
 	NULL
@@ -594,9 +816,10 @@ static GtkWidget *make_cpu_speed_sel (void)
     gtk_widget_show (newbox);
     gtk_container_set_border_width (GTK_CONTAINER (newbox), 4);
     gtk_container_add (GTK_CONTAINER (frame), newbox);
-    make_radio_group (labels, newbox, cpuspeed_widgets, 0, 1, cpuspeed_changed);
+    make_radio_group (labels, newbox, cpuspeed_widgets, 0, 1, cpuspeed_changed, -1, NULL);
 
-    cpuspeed_adj = GTK_ADJUSTMENT (gtk_adjustment_new (currprefs.m68k_speed, 1.0, 5120.0, 1.0, 1.0, 1.0));
+    t = currprefs.m68k_speed > 0 ? currprefs.m68k_speed : 4 * CYCLE_UNIT;
+    cpuspeed_adj = GTK_ADJUSTMENT (gtk_adjustment_new (t, 1.0, 5120.0, 1.0, 1.0, 1.0));
     gtk_signal_connect (GTK_OBJECT (cpuspeed_adj), "value_changed",
 			GTK_SIGNAL_FUNC (cpuspeed_changed), NULL);
 
@@ -661,9 +884,29 @@ static void make_cpu_widgets (GtkWidget *vbox)
 
 static void make_gfx_widgets (GtkWidget *vbox)
 {
-    GtkWidget *thing;
+    GtkWidget *thing, *frame, *newbox, *hbox;
+    static const char *p96labels[] = {
+	"None", "1 MB", "2 MB", "4 MB", "8 MB", "16 MB", "32 MB", NULL
+    };
 
     add_empty_vbox (vbox);
+
+    hbox = gtk_hbox_new (FALSE, 10);
+    gtk_widget_show (hbox);
+    add_centered_to_vbox (vbox, hbox);
+
+    frame = make_radio_group_box_1 ("P96 RAM", p96labels, p96size_widget, 0, p96size_changed, 4);
+    gtk_widget_show (frame);
+    gtk_box_pack_start (GTK_BOX (hbox), frame, FALSE, TRUE, 0);
+
+    frame = gtk_frame_new ("Miscellaneous");
+    gtk_box_pack_start (GTK_BOX (hbox), frame, FALSE, FALSE, 0);
+
+    gtk_widget_show (frame);
+    newbox = gtk_vbox_new (FALSE, 4);
+    gtk_widget_show (newbox);
+    gtk_container_set_border_width (GTK_CONTAINER (newbox), 4);
+    gtk_container_add (GTK_CONTAINER (frame), newbox);
 
     framerate_adj = GTK_ADJUSTMENT (gtk_adjustment_new (currprefs.gfx_framerate, 1.0, 21.0, 1.0, 1.0, 1.0));
     gtk_signal_connect (GTK_OBJECT (framerate_adj), "value_changed",
@@ -673,24 +916,24 @@ static void make_gfx_widgets (GtkWidget *vbox)
     gtk_range_set_update_policy (GTK_RANGE (thing), GTK_UPDATE_DELAYED);
     gtk_scale_set_digits (GTK_SCALE (thing), 0);
     gtk_scale_set_value_pos (GTK_SCALE (thing), GTK_POS_RIGHT);
-    add_labelled_widget_centered ("Framerate:", thing, vbox);
+    add_labelled_widget_centered ("Framerate:", thing, newbox);
 
     b32_widget = gtk_check_button_new_with_label ("32 bit blitter");
-    add_centered_to_vbox (vbox, b32_widget);
+    add_centered_to_vbox (newbox, b32_widget);
 #if 0
     gtk_widget_show (b32_widget);
 #endif
     bimm_widget = gtk_check_button_new_with_label ("Immediate blits");
-    add_centered_to_vbox (vbox, bimm_widget);
+    add_centered_to_vbox (newbox, bimm_widget);
     gtk_widget_show (bimm_widget);
 
     afscr_widget = gtk_check_button_new_with_label ("Amiga modes fullscreen");
-    add_centered_to_vbox (vbox, afscr_widget);
+    add_centered_to_vbox (newbox, afscr_widget);
 #if 0
     gtk_widget_show (afscr_widget);
 #endif
     pfscr_widget = gtk_check_button_new_with_label ("Picasso modes fullscreen");
-    add_centered_to_vbox (vbox, pfscr_widget);
+    add_centered_to_vbox (newbox, pfscr_widget);
 #if 0
     gtk_widget_show (pfscr_widget);
 #endif
@@ -698,12 +941,49 @@ static void make_gfx_widgets (GtkWidget *vbox)
 
     gtk_signal_connect (GTK_OBJECT (bimm_widget), "clicked",
 			(GtkSignalFunc) custom_changed, NULL);
+#if 0
     gtk_signal_connect (GTK_OBJECT (b32_widget), "clicked",
 			(GtkSignalFunc) custom_changed, NULL);
     gtk_signal_connect (GTK_OBJECT (afscr_widget), "clicked",
 			(GtkSignalFunc) custom_changed, NULL);
     gtk_signal_connect (GTK_OBJECT (pfscr_widget), "clicked",
 			(GtkSignalFunc) custom_changed, NULL);
+#endif
+}
+
+static void make_chipset_widgets (GtkWidget *vbox)
+{
+    GtkWidget *frame, *newbox, *hbox;
+    static const char *colllabels[] = {
+	"None (fastest)", "Sprites only", "Sprites & playfields", "Full (very slow)",
+	NULL
+    };
+    static const char *cslevellabels[] = {
+	"OCS", "ECS Agnus", "Full ECS", "AGA", NULL
+    };
+
+    add_empty_vbox (vbox);
+
+    hbox = gtk_hbox_new (FALSE, 10);
+    gtk_widget_show (hbox);
+    add_centered_to_vbox (vbox, hbox);
+
+    newbox = make_radio_group_box ("Sprite collisions", colllabels, coll_widget, 0, coll_changed);
+    gtk_widget_show (newbox);
+    gtk_box_pack_start (GTK_BOX (hbox), newbox, FALSE, TRUE, 0);
+
+    newbox = make_radio_group_box ("Chipset", cslevellabels, cslevel_widget, 0, cslevel_changed);
+    gtk_widget_show (newbox);
+    gtk_box_pack_start (GTK_BOX (hbox), newbox, FALSE, TRUE, 0);
+
+    fcop_widget = gtk_check_button_new_with_label ("Enable copper speedup code");
+    add_centered_to_vbox (vbox, fcop_widget);
+    gtk_widget_show (fcop_widget);
+
+    gtk_signal_connect (GTK_OBJECT (fcop_widget), "clicked",
+			(GtkSignalFunc) custom_changed, NULL);
+
+    add_empty_vbox (vbox);
 }
 
 static void make_sound_widgets (GtkWidget *vbox)
@@ -739,6 +1019,53 @@ static void make_sound_widgets (GtkWidget *vbox)
     gtk_box_pack_start (GTK_BOX (hbox), newbox, FALSE, TRUE, 0);
 
     add_empty_vbox (vbox);
+}
+
+static void make_mem_widgets (GtkWidget *vbox)
+{
+    GtkWidget *hbox = gtk_hbox_new (FALSE, 10);
+    GtkWidget *label, *frame;
+
+    static const char *chiplabels[] = {
+	"512 KB", "1 MB", "2 MB", "4 MB", "8 MB", NULL
+    };
+    static const char *bogolabels[] = {
+	"None", "512 KB", "1 MB", "1.8 MB", NULL
+    };
+    static const char *fastlabels[] = {
+	"None", "1 MB", "2 MB", "4 MB", "8 MB", NULL
+    };
+    static const char *z3labels[] = {
+	"None", "1 MB", "2 MB", "4 MB", "8 MB",
+	"16 MB", "32 MB", "64 MB", "128 MB", "256 MB",
+	NULL
+    };
+
+    add_empty_vbox (vbox);
+    gtk_widget_show (hbox);
+    add_centered_to_vbox (vbox, hbox);
+
+    add_empty_vbox (vbox);
+
+    label = gtk_label_new ("These settings take effect after the next reset.");
+    gtk_widget_show (label);
+    add_centered_to_vbox (vbox, label);
+
+    frame = make_radio_group_box ("Chip Mem", chiplabels, chipsize_widget, 0, chipsize_changed);
+    gtk_widget_show (frame);
+    gtk_box_pack_start (GTK_BOX (hbox), frame, FALSE, TRUE, 0);
+
+    frame = make_radio_group_box ("Slow Mem", bogolabels, bogosize_widget, 0, bogosize_changed);
+    gtk_widget_show (frame);
+    gtk_box_pack_start (GTK_BOX (hbox), frame, FALSE, TRUE, 0);
+
+    frame = make_radio_group_box ("Fast Mem", fastlabels, fastsize_widget, 0, fastsize_changed);
+    gtk_widget_show (frame);
+    gtk_box_pack_start (GTK_BOX (hbox), frame, FALSE, TRUE, 0);
+
+    frame = make_radio_group_box_1 ("Z3 Mem", z3labels, z3size_widget, 0, z3size_changed, 5);
+    gtk_widget_show (frame);
+    gtk_box_pack_start (GTK_BOX (hbox), frame, FALSE, TRUE, 0);
 }
 
 static void make_joy_widgets (GtkWidget *dvbox)
@@ -794,9 +1121,12 @@ static void *gtk_penguin (void *dummy)
 	const char *title;
 	void (*createfunc)(GtkWidget *);
     } pages[] = {
+	/* ??? If this isn't the first page, there are errors in draw_led.  */
 	{ "Floppy disks", make_floppy_disks },
+	{ "Memory", make_mem_widgets },
 	{ "CPU emulation", make_cpu_widgets },
 	{ "Graphics", make_gfx_widgets },
+	{ "Chipset", make_chipset_widgets },
 	{ "Sound", make_sound_widgets },
 	{ "Game ports", make_joy_widgets }
     };
@@ -832,6 +1162,13 @@ static void *gtk_penguin (void *dummy)
     gtk_widget_show (thing);
     gtk_box_pack_start (GTK_BOX (hbox), thing, FALSE, TRUE, 0);
 
+    /* More buttons */
+    buttonbox = gtk_hbox_new (TRUE, 4);
+    gtk_widget_show (buttonbox);
+    gtk_box_pack_start (GTK_BOX (vbox), buttonbox, TRUE, TRUE, 0);
+    snap_save_widget = make_button ("Save state", buttonbox, did_savestate);
+    snap_load_widget = make_button ("Load state", buttonbox, did_loadstate);
+
     /* Place a separator below those buttons.  */
     thing = gtk_hseparator_new ();
     gtk_box_pack_start (GTK_BOX (vbox), thing, FALSE, TRUE, 0);
@@ -856,17 +1193,29 @@ static void *gtk_penguin (void *dummy)
     gtk_widget_show (window);
 
     /* We're going to need that later.  */
-    selector = gtk_file_selection_new ("");
-    gtk_signal_connect (GTK_OBJECT (selector), "destroy",
-			(GtkSignalFunc) did_close_insert, selector);
+    disk_selector = gtk_file_selection_new ("");
+    gtk_signal_connect (GTK_OBJECT (disk_selector), "destroy",
+			(GtkSignalFunc) did_close_insert, disk_selector);
 
-    gtk_signal_connect_object (GTK_OBJECT (GTK_FILE_SELECTION (selector)->ok_button),
+    gtk_signal_connect_object (GTK_OBJECT (GTK_FILE_SELECTION (disk_selector)->ok_button),
 			       "clicked", (GtkSignalFunc) did_insert_select,
-			       GTK_OBJECT (selector));
-    gtk_signal_connect_object (GTK_OBJECT (GTK_FILE_SELECTION (selector)->cancel_button),
+			       GTK_OBJECT (disk_selector));
+    gtk_signal_connect_object (GTK_OBJECT (GTK_FILE_SELECTION (disk_selector)->cancel_button),
 			       "clicked", (GtkSignalFunc) did_cancel_insert,
-			       GTK_OBJECT (selector));
+			       GTK_OBJECT (disk_selector));
     filesel_active = -1;
+
+    snap_selector = gtk_file_selection_new ("");
+    gtk_signal_connect (GTK_OBJECT (snap_selector), "destroy",
+			(GtkSignalFunc) did_close_snap, snap_selector);
+
+    gtk_signal_connect_object (GTK_OBJECT (GTK_FILE_SELECTION (snap_selector)->ok_button),
+			       "clicked", (GtkSignalFunc) did_snap_select,
+			       GTK_OBJECT (snap_selector));
+    gtk_signal_connect_object (GTK_OBJECT (GTK_FILE_SELECTION (snap_selector)->cancel_button),
+			       "clicked", (GtkSignalFunc) did_cancel_snap,
+			       GTK_OBJECT (snap_selector));
+    snapsel_active = -1;
 
     gtk_timeout_add (1000, (GtkFunction)my_idle, 0);
     gtk_main ();
@@ -942,7 +1291,7 @@ void gui_filename(int num, const char *name)
 /*    gui_update ();*/
 }
 
-void gui_handle_events(void)
+void gui_handle_events (void)
 {
     int pause_uae = FALSE;
     
@@ -983,6 +1332,13 @@ void gui_handle_events(void)
              case 6:
                 pause_uae = FALSE;
                 break;
+	    case 7:
+		printf ("STATESAVE\n");
+                savestate_state = read_comm_pipe_int_blocking (&from_gui_pipe);
+                uae_sem_wait (&gui_sem);
+                savestate_filename = gui_snapname;
+                uae_sem_post (&gui_sem);
+		break;
             }
         }
     } while (pause_uae);

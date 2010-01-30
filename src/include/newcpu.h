@@ -58,6 +58,17 @@ extern unsigned long op_illg (uae_u32) REGPARAM;
 
 typedef char flagtype;
 
+/* You can set this to long double to be more accurate. However, the
+   resulting alignment issues will cost a lot of performance in some
+   apps */
+#define USE_LONG_DOUBLE 0
+
+#if USE_LONG_DOUBLE
+typedef long double fptype;
+#else
+typedef double fptype;
+#endif
+
 extern struct regstruct
 {
     uae_u32 regs[16];
@@ -77,8 +88,11 @@ extern struct regstruct
 
     uae_u32 vbr,sfc,dfc;
 
-    double fp[8];
+    fptype fp[8];
+    fptype fp_result;
+
     uae_u32 fpcr,fpsr,fpiar;
+    uae_u32 fpsr_highbyte;
 
     uae_u32 spcflags;
     uae_u32 kick_mask;
@@ -270,3 +284,7 @@ extern struct cputbl op_smalltbl_5_ff[];
 
 extern cpuop_func *cpufunctbl[65536] ASM_SYM_FOR_FUNC ("cpufunctbl");
 
+#ifdef JIT
+#else
+#define flush_icache(X) do {} while (0)
+#endif

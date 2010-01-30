@@ -1,4 +1,4 @@
-This is version 0.8.16 of UAE, the Un*x Amiga Emulator.
+This is version 0.8.17 of UAE, the Un*x Amiga Emulator.
 
 Versions numbered 0.8.x are beta versions, to be used for development only.
 If you are only a user of UAE, you are better off using the latest 0.7.x
@@ -156,13 +156,18 @@ autoconfig=bool [default=yes]
 kbd_lang=lang [default=us]
   Set the keyboard language. Currently, the following values can be used: "us"
   for U.S. keyboard (default), "se" for swedish, "fr" for french, "it" for
-  italian, "es" for spanish, or "de" for german keyboard.
+  italian, "es" for spanish, "dk" for danish, or "de" for german keyboard.
   This setting only affects the X11 version.
 floppy0=file [default=df0.adf]
   Try to use the specified file as diskfile for drive 0 instead of df0.adf.
   The options floppy1, floppy2, and floppy3 also exist.
 kickstart_rom_file=file [default=kick.rom]
   Use the specified file instead of kick.rom as Kickstart image.
+kickstart_key_file=file [default=none]
+  For some strange licensing reasons, Cloanto had to encrypt the ROM images
+  they ship with the Amiga Forever package.  This option lets you select the
+  key file; this is only necessary if you are using one of the ROMs from
+  Amiga Forever.
 joyport0=mode [default=mouse]
   Specify how to emulate joystick port 0. You can use "mouse", "joy0", or
   "joy1" to use the corresponding input devices of your machine, or you can
@@ -188,9 +193,13 @@ immediate_blits=bool [default=no]
   If enabled, all blits will finish immediately, which can be nice for speed,
   but may cause incompatibilities.
 collision_level=level [default=sprites]
-  This can have a value of "sprites" or "full".  If set to "full", the emulator
-  will compute collisions between sprites and the background.  This is slow, and
-  used only rarely, so it's turned off by default.
+  This can have a value of "none", "sprites", "playfields", or "full".  If
+  set to "sprites", the emulator will only compute collisions between sprites.
+  If set to "playfields", it will additionally compute collisions between
+  sprites and the background.  This is much slower and used only rarely.  When
+  "full" level is selected, collisions of the background with itself are also
+  computed.  This is also used very rarely, and makes the emulator even slower.
+  Using "sprites" or "none" will almost always be enough.
 cpu_speed=speed [default=4]
   This can have a value of "real", "max", or an integer between 1 and 20.
   "real" will try to give the CPU emulation exactly as many cycles, relative
@@ -581,10 +590,32 @@ After that is complete, reboot, and you should be able to select the new
 modes from the ScreenModes program.
 
 
+Saving and restoring snapshots
+==============================
+
+From version 0.8.17 onwards, the emulator has the capability to save the
+current state of the emulation into a "snapshot" file that can be restored
+later on.  This functionality is available through the GUI on some ports.
+It is mainly useful for computer games that either have no save game
+feature, or whose save game feature does not work on UAE (often, games try
+to save in a non-standard disk format, this can be tricky to emulate).
+
+There are several restrictions that apply to the save state feature:
+
+ - It is at the moment experimental.  It is not guaranteed that the
+   emulator can correctly restore every snapshot.  It is not guaranteed
+   that future versions of the emulator will be able to restore snapshots
+   saved by this version.
+ - The state of the harddisk emulation cannot be saved.  This makes it
+   essentially useless for applications, but remember it's designed for
+   games.  Be careful with games that have been installed to the harddisk.
+ - Neither ROM contents nor floppy disk contents are saved right now.
+
+
 UAE SCSI device
 ===============
 
-To enable SCSI support, use --enable-scsi-device when running configure.
+To enable SCSI support, use --enable-scsi-device when running configure. 
 The emulator provides a uaescsi.device. This device only supports
 direct SCSI, which is sufficient to run applications like MakeCD. The
 device does not support reading or writing with the normal Exec commands,

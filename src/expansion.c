@@ -18,6 +18,7 @@
 #include "memory.h"
 #include "autoconf.h"
 #include "picasso96.h"
+#include "savestate.h"
 
 #define MAX_EXPANSION_BOARDS	8
 
@@ -179,7 +180,7 @@ static void expamem_bput (uaecptr, uae_u32) REGPARAM;
 addrbank expamem_bank = {
     expamem_lget, expamem_wget, expamem_bget,
     expamem_lput, expamem_wput, expamem_bput,
-    default_xlate, default_check
+    default_xlate, default_check, NULL
 };
 
 static uae_u32 REGPARAM2 expamem_lget (uaecptr addr)
@@ -378,7 +379,7 @@ static uae_u8 REGPARAM2 *fastmem_xlate (uaecptr addr)
 addrbank fastmem_bank = {
     fastmem_lget, fastmem_wget, fastmem_bget,
     fastmem_lput, fastmem_wput, fastmem_bput,
-    fastmem_xlate, fastmem_check
+    fastmem_xlate, fastmem_check, NULL
 };
 
 
@@ -395,7 +396,7 @@ static void filesys_wput (uaecptr, uae_u32) REGPARAM;
 static void filesys_bput (uaecptr, uae_u32) REGPARAM;
 
 static uae_u32 filesys_start; /* Determined by the OS */
-uae_u8 filesysory[65536];
+uae_u8 *filesysory;
 
 uae_u32 REGPARAM2 filesys_lget (uaecptr addr)
 {
@@ -451,7 +452,7 @@ static void REGPARAM2 filesys_bput (uaecptr addr, uae_u32 b)
 addrbank filesys_bank = {
     filesys_lget, filesys_wget, filesys_bget,
     filesys_lput, filesys_wput, filesys_bput,
-    default_xlate, default_check
+    default_xlate, default_check, NULL
 };
 
 /*
@@ -540,7 +541,7 @@ static uae_u8 REGPARAM2 *z3fastmem_xlate (uaecptr addr)
 addrbank z3fastmem_bank = {
     z3fastmem_lget, z3fastmem_wget, z3fastmem_bget,
     z3fastmem_lput, z3fastmem_wput, z3fastmem_bput,
-    z3fastmem_xlate, z3fastmem_check
+    z3fastmem_xlate, z3fastmem_check, NULL
 };
 
 /* Z3-based UAEGFX-card */
@@ -557,7 +558,7 @@ uae_u32 gfxmem_start;
 static void expamem_map_fastcard (void)
 {
     fastmem_start = ((expamem_hi | (expamem_lo >> 4)) << 16);
-    map_banks (&fastmem_bank, fastmem_start >> 16, allocated_fastmem >> 16);
+    map_banks (&fastmem_bank, fastmem_start >> 16, allocated_fastmem >> 16, allocated_fastmem);
     write_log ("Fastcard: mapped @$%lx: %dMB fast memory\n", fastmem_start, allocated_fastmem >> 20);
 }
 
@@ -602,7 +603,7 @@ static void expamem_map_filesys (void)
     uaecptr a;
 
     filesys_start = ((expamem_hi | (expamem_lo >> 4)) << 16);
-    map_banks (&filesys_bank, filesys_start >> 16, 1);
+    map_banks (&filesys_bank, filesys_start >> 16, 1, 0);
     write_log ("Filesystem: mapped memory @$%lx.\n", filesys_start);
     /* 68k code needs to know this. */
     a = here ();
@@ -661,7 +662,8 @@ static void expamem_init_filesys (void)
 static void expamem_map_z3fastmem (void)
 {
     z3fastmem_start = ((expamem_hi | (expamem_lo >> 4)) << 16);
-    map_banks (&z3fastmem_bank, z3fastmem_start >> 16, currprefs.z3fastmem_size >> 16);
+    map_banks (&z3fastmem_bank, z3fastmem_start >> 16, currprefs.z3fastmem_size >> 16,
+	       allocated_z3fastmem);
 
     write_log ("Fastmem (32bit): mapped @$%lx: %d MB Zorro III fast memory \n",
 	       z3fastmem_start, allocated_z3fastmem / 0x100000);
@@ -709,7 +711,7 @@ static void expamem_init_z3fastmem (void)
 static void expamem_map_gfxcard (void)
 {
     gfxmem_start = ((expamem_hi | (expamem_lo >> 4)) << 16);
-    map_banks (&gfxmem_bank, gfxmem_start >> 16, allocated_gfxmem >> 16);
+    map_banks (&gfxmem_bank, gfxmem_start >> 16, allocated_gfxmem >> 16, allocated_gfxmem);
     write_log ("UAEGFX-card: mapped @$%lx \n", gfxmem_start);
 }
 
@@ -750,10 +752,100 @@ static void expamem_init_gfxcard (void)
 }
 #endif
 
-void expamem_reset()
+static long fast_filepos, z3_filepos;
+
+static void allocate_expamem (void)
 {
+    currprefs.fastmem_size = changed_prefs.fastmem_size;
+    currprefs.z3fastmem_size = changed_prefs.z3fastmem_size;
+    currprefs.gfxmem_size = changed_prefs.gfxmem_size;
+
+    if (allocated_fastmem != currprefs.fastmem_size) {
+	if (fastmemory)
+	    free (fastmemory);
+	fastmemory = 0;
+	allocated_fastmem = currprefs.fastmem_size;
+	fastmem_mask = allocated_fastmem - 1;
+
+	if (allocated_fastmem) {
+	    fastmemory = mapped_malloc (allocated_fastmem, "fast");
+	    if (fastmemory == 0) {
+		write_log ("Out of memory for fastmem card.\n");
+		allocated_fastmem = 0;
+	    }
+	}
+    }
+    if (allocated_z3fastmem != currprefs.z3fastmem_size) {
+	if (z3fastmem)
+	    free (z3fastmem);
+	z3fastmem = 0;
+
+	allocated_z3fastmem = currprefs.z3fastmem_size;
+	z3fastmem_mask = allocated_z3fastmem - 1;
+
+	if (allocated_z3fastmem) {
+	    z3fastmem = mapped_malloc (allocated_z3fastmem, "z3");
+	    if (z3fastmem == 0) {
+		write_log ("Out of memory for 32 bit fast memory.\n");
+		allocated_z3fastmem = 0;
+	    }
+	}
+    }
+    if (allocated_gfxmem != currprefs.gfxmem_size) {
+	if (gfxmemory)
+	    free (gfxmemory);
+	gfxmemory = 0;
+
+	allocated_gfxmem = currprefs.gfxmem_size;
+	gfxmem_mask = allocated_gfxmem - 1;
+
+	if (allocated_gfxmem) {
+	    gfxmemory = mapped_malloc (allocated_gfxmem, "gfx");
+	    if (gfxmemory == 0) {
+		write_log ("Out of memory for graphics card memory\n");
+		allocated_gfxmem = 0;
+	    }
+	}
+    }
+
+    z3fastmem_bank.baseaddr = z3fastmem;
+    fastmem_bank.baseaddr = fastmemory;
+
+    if (savestate_state == STATE_RESTORE) {
+	if (allocated_fastmem > 0) {
+	    fseek (savestate_file, fast_filepos, SEEK_SET);
+	    fread (fastmemory, 1, allocated_fastmem, savestate_file);
+	    map_banks (&fastmem_bank, fastmem_start >> 16, currprefs.fastmem_size >> 16,
+		       allocated_fastmem);
+	}
+	if (allocated_z3fastmem > 0) {
+	    fseek (savestate_file, z3_filepos, SEEK_SET);
+	    fread (z3fastmem, 1, allocated_z3fastmem, savestate_file);
+	    map_banks (&z3fastmem_bank, z3fastmem_start >> 16, currprefs.z3fastmem_size >> 16,
+		       allocated_z3fastmem);
+	}
+    }
+}
+
+void expamem_reset (void)
+{
+    int do_mount = 1;
     int cardno = 0;
     ecard = 0;
+
+    allocate_expamem ();
+
+    /* check if Kickstart version is below 1.3 */
+    if (! ersatzkickfile
+	&& (/* Kickstart 1.0 & 1.1! */
+	    get_word (0xF8000C) == 0xFFFF
+	    /* Kickstart < 1.3 */
+	    || get_word (0xF8000C) < 34))
+    {
+	/* warn user */
+	write_log ("Kickstart version is below 1.3!  Disabling autoconfig devices.\n");
+	do_mount = 0;
+    }
 
     if (fastmemory != NULL) {
 	card_init[cardno] = expamem_init_fastcard;
@@ -769,7 +861,7 @@ void expamem_reset()
 	card_map[cardno++] = expamem_map_gfxcard;
     }
 #endif
-    if (currprefs.automount_uaedev && !ersatzkickfile) {
+    if (do_mount && ! ersatzkickfile) {
 	card_init[cardno] = expamem_init_filesys;
 	card_map[cardno++] = expamem_map_filesys;
     }
@@ -783,38 +875,62 @@ void expamem_reset()
 
 void expansion_init (void)
 {
-    allocated_fastmem = currprefs.fastmem_size;
-    allocated_z3fastmem = currprefs.z3fastmem_size;
-    allocated_gfxmem = currprefs.gfxmem_size;
+    z3fastmem = 0;
+    gfxmemory = 0;
+    fastmemory = 0;
+    allocated_z3fastmem = 0;
+    allocated_gfxmem = 0;
+    allocated_fastmem = 0;
 
-    if (allocated_fastmem > 0) {
-	do {
-	    fastmem_mask = allocated_fastmem - 1;
-	    fastmemory = (uae_u8 *)malloc (allocated_fastmem);
-	    if (fastmemory == 0)
-		allocated_fastmem >>= 1;
-	} while (fastmemory == 0 && allocated_fastmem >= 1024 * 1024);
+    allocate_expamem ();
 
-	if (fastmemory == 0) {
-	    write_log ("Out of memory for fastmem card.\n");
-	    allocated_fastmem = 0;
-	}
+    filesysory = (uae_u8 *) mapped_malloc (0x10000, "filesys");
+    if (!filesysory) {
+	write_log ("virtual memory exhausted (filesysory)!\n");
+	exit (0);
     }
-    if (allocated_z3fastmem > 0) {
-	z3fastmem_mask = allocated_z3fastmem - 1;
-	z3fastmem = (uae_u8 *)malloc (allocated_z3fastmem);
-	if (z3fastmem == 0) {
-	    write_log ("Out of memory for 32 bit fast memory.\n");
-	    allocated_z3fastmem = 0;
-	}
-    }
-    if (allocated_gfxmem > 0) {
-	gfxmem_mask = allocated_gfxmem - 1;
-	gfxmemory = (uae_u8 *)malloc (allocated_gfxmem);
-	if (gfxmemory == 0) {
-	    write_log ("Out of memory for graphics card memory\n");
-	    allocated_gfxmem = 0;
-	}
-    }
+    filesys_bank.baseaddr = (uae_u8*)filesysory;
+
 }
 
+/* State save/restore code.  */
+
+uae_u8 *save_fram (int *len)
+{
+    *len = allocated_fastmem;
+    return fastmemory;
+}
+
+uae_u8 *save_zram (int *len)
+{
+    *len = allocated_z3fastmem;
+    return z3fastmem;
+}
+
+void restore_fram (int len, long filepos)
+{
+    fast_filepos = filepos;
+    changed_prefs.fastmem_size = len;
+}
+
+void restore_zram (int len, long filepos)
+{
+    z3_filepos = filepos;
+    changed_prefs.z3fastmem_size = len;
+}
+
+uae_u8 *save_expansion (int *len)
+{
+    static uae_u8 t[20], *dst = t;
+    save_u32 (fastmem_start);
+    save_u32 (z3fastmem_start);
+    *len = 8;
+    return dst;
+}
+
+uae_u8 *restore_expansion (uae_u8 *src)
+{
+    fastmem_start = restore_u32 ();
+    z3fastmem_start = restore_u32 ();
+    return src;
+}

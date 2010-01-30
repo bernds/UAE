@@ -19,7 +19,7 @@
 #include "blitter.h"
 #include "blit.h"
 
-uae_u16 bltsize, oldvblts;
+uae_u16 oldvblts;
 uae_u16 bltcon0,bltcon1;
 uae_u32 bltapt,bltbpt,bltcpt,bltdpt;
 

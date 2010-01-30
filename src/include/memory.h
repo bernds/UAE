@@ -6,14 +6,7 @@
   * Copyright 1995 Bernd Schmidt
   */
 
-/* Enabling this adds one additional native memory reference per 68k memory
- * access, but saves one shift (on the x86). Enabling this is probably
- * better for the cache. My favourite benchmark (PP2) doesn't show a
- * difference, so I leave this enabled. */
-
-#if 1 || defined SAVE_MEMORY
-#define SAVE_MEMORY_BANKS
-#endif
+extern void memory_reset (void);
 
 extern int special_mem;
 #define S_READ 1
@@ -54,6 +47,8 @@ extern uae_u32 allocated_a3000mem;
 
 extern int ersatzkickfile;
 
+extern uae_u8* baseaddr[];
+
 typedef struct {
     /* These ones should be self-explanatory... */
     mem_get_func lget, wget, bget;
@@ -68,9 +63,15 @@ typedef struct {
      * that the pointer points to an area of at least the specified size.
      * This is used for example to translate bitplane pointers in custom.c */
     check_func check;
+    /* For those banks that refer to real memory, we can save the whole trouble
+       of going through function calls, and instead simply grab the memory
+       ourselves. This holds the memory address where the start of memory is
+       for this particular bank. */
+    uae_u8 *baseaddr;
 } addrbank;
 
-extern uae_u8 filesysory[65536];
+extern uae_u8 *filesysory;
+extern uae_u8 *rtarea;
 
 extern addrbank chipmem_bank;
 extern addrbank kickmem_bank;
@@ -99,18 +100,19 @@ extern uae_u8 *default_xlate(uaecptr addr) REGPARAM;
 
 #define bankindex(addr) (((uaecptr)(addr)) >> 16)
 
-#ifdef SAVE_MEMORY_BANKS
 extern addrbank *mem_banks[65536];
+extern uae_u8 *baseaddr[65536];
 #define get_mem_bank(addr) (*mem_banks[bankindex(addr)])
-#define put_mem_bank(addr, b) (mem_banks[bankindex(addr)] = (b))
-#else
-extern addrbank mem_banks[65536];
-#define get_mem_bank(addr) (mem_banks[bankindex(addr)])
-#define put_mem_bank(addr, b) (mem_banks[bankindex(addr)] = *(b))
-#endif
+#define put_mem_bank(addr, b, realstart) do { \
+    (mem_banks[bankindex(addr)] = (b)); \
+    if ((b)->baseaddr) \
+        baseaddr[bankindex(addr)] = (b)->baseaddr - (realstart); \
+    else \
+        baseaddr[bankindex(addr)] = (uae_u8*)(((long)b)+1); \
+} while (0)
 
 extern void memory_init(void);
-extern void map_banks(addrbank *bank, int first, int count);
+extern void map_banks(addrbank *bank, int first, int count, int realsize);
 
 #ifndef NO_INLINE_MEMORY_ACCESS
 
@@ -187,3 +189,20 @@ extern uae_u32 chipmem_bget (uaecptr) REGPARAM;
 extern void chipmem_lput (uaecptr, uae_u32) REGPARAM;
 extern void chipmem_wput (uaecptr, uae_u32) REGPARAM;
 extern void chipmem_bput (uaecptr, uae_u32) REGPARAM;
+
+#ifdef NATMEM_OFFSET
+
+typedef struct shmpiece_reg {
+    uae_u8 *native_address;
+    int id;
+    uae_u32 size;
+    struct shmpiece_reg *next;
+    struct shmpiece_reg *prev;
+} shmpiece;
+
+extern shmpiece *shm_start;
+extern int canbang;
+
+#endif
+
+extern uae_u8 *mapped_malloc (size_t, char *);
