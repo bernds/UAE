@@ -87,8 +87,8 @@ FSIN_nextsub:
 	move.l a3,a0
 	bsr.w make_dev
 	move.l (sp)+,a3
-	cmp.l #-2,d3
-	beq.b FSIN_nomoresub
+	tst.l d3
+	bmi.b FSIN_nomoresub
 	swap d6
 	addq.w #1,d6
 	swap d6
