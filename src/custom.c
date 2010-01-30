@@ -2056,13 +2056,22 @@ static uae_u32 mousehack_helper (void)
 
 #ifdef PICASSO96
     if (picasso_on) {
-	mousexpos = lastmx - picasso96_state.XOffset;
-	mouseypos = lastmy - picasso96_state.YOffset;
+	picasso_clip_mouse (&lastmx, &lastmy);
+	mousexpos = lastmx;
+	mouseypos = lastmy;
     } else
 #endif
     {
+	/* @@@ This isn't completely right, it doesn't deal with virtual
+	   screen sizes larger than physical very well.  */
 	if (lastmy >= gfxvidinfo.height)
 	    lastmy = gfxvidinfo.height - 1;
+	if (lastmy < 0)
+	    lastmy = 0;
+	if (lastmx < 0)
+	    lastmx = 0;
+	if (lastmx >= gfxvidinfo.width)
+	    lastmx = gfxvidinfo.width - 1;
 	mouseypos = coord_native_to_amiga_y (lastmy) << 1;
 	mousexpos = coord_native_to_amiga_x (lastmx);
     }
@@ -2331,22 +2340,10 @@ static void DMACON (int hpos, uae_u16 v)
 	    if (cdp->dmaen == chan_ena)
 		continue;
 	    cdp->dmaen = chan_ena;
-	    if (cdp->dmaen) {
-		if (cdp->state == 0) {
-		    cdp->state = 1;
-		    cdp->pt = cdp->lc;
-		    cdp->wper = cdp->per;
-		    cdp->wlen = cdp->len;
-		    cdp->data_written = 2;
-		    cdp->evtime = eventtab[ev_hsync].evtime - get_cycles ();
-		}
-	    } else {
-		if (cdp->state == 1 || cdp->state == 5) {
-		    cdp->state = 0;
-		    cdp->last_sample = 0;
-		    cdp->current_sample = 0;
-		}
-	    }
+	    if (cdp->dmaen)
+		audio_channel_enable_dma (cdp);
+	    else
+		audio_channel_disable_dma (cdp);
 	}
 	schedule_audio ();
     }
@@ -3765,12 +3762,12 @@ static void hsync_handler (void)
 	update_audio ();
 
 	/* Sound data is fetched at the beginning of each line */
-	for (nr = 0; nr < 6; nr++) {
+	for (nr = 0; nr < 4; nr++) {
 	    struct audio_channel_data *cdp = audio_channel + nr;
 
 	    if (cdp->data_written == 2) {
 		cdp->data_written = 0;
-		cdp->nextdat = chipmem_wget(cdp->pt);
+		cdp->nextdat = chipmem_wget (cdp->pt);
 		cdp->pt += 2;
 		if (cdp->state == 2 || cdp->state == 3) {
 		    if (cdp->wlen == 1) {
@@ -4024,7 +4021,7 @@ void customreset (void)
 	v = bplcon0;
 	BPLCON0 (0, 0);
 	BPLCON0 (0, v);
-	FMODE (v);
+	FMODE (fmode);
 	if (!(currprefs.chipset_mask & CSMASK_AGA)) {
 	    for(i = 0 ; i < 32 ; i++)  {
 		vv = current_colors.color_regs_ecs[i];
@@ -4044,6 +4041,8 @@ void customreset (void)
 		current_colors.acolors[i] = CONVERT_RGB(vv);
 	    }
 	}
+	CLXCON (clxcon);
+	CLXCON2 (clxcon2);
 	calcdiw ();
 	write_log ("State restored\n");
 	dumpcustom ();
@@ -4336,6 +4335,7 @@ void REGPARAM2 custom_wput_1 (int hpos, uaecptr addr, uae_u32 value)
 
      case 0x108: BPL1MOD (hpos, value); break;
      case 0x10A: BPL2MOD (hpos, value); break;
+     case 0x10E: CLXCON2 (value); break;
 
      case 0x110: BPL1DAT (hpos, value); break;
      case 0x112: BPL2DAT (value); break;
@@ -4522,7 +4522,7 @@ uae_u8 *restore_custom (uae_u8 *src)
     bpl1mod = RW;		/* 108 BPL1MOD */
     bpl2mod = RW;		/* 10A BPL2MOD */
     bplcon4 = RW;		/* 10C BPLCON4 */
-    RW;				/* 10E CLXCON2* */
+    clxcon2 = RW;		/* 10E CLXCON2* */
     for(i = 0; i < 8; i++)
 	RW;			/*     BPLXDAT */
     for(i = 0; i < 32; i++)
@@ -4664,7 +4664,7 @@ uae_u8 *save_custom (int *len)
     SW (bpl1mod);		/* 108 BPL1MOD */
     SW (bpl2mod);		/* 10A BPL2MOD */
     SW (bplcon4);		/* 10C BPLCON4 */
-    SW (0);			/* 10E CLXCON2 */
+    SW (clxcon2);		/* 10E CLXCON2 */
     for (i = 0;i < 8; i++)
 	SW (0);			/* 110 BPLxDAT */
     for ( i = 0; i < 32; i++)

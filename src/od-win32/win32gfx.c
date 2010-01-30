@@ -41,7 +41,7 @@ static uae_u32 current_width, current_height, current_depth;
 static int fullscreen = 0; /* fullscreen mode */
 static int window_width = 900, window_height = 720, window_depth; /* target resolution */
 static int usedirect = 0; /* direct to dx surface (fullscreen or overlay) */
-static int overlay = 0; /* use overlay surface */
+static int overlay = 1; /* use overlay surface */
 static int needs_direct; /* is overlay or fullscreen mode required */
 static int display_change_requested = 0;
 static int mapping_is_mainscreen = 0;
@@ -229,6 +229,23 @@ static int set_ddraw (int width, int height, int wantfull, int wantoverlay, int 
 	goto oops;
     }
 
+    if( wantoverlay )
+    {
+	if( !currprefs.win32_no_overlay && ( DirectDraw_GetPrimaryBitCount() != bits ) )
+	{
+	    ddrval = DirectDraw_CreateOverlaySurface( width, height, bits );
+	    if( ddrval != DD_OK )
+	    {
+		write_log( "set_ddraw: Couldn't CreateOverlaySurface(%d,%d,%d) because %s.\n", width, height, bits, DirectDraw_ErrorString( ddrval ) );
+		overlay = 0;
+	    }
+	}
+	else
+	{
+	    overlay = 0;
+	}
+    }
+
     DirectDraw_ClearSurfaces();
 
     if( !DirectDraw_DetermineLocking( wantfull ) )
@@ -410,41 +427,41 @@ int WIN32GFX_AdjustScreenmode( uae_u32 *pwidth, uae_u32 *pheight, uae_u32 *ppixb
     
     for (pass = 0; pass < 2; pass++) 
     {
-	    struct win32_displaymode *dm;
-	    uae_u32 mask = (pass == 0
-			    ? selected_mask
-			    : RGBMASK_8BIT | RGBMASK_15BIT | RGBMASK_16BIT | RGBMASK_24BIT | RGBMASK_32BIT); /* %%% - BERND, were you missing 15-bit here??? */
+	struct win32_displaymode *dm;
+	uae_u32 mask = (pass == 0
+			? selected_mask
+			: RGBMASK_8BIT | RGBMASK_15BIT | RGBMASK_16BIT | RGBMASK_24BIT | RGBMASK_32BIT); /* %%% - BERND, were you missing 15-bit here??? */
         i = 0;
         index = 0;
 
-	    best = win32_displaymode_list;
-	    dm = best->next;
+	best = win32_displaymode_list;
+	dm = best->next;
 
-	    while (dm != 0) 
+	while (dm != 0) 
         {
-	        if ((dm->colormodes & mask) != 0) 
+	    if ((dm->colormodes & mask) != 0) 
             {
-		        if (dm->width <= best->width && dm->height <= best->height
-		            && dm->width >= *pwidth && dm->height >= *pheight)
+		if (dm->width <= best->width && dm->height <= best->height
+		    && dm->width >= *pwidth && dm->height >= *pheight)
                 {
-		            best = dm;
+		    best = dm;
                     index = i;
                 }
-		        if (dm->width >= best->width && dm->height >= best->height
-		            && dm->width <= *pwidth && dm->height <= *pheight)
+		if (dm->width >= best->width && dm->height >= best->height
+		    && dm->width <= *pwidth && dm->height <= *pheight)
                 {
-		            best = dm;
+		    best = dm;
                     index = i;
                 }
-	        }
-	        dm = dm->next;
-            i++;
 	    }
-	    if (best->width == *pwidth && best->height == *pheight)
+	    dm = dm->next;
+            i++;
+	}
+	if (best->width == *pwidth && best->height == *pheight)
         {
             selected_mask = mask; /* %%% - BERND, I added this - does it make sense?  Otherwise, I'd specify a 16-bit display-mode for my
-                                           Workbench (using -H 2, but SHOULD have been -H 1), and end up with an 8-bit mode instead*/
-	        break;
+				     Workbench (using -H 2, but SHOULD have been -H 1), and end up with an 8-bit mode instead*/
+	    break;
         }
     }
     *pwidth = best->width;
@@ -456,7 +473,7 @@ int WIN32GFX_AdjustScreenmode( uae_u32 *pwidth, uae_u32 *pheight, uae_u32 *ppixb
     if (best->colormodes & RGBMASK_16BIT)
 	*ppixbits = 16;
     else if (best->colormodes & RGBMASK_15BIT) /* %%% - BERND, this possibility was missing? */
-    *ppixbits = 15;
+	*ppixbits = 15;
     else if (best->colormodes & RGBMASK_8BIT)
 	*ppixbits = 8;
     else if (best->colormodes & RGBMASK_32BIT)
@@ -1209,6 +1226,7 @@ static void close_windows (void)
 	buttonstate[2] = 0;
     }
     bInitDone = FALSE; //?????JGI
+    overlay = 1; // Go back to desiring overlay support
 }
 
 void WIN32GFX_ToggleFullScreen( void )
@@ -1429,19 +1447,15 @@ static BOOL doInit (void)
 	goto oops;
     }
 
-    write_log ("init_colors\n");
     init_colors ();
-    write_log ("ok\n");
 
     if (overlay)
 	setoverlay ();
 
-    write_log ("done_setoverlay\n");
 #if 0 // This crashes WinXP, because that last param should be an LPWINDOWPOS...
     if (! fullscreen)
         SendMessage( hMainWnd, WM_WINDOWPOSCHANGED, 0, 0);
 #endif
-    write_log ("init done\n");
 
     bInitDone = TRUE;
     return 1;
@@ -1449,8 +1463,6 @@ static BOOL doInit (void)
 oops:
     DirectDraw_Release();
     close_hwnds();
-    write_log ("closed_hwnds\n");
-
     return 0;
 }
 

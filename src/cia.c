@@ -724,8 +724,8 @@ void CIA_reset (void)
 	ciaacra = ciaacrb = ciabcra = ciabcrb = 0x4; /* outmode = toggle; */
 	ciaala = ciaalb = ciabla = ciablb = ciaata = ciaatb = ciabta = ciabtb = 0xFFFF;
 	ciabpra = 0x8C;
+	div10 = 0;
     }
-    div10 = 0;
     CIA_calctimers ();
     if (! ersatzkickfile)
 	map_banks (&kickmem_bank, 0, 32, 0x80000);
@@ -746,12 +746,12 @@ void CIA_reset (void)
 
 void dumpcia (void)
 {
-    printf("A: CRA: %02x, CRB: %02x, IMASK: %02x, TOD: %08lx %7s TA: %04lx, TB: %04lx\n",
+    printf("A: CRA: %02x, CRB: %02x, IMASK: %02x, TOD: %08lx %7s TA: %04lx (%04lx), TB: %04lx (%04lx)\n",
 	   (int)ciaacra, (int)ciaacrb, (int)ciaaimask, ciaatod,
-	   ciaatlatch ? " latched" : "", ciaata, ciaatb);
-    printf("B: CRA: %02x, CRB: %02x, IMASK: %02x, TOD: %08lx %7s TA: %04lx, TB: %04lx\n",
+	   ciaatlatch ? "L" : "", ciaata, ciaala, ciaatb, ciaalb);
+    printf("B: CRA: %02x, CRB: %02x, IMASK: %02x, TOD: %08lx %7s TA: %04lx (%04lx), TB: %04lx (%04lx)\n",
 	   (int)ciabcra, (int)ciabcrb, (int)ciabimask, ciabtod,
-	   ciabtlatch ? " latched" : "", ciabta, ciabtb);
+	   ciabtlatch ? "L" : "", ciabta, ciabla, ciabtb, ciablb);
 }
 
 /* CIA memory access */
@@ -932,7 +932,7 @@ uae_u8 *restore_cia (int num, uae_u8 *src)
     if (num) ciabimask = b; else ciaaimask = b;
     w = restore_u8 ();					/* timer A latch */
     w |= restore_u8 () << 8;
-    if (num) ciabla = w; else ciaala = b;
+    if (num) ciabla = w; else ciaala = w;
     w = restore_u8 ();					/* timer B latch */
     w |= restore_u8 () << 8;
     if (num) ciablb = w; else ciaalb = w;

@@ -40,3 +40,5 @@ extern void audio_reset (void);
 extern void update_audio (void);
 extern void schedule_audio (void);
 extern void audio_evhandler (void);
+extern void audio_channel_enable_dma (struct audio_channel_data *cdp);
+extern void audio_channel_disable_dma (struct audio_channel_data *cdp);

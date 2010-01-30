@@ -108,7 +108,7 @@ static int open_sound (void)
     }
     have_sound = 1;
 
-    scaled_sample_evtime = (unsigned long)maxhpos * maxvpos * vblank_hz * CYCLE_UNIT / spec.freq;
+    scaled_sample_evtime = (unsigned long)MAXHPOS_PAL * MAXVPOS_PAL * VBLANK_HZ_PAL * CYCLE_UNIT / spec.freq;
     scaled_sample_evtime_ok = 1;
 
     if (spec.format == AUDIO_S16) {

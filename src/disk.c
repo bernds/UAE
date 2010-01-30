@@ -33,9 +33,10 @@
 #include "execlib.h"
 #include "savestate.h"
 
-#define FLOPPY_GAP_LEN 360
 /* writable track length with normal 2us bitcell/300RPM motor */
-#define FLOPPY_WRITE_LEN 6250
+#define FLOPPY_WRITE_LEN (12650 / 2)
+/* This works out to 341 */
+#define FLOPPY_GAP_LEN (FLOPPY_WRITE_LEN - 11 * 544)
 /* (cycles/bitcell) << 8, normal = ((2us/280ns)<<8) = ~1830 */
 #define NORMAL_FLOPPY_SPEED 1830
 
@@ -1277,6 +1278,10 @@ void DISK_init (void)
 void DISK_reset (void)
 {
     int i;
+
+    if (savestate_state)
+	return;
+
     disk_hpos = 0;
     disk_data_used = 0;
     disabled = 0;
@@ -1318,10 +1323,16 @@ void DISK_restore_custom (uae_u32 pdskpt, uae_u16 pdsklength, uae_u16 pdskdatr, 
 uae_u8 *restore_disk(int num,uae_u8 *src)
 {
     drive *drv;
+    int state;
 
     drv = &floppy[num];
+    disabled &= ~(1 << num);
     drv->drive_id = restore_u32 ();
-    drv->motoroff = restore_u8 () ? 0 : 1;
+    state = restore_u8 ();
+    if (state & 2)
+       disabled |= 1 << num;
+    else
+       drv->motoroff = (state & 1) ? 0 : 1;
     drv->cyl = restore_u8 ();
     drv->dskready = restore_u8 ();
     drv->drive_id_scnt = restore_u8 ();
@@ -1341,7 +1352,7 @@ uae_u8 *save_disk(int num,int *len)
     drv = &floppy[num];
     dstbak = dst = malloc (2+1+1+1+1+4+4+256);
     save_u32 (drv->drive_id);	    /* drive type ID */
-    save_u8 (drv->motoroff ? 0:1);  /* motor state */
+    save_u8 ((drv->motoroff ? 0:1) | ((disabled & (1 << num)) ? 2 : 0));  /* state */
     save_u8 (drv->cyl);		    /* cylinder */
     save_u8 (drv->dskready);	    /* dskready */
     save_u8 (drv->drive_id_scnt);   /* id mode position */

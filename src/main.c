@@ -140,14 +140,12 @@ void default_prefs (struct uae_prefs *p)
     p->curses_reverse_video = 0;
 
     p->win32_middle_mouse = 0;
-    p->win32_sound_style = 0;
-    p->win32_sound_tweak = 0;
     p->win32_logfile = 0;
     p->win32_iconified_nospeed = 0;
     p->win32_iconified_nosound = 0;
+    p->win32_no_overlay = 0;
 
     p->immediate_blits = 0;
-    p->blits_32bit_enabled = 0;
     p->collision_level = 1;
     p->fast_copper = 1;
 
@@ -208,94 +206,94 @@ static void fix_options (void)
 	|| currprefs.chipmem_size > 0x800000)
     {
 	currprefs.chipmem_size = 0x200000;
-	fprintf (stderr, "Unsupported chipmem size!\n");
+	write_log ("Unsupported chipmem size!\n");
 	err = 1;
     }
     if ((currprefs.fastmem_size & (currprefs.fastmem_size - 1)) != 0
 	|| (currprefs.fastmem_size != 0 && (currprefs.fastmem_size < 0x100000 || currprefs.fastmem_size > 0x800000)))
     {
 	currprefs.fastmem_size = 0;
-	fprintf (stderr, "Unsupported fastmem size!\n");
+	write_log ("Unsupported fastmem size!\n");
 	err = 1;
     }
     if ((currprefs.gfxmem_size & (currprefs.gfxmem_size - 1)) != 0
-	|| (currprefs.gfxmem_size != 0 && (currprefs.gfxmem_size < 0x100000 || currprefs.gfxmem_size > 0x800000)))
+	|| (currprefs.gfxmem_size != 0 && (currprefs.gfxmem_size < 0x100000 || currprefs.gfxmem_size > 0x2000000)))
     {
+	write_log ("Unsupported graphics card memory size %lx!\n", currprefs.gfxmem_size);
 	currprefs.gfxmem_size = 0;
-	fprintf (stderr, "Unsupported graphics card memory size!\n");
 	err = 1;
     }
     if ((currprefs.z3fastmem_size & (currprefs.z3fastmem_size - 1)) != 0
 	|| (currprefs.z3fastmem_size != 0 && (currprefs.z3fastmem_size < 0x100000 || currprefs.z3fastmem_size > 0x4000000)))
     {
 	currprefs.z3fastmem_size = 0;
-	fprintf (stderr, "Unsupported Zorro III fastmem size!\n");
+	write_log ("Unsupported Zorro III fastmem size!\n");
 	err = 1;
     }
     if (currprefs.address_space_24 && (currprefs.gfxmem_size != 0 || currprefs.z3fastmem_size != 0)) {
 	currprefs.z3fastmem_size = currprefs.gfxmem_size = 0;
-	fprintf (stderr, "Can't use a graphics card or Zorro III fastmem when using a 24 bit\n"
+	write_log ("Can't use a graphics card or Zorro III fastmem when using a 24 bit\n"
 		 "address space - sorry.\n");
     }
     if ((currprefs.bogomem_size & (currprefs.bogomem_size - 1)) != 0
 	|| (currprefs.bogomem_size != 0 && (currprefs.bogomem_size < 0x80000 || currprefs.bogomem_size > 0x100000)))
     {
 	currprefs.bogomem_size = 0;
-	fprintf (stderr, "Unsupported bogomem size!\n");
+	write_log ("Unsupported bogomem size!\n");
 	err = 1;
     }
 
     if (currprefs.chipmem_size > 0x200000 && currprefs.fastmem_size != 0) {
-	fprintf (stderr, "You can't use fastmem and more than 2MB chip at the same time!\n");
+	write_log ("You can't use fastmem and more than 2MB chip at the same time!\n");
 	currprefs.fastmem_size = 0;
 	err = 1;
     }
 #if 0
     if (currprefs.m68k_speed < -1 || currprefs.m68k_speed > 20) {
-	fprintf (stderr, "Bad value for -w parameter: must be -1, 0, or within 1..20.\n");
+	write_log ("Bad value for -w parameter: must be -1, 0, or within 1..20.\n");
 	currprefs.m68k_speed = 4;
 	err = 1;
     }
 #endif
   
     if (currprefs.produce_sound < 0 || currprefs.produce_sound > 3) {
-	fprintf (stderr, "Bad value for -S parameter: enable value must be within 0..3\n");
+	write_log ("Bad value for -S parameter: enable value must be within 0..3\n");
 	currprefs.produce_sound = 0;
 	err = 1;
     }
     if (currprefs.cpu_level < 2 && currprefs.z3fastmem_size > 0) {
-	fprintf (stderr, "Z3 fast memory can't be used with a 68000/68010 emulation. It\n"
+	write_log ("Z3 fast memory can't be used with a 68000/68010 emulation. It\n"
 		 "requires a 68020 emulation. Turning off Z3 fast memory.\n");
 	currprefs.z3fastmem_size = 0;
 	err = 1;
     }
     if (currprefs.gfxmem_size > 0 && (currprefs.cpu_level < 2 || currprefs.address_space_24)) {
-	fprintf (stderr, "Picasso96 can't be used with a 68000/68010 or 68EC020 emulation. It\n"
+	write_log ("Picasso96 can't be used with a 68000/68010 or 68EC020 emulation. It\n"
 		 "requires a 68020 emulation. Turning off Picasso96.\n");
 	currprefs.gfxmem_size = 0;
 	err = 1;
     }
 #ifndef BSDSOCKET_SUPPORTED
     if (currprefs.socket_emu) {
-	fprintf (stderr, "Compile-time option of BSDSOCKET_SUPPORTED was not enabled.  You can't use bsd-socket emulation.\n");
+	write_log ("Compile-time option of BSDSOCKET_SUPPORTED was not enabled.  You can't use bsd-socket emulation.\n");
 	currprefs.socket_emu = 0;
 	err = 1;
     }
 #endif
 
     if (currprefs.nr_floppies < 1 || currprefs.nr_floppies > 4) {
-	fprintf (stderr, "Invalid number of floppies.  Using 4.\n");
+	write_log ("Invalid number of floppies.  Using 4.\n");
 	currprefs.nr_floppies = 4;
 	err = 1;
     }
     if (currprefs.collision_level < 0 || currprefs.collision_level > 3) {
-	fprintf (stderr, "Invalid collision support level.  Using 1.\n");
+	write_log ("Invalid collision support level.  Using 1.\n");
 	currprefs.collision_level = 1;
 	err = 1;
     }
 
     if (err)
-	fprintf (stderr, "Please use \"uae -h\" to get usage information.\n");
+	write_log ("Please use \"uae -h\" to get usage information.\n");
 }
 
 int quit_program = 0;
@@ -478,7 +476,7 @@ void real_main (int argc, char **argv)
     machdep_init ();
 
     if (! setup_sound ()) {
-	fprintf (stderr, "Sound driver unavailable: Sound output disabled\n");
+	write_log ("Sound driver unavailable: Sound output disabled\n");
 	currprefs.produce_sound = 0;
     }
     init_joystick ();
@@ -489,13 +487,13 @@ void real_main (int argc, char **argv)
 	int err = gui_init ();
 	currprefs = changed_prefs;
 	if (err == -1) {
-	    fprintf (stderr, "Failed to initialize the GUI\n");
+	    write_log ("Failed to initialize the GUI\n");
 	} else if (err == -2) {
 	    exit (0);
 	}
     }
     if (sound_available && currprefs.produce_sound > 1 && ! init_audio ()) {
-	fprintf (stderr, "Sound driver unavailable: Sound output disabled\n");
+	write_log ("Sound driver unavailable: Sound output disabled\n");
 	currprefs.produce_sound = 0;
     }
 

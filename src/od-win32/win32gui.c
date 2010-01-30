@@ -3416,17 +3416,19 @@ static void values_to_portsdlg (HWND hDlg)
     }
     else
     {
-	result = SendDlgItemMessage( hDlg, IDC_SERIAL, CB_SETCURSEL, workprefs.sername[3] - '0', 0L );
+	int t = (workprefs.sername[0] == '\0' ? 0 : workprefs.sername[3] - '0');
+	result = SendDlgItemMessage( hDlg, IDC_SERIAL, CB_SETCURSEL, t, 0L );
 	if( result < 0 )
 	{
-	    // Warn the user that their COM-port selection is not valid on this machine
-	    char szMessage[ MAX_PATH ];
-	    WIN32GUI_LoadUIString( IDS_INVALIDCOMPORT, szMessage, MAX_PATH );
-	    gui_message( szMessage );
-	    
-	    // Select "none" as the COM-port
-	    SendDlgItemMessage( hDlg, IDC_SERIAL, CB_SETCURSEL, 0L, 0L );		
-	    
+	    if (t > 0) {
+		// Warn the user that their COM-port selection is not valid on this machine
+		char szMessage[ MAX_PATH ];
+		WIN32GUI_LoadUIString( IDS_INVALIDCOMPORT, szMessage, MAX_PATH );
+		gui_message( szMessage );
+
+		// Select "none" as the COM-port
+		SendDlgItemMessage( hDlg, IDC_SERIAL, CB_SETCURSEL, 0L, 0L );		
+	    }
 	    // Disable the chosen serial-port selection
 	    strcpy( workprefs.sername, "none" );
 	    workprefs.use_serial = 0;

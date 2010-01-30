@@ -2,6 +2,10 @@ Note! This file only contains user-visible changes. There may be others. For a
 more detailed description of changes between releases, read src/ChangeLog, and
 for the full picture, make a diff between releases.
 
+User-visible changes in 0.8.19:
+  - A few bug fixes, especially in state-saving.
+  - Picasso screens now support panning.
+
 User-visible changes in 0.8.18:
   - Numerous bug fixes.
   - The gtk UI has more options; it also now behaves similar to the GUI found

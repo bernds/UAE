@@ -9,7 +9,7 @@
 
 #define UAEMAJOR 0
 #define UAEMINOR 8
-#define UAESUBREV 18
+#define UAESUBREV 19
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -98,6 +98,8 @@ struct uae_prefs {
     uae_u32 a3000mem_size;
     uae_u32 gfxmem_size;
 
+    int kickshifter;
+
     struct uaedev_mount_info *mountinfo;
 
     int nr_floppies;
@@ -109,11 +111,12 @@ struct uae_prefs {
     int x11_hide_cursor;
     int svga_no_linear;
     int win32_middle_mouse;
-    int win32_sound_style;
-    int win32_sound_tweak;
     int win32_logfile;
     int win32_iconified_nospeed;
     int win32_iconified_nosound;
+    int win32_no_overlay; /* If this is set, we won't try and use any RGB overlays */
+    int win32_automount_drives;
+
     int curses_reverse_video;
 };
 

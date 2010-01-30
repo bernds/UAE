@@ -62,8 +62,8 @@ int init_sound (void)
 
     init_sound_table16 ();
     sample_handler = sample16_handler;
-    sample_evtime = (long)maxhpos * maxvpos * 50 / rate;
-    
+    sample_evtime = (long)MAXHPOS_PAL * MAXVPOS_PAL * VBLANK_HZ_PAL / rate;
+
     sndbufpt = sndbuffer;
     sound_available = 1;
     printf ("Sound driver found and configured for %d bits at %d Hz, buffer is %d bytes\n", 16, rate, sndbufsize);

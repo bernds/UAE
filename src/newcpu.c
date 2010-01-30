@@ -675,7 +675,9 @@ void MakeFromSR (void)
     if (regs.t1 || regs.t0)
 	set_special (SPCFLAG_TRACE);
     else
-	unset_special (SPCFLAG_TRACE | SPCFLAG_DOTRACE);
+    	/* Keep SPCFLAG_DOTRACE, we still want a trace exception for
+	   SR-modifying instructions (including STOP).  */
+	unset_special (SPCFLAG_TRACE);
 }
 
 void Exception(int nr, uaecptr oldpc)
@@ -1105,6 +1107,7 @@ void m68k_reset (void)
 
     m68k_areg (regs, 7) = get_long (0x00f80000);
     m68k_setpc (get_long (0x00f80004));
+    refill_prefetch (m68k_getpc (), 0);
     fill_prefetch_0 ();
     regs.s = 1;
     regs.m = 0;

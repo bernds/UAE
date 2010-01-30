@@ -620,7 +620,7 @@ FLOPPY DRIVES
         drive state
 
         drive ID-word           4
-        motor state             1 (off=0,on=1)
+        state                   1 (bit 0: motor on, bit 1: drive disabled)
         rw-head track           1
         dskready                1
         id-mode                 1 (ID mode bit number 0-31)

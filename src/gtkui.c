@@ -1285,6 +1285,8 @@ static void make_joy_widgets (GtkWidget *dvbox)
     add_empty_vbox (dvbox);
 }
 
+static int hd_change_mode;
+
 static void newdir_ok (void)
 {
     int n;
@@ -1299,6 +1301,10 @@ static void newdir_ok (void)
     }
     if (strlen (dirdlg_volname) == 0 || strlen (dirdlg_path) == 0) {
 	/* Uh, no messageboxes in gtk?  */
+    } else if (hd_change_mode) {
+	set_filesys_unit (currprefs.mountinfo, selected_hd_row, dirdlg_volname, dirdlg_path,
+			  0, 0, 0, 0, 0);
+	set_hd_state ();
     } else {
 	add_filesys_unit (currprefs.mountinfo, dirdlg_volname, dirdlg_path,
 			  0, 0, 0, 0, 0);
@@ -1349,7 +1355,7 @@ static GtkWidget *create_dirdlg (const char *title)
     GTK_WIDGET_SET_FLAGS (button, GTK_CAN_DEFAULT);
     gtk_box_pack_start (GTK_BOX (hbox), button, TRUE, TRUE, 0);
     gtk_widget_grab_default (button);
-    gtk_widget_show (button);    
+    gtk_widget_show (button);
 
     button = gtk_button_new_with_label ("Cancel");
     gtk_signal_connect_object (GTK_OBJECT (button), "clicked",
@@ -1361,10 +1367,12 @@ static GtkWidget *create_dirdlg (const char *title)
 
 static void did_newdir (void)
 {
+    hd_change_mode = 0;
     create_dirdlg ("Add a new mounted directory");
 }
 static void did_newhdf (void)
 {
+    hd_change_mode = 0;
 }
 
 static void did_hdchange (void)
@@ -1379,6 +1387,7 @@ static void did_hdchange (void)
 				&secspertrack, &surfaces, &reserved,
 				&cylinders, &size, &blocksize);
 
+    hd_change_mode = 1;
     if (is_hardfile (currprefs.mountinfo, selected_hd_row)) {
     } else {
 	create_dirdlg ("Change a mounted directory"); 

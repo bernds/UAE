@@ -142,7 +142,7 @@ int init_sound (void)
 	return 0;
     }
     sndbuffer = mme_audiobuf;
-    scaled_sample_evtime = (unsigned long)maxhpos * maxvpos * vblank_hz * CYCLE_UNIT / rate;
+    scaled_sample_evtime = (unsigned long)MAXHPOS_PAL * MAXVPOS_PAL * VBLANK_HZ_PAL * CYCLE_UNIT / rate;
     scaled_sample_evtime_ok = 1;
 
     if (dspbits == 16) {

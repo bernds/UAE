@@ -475,8 +475,10 @@ struct hardfiledata *get_hardfile_data (int nr)
 
 typedef struct {
     uae_u32 uniq;
+    /* The directory we're going through.  */
     a_inode *aino;
-    DIR* dir;
+    /* The file we're going to look up next.  */
+    a_inode *curr_file;
 } ExamineKey;
 
 typedef struct key {
@@ -517,8 +519,9 @@ typedef struct _unit {
     volatile unsigned int cmds_acked;
 
     /* ExKeys */
-    ExamineKey	examine_keys[EXKEYS];
+    ExamineKey examine_keys[EXKEYS];
     int next_exkey;
+    unsigned long total_locked_ainos;
 
     /* Keys */
     struct key *keys;
@@ -650,7 +653,9 @@ static void recycle_aino (Unit *unit, a_inode *new_aino)
 	/* Still in use */
 	return;
 
-    if (unit->aino_cache_size > 500) {
+    TRACE (("Recycling; cache size %d, total_locked %d\n",
+	    unit->aino_cache_size, unit->total_locked_ainos));
+    if (unit->aino_cache_size > 500 + unit->total_locked_ainos) {
 	/* Reap a few. */
 	int i = 0;
 	while (i < 50) {
@@ -661,7 +666,10 @@ static void recycle_aino (Unit *unit, a_inode *new_aino)
 		if (aino == 0)
 		    break;
 
-		if (aino->next == 0)
+		/* Not recyclable if next == 0 (i.e., not chained into
+		   recyclable list), or if parent directory is being
+		   ExNext()ed.  */
+		if (aino->next == 0 || aino->parent->locked_children)
 		    aip = &aino->sibling;
 		else {
 		    if (aino->shlock > 0 || aino->elock)
@@ -677,7 +685,7 @@ static void recycle_aino (Unit *unit, a_inode *new_aino)
 	{
 	    char buffer[40];
 	    sprintf (buffer, "%d ainos reaped.\n", i);
-	    write_log (buffer);
+	    TRACE ((buffer));
 	}
 #endif
     }
@@ -734,6 +742,21 @@ static void delete_aino (Unit *unit, a_inode *aino)
     aino->dirty = 1;
     aino->deleted = 1;
     de_recycle_aino (unit, aino);
+
+    /* If any ExKeys are currently pointing at us, advance them.  */
+    if (aino->parent->exnext_count > 0) {
+	int i;
+	for (i = 0; i < EXKEYS; i++) {
+	    ExamineKey *k = unit->examine_keys + i;
+	    if (k->uniq == 0)
+		continue;
+	    if (k->aino == aino->parent) {
+		if (k->curr_file == aino)
+		    k->curr_file = aino->sibling;
+	    }
+	}
+    }
+
     aip = &aino->parent->child;
     while (*aip != aino && *aip != 0)
 	aip = &(*aip)->sibling;
@@ -898,6 +921,14 @@ static void init_child_aino (Unit *unit, a_inode *base, a_inode *aino)
     aino->dirty = 0;
     aino->deleted = 0;
 
+    /* For directories - this one isn't being ExNext()ed yet.  */
+    aino->locked_children = 0;
+    aino->exnext_count = 0;
+    /* But the parent might be.  */
+    if (base->exnext_count) {
+	unit->total_locked_ainos++;
+	base->locked_children++;
+    }
     /* Update tree structure */
     aino->parent = base;
     aino->child = 0;
@@ -1140,9 +1171,10 @@ static uae_u32 startup_handler (void)
     unit->cmds_acked = 0;
     for (i = 0; i < EXKEYS; i++) {
 	unit->examine_keys[i].aino = 0;
-	unit->examine_keys[i].dir = 0;
+	unit->examine_keys[i].curr_file = 0;
 	unit->examine_keys[i].uniq = 0;
     }
+    unit->total_locked_ainos = 0;
     unit->next_exkey = 1;
     unit->keys = 0;
     unit->a_uniq = unit->key_uniq = 0;
@@ -1512,12 +1544,16 @@ put_time (long days, long mins, long ticks)
     return t;
 }
 
-static void free_exkey (ExamineKey *ek)
+static void free_exkey (Unit *unit, ExamineKey *ek)
 {
+    if (--ek->aino->exnext_count == 0) {
+	TRACE (("Freeing ExKey and reducing total_locked from %d by %d\n",
+		unit->total_locked_ainos, ek->aino->locked_children));
+	unit->total_locked_ainos -= ek->aino->locked_children;
+	ek->aino->locked_children = 0;
+    }
     ek->aino = 0;
     ek->uniq = 0;
-    if (ek->dir)
-	closedir (ek->dir);
 }
 
 static ExamineKey *lookup_exkey (Unit *unit, uae_u32 uniq)
@@ -1539,7 +1575,7 @@ static ExamineKey *lookup_exkey (Unit *unit, uae_u32 uniq)
 static ExamineKey *new_exkey (Unit *unit, a_inode *aino)
 {
     uae_u32 uniq;
-    uae_u32 oldest = 0xFFFFFFFF;
+    uae_u32 oldest = 0xFFFFFFFE;
     ExamineKey *ek, *oldest_ek = 0;
     int i;
 
@@ -1559,21 +1595,42 @@ static ExamineKey *new_exkey (Unit *unit, a_inode *aino)
     }
     /* This message should usually be harmless. */
     write_log ("Houston, we have a problem.\n");
-    free_exkey (oldest_ek);
+    free_exkey (unit, oldest_ek);
     ek = oldest_ek;
     found:
 
     uniq = unit->next_exkey;
-    if (uniq == 0xFFFFFFFF) {
+    if (uniq >= 0xFFFFFFFE) {
 	/* Things will probably go wrong, but most likely the Amiga will crash
 	 * before this happens because of something else. */
 	uniq = 1;
     }
     unit->next_exkey = uniq+1;
     ek->aino = aino;
-    ek->dir = 0;
+    ek->curr_file = 0;
     ek->uniq = uniq;
     return ek;
+}
+
+static void move_exkeys (Unit *unit, a_inode *from, a_inode *to)
+{
+    int i;
+    unsigned long tmp = 0;
+    for (i = 0; i < EXKEYS; i++) {
+	ExamineKey *k = unit->examine_keys + i;
+	if (k->uniq == 0)
+	    continue;
+	if (k->aino == from) {
+	    k->aino = to;
+	    tmp++;
+	}
+    }
+    if (tmp != from->exnext_count)
+	write_log ("filesys.c: Bug in ExNext bookkeeping.  BAD.\n");
+    to->exnext_count = from->exnext_count;
+    to->locked_children = from->locked_children;
+    from->exnext_count = 0;
+    from->locked_children = 0;
 }
 
 static void
@@ -1636,47 +1693,6 @@ get_fileinfo (Unit *unit, dpacket packet, uaecptr info, a_inode *aino)
     PUT_PCK_RES1 (packet, DOS_TRUE);
 }
 
-static void do_examine (Unit *unit, dpacket packet, ExamineKey *ek, uaecptr info)
-{
-    struct dirent de_space;
-    struct dirent* de;
-    a_inode *aino;
-    uae_u32 err;
-
-    if (!ek->dir) {
-	ek->dir = opendir (ek->aino->nname);
-    }
-    if (!ek->dir) {
-	free_exkey (ek);
-	PUT_PCK_RES1 (packet, DOS_FALSE);
-	PUT_PCK_RES2 (packet, ERROR_NO_MORE_ENTRIES);
-	return;
-    }
-
-    do {
-	de = my_readdir (ek->dir, &de_space);
-    } while (de && fsdb_name_invalid (de->d_name));
-
-    if (!de) {
-	TRACE(("no more entries\n"));
-	free_exkey (ek);
-	PUT_PCK_RES1 (packet, DOS_FALSE);
-	PUT_PCK_RES2 (packet, ERROR_NO_MORE_ENTRIES);
-	return;
-    }
-
-    TRACE(("entry=\"%s\"\n", de->d_name));
-    aino = lookup_child_aino_for_exnext (unit, ek->aino, de->d_name, &err);
-    if (err != 0) {
-	write_log ("Severe problem in ExNext.\n");
-	free_exkey (ek);
-	PUT_PCK_RES1 (packet, DOS_FALSE);
-	PUT_PCK_RES2 (packet, err);
-	return;
-    }
-    get_fileinfo (unit, packet, info, aino);
-}
-
 static void action_examine_object (Unit *unit, dpacket packet)
 {
     uaecptr lock = GET_PCK_ARG1 (packet) << 2;
@@ -1698,6 +1714,59 @@ static void action_examine_object (Unit *unit, dpacket packet)
 	put_long (info, 0);
 }
 
+/* Read a directory's contents, create a_inodes for each file, and
+   mark them as locked in memory so that recycle_aino will not reap
+   them.
+   We do this to avoid problems with the host OS: we don't want to
+   leave the directory open on the host side until all ExNext()s have
+   finished - they may never finish!  */
+
+static void populate_directory (Unit *unit, a_inode *base)
+{
+    DIR *d = opendir (base->nname);
+    a_inode *aino;
+
+    for (aino = base->child; aino; aino = aino->sibling) {
+	base->locked_children++;
+	unit->total_locked_ainos++;
+    }
+    for (;;) {
+	struct dirent de_space;
+	struct dirent *de;
+	uae_u32 err;
+
+	/* Find next file that belongs to the Amiga fs (skipping things
+	   like "..", "." etc.  */
+	do {
+	    de = my_readdir (d, &de_space);
+	} while (de && fsdb_name_invalid (de->d_name));
+	if (! de)
+	    break;
+	/* This calls init_child_aino, which will notice that the parent is
+	   being ExNext()ed, and it will increment the locked counts.  */
+	aino = lookup_child_aino_for_exnext (unit, base, de->d_name, &err);
+    }
+    closedir (d);
+}
+
+static void do_examine (Unit *unit, dpacket packet, ExamineKey *ek, uaecptr info)
+{
+    a_inode *aino;
+
+    if (ek->curr_file == 0)
+	goto no_more_entries;
+
+    get_fileinfo (unit, packet, info, ek->curr_file);
+    ek->curr_file = ek->curr_file->sibling;
+    return;
+
+  no_more_entries:
+    TRACE(("no more entries\n"));
+    free_exkey (unit, ek);
+    PUT_PCK_RES1 (packet, DOS_FALSE);
+    PUT_PCK_RES2 (packet, ERROR_NO_MORE_ENTRIES);
+}
+
 static void action_examine_next (Unit *unit, dpacket packet)
 {
     uaecptr lock = GET_PCK_ARG1 (packet) << 2;
@@ -1717,21 +1786,29 @@ static void action_examine_next (Unit *unit, dpacket packet)
     uniq = get_long (info);
     if (uniq == 0) {
 	write_log ("ExNext called for a file! (Houston?)\n");
-	PUT_PCK_RES1 (packet, DOS_FALSE);
-	PUT_PCK_RES2 (packet, ERROR_NO_MORE_ENTRIES);
-	return;
-    } else if (uniq == 0xFFFFFFFF) {
-	ek = new_exkey(unit, aino);
+	goto no_more_entries;
+    } else if (uniq == 0xFFFFFFFE)
+	goto no_more_entries;
+    else if (uniq == 0xFFFFFFFF) {
+	ek = new_exkey (unit, aino);
+	if (ek) {
+	    if (aino->exnext_count++ == 0)
+		populate_directory (unit, aino);
+	}
+	ek->curr_file = aino->child;
     } else
 	ek = lookup_exkey (unit, get_long (info));
     if (ek == 0) {
 	write_log ("Couldn't find a matching ExKey. Prepare for trouble.\n");
-	PUT_PCK_RES1 (packet, DOS_FALSE);
-	PUT_PCK_RES2 (packet, ERROR_NO_MORE_ENTRIES);
-	return;
+	goto no_more_entries;
     }
     put_long (info, ek->uniq);
     do_examine (unit, packet, ek, info);
+    return;
+
+  no_more_entries:
+    PUT_PCK_RES1 (packet, DOS_FALSE);
+    PUT_PCK_RES2 (packet, ERROR_NO_MORE_ENTRIES);
 }
 
 static void do_find (Unit *unit, dpacket packet, int mode, int create, int fallback)
@@ -2569,6 +2646,8 @@ action_rename_object (Unit *unit, dpacket packet)
     a2->comment = a1->comment;
     a1->comment = 0;
     a2->amigaos_mode = a1->amigaos_mode;
+    a2->uniq = a1->uniq;
+    move_exkeys (unit, a1, a2);
     move_aino_children (unit, a1, a2);
     delete_aino (unit, a1);
     PUT_PCK_RES1 (packet, DOS_TRUE);

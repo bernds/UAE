@@ -1,3 +1,19 @@
+9B1125 Panning support for Picasso96 (in part from WinUAE).
+       More state save fixes from Toni, and a small disk.c update as well
+       which corrects track/gap lengths.
+       More evolution of the AHI code.
+9B1124 Merged a few more small pieces from WinUAE (larger pieces in case of
+       the Picasso code).
+       CLXCON2 was never called or statesaved.  Fixed by Toni.
+       Sound sample frequency now always based on PAL timings.
+9B1123 Goodness!  Massive memory corruption bug in picasso96.c - passing
+       last color changed to DX_SetPalette instead of count.
+       Fixes for the AHI code.
+       Changed prefetch emulation to be more similar to the one MAME uses.
+       Trace mode fixes (Bernd Roesch & myself).
+9B1122 Redo the ExNext code in the filesystem to make sure we always match
+       opendir with closedir and to fix some renaming problems.
+       Fix hd changing code in gtkui.
 9B1121 Mini-merge of noncontroversial WinUAE filesys.c code.
        Add harddisk page to gtkui.  Also change gui behaviour to wait for
        the user to unpause before starting the emulator.

@@ -159,6 +159,7 @@ void save_options (FILE *f, struct uae_prefs *p)
     str = cfgfile_subst_path (p->path_rom, UNEXPANDED, p->keyfile);
     fprintf (f, "kickstart_key_file=%s\n", str);
     free (str);
+    fprintf (f, "kickshifter=%s\n", p->kickshifter ? "true" : "false");
 
     for (i = 0; i < 4; i++) {
 	str = cfgfile_subst_path (p->path_floppy, UNEXPANDED, p->df[i]);
@@ -197,7 +198,6 @@ void save_options (FILE *f, struct uae_prefs *p)
     fprintf (f, "gfx_center_vertical=%s\n", centermode1[p->gfx_ycenter]);
     fprintf (f, "gfx_colour_mode=%s\n", colormode1[p->color_mode]);
 
-    fprintf (f, "32bit_blits=%s\n", p->blits_32bit_enabled ? "true" : "false");
     fprintf (f, "immediate_blits=%s\n", p->immediate_blits ? "true" : "false");
     fprintf (f, "ntsc=%s\n", p->ntscmode ? "true" : "false");
     if (p->chipset_mask & CSMASK_AGA)
@@ -222,7 +222,7 @@ void save_options (FILE *f, struct uae_prefs *p)
     if (p->m68k_speed > 0)
 	fprintf (f, "finegrain_cpu_speed=%d\n", p->m68k_speed);
     else
-	fprintf (f, "finegrain_cpu_speed=%s\n", p->m68k_speed == -1 ? "max" : "real");
+	fprintf (f, "cpu_speed=%s\n", p->m68k_speed == -1 ? "max" : "real");
 
     fprintf (f, "cpu_type=%s\n", cpumode[p->cpu_level * 2 + !p->address_space_24]);
     fprintf (f, "cpu_compatible=%s\n", p->cpu_compatible ? "true" : "false");
@@ -361,7 +361,7 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
     if (cfgfile_yesno (option, value, "use_debugger", &p->start_debugger)
 	|| cfgfile_yesno (option, value, "bsdsocket_emu", &p->socket_emu)
 	|| cfgfile_yesno (option, value, "immediate_blits", &p->immediate_blits)
-	|| cfgfile_yesno (option, value, "32bit_blits", &p->blits_32bit_enabled)
+	|| cfgfile_yesno (option, value, "kickshifter", &p->kickshifter)
 	|| cfgfile_yesno (option, value, "gfx_lores", &p->gfx_lores)
 	|| cfgfile_yesno (option, value, "gfx_correct_aspect", &p->gfx_correct_aspect)
 	|| cfgfile_yesno (option, value, "gfx_fullscreen_amiga", &p->gfx_afullscreen)
@@ -443,7 +443,10 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	p->cpu_level >>= 1;
 	return 1;
     }
-    if (cfgfile_strval (option, value, "cpu_speed", &p->m68k_speed, speedmode, 1)) {
+    if (cfgfile_strval (option, value, "cpu_speed", &p->m68k_speed, speedmode, 1)
+	/* Broken earlier versions used to write this out as a string.  */
+	|| cfgfile_strval (option, value, "finegraincpu_speed", &p->m68k_speed, speedmode, 1))
+    {
 	p->m68k_speed--;
 	return 1;
     }

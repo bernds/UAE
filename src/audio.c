@@ -633,7 +633,7 @@ static void audio_handler (int nr)
 	INTREQ(0x8000 | (0x80 << nr));
 	if (cdp->wlen != 1)
 	    cdp->wlen = (cdp->wlen - 1) & 0xFFFF;
-	cdp->nextdat = chipmem_bank.wget(cdp->pt);
+	cdp->nextdat = chipmem_wget (cdp->pt);
 
 	cdp->pt += 2;
 	break;
@@ -742,52 +742,46 @@ static void ahi_handler (int nr)
     struct audio_channel_data *cdp = audio_channel + nr;
 
     switch (cdp->state) {
-     case 0:
+    case 0:
 	fprintf(stderr, "Bug in sound code\n");
 	break;
 
-     case 1:
-	/* We come here at the first hsync after DMA was turned on. */
-	cdp->evtime = maxhpos * CYCLE_UNIT;
+    case 1:
+	cdp->evtime = cdp->per;
+	cdp->intreq2 = 0;
 
-	cdp->state = 5;
-	INTREQ (0xA000);
+	cdp->state = 2;
 	if (cdp->wlen != 1)
 	    cdp->wlen = (cdp->wlen - 1) & 0xFFFF;
-	cdp->nextdat = chipmem_bank.wget (cdp->pt);
+	cdp->dat = chipmem_wget (cdp->pt);
 
 	cdp->pt += 2;
 	break;
 
-     case 5:
-	/* We come here at the second hsync after DMA was turned on. */
+    case 2:
 	if (currprefs.produce_sound == 0)
 	    cdp->per = PERIOD_MAX;
 
-	cdp->evtime = cdp->per;
-	cdp->dat = cdp->nextdat;
-
-	cdp->state = 2;
-	cdp->data_written = 2;
-	break;
-
-     case 2:
-	if (currprefs.produce_sound == 0)
-	    cdp->per = PERIOD_MAX;
-
-	cdp->evtime = cdp->per;
-
-	if (cdp->intreq2 && cdp->dmaen)
-	    INTREQ(0xA000);
+	/* Only do interrupts for one of the AHI channels.  */
+	if (nr == 4 && cdp->intreq2)
+	    /* Reuse AUD0 interrupt for AHI purposes.  This is easier than
+	       fixing the driver source to use AddIntServer instead of SetIntVector
+	       for the EXTER interrupt.  */
+	    INTREQ (0x8080);
 	cdp->intreq2 = 0;
+	cdp->evtime = cdp->per;
 
-	cdp->dat = cdp->nextdat;
-
-	if (cdp->dmaen)
-	    cdp->data_written = 2;
+	cdp->dat = chipmem_wget (cdp->pt);
+	cdp->pt += 2;
+	if (cdp->wlen == 1) {
+	    cdp->pt = cdp->lc;
+	    cdp->wlen = cdp->len;
+	    cdp->intreq2 = 1;
+	} else
+	    cdp->wlen = (cdp->wlen - 1) & 0xFFFF;
 	break;
 
-     default:
+    default:
 	cdp->state = 0;
 	break;
     }
@@ -808,6 +802,27 @@ void aud2_handler (void)
 void aud3_handler (void)
 {
     audio_handler (3);
+}
+
+void audio_channel_enable_dma (struct audio_channel_data *cdp)
+{
+    if (cdp->state == 0) {
+	cdp->state = 1;
+	cdp->pt = cdp->lc;
+	cdp->wper = cdp->per;
+	cdp->wlen = cdp->len;
+	cdp->data_written = 2;
+	cdp->evtime = eventtab[ev_hsync].evtime - get_cycles ();
+    }
+}
+
+void audio_channel_disable_dma (struct audio_channel_data *cdp)
+{
+    if (cdp->state == 1 || cdp->state == 5) {
+	cdp->state = 0;
+	cdp->last_sample = 0;
+	cdp->current_sample = 0;
+    }
 }
 
 void audio_reset (void)
@@ -909,20 +924,19 @@ void update_audio (void)
 
     n_cycles = get_cycles () - last_cycles;
     for (;;) {
-	int best = -1;
 	unsigned long int best_evtime = n_cycles + 1;
 	if (audio_channel[0].state != 0 && best_evtime > audio_channel[0].evtime)
-	    best = 0, best_evtime = audio_channel[0].evtime;
+	    best_evtime = audio_channel[0].evtime;
 	if (audio_channel[1].state != 0 && best_evtime > audio_channel[1].evtime)
-	    best = 1, best_evtime = audio_channel[1].evtime;
+	    best_evtime = audio_channel[1].evtime;
 	if (audio_channel[2].state != 0 && best_evtime > audio_channel[2].evtime)
-	    best = 2, best_evtime = audio_channel[2].evtime;
+	    best_evtime = audio_channel[2].evtime;
 	if (audio_channel[3].state != 0 && best_evtime > audio_channel[3].evtime)
-	    best = 3, best_evtime = audio_channel[3].evtime;
+	    best_evtime = audio_channel[3].evtime;
 	if (audio_channel[4].state != 0 && best_evtime > audio_channel[4].evtime)
-	    best = 4, best_evtime = audio_channel[4].evtime;
+	    best_evtime = audio_channel[4].evtime;
 	if (audio_channel[5].state != 0 && best_evtime > audio_channel[5].evtime)
-	    best = 5, best_evtime = audio_channel[5].evtime;
+	    best_evtime = audio_channel[5].evtime;
 	if (currprefs.produce_sound > 1 && best_evtime > next_sample_evtime)
 	    best_evtime = next_sample_evtime;
 
@@ -1026,7 +1040,6 @@ void AUDxPER (int nr, uae_u16 v)
 void AUDxLEN (int nr, uae_u16 v)
 {
     update_audio ();
-
     audio_channel[nr].len = v;
 }
 
@@ -1056,6 +1069,10 @@ int init_audio (void)
 
 static uae_u32 ahi_entry (void)
 {
+    struct audio_channel_data *cdp;
+    int opcode = m68k_dreg (regs, 0);
+    int was_enabled;
+
     /* D0 contains the function code:
        0: get current output sample rate.
        1: get scaled divider for that frequency
@@ -1063,31 +1080,46 @@ static uae_u32 ahi_entry (void)
        3: set right AHI channel info (LC in A0, period in D1, length D2, dmaen D3).
        4: set left AHI channel info (LC in A0, period in D1, length D2, dmaen D3).
        5: return interrupt state.  */
-    switch (m68k_dreg (regs, 0)) {
+    switch (opcode) {
     case 0:
 	return currprefs.sound_freq;
     case 1:
 	return scaled_sample_evtime;
     case 2:
-	ahi_enabled = m68k_dreg (regs, 1);
+	was_enabled = ahi_enabled;
+	ahi_enabled = !!m68k_dreg (regs, 1);
+	if (ahi_enabled > was_enabled) {
+	    audio_channel[4].evtime = CYCLE_UNIT;
+	    audio_channel[5].evtime = CYCLE_UNIT;
+	    if (currprefs.produce_sound > 0) {
+		schedule_audio ();
+		events_schedule ();
+	    }
+	}
 	return 0;
     case 3:
+    case 4:
 	/* Must set a frequency lower than sample rate, i.e. using a higher
 	   divider.  */
-	if (m68k_dreg (regs, 1) < scaled_sample_evtime)
+	if (m68k_dreg (regs, 3) && m68k_dreg (regs, 1) < scaled_sample_evtime)
 	    return 0;
-	audio_channel[4].lc = m68k_areg (regs, 0);
-	audio_channel[4].per = m68k_dreg (regs, 1);
-	audio_channel[4].len = m68k_dreg (regs, 2);
-	audio_channel[4].dmaen = m68k_dreg (regs, 3);
-	return 1;
-    case 4:
-	if (m68k_dreg (regs, 1) < scaled_sample_evtime)
-	    return 0;
-	audio_channel[5].lc = m68k_areg (regs, 0);
-	audio_channel[5].per = m68k_dreg (regs, 1);
-	audio_channel[5].len = m68k_dreg (regs, 2);
-	audio_channel[5].dmaen = m68k_dreg (regs, 3);
+	cdp = audio_channel + opcode + 1;
+	was_enabled = cdp->dmaen;
+	cdp->lc = m68k_areg (regs, 0);
+	cdp->per = m68k_dreg (regs, 1);
+	cdp->len = m68k_dreg (regs, 2);
+	cdp->dmaen = m68k_dreg (regs, 3);
+	if (currprefs.produce_sound > 0) {
+	    if (cdp->dmaen && ! was_enabled) {
+		cdp->state = 0;
+		audio_channel_enable_dma (cdp);
+	    } else if (cdp->dmaen == 0) {
+		cdp->state = 0;
+		cdp->dat = 0;
+	    }
+	    schedule_audio ();
+	    events_schedule ();
+	}
 	return 1;
     case 5:
 	return ahi_interrupt_state;

@@ -307,7 +307,15 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
                 write_log( "WinUAE now active via WM_ACTIVATE\n" );
                 if( !minimized )
                 {
-		    write_log( "Clear_inhibit_frame\n" );
+                    if( currprefs.win32_iconified_nospeed )
+		    {
+			SetPriorityClass( GetCurrentProcess(), NORMAL_PRIORITY_CLASS );
+		    }
+                    if( currprefs.win32_iconified_nosound )
+		    {
+			resume_sound();
+		    }
+
 		    clear_inhibit_frame( IHF_WINDOWHIDDEN );
                 }
 	        ShowWindow (hWnd, SW_RESTORE);
@@ -321,7 +329,14 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
                 write_log( "WinUAE now inactive via WM_ACTIVATE\n" );
                 if( minimized && !quit_program )
                 {
-		    write_log( "Set_inhibit_frame\n" );
+                    if( currprefs.win32_iconified_nospeed )
+		    {
+			SetPriorityClass( GetCurrentProcess(), IDLE_PRIORITY_CLASS );
+		    }
+                    if( currprefs.win32_iconified_nosound )
+		    {
+			pause_sound ();
+		    }
 		    set_inhibit_frame( IHF_WINDOWHIDDEN );
                 }
             }
@@ -1394,10 +1409,32 @@ static const char *sound_styles[] = { "waveout_looping", "waveout_dblbuff", "dso
 
 void target_save_options (FILE *f, struct uae_prefs *p)
 {
+    fprintf (f, "win32.middle_mouse=%s\n", p->win32_middle_mouse ? "true" : "false");
+    fprintf (f, "win32.logfile=%s\n", p->win32_logfile ? "true" : "false");
+    fprintf (f, "win32.map_drives=%s\n", p->win32_automount_drives ? "true" : "false" );
+    fprintf (f, "win32.serial_port=%s\n", p->use_serial ? p->sername : "none" );
+    fprintf (f, "win32.parallel_port=%s\n", p->prtname[0] ? p->prtname : "none" );
+    fprintf (f, "win32.iconified_nospeed=%s\n", p->win32_iconified_nospeed ? "true" : "false");
+    fprintf (f, "win32.iconified_nosound=%s\n", p->win32_iconified_nosound ? "true" : "false");
+    fprintf (f, "win32.no_overlay=%s\n", p->win32_no_overlay ? "true" : "false" );
 }
 
 int target_parse_option (struct uae_prefs *p, char *option, char *value)
 {
+    int result = (cfgfile_yesno (option, value, "middle_mouse", &p->win32_middle_mouse)
+		  || cfgfile_yesno (option, value, "logfile", &p->win32_logfile)
+		  || cfgfile_yesno (option, value, "no_overlay", &p->win32_no_overlay)
+		  || cfgfile_yesno (option, value, "map_drives", &p->automount_drives)
+		  || cfgfile_yesno (option, value, "iconified_nospeed", &p->win32_iconified_nospeed)
+		  || cfgfile_yesno (option, value, "iconified_nosound", &p->win32_iconified_nosound)
+		  || cfgfile_string (option, value, "serial_port", &p->sername[0], 256)
+		  || cfgfile_string (option, value, "parallel_port", &p->prtname[0], 256));
+
+    if (p->sername[0] == 'n')
+	p->use_serial = 0;
+    else
+	p->use_serial = 1;
+    
     return 0;
 }
 

@@ -264,7 +264,7 @@ int init_sound (void)
     currprefs.sound_minbsiz = (currprefs.sound_minbsiz>>2)<<2;
     currprefs.sound_maxbsiz = sndbufsize;
 
-    sample_evtime = (long)maxhpos * maxvpos * 50 / rate;
+    sample_evtime = (long)MAXHPOS_PAL * MAXVPOS_PAL * VBLANK_HZ_PAL / rate;
 
     if (dspbits == 16) {
 	init_sound_table16 ();

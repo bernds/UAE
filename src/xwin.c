@@ -1500,8 +1500,8 @@ void handle_events (void)
 			XWarpPointer (display, None, mywin, 0, 0, 0, 0, ttx, tty);
 		    }
 		} else {
-		  tx=event.xmotion.x;
-		  ty=event.xmotion.y;
+		    tx=event.xmotion.x;
+		    ty=event.xmotion.y;
 		}
 		oldx = tx;
 		oldy = ty;
@@ -1514,17 +1514,6 @@ void handle_events (void)
 		}
 		gettimeofday(&lastMotionTime, NULL);
 	    }
-
-            if (ievent_alive) {
-                if (lastmx < 0)
-                    lastmx = 0;
-                if (lastmx > current_width)
-                    lastmx = current_width;
-                if (lastmy < 0)
-                    lastmy = 0;
-                if (lastmy > current_height)
-                    lastmy = current_height;
-            }
 	    break;
 	 case EnterNotify:
 	    newmousecounters = 1;
