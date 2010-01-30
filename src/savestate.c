@@ -382,7 +382,7 @@ void save_state (char *filename, char *description)
     save_chunk (f, dst, len, "DISK");
     free (dst);
 
-    dst = save_custom (&len);
+    dst = save_custom (&len, 0, 0);
     save_chunk (f, dst, len, "CHIP");
     free (dst);
 

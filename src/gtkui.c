@@ -187,7 +187,7 @@ static void set_chipset_state (void)
 
 static void set_sound_state (void)
 {
-    int stereo = currprefs.stereo + currprefs.mixed_stereo;
+    int stereo = currprefs.sound_stereo + currprefs.mixed_stereo;
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_widget[currprefs.produce_sound]), 1);
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_ch_widget[stereo]), 1);
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_bits_widget[currprefs.sound_bits == 16]), 1);
@@ -496,10 +496,10 @@ static void p96size_changed (void)
 static void sound_changed (void)
 {
     changed_prefs.produce_sound = find_current_toggle (sound_widget, 4);
-    changed_prefs.stereo = find_current_toggle (sound_ch_widget, 3);
+    changed_prefs.sound_stereo = find_current_toggle (sound_ch_widget, 3);
     changed_prefs.mixed_stereo = 0;
-    if (changed_prefs.stereo == 2)
-	changed_prefs.mixed_stereo = changed_prefs.stereo = 1;
+    if (changed_prefs.sound_stereo == 2)
+	changed_prefs.mixed_stereo = changed_prefs.sound_stereo = 1;
     changed_prefs.sound_bits = (find_current_toggle (sound_bits_widget, 2) + 1) * 8;
 }
 

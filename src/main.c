@@ -32,7 +32,6 @@
 #include "autoconf.h"
 #include "osemu.h"
 #include "osdep/exectasks.h"
-#include "compiler.h"
 #include "picasso96.h"
 #include "bsdsocket.h"
 #include "uaeexe.h"
@@ -112,7 +111,7 @@ void default_prefs (struct uae_prefs *p)
     p->test_drawing_speed = 0;
 
     p->produce_sound = 0;
-    p->stereo = 0;
+    p->sound_stereo = 0;
     p->sound_bits = DEFAULT_SOUND_BITS;
     p->sound_freq = DEFAULT_SOUND_FREQ;
     p->sound_minbsiz = DEFAULT_SOUND_MINB;
@@ -469,7 +468,6 @@ void real_main (int argc, char **argv)
     rtarea_init ();
     hardfile_install ();
     scsidev_install ();
-    ahi_install ();
 
     parse_cmdline_and_init_file (argc, argv);
 
@@ -521,7 +519,6 @@ void real_main (int argc, char **argv)
     reset_frame_rate_hack ();
     init_m68k(); /* must come after reset_frame_rate_hack (); */
 
-    compiler_init ();
     gui_update ();
 
     if (graphics_init ()) {

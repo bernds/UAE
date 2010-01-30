@@ -61,7 +61,7 @@ int setup_sound (void)
 
     spec.freq = currprefs.sound_freq;
     spec.format = AUDIO_S16;
-    spec.channels = currprefs.stereo ? 2 : 1;
+    spec.channels = currprefs.sound_stereo ? 2 : 1;
     size >>= spec.channels - 1;
     size >>= 1;
     while (size & (size - 1))
@@ -87,13 +87,14 @@ static int open_sound (void)
 
     spec.freq = currprefs.sound_freq;
     spec.format = currprefs.sound_bits == 8 ? AUDIO_U8 : AUDIO_S16;
-    spec.channels = currprefs.stereo ? 2 : 1;
+    spec.channels = currprefs.sound_stereo ? 2 : 1;
     /* Always interpret buffer size as number of samples, not as actual
        buffer size.  Of course, since 8192 is the default, we'll have to
        scale that to a sane value (assuming that otherwise 16 bits and
        stereo would have been enabled and we'd have done the shift by
        two anyway).  */
-    size >>= 2;
+    size >>= spec.channels - 1;
+    size >>= currprefs.sound_bits == 8 ? 0 : 1;
     while (size & (size - 1))
 	size &= size - 1;
     if (size < 512)
@@ -113,10 +114,10 @@ static int open_sound (void)
 
     if (spec.format == AUDIO_S16) {
 	init_sound_table16 ();
-	sample_handler = currprefs.stereo ? sample16s_handler : sample16_handler;
+	sample_handler = currprefs.sound_stereo ? sample16s_handler : sample16_handler;
     } else {
 	init_sound_table8 ();
-	sample_handler = currprefs.stereo ? sample8s_handler : sample8_handler;
+	sample_handler = currprefs.sound_stereo ? sample8s_handler : sample8_handler;
     }
     sound_available = 1;
     write_log ("SDL sound driver found and configured for %d bits at %d Hz, buffer is %d samples\n",

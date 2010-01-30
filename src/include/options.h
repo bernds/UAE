@@ -47,7 +47,7 @@ struct uae_prefs {
     int test_drawing_speed;
 
     int produce_sound;
-    int stereo;
+    int sound_stereo;
     int mixed_stereo;
     int sound_bits;
     int sound_freq;

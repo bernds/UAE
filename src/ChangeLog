@@ -1,3 +1,19 @@
+9E1011 ALSA sound and SDL sound fix from Heikki Orsila.
+9E1010 Remove AHI code from audio.c; WinUAE didn't end up using it so there's
+       no point keeping it around.
+       Clear registers on reset; use calloc in mapped_malloc.
+       Work around REGPARAM problems with newer compilers.
+       Lose cpuopti, no point on current hardware and gcc breaks it too often.
+       Upgrade to newer version of autoconf (ugh).
+       Remove option stereo to sound_stereo to match WinUAE.
+       Make some variables static in cia.c.
+       Rename BPLPT[LH] to BPLxPT[LH], again to match WinUAE.
+       Import new identify.[ch] from WinUAE.
+       Move over exception and prefetch handling from WinUAE.  Also remove last
+       traces of old (pre-Bernie) JIT compiler.
+       Import most of WinUAE's debugger.
+9C1003 gcc3 broke lots of optimizations.  Fix the lossage by making
+       STATIC_INLINE contain the new always_inline attribute.
 9C0702 Correct an overflow problem in the CIA code.
 9C0407 Sprite code updates; correct CIA memory access handlers (Toni).
 9C0306 Make w/d representable for fsdb_win32.

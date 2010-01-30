@@ -16,7 +16,6 @@
 #include "memory.h"
 #include "custom.h"
 #include "newcpu.h"
-#include "compiler.h"
 #include "autoconf.h"
 #include "osdep/exectasks.h"
 
@@ -132,7 +131,7 @@ static void do_stack_magic (TrapFunction f, void *s, int has_retval)
 	 * calltrap that will longjmp to the right stack. */
 	put_long (m68k_areg (regs, 7), RTAREA_BASE + 0xFF00);
 	m68k_setpc (m68k_calladdr);
-	fill_prefetch_0 ();
+	fill_prefetch_slow ();
 	/*write_log ("native function calls m68k\n");*/
 	break;
     }
@@ -291,7 +290,7 @@ void REGPARAM2 call_calltrap(int func)
     /* For monitoring only? */
     if (traps[func] == NULL) {
 	m68k_setpc(trapoldfunc[func]);
-	fill_prefetch_0 ();
+	fill_prefetch_slow ();
 	return;
     }
 
@@ -308,7 +307,7 @@ void REGPARAM2 call_calltrap(int func)
 	m68k_dreg(regs, 0) = retval;
     if (implicit_rts) {
 	m68k_do_rts ();
-	fill_prefetch_0 ();
+	fill_prefetch_slow ();
     }
 }
 

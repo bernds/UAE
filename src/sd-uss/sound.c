@@ -115,7 +115,7 @@ int init_sound (void)
 	return 0;
     }
 
-    tmp = currprefs.stereo;
+    tmp = currprefs.sound_stereo;
     ioctl (sound_fd, SNDCTL_DSP_STEREO, &tmp);
 
     rate = currprefs.sound_freq;
@@ -135,12 +135,12 @@ int init_sound (void)
 	if (!(formats & AFMT_S16_LE))
 	    return 0;
 	init_sound_table16 ();
-	sample_handler = currprefs.stereo ? sample16s_handler : sample16_handler;
+	sample_handler = currprefs.sound_stereo ? sample16s_handler : sample16_handler;
     } else {
 	if (!(formats & AFMT_U8))
 	    return 0;
 	init_sound_table8 ();
-	sample_handler = currprefs.stereo ? sample8s_handler : sample8_handler;
+	sample_handler = currprefs.sound_stereo ? sample8s_handler : sample8_handler;
     }
     sound_available = 1;
     printf ("Sound driver found and configured for %d bits at %d Hz, buffer is %d bytes\n",

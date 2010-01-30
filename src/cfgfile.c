@@ -175,7 +175,7 @@ void save_options (FILE *f, struct uae_prefs *p)
     fprintf (f, "serial_on_demand=%s\n", p->serial_demand ? "true" : "false");
 
     fprintf (f, "sound_output=%s\n", soundmode[p->produce_sound]);
-    fprintf (f, "sound_channels=%s\n", stereomode1[p->stereo + p->mixed_stereo]);
+    fprintf (f, "sound_channels=%s\n", stereomode1[p->sound_stereo + p->mixed_stereo]);
     fprintf (f, "sound_bits=%d\n", p->sound_bits);
     fprintf (f, "sound_min_buff=%d\n", p->sound_minbsiz);
     fprintf (f, "sound_max_buff=%d\n", p->sound_maxbsiz);
@@ -432,13 +432,13 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	return 1;
     }
 
-    if (cfgfile_strval (option, value, "sound_channels", &p->stereo, stereomode1, 1)
-	|| cfgfile_strval (option, value, "sound_channels", &p->stereo, stereomode2, 1)
-	|| cfgfile_strval (option, value, "sound_channels", &p->stereo, stereomode3, 0))
+    if (cfgfile_strval (option, value, "sound_channels", &p->sound_stereo, stereomode1, 1)
+	|| cfgfile_strval (option, value, "sound_channels", &p->sound_stereo, stereomode2, 1)
+	|| cfgfile_strval (option, value, "sound_channels", &p->sound_stereo, stereomode3, 0))
     {
 	p->mixed_stereo = 0;
-	if (p->stereo == 2) {
-	    p->stereo = 1;
+	if (p->sound_stereo == 2) {
+	    p->sound_stereo = 1;
 	    p->mixed_stereo = 1;
 	}
 	return 1;
@@ -716,11 +716,11 @@ static void parse_sound_spec (char *spec)
     if (x1) {
 	currprefs.mixed_stereo = 0;
 	if (*x1 == 'S')
-	    currprefs.stereo = currprefs.mixed_stereo = 1;
+	    currprefs.sound_stereo = currprefs.mixed_stereo = 1;
 	else if (*x1 == 's')
-	    currprefs.stereo = 1;
+	    currprefs.sound_stereo = 1;
 	else
-	    currprefs.stereo = 0;
+	    currprefs.sound_stereo = 0;
     }
     if (x2)
 	currprefs.sound_bits = atoi (x2);

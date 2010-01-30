@@ -103,7 +103,7 @@ struct utimbuf
 };
 #endif
 
-#if defined(__GNUC__) && defined(AMIGA)
+#if defined(__GNUC__)
 /* gcc on the amiga need that __attribute((regparm)) must */
 /* be defined in function prototypes as well as in        */
 /* function definitions !                                 */
@@ -387,7 +387,11 @@ extern int console_get (char *, int);
 #endif
 
 #ifndef STATIC_INLINE
+#if __GNUC__ - 1 > 1 && __GNUC_MINOR__ - 1 >= 0
+#define STATIC_INLINE static __inline__ __attribute__ ((always_inline))
+#else
 #define STATIC_INLINE static __inline__
+#endif
 #endif
 
 /* Every Amiga hardware clock cycle takes this many "virtual" cycles.  This

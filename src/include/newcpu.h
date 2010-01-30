@@ -72,7 +72,7 @@ typedef double fptype;
 extern struct regstruct
 {
     uae_u32 regs[16];
-    uaecptr  usp,isp,msp;
+    uaecptr usp,isp,msp;
     uae_u16 sr;
     flagtype t1;
     flagtype t0;
@@ -96,10 +96,17 @@ extern struct regstruct
 
     uae_u32 spcflags;
     uae_u32 kick_mask;
+    uae_u32 address_space_mask;
+    uae_u16 irc, ir;
 
-    uae_u32 prefetch_pc;
-    uae_u32 prefetch;
+    uae_u8 panic;
+    uae_u32 panic_pc, panic_addr;
 } regs, lastint_regs;
+
+STATIC_INLINE uae_u32 munge24(uae_u32 x)
+{
+    return x & regs.address_space_mask;
+}
 
 STATIC_INLINE void set_special (uae_u32 x)
 {
@@ -114,15 +121,11 @@ STATIC_INLINE void unset_special (uae_u32 x)
 #define m68k_dreg(r,num) ((r).regs[(num)])
 #define m68k_areg(r,num) (((r).regs + 8)[(num)])
 
-#if !defined USE_COMPILER
 STATIC_INLINE void m68k_setpc (uaecptr newpc)
 {
     regs.pc_p = regs.pc_oldp = get_real_address (newpc);
     regs.pc = newpc;
 }
-#else
-extern void m68k_setpc (uaecptr newpc);
-#endif
 
 STATIC_INLINE uaecptr m68k_getpc (void)
 {
@@ -138,70 +141,7 @@ STATIC_INLINE uaecptr m68k_getpc_p (uae_u8 *p)
 #define get_iword(o) do_get_mem_word((uae_u16 *)(regs.pc_p + (o)))
 #define get_ilong(o) do_get_mem_long((uae_u32 *)(regs.pc_p + (o)))
 
-STATIC_INLINE void refill_prefetch (uae_u32 currpc, uae_u32 offs)
-{
-    uae_u32 t = (currpc + offs) & ~3;
-    uae_s32 pc_p_offs = t - currpc;
-    uae_u8 *ptr = regs.pc_p + pc_p_offs;
-    uae_u32 r;
-#ifdef UNALIGNED_PROFITABLE
-    r = *(uae_u32 *)ptr;
-    regs.prefetch = r;
-#else
-    r = do_get_mem_long ((uae_u32 *)ptr);
-    do_put_mem_long (&regs.prefetch, r);
-#endif
-    /* printf ("PC %lx T %lx PCPOFFS %d R %lx\n", currpc, t, pc_p_offs, r); */
-    regs.prefetch_pc = t;
-}
-
-STATIC_INLINE uae_u32 get_ibyte_prefetch (uae_s32 o)
-{
-    uae_u32 currpc = m68k_getpc ();
-    uae_u32 addr = currpc + o + 1;
-    uae_u32 offs = addr - regs.prefetch_pc;
-    uae_u32 v;
-    if (offs > 3) {
-	refill_prefetch (currpc, o + 1);
-	offs = addr - regs.prefetch_pc;
-    }
-    v = do_get_mem_byte (((uae_u8 *)&regs.prefetch) + offs);
-    if (offs >= 2)
-	refill_prefetch (currpc, 4);
-    /* printf ("get_ibyte PC %lx ADDR %lx OFFS %lx V %lx\n", currpc, addr, offs, v); */
-    return v;
-}
-STATIC_INLINE uae_u32 get_iword_prefetch (uae_s32 o)
-{
-    uae_u32 currpc = m68k_getpc ();
-    uae_u32 addr = currpc + o;
-    uae_u32 offs = addr - regs.prefetch_pc;
-    uae_u32 v;
-    if (offs > 3) {
-	refill_prefetch (currpc, o);
-	offs = addr - regs.prefetch_pc;
-    }
-    v = do_get_mem_word ((uae_u16 *)(((uae_u8 *)&regs.prefetch) + offs));
-    if (offs >= 2)
-	refill_prefetch (currpc, 4);
-    /* printf ("get_iword PC %lx ADDR %lx OFFS %lx V %lx\n", currpc, addr, offs, v); */
-    return v;
-}
-STATIC_INLINE uae_u32 get_ilong_prefetch (uae_s32 o)
-{
-    uae_u32 v = get_iword_prefetch (o);
-    v <<= 16;
-    v |= get_iword_prefetch (o + 2);
-    return v;
-}
-
 #define m68k_incpc(o) (regs.pc_p += (o))
-
-STATIC_INLINE void fill_prefetch_0 (void)
-{
-}
-
-#define fill_prefetch_2 fill_prefetch_0
 
 /* These are only used by the 68020/68881 code, and therefore don't
  * need to handle prefetch.  */
@@ -226,15 +166,25 @@ STATIC_INLINE uae_u32 next_ilong (void)
     return r;
 }
 
-#ifdef USE_COMPILER
-extern void m68k_setpc_fast (uaecptr newpc);
-extern void m68k_setpc_bcc (uaecptr newpc);
-extern void m68k_setpc_rte (uaecptr newpc);
-#else
-#define m68k_setpc_fast m68k_setpc
-#define m68k_setpc_bcc  m68k_setpc
-#define m68k_setpc_rte  m68k_setpc
-#endif
+STATIC_INLINE void m68k_do_rts(void)
+{
+    m68k_setpc(get_long(m68k_areg(regs, 7)));
+    m68k_areg(regs, 7) += 4;
+}
+
+STATIC_INLINE void m68k_do_bsr(uaecptr oldpc, uae_s32 offset)
+{
+    m68k_areg(regs, 7) -= 4;
+    put_long(m68k_areg(regs, 7), oldpc);
+    m68k_incpc(offset);
+}
+
+STATIC_INLINE void m68k_do_jsr(uaecptr oldpc, uaecptr dest)
+{
+    m68k_areg(regs, 7) -= 4;
+    put_long(m68k_areg(regs, 7), oldpc);
+    m68k_setpc(dest);
+}
 
 STATIC_INLINE void m68k_setstopped (int stop)
 {
@@ -274,12 +224,12 @@ extern void fbcc_opp (uae_u32, uaecptr, uae_u32);
 extern void fsave_opp (uae_u32);
 extern void frestore_opp (uae_u32);
 
-/* Opcode of faulting instruction */
-extern uae_u16 last_op_for_exception_3;
-/* PC at fault time */
-extern uaecptr last_addr_for_exception_3;
-/* Address that generated the exception */
-extern uaecptr last_fault_for_exception_3;
+extern void exception3 (uae_u32 opcode, uaecptr addr, uaecptr fault);
+extern void exception3i (uae_u32 opcode, uaecptr addr, uaecptr fault);
+extern void exception2 (uaecptr addr, uaecptr fault);
+extern void cpureset (void);
+
+extern void fill_prefetch_slow (void);
 
 #define CPU_OP_NAME(a) op ## a
 

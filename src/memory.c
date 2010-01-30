@@ -909,7 +909,7 @@ int good_address_fd;
 
 uae_u8 *mapped_malloc (size_t s, char *file)
 {
-    return malloc (s);
+    return calloc (s, 1);
 }
 
 void mapped_free (uae_u8 *p)

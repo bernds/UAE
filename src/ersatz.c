@@ -164,14 +164,14 @@ static void ersatz_init (void)
 	disk_eject (0);
 
 	m68k_setpc (0xFC0002);
-	fill_prefetch_0 ();
+	fill_prefetch_slow ();
 	uae_reset ();
 	ersatzkickfile = 0;
 	return;
     }
 
     m68k_setpc (0x400C);
-    fill_prefetch_0 ();
+    fill_prefetch_slow ();
 
     /* Init the hardware */
     put_long (0x3000, 0xFFFFFFFEul);

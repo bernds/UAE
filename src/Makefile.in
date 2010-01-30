@@ -36,7 +36,7 @@ INCLUDES=-I. -I@top_srcdir@/src/include/
 OBJS = main.o newcpu.o memory.o @CPUOBJS@ custom.o cia.o serial.o blitter.o \
        autoconf.o ersatz.o filesys.o hardfile.o keybuf.o expansion.o zfile.o \
        fpp.o readcpu.o cpudefs.o gfxutil.o gfxlib.o blitfunc.o blittable.o \
-       disk.o audio.o compiler.o uaelib.o drawing.o picasso96.o cpustbl.o \
+       disk.o audio.o uaelib.o drawing.o picasso96.o cpustbl.o \
        uaeexe.o bsdsocket.o missing.o sd-sound.o od-joy.o md-support.o \
        fsusage.o cfgfile.o native2amiga.o @FSDBOBJS@ fsdb.o identify.o \
        savestate.o writelog.o @ASMOBJS@ @GFXOBJS@ @DEBUGOBJS@ @SCSIOBJS@
@@ -78,7 +78,7 @@ clean:
 	$(MAKE) -C tools clean
 	-rm -f $(OBJS) *.o uae readdisk
 	-rm -f blit.h cpudefs.c
-	-rm -f cpuemu.c build68k cputmp.s cpufast*.s cpustbl.c cputbl.h
+	-rm -f cpuemu.c build68k cputmp.s cpustbl.c cputbl.h
 	-rm -f blitfunc.c blitfunc.h blittable.c
 
 halfclean:
@@ -102,8 +102,6 @@ tools/genblitter:
 	$(MAKE) -C tools genblitter
 tools/build68k:
 	$(MAKE) -C tools build68kc
-tools/cpuopti:
-	$(MAKE) -C tools cpuopti
 tools/gencpu: 
 	$(MAKE) -C tools gencpu
 
@@ -119,11 +117,6 @@ cpuemu.c: tools/gencpu
 # gencpu also creates cpustbl.c and cputbl.h
 cpustbl.c: cpuemu.c
 cputbl.h: cpuemu.c
-
-cpufast.s: cpuemu.c tools/cpuopti
-	$(CC) $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp.s
-	./tools/cpuopti <cputmp.s >$@
-	rm cputmp.s
 
 console_missing.o: missing.c
 	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(CFLAGS_$@) $< -o $@
@@ -148,7 +141,7 @@ osdep/beos.o: osdep/beos.cpp
 
 # Saves recompiling...
 touch:
-	touch *.o; touch build68k; touch cpudefs.c; touch cpudefs.o; touch gencpu; touch cpuemu.c; touch cpuopti.o cpuopti cpuemu.o cpufast.s cpufast.o
+	touch *.o; touch build68k; touch cpudefs.c; touch cpudefs.o; touch gencpu; touch cpuemu.c; touch cpuemu.o
 
 build68k.o: include/readcpu.h
 readcpu.o: include/readcpu.h
@@ -173,39 +166,6 @@ disk.o: config.h include/events.h
 blitter.o: config.h include/events.h blit.h
 
 # sam: this is for people with low memory. (is there a way do do this with a single rule ?)
-cpufast1.s: cpuemu.c cpuopti
-	$(CC) -DPART_1 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp1.s
-	./tools/cpuopti <cputmp1.s >$@
-	rm cputmp1.s
-cpufast2.s: cpuemu.c cpuopti
-	$(CC) -DPART_2 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp2.s
-	./tools/cpuopti <cputmp2.s >$@
-	rm cputmp2.s
-cpufast3.s: cpuemu.c cpuopti
-	$(CC) -DPART_3 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp3.s
-	./tools/cpuopti <cputmp3.s >$@
-	rm cputmp3.s
-cpufast4.s: cpuemu.c cpuopti
-	$(CC) -DPART_4 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp4.s
-	./tools/cpuopti <cputmp4.s >$@
-	rm cputmp4.s
-cpufast5.s: cpuemu.c cpuopti
-	$(CC) -DPART_5 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp5.s
-	./tools/cpuopti <cputmp5.s >$@
-	rm cputmp5.s
-cpufast6.s: cpuemu.c cpuopti
-	$(CC) -DPART_6 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp6.s
-	./tools/cpuopti <cputmp6.s >$@
-	rm cputmp6.s
-cpufast7.s: cpuemu.c cpuopti
-	$(CC) -DPART_7 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp7.s
-	./tools/cpuopti <cputmp7.s >$@
-	rm cputmp7.s
-cpufast8.s: cpuemu.c cpuopti
-	$(CC) -DPART_8 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp8.s
-	./tools/cpuopti <cputmp8.s >$@
-	rm cputmp8.s
-
 cpuemu1.o: cpuemu.c
 	$(CC) -DPART_1 $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $< -o $@
 cpuemu2.o: cpuemu.c

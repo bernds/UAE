@@ -352,22 +352,6 @@ void reset_frame_rate_hack (void)
     write_log ("Resetting frame rate hack\n");
 }
 
-void check_prefs_changed_custom (void)
-{
-    currprefs.gfx_framerate = changed_prefs.gfx_framerate;
-    /* Not really the right place... */
-    if (currprefs.jport0 != changed_prefs.jport0
-	|| currprefs.jport1 != changed_prefs.jport1) {
-	currprefs.jport0 = changed_prefs.jport0;
-	currprefs.jport1 = changed_prefs.jport1;
-	joystick_setting_changed ();
-    }
-    currprefs.immediate_blits = changed_prefs.immediate_blits;
-    currprefs.blits_32bit_enabled = changed_prefs.blits_32bit_enabled;
-    currprefs.collision_level = changed_prefs.collision_level;
-    currprefs.fast_copper = changed_prefs.fast_copper;
-}
-
 STATIC_INLINE void setclr (uae_u16 *p, uae_u16 val)
 {
     if (val & 0x8000)
@@ -2430,13 +2414,13 @@ static void BEAMCON0 (uae_u16 v)
 	new_beamcon0 = v & 0x20;
 }
 
-static void BPLPTH (int hpos, uae_u16 v, int num)
+static void BPLxPTH (int hpos, uae_u16 v, int num)
 {
     decide_line (hpos);
     decide_fetch (hpos);
     bplpt[num] = (bplpt[num] & 0xffff) | ((uae_u32)v << 16);
 }
-static void BPLPTL (int hpos, uae_u16 v, int num)
+static void BPLxPTL (int hpos, uae_u16 v, int num)
 {
     decide_line (hpos);
     decide_fetch (hpos);
@@ -4420,22 +4404,22 @@ void REGPARAM2 custom_wput_1 (int hpos, uaecptr addr, uae_u32 value)
      case 0x0D8: AUDxVOL (3, value); break;
      case 0x0DA: AUDxDAT (3, value); break;
 
-     case 0x0E0: BPLPTH (hpos, value, 0); break;
-     case 0x0E2: BPLPTL (hpos, value, 0); break;
-     case 0x0E4: BPLPTH (hpos, value, 1); break;
-     case 0x0E6: BPLPTL (hpos, value, 1); break;
-     case 0x0E8: BPLPTH (hpos, value, 2); break;
-     case 0x0EA: BPLPTL (hpos, value, 2); break;
-     case 0x0EC: BPLPTH (hpos, value, 3); break;
-     case 0x0EE: BPLPTL (hpos, value, 3); break;
-     case 0x0F0: BPLPTH (hpos, value, 4); break;
-     case 0x0F2: BPLPTL (hpos, value, 4); break;
-     case 0x0F4: BPLPTH (hpos, value, 5); break;
-     case 0x0F6: BPLPTL (hpos, value, 5); break;
-     case 0x0F8: BPLPTH (hpos, value, 6); break;
-     case 0x0FA: BPLPTL (hpos, value, 6); break;
-     case 0x0FC: BPLPTH (hpos, value, 7); break;
-     case 0x0FE: BPLPTL (hpos, value, 7); break;
+     case 0x0E0: BPLxPTH (hpos, value, 0); break;
+     case 0x0E2: BPLxPTL (hpos, value, 0); break;
+     case 0x0E4: BPLxPTH (hpos, value, 1); break;
+     case 0x0E6: BPLxPTL (hpos, value, 1); break;
+     case 0x0E8: BPLxPTH (hpos, value, 2); break;
+     case 0x0EA: BPLxPTL (hpos, value, 2); break;
+     case 0x0EC: BPLxPTH (hpos, value, 3); break;
+     case 0x0EE: BPLxPTL (hpos, value, 3); break;
+     case 0x0F0: BPLxPTH (hpos, value, 4); break;
+     case 0x0F2: BPLxPTL (hpos, value, 4); break;
+     case 0x0F4: BPLxPTH (hpos, value, 5); break;
+     case 0x0F6: BPLxPTL (hpos, value, 5); break;
+     case 0x0F8: BPLxPTH (hpos, value, 6); break;
+     case 0x0FA: BPLxPTL (hpos, value, 6); break;
+     case 0x0FC: BPLxPTH (hpos, value, 7); break;
+     case 0x0FE: BPLxPTL (hpos, value, 7); break;
 
      case 0x100: BPLCON0 (hpos, value); break;
      case 0x102: BPLCON1 (hpos, value); break;
@@ -4681,7 +4665,7 @@ uae_u8 *restore_custom (uae_u8 *src)
 
 extern uae_u16 serper;
 
-uae_u8 *save_custom (int *len)
+uae_u8 *save_custom (int *len, uae_u8 *dstptr, int full)
 {
     uae_u8 *dstbak, *dst;
     int i;
@@ -4689,7 +4673,12 @@ uae_u8 *save_custom (int *len)
     uae_u16 dsklen, dsksync, dskdatr, dskbytr;
 
     DISK_save_custom (&dskpt, &dsklen, &dsksync, &dskdatr, &dskbytr);
-    dstbak = dst = malloc (8+256*2);
+
+    if (dstptr)
+	dstbak = dst = dstptr;
+    else
+	dstbak = dst = malloc (8+256*2);
+
     SL (currprefs.chipset_mask);
     SW (0);			/* 000 ? */
     SW (dmacon);		/* 002 DMACONR */
@@ -4872,4 +4861,20 @@ uae_u8 *save_custom_sprite(int *len, int num)
     SB (spr[num].armed ? 1 : 0);
     *len = dst - dstbak;
     return dstbak;
+}
+
+void check_prefs_changed_custom (void)
+{
+    currprefs.gfx_framerate = changed_prefs.gfx_framerate;
+    /* Not really the right place... */
+    if (currprefs.jport0 != changed_prefs.jport0
+	|| currprefs.jport1 != changed_prefs.jport1) {
+	currprefs.jport0 = changed_prefs.jport0;
+	currprefs.jport1 = changed_prefs.jport1;
+	joystick_setting_changed ();
+    }
+    currprefs.immediate_blits = changed_prefs.immediate_blits;
+    currprefs.blits_32bit_enabled = changed_prefs.blits_32bit_enabled;
+    currprefs.collision_level = changed_prefs.collision_level;
+    currprefs.fast_copper = changed_prefs.fast_copper;
 }

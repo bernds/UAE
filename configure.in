@@ -7,8 +7,9 @@ dnl this into the public domain.
 dnl There are still many uncaught errors (e.g. --enable-dga on an Amiga)
 dnl I didn't have the nerve to track them all down.
 
-AC_INIT(amiga/source/transdisk.c)
-AC_PREREQ(2.12)
+AC_INIT
+AC_CONFIG_SRCDIR([amiga/source/transdisk.c])
+AC_PREREQ(2.59)
 
 dnl Checks for programs.
 AC_PROG_CC
@@ -32,9 +33,18 @@ AC_EGREP_CPP(yes,
 ], [uae_cv_prog_cc_watcom=yes], [uae_cv_prog_cc_watcom=no])
 AC_MSG_RESULT($uae_cv_prog_cc_watcom)
 
-AM_CYGWIN32
-AM_MINGW32
-AM_EXEEXT
+AC_CANONICAL_HOST()
+AC_DIAGNOSE([obsolete],[AC_CYGWIN is obsolete: use AC_CANONICAL_HOST and $host_os])case $host_os in
+  *cygwin* ) CYGWIN=yes;;
+	 * ) CYGWIN=no;;
+esac
+
+AC_DIAGNOSE([obsolete],[AC_MINGW32 is obsolete: use AC_CANONICAL_HOST and $host_os])case $host_os in
+  *mingw32* ) MINGW32=yes;;
+	  * ) MINGW32=no;;
+esac
+
+AC_EXEEXT()
 
 NR_WARNINGS=0
 NR_ERRORS=0
@@ -51,6 +61,7 @@ OPTIMIZE_CFLAGS=
 WARNING_CFLAGS=
 DEBUG_CFLAGS=
 NO_SCHED_CFLAGS=
+NO_REORDER_CFLAGS=
 LDFLAGS="$LDFLAGS -L."
 
 dnl Checks for libraries.
@@ -119,7 +130,7 @@ AC_CHECK_FUNCS(tcgetattr cfmakeraw readdir_r vprintf vsprintf vfprintf)
 dnl GNOME_FILEUTILS_CHECKS will fail for native Win32 compilers like Watcom C
 dnl So don't use that macro if we know it will fail
 DO_FILEUTILS_CHECK=yes
-if test $uae_cv_prog_cc_watcom = yes -o $am_cv_mingw32 = yes; then
+if test $uae_cv_prog_cc_watcom = yes -o $MINGW32 = yes; then
   DO_FILEUTILS_CHECK=no
 fi
 if test $DO_FILEUTILS_CHECK = yes; then
@@ -157,8 +168,7 @@ if [[ "x$HAVE_NCURSES_LIB" = "xyes" ]]; then
   else
     if [[ "x$ac_cv_header_ncurses_h" = "xno" ]]; then
       AC_MSG_CHECKING(for attr_t in curses.h)
-      AC_TRY_COMPILE([#include <curses.h>],[{ attr_t a; a = A_NORMAL; }], AC_MSG_RESULT(yes),
-      [
+      AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <curses.h>]], [[{ attr_t a; a = A_NORMAL; }]])],[AC_MSG_RESULT(yes)],[
         ADDITIONAL_CFLAGS="$ADDITIONAL_CFLAGS -DDONT_HAVE_ATTR_T"
         AC_MSG_RESULT(no)
 	NR_WARNINGS=`expr $NR_WARNINGS + 1`
@@ -166,8 +176,7 @@ if [[ "x$HAVE_NCURSES_LIB" = "xyes" ]]; then
       ])
     else
       AC_MSG_CHECKING(for attr_t in ncurses.h)
-      AC_TRY_COMPILE([#include <ncurses.h>],[{ attr_t a; a = A_NORMAL; }], AC_MSG_RESULT(yes),
-      [
+      AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <ncurses.h>]], [[{ attr_t a; a = A_NORMAL; }]])],[AC_MSG_RESULT(yes)],[
         ADDITIONAL_CFLAGS="$ADDITIONAL_CFLAGS -DDONT_HAVE_ATTR_T"
         AC_MSG_RESULT(no)
 	NR_WARNINGS=`expr $NR_WARNINGS + 1`
@@ -181,18 +190,16 @@ AC_MSG_CHECKING(for pthread library)
 TMP_SAVE_CFLAGS=$CFLAGS
 TMP_SAVE_LIBS=$LIBS
 LIBS="$LIBS -lpthread"
-AC_TRY_LINK([
+AC_LINK_IFELSE([AC_LANG_PROGRAM([[
 #include "confdefs.h"
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
-#include <pthread.h>],[
+#include <pthread.h>]], [[
 pthread_exit (0);
-],
-HAVE_PTHREAD_LIB=yes
-AC_MSG_RESULT(yes),
-HAVE_PTHREAD_LIB=no
-AC_MSG_RESULT(no))
+]])],[HAVE_PTHREAD_LIB=yes
+AC_MSG_RESULT(yes)],[HAVE_PTHREAD_LIB=no
+AC_MSG_RESULT(no)])
 CFLAGS=$TMP_SAVE_CFLAGS
 LIBS=$TMP_SAVE_LIBS
 
@@ -201,20 +208,18 @@ TMP_SAVE_CFLAGS=$CFLAGS
 TMP_SAVE_LIBS=$LIBS
 CFLAGS="$CFLAGS $X_CFLAGS"
 LIBS="$LIBS -lddraw"
-AC_TRY_LINK([
+AC_LINK_IFELSE([AC_LANG_PROGRAM([[
 #include "confdefs.h"
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
 #include <windows.h>
-#include <ddraw.h>],[
+#include <ddraw.h>]], [[
 LPDIRECTDRAW lpDD;
 IDirectDraw_CreateSurface(lpDD, 0, 0, 0);
-],
-HAVE_DIRECTX=yes
-AC_MSG_RESULT(yes),
-HAVE_DIRECTX=no
-AC_MSG_RESULT(no))
+]])],[HAVE_DIRECTX=yes
+AC_MSG_RESULT(yes)],[HAVE_DIRECTX=no
+AC_MSG_RESULT(no)])
 CFLAGS=$TMP_SAVE_CFLAGS
 LIBS=$TMP_SAVE_LIBS
 
@@ -230,7 +235,8 @@ AC_ARG_ENABLE(profiling,[  --enable-profiling      Build a profiling (SLOW!) ver
 AC_ARG_WITH(svgalib,[  --with-svgalib          Use SVGAlib for graphics output],[WANT_SVGALIB=$withval],[])
 AC_ARG_WITH(sdl,[  --with-sdl              Use SDL library for low-level functions],[WANT_SDL=$withval],[])
 AC_ARG_WITH(sdl-sound,[  --with-sdl-sound        Use SDL library for sound],[WANT_SDLSND=$withval],[])
-AC_ARG_WITH(sdl-gfx,[  --with-sdl-gfx        Use SDL library for graphics],[WANT_SDLGFX=$withval],[])
+AC_ARG_WITH(sdl-gfx,[  --with-sdl-gfx          Use SDL library for graphics],[WANT_SDLGFX=$withval],[])
+AC_ARG_WITH(alsa,[  --with-alsa             Use ALSA library for sound],[WANT_ALSA=$withval],[])
 AC_ARG_WITH(asciiart,[  --with-asciiart         Use ncurses ascii art for graphics output],[WANT_ASCIIART=$withval],[])
 AC_ARG_ENABLE(dga,[  --enable-dga            X11 version: Use the DGA extension],[WANT_DGA=$enableval],[])
 AC_ARG_ENABLE(vidmode,[  --enable-vidmode        X11 version: Use the XF86VidMode extension],[WANT_VIDMODE=$enableval],[])
@@ -254,6 +260,10 @@ if [[ "x$WANT_SDL" = "xyes" ]]; then
     LIBS="$LIBS $SDL_LIBS"
     ADDITIONAL_CFLAGS="$ADDITIONAL_CFLAGS $SDL_CFLAGS -DUSE_SDL"
   fi
+fi
+
+if [[ "x$WANT_ALSA" = "xyes" ]]; then
+  LIBS="$LIBS -lasound"
 fi
 
 if [[ "x$WANT_DGA" = "xyes" ]]; then
@@ -349,7 +359,7 @@ if [[ "x$no_x" != "xyes" -a "x$ac_cv_header_sys_ipc_h" = "xyes" -a "x$ac_cv_head
   TMP_SAVE_LIBS=$LIBS
   CFLAGS="$CFLAGS $X_CFLAGS"
   LIBS="$X_LIBS $LIBS $X_PRE_LIBS -lX11 -lXext $X_EXTRA_LIBS"
-  AC_TRY_LINK([
+  AC_LINK_IFELSE([AC_LANG_PROGRAM([[
 #include "confdefs.h"
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
@@ -360,17 +370,15 @@ if [[ "x$no_x" != "xyes" -a "x$ac_cv_header_sys_ipc_h" = "xyes" -a "x$ac_cv_head
 #include <X11/cursorfont.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
-#include <X11/extensions/XShm.h>],[
+#include <X11/extensions/XShm.h>]], [[
 static XShmSegmentInfo shminfo;
 static Display *display;
 XShmAttach(display, &shminfo);
 XSync(display,0);
 shmctl(shminfo.shmid, IPC_RMID, 0);
-],
-SHM_SUPPORT_LINKS=1
-AC_MSG_RESULT(yes),
-SHM_SUPPORT_LINKS=0
-AC_MSG_RESULT(no))
+]])],[SHM_SUPPORT_LINKS=1
+AC_MSG_RESULT(yes)],[SHM_SUPPORT_LINKS=0
+AC_MSG_RESULT(no)])
   CFLAGS=$TMP_SAVE_CFLAGS
   LIBS=$TMP_SAVE_LIBS
 fi
@@ -575,7 +583,7 @@ AC_EGREP_CPP(yes,
 #endif
 ], [AC_MSG_RESULT(yes); HAVEGCC27=yes], AC_MSG_RESULT(no))
 
-if test $ac_cv_prog_gcc = yes; then
+if test $ac_cv_c_compiler_gnu = yes; then
   if test $HAVEGCC27 != yes; then
     echo "I suggest you upgrade to at least version 2.7 of GCC"
   fi
@@ -596,7 +604,7 @@ if [[ "x$ac_cv_header_features_h" = "xyes" ]]; then
 ], [AC_MSG_RESULT(yes); HAVEGLIBC2=yes], AC_MSG_RESULT(no))
 fi
 
-if test $ac_cv_prog_gcc = yes; then
+if test $ac_cv_c_compiler_gnu = yes; then
   WARNING_CFLAGS="-Wall -Wno-unused -Wno-format -W -Wmissing-prototypes -Wstrict-prototypes"
   OPTIMIZE_CFLAGS="-O2 -fomit-frame-pointer"
   dnl Not nice, but needed to turn off -g
@@ -691,14 +699,21 @@ dnl See if we have something better than GCC 2.7.
 if [[ "x$HAVEGCC27" = "xyes" -a "x$HAVEI386" = "xyes" ]]; then
   SAVECFLAGS=$CFLAGS
   CFLAGS="$CFLAGS -mno-schedule-prologue"
-  AC_TRY_COMPILE(,int main(){return 0;}, NO_SCHED_CFLAGS="-mno-schedule-prologue")
+  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[int main(){return 0;}]])],[NO_SCHED_CFLAGS="-mno-schedule-prologue"],[])
   CFLAGS=$SAVECFLAGS
 fi
 
 if [[ "x$HAVEGCC27" = "xyes" -a "x$HAVEI386" = "xyes" ]]; then
   SAVECFLAGS=$CFLAGS
   CFLAGS="$CFLAGS -mpreferred-stack-boundary=2"
-  AC_TRY_COMPILE(,int main(){return 0;}, SAVECFLAGS=$CFLAGS)
+  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[int main(){return 0;}]])],[SAVECFLAGS=$CFLAGS],[])
+  CFLAGS=$SAVECFLAGS
+fi
+
+if [[ "x$HAVEGCC27" = "xyes" -a "x$HAVEI386" = "xyes" ]]; then
+  SAVECFLAGS=$CFLAGS
+  CFLAGS="$CFLAGS -fno-reorder-blocks"
+  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[int main(){return 0;}]])],[NO_REORDER_CFLAGS="-fno-reorder-blocks"],[])
   CFLAGS=$SAVECFLAGS
 fi
 
@@ -708,7 +723,7 @@ if [[ "x$HAVEGCC27" = "xyes" -a "x$HAVEI386" = "xyes" ]]; then
   SAVECFLAGS=$CFLAGS
   CFLAGS="$CFLAGS -fno-exceptions"
   NOEXCEPTIONS=no
-  AC_TRY_COMPILE(,int main(){return 0;}, NOEXCEPTIONS=yes)
+  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[int main(){return 0;}]])],[NOEXCEPTIONS=yes],[])
   if [[ "x$NOEXCEPTIONS" = "xno" ]]; then
     CFLAGS=$SAVECFLAGS
   fi
@@ -727,7 +742,6 @@ if [[ "x$HAVEGCC27" = "xyes" -a "x$HAVEI386" = "xyes" -a "x$DO_PROFILING" = "xno
 
   CFLAGS="$CFLAGS -DX86_ASSEMBLY -DOPTIMIZED_FLAGS"
   ASMOBJS=md-X86.o
-  CPUOBJS=cpufast.o
 else if test $uae_cv_prog_cc_watcom = yes; then
   MACHDEP=md-i386-watcom
   echo CFLAGS before: $CFLAGS
@@ -762,27 +776,24 @@ else if [[ "x$TARGET" = "xp_os" ]]; then
   fi
   CFLAGS="$CFLAGS -nostdinc -I/gg/include -I/p/../inc -D__POS__"
   OSDEP=od-pos
-  CPUOBJS="cpufast.o"
 else if [[ "x$TARGET" = "xamigaos" ]]; then
   OSDEP=od-amiga
   CPU=`uname -m`
   if [[ "x$HAVEGCC27" = "xyes" -a "x$HAVE68K" = "xyes" ]]; then
     MACHDEP=md-68k
     CFLAGS="$CFLAGS -DUNALIGNED_PROFITABLE -DREGPARAM=\"__attribute__((regparm(4)))\" -DM68K_FLAG_OPT=1"
-    CPUOBJS="cpufast1.o cpufast2.o cpufast3.o cpufast4.o cpufast5.o cpufast6.o cpufast7.o cpufast8.o"
   else if [[ "x$HAVEGCC27" = "xyes" -a "x$CPU" = "xppc" ]]; then
     MACHDEP=md-ppc-gcc
   else
     dnl sam: amigaos without gcc
     CFLAGS="$CFLAGS -O -DREGPARAM="
-    CPUOBJS="cpuemu1.o cpuemu2.o cpuemu3.o cpuemu4.o cpuemu5.o cpuemu6.o cpuemu7.o cpuemu8.o"
   fi
+  CPUOBJS="cpuemu1.o cpuemu2.o cpuemu3.o cpuemu4.o cpuemu5.o cpuemu6.o cpuemu7.o cpuemu8.o"
   fi
 else if [[ "x$HAVEGCC27" = "xyes" -a "x$HAVE68K" = "xyes" -a "x$DO_PROFILING" = "xno" ]]; then
   dnl sam: This is for linux 68k (REGPARAM is not used under linux)
   MACHDEP=md-68k
   CFLAGS="$CFLAGS -DM68K_FLAG_OPT=1 -DREGPARAM="
-  CPUOBJS="cpufast.o"
 else if [[ "x$TARGET" = "xbeos" ]]; then
   MACHDEP=md-ppc
   CFLAGS="$CFLAGS -DREGPARAM="
@@ -801,7 +812,7 @@ FSDBOBJS=fsdb_unix.o
 if [[ "x$TARGET" = "xwin32" ]]; then
   OSDEP=od-win32
   FSDBOBJS=osdep/fsdb_win32.o
-  if test $ac_cv_prog_gcc = yes; then
+  if test $ac_cv_c_compiler_gnu = yes; then
     LIBS="$LIBS -lddraw -lwinmm -lcomctl32 -lcomdlg32 -luser32 -lgdi32 -lkernel32 -ladvapi32 -lshell32"
   else if test $uae_cv_prog_cc_watcom = yes; then
     LIBS="$LIBS -lddraw -lwinmm -lcomctl32"
@@ -822,7 +833,7 @@ HAVE_USS_SOUND=no
 if [[ "x$ac_cv_header_sys_soundcard_h" = "xyes" -o "x$ac_cv_header_machine_soundcard_h" = "xyes" ]]; then
   dnl Avoid surprises
   AC_MSG_CHECKING(whether sys/soundcard.h or machine/soundcard.h works)
-  AC_TRY_COMPILE([
+  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
 #include "confdefs.h"
 #ifdef HAVE_SYS_SOUNDCARD_H
 #include <sys/soundcard.h>
@@ -830,11 +841,8 @@ if [[ "x$ac_cv_header_sys_soundcard_h" = "xyes" -o "x$ac_cv_header_machine_sound
 #include <machine/soundcard.h>
 #endif
 #include <sys/ioctl.h>
-],
-[int soundfd; ioctl (soundfd, SNDCTL_DSP_GETFMTS, 0);],
-AC_MSG_RESULT(yes)
-HAVE_USS_SOUND=yes,
-AC_MSG_RESULT(no))
+]], [[int soundfd; ioctl (soundfd, SNDCTL_DSP_GETFMTS, 0);]])],[AC_MSG_RESULT(yes)
+HAVE_USS_SOUND=yes],[AC_MSG_RESULT(no)])
 fi
 
 if [[ "x$ac_cv_header_dmedia_audio.h" = "xno" ]]; then
@@ -853,6 +861,10 @@ else if [[ "x$WANT_SDLSND" = "xyes" ]]; then
   SOUNDDEP=sd-sdl
   USE_SOUND=yes
   NEED_THREAD_SUPPORT=yes
+else if [[ "x$WANT_ALSA" = "xyes" ]]; then
+  AC_MSG_RESULT(ALSA)
+  SOUNDDEP=sd-alsa
+  USE_SOUND=yes
 else if [[ "x$HAVE_USS_SOUND" = "xyes" ]]; then
   AC_MSG_RESULT(USS)
   SOUNDDEP=sd-uss
@@ -910,6 +922,7 @@ fi
 fi
 fi
 fi
+fi
 
 if [[ "x$NEED_THREAD_SUPPORT" = "xyes" ]]; then
   if [[ "x$USE_THREADS" != "xyes" ]]; then
@@ -956,15 +969,13 @@ if [[ "x$USE_SCSI_DEVICE" = "xyes" ]]; then
   OLDCFLAGS="$CFLAGS"
   CFLAGS="$CFLAGS -Isrc/include"
   LIBS="-Lsrc $LIBS -lscg -lschily"
-  AC_TRY_LINK([typedef int BOOL;
+  AC_LINK_IFELSE([AC_LANG_PROGRAM([[typedef int BOOL;
 #include "scg/scgcmd.h"
 #include "scg/scsitransp.h"
-#include "scg/scsireg.h"], [{SCSI *scgp = open_scsi ((void *)0, (void *)0, 0, 1, 1);}],
-  [
+#include "scg/scsireg.h"]], [[{SCSI *scgp = open_scsi ((void *)0, (void *)0, 0, 1, 1);}]])],[
     AC_MSG_RESULT(available)
     SCSIOBJS=scsidev.o
-  ],
-  [
+  ],[
      AC_MSG_RESULT(not available)
      NR_WARNINGS=`expr $NR_WARNINGS + 1`
      echo "Please refer to the UAE SCSI device section in docs/README for installation instructions."
@@ -978,8 +989,7 @@ dnl Special case hack for BSD: try to use the Linux joystick.c.
 if [[ "x$WANT_SDL" = "xyes" ]]; then
     OD_JOYSTICK=sdl-joystick.c
 else if [[ "x$ac_cv_header_machine_joystick_h" = "xyes" ]]; then
-    AC_TRY_COMPILE([#include <machine/joystick.h>],[{ struct joystick a; }],
-    OD_JOYSTICK=od-linux/joystick.c,)
+    AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <machine/joystick.h>]], [[{ struct joystick a; }]])],[OD_JOYSTICK=od-linux/joystick.c],[])
 else
     OD_JOYSTICK=$OSDEP/joystick.c
 fi
@@ -1020,6 +1030,7 @@ fi
 AC_SUBST(ac_cv_c_inline)
 AC_SUBST(WRCPRG)
 AC_SUBST(NO_SCHED_CFLAGS)
+AC_SUBST(NO_REORDER_CFLAGS)
 AC_SUBST(LIBRARIES)
 AC_SUBST(TARGET)
 AC_SUBST(GFXOBJS)
@@ -1035,7 +1046,8 @@ AC_SUBST(SHM_SUPPORT_LINKS)
 
 AC_SUBST(top_srcdir)
 
-AC_OUTPUT(src/Makefile Makefile)
+AC_CONFIG_FILES([src/Makefile Makefile])
+AC_OUTPUT
 if [[ "x$DO_PROFILING" = "xyes" ]]; then
   echo "Building a profiling version of UAE (select this option only if you know"
   echo "what you are doing)"

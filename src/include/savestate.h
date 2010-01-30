@@ -48,7 +48,7 @@ extern void DISK_save_custom  (uae_u32 *pdskpt, uae_u16 *pdsklen, uae_u16 *pdsks
 extern void DISK_restore_custom  (uae_u32 pdskpt, uae_u16 pdsklength, uae_u16 pdskdatr, uae_u16 pdskbytr);
 
 extern uae_u8 *restore_custom (uae_u8 *);
-extern uae_u8 *save_custom (int *);
+extern uae_u8 *save_custom (int *, uae_u8 *, int);
 
 extern uae_u8 *restore_custom_sprite (uae_u8 *src, int num);
 extern uae_u8 *save_custom_sprite (int *len, int num);

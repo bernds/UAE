@@ -18,6 +18,9 @@ extern union flagu historyf[MAX_HIST];
 #else
 extern uaecptr history[MAX_HIST];
 #endif
+extern int exception_debugging;
 
 extern void debug(void);
 extern void activate_debugger(void);
+extern int notinrom (void);
+extern const char *debuginfo(int);

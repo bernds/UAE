@@ -45,18 +45,18 @@ static unsigned int clock_control_d = RTC_D_ADJ + RTC_D_HOLD;
 static unsigned int clock_control_e = 0;
 static unsigned int clock_control_f = RTC_F_24_12;
 
-unsigned int ciaaicr, ciaaimask, ciabicr, ciabimask;
-unsigned int ciaacra, ciaacrb, ciabcra, ciabcrb;
+static unsigned int ciaaicr, ciaaimask, ciabicr, ciabimask;
+static unsigned int ciaacra, ciaacrb, ciabcra, ciabcrb;
 
 /* Values of the CIA timers.  */
-unsigned long ciaata, ciaatb, ciabta, ciabtb;
+static unsigned long ciaata, ciaatb, ciabta, ciabtb;
 /* Computed by compute_passed_time.  */
-unsigned long ciaata_passed, ciaatb_passed, ciabta_passed, ciabtb_passed;
+static unsigned long ciaata_passed, ciaatb_passed, ciabta_passed, ciabtb_passed;
 
-unsigned long ciaatod, ciabtod, ciaatol, ciabtol, ciaaalarm, ciabalarm;
-int ciaatlatch, ciabtlatch;
+static unsigned long ciaatod, ciabtod, ciaatol, ciabtol, ciaaalarm, ciabalarm;
+static int ciaatlatch, ciabtlatch;
 
-unsigned int ciabpra;
+static unsigned int ciabpra;
 
 unsigned int gui_ledstate;
 
