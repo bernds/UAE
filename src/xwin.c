@@ -29,7 +29,6 @@
 #include "xwin.h"
 #include "custom.h"
 #include "drawing.h"
-#include "readcpu.h"
 #include "newcpu.h"
 #include "keyboard.h"
 #include "keybuf.h"

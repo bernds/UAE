@@ -84,8 +84,10 @@ static const char *csmode[] = { "ocs", "ecs_agnus", "ecs_denise", "ecs", "aga" }
 static const char *linemode1[] = { "none", "double", "scanlines", 0 };
 static const char *linemode2[] = { "n", "d", "s", 0 };
 static const char *speedmode[] = { "max", "real", 0 };
-static const char *cpumode[] = { "68000", "68000", "68010", "68010",
-				 "68ec020", "68020", "68ec020/68881", "68020/68881", 0 };
+static const char *cpumode[] = {
+    "68000", "68000", "68010", "68010", "68ec020", "68020", "68ec020/68881", "68020/68881",
+    "68040", 0
+};
 static const char *portmode[] = { "joy0", "joy1", "mouse", "kbd1", "kbd2", "kbd3", 0 };
 static const char *colormode1[] = { "8bit", "15bit", "16bit", "8bit_dither", "4bit_dither", "32bit", 0 };
 static const char *colormode2[] = { "8", "15", "16", "8d", "4d", "32", 0 };
@@ -416,9 +418,9 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	set_chipset_mask (p, tmpval);
 	return 1;
     }
-	
+
     if (cfgfile_strval (option, value, "cpu_type", &p->cpu_level, cpumode, 0)) {
-	p->address_space_24 = !(p->cpu_level & 1);
+	p->address_space_24 = p->cpu_level < 8 && !(p->cpu_level & 1);
 	p->cpu_level >>= 1;
 	return 1;
     }
@@ -787,8 +789,8 @@ static void parse_hardfile_spec (char *spec)
 
 static void parse_cpu_specs (char *spec)
 {
-    if (*spec < '0' || *spec > '3') {
-	fprintf (stderr, "CPU parameter string must begin with '0', '1', '2' or '3'.\n");
+    if (*spec < '0' || *spec > '4') {
+	fprintf (stderr, "CPU parameter string must begin with '0', '1', '2', '3' or '4'.\n");
 	return;
     }
 	
@@ -800,6 +802,8 @@ static void parse_cpu_specs (char *spec)
 	 case 'a':
 	    if (currprefs.cpu_level < 2)
 		fprintf (stderr, "In 68000/68010 emulation, the address space is always 24 bit.\n");
+	    else if (currprefs.cpu_level >= 4)
+		fprintf (stderr, "In 68040 emulation, the address space is always 32 bit.\n");
 	    else
 		currprefs.address_space_24 = 1;
 	    break;

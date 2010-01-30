@@ -116,3 +116,11 @@ extern uae_u32 lorestab_l[256][2];
 
 /* AGA mode color lookup tables */
 extern unsigned int xredcolors[256], xgreencolors[256], xbluecolors[256];
+
+/* get resolution from bplcon0 */
+#define GET_RES(CON0) (((CON0) & 0x8000) ? RES_HIRES : ((CON0) & 0x40) ? RES_SUPERHIRES : RES_LORES)
+/* get sprite width from FMODE */
+#define GET_SPRITEWIDTH(FMODE) ((((FMODE) >> 2) & 3) == 3 ? 64 : (((FMODE) >> 2) & 3) == 0 ? 16 : 32)
+/* Compute the number of bitplanes from a value written to BPLCON0  */
+#define GET_PLANES(x) ((((x) >> 12) & 7) | (((x) & 0x10) >> 1))
+

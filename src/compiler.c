@@ -15,7 +15,6 @@
 #include "gui.h"
 #include "memory.h"
 #include "custom.h"
-#include "readcpu.h"
 #include "newcpu.h"
 #include "ersatz.h"
 #include "blitter.h"

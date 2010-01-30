@@ -184,24 +184,28 @@ addrbank expamem_bank = {
 
 static uae_u32 REGPARAM2 expamem_lget (uaecptr addr)
 {
+    special_mem |= S_READ;
     write_log ("warning: READ.L from address $%lx \n", addr);
     return 0xfffffffful;
 }
 
 static uae_u32 REGPARAM2 expamem_wget (uaecptr addr)
 {
+    special_mem |= S_READ;
     write_log ("warning: READ.W from address $%lx \n", addr);
     return 0xffff;
 }
 
 static uae_u32 REGPARAM2 expamem_bget (uaecptr addr)
 {
+    special_mem |= S_READ;
     addr &= 0xFFFF;
     return expamem[addr];
 }
 
 static void REGPARAM2 expamem_write (uaecptr addr, uae_u32 value)
 {
+    special_mem |= S_WRITE;
     addr &= 0xffff;
     if (addr == 00 || addr == 02 || addr == 0x40 || addr == 0x42) {
 	expamem[addr] = (value & 0xf0);
@@ -219,11 +223,13 @@ static int REGPARAM2 expamem_type (void)
 
 static void REGPARAM2 expamem_lput (uaecptr addr, uae_u32 value)
 {
+    special_mem |= S_WRITE;
     write_log ("warning: WRITE.L to address $%lx : value $%lx\n", addr, value);
 }
 
 static void REGPARAM2 expamem_wput (uaecptr addr, uae_u32 value)
 {
+    special_mem |= S_WRITE;
     if (expamem_type() != zorroIII)
 	write_log ("warning: WRITE.W to address $%lx : value $%x\n", addr, value);
     else {
@@ -246,6 +252,7 @@ static void REGPARAM2 expamem_wput (uaecptr addr, uae_u32 value)
 
 static void REGPARAM2 expamem_bput (uaecptr addr, uae_u32 value)
 {
+    special_mem |= S_WRITE;
     switch (addr & 0xff) {
      case 0x30:
      case 0x32:
@@ -393,6 +400,7 @@ uae_u8 filesysory[65536];
 uae_u32 REGPARAM2 filesys_lget (uaecptr addr)
 {
     uae_u8 *m;
+    special_mem |= S_READ;
     addr -= filesys_start & 65535;
     addr &= 65535;
     m = filesysory + addr;
@@ -402,6 +410,7 @@ uae_u32 REGPARAM2 filesys_lget (uaecptr addr)
 uae_u32 REGPARAM2 filesys_wget (uaecptr addr)
 {
     uae_u8 *m;
+    special_mem |= S_READ;
     addr -= filesys_start & 65535;
     addr &= 65535;
     m = filesysory + addr;
@@ -410,6 +419,7 @@ uae_u32 REGPARAM2 filesys_wget (uaecptr addr)
 
 uae_u32 REGPARAM2 filesys_bget (uaecptr addr)
 {
+    special_mem |= S_READ;
     addr -= filesys_start & 65535;
     addr &= 65535;
     return filesysory[addr];
@@ -417,16 +427,19 @@ uae_u32 REGPARAM2 filesys_bget (uaecptr addr)
 
 static void REGPARAM2 filesys_lput (uaecptr addr, uae_u32 l)
 {
+    special_mem |= S_WRITE;
     write_log ("filesys_lput called\n");
 }
 
 static void REGPARAM2 filesys_wput (uaecptr addr, uae_u32 w)
 {
+    special_mem |= S_WRITE;
     write_log ("filesys_wput called\n");
 }
 
 static void REGPARAM2 filesys_bput (uaecptr addr, uae_u32 b)
 {
+    special_mem |= S_WRITE;
     fprintf (stderr, "filesys_bput called. This usually means that you are using\n");
     fprintf (stderr, "Kickstart 1.2. Please give UAE the \"-a\" option next time\n");
     fprintf (stderr, "you start it. If you are _not_ using Kickstart 1.2, then\n");

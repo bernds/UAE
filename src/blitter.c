@@ -15,7 +15,6 @@
 #include "uae.h"
 #include "memory.h"
 #include "custom.h"
-#include "readcpu.h"
 #include "newcpu.h"
 #include "blitter.h"
 #include "blit.h"
@@ -433,7 +432,7 @@ void blitter_handler(void)
 
     INTREQ(0x8040);
     eventtab[ev_blitter].active = 0;
-    regs.spcflags &= ~SPCFLAG_BLTNASTY;
+    unset_special (SPCFLAG_BLTNASTY);
 }
 
 void do_blitter(void)
@@ -460,12 +459,12 @@ void do_blitter(void)
     eventtab[ev_blitter].evtime = blit_cycles + cycles;
     events_schedule();
 
-    regs.spcflags &= ~SPCFLAG_BLTNASTY;
+    unset_special (SPCFLAG_BLTNASTY);
     if (dmaen(DMA_BLITPRI))
-	regs.spcflags |= SPCFLAG_BLTNASTY;
+	set_special (SPCFLAG_BLTNASTY);
 }
 
-void maybe_blit(void)
+void maybe_blit (void)
 {
     static int warned = 0;
     if (bltstate == BLT_done)
@@ -477,7 +476,5 @@ void maybe_blit(void)
     }
     if (!eventtab[ev_blitter].active)
 	printf("FOO!!?\n");
-    actually_do_blit();
-    eventtab[ev_blitter].active = 0;
-    regs.spcflags &= ~SPCFLAG_BLTNASTY;
+    blitter_handler ();
 }

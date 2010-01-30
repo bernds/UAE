@@ -21,7 +21,6 @@
 #include "uae.h"
 #include "memory.h"
 #include "custom.h"
-#include "readcpu.h"
 #include "gui.h"
 #include "newcpu.h"
 #include "threaddep/penguin.h"
@@ -51,7 +50,7 @@ static char *new_disk_string[4];
 
 static GtkAdjustment *cpuspeed_adj;
 static GtkWidget *cpuspeed_widgets[4], *cpuspeed_scale;
-static GtkWidget *cpu_widget[4], *a24m_widget, *ccpu_widget;
+static GtkWidget *cpu_widget[5], *a24m_widget, *ccpu_widget;
 static GtkWidget *sound_widget[4], *sound_bits_widget[2], *sound_freq_widget[3], *sound_ch_widget[2];
 
 static GtkAdjustment *framerate_adj;
@@ -108,7 +107,7 @@ static void enable_disk_buttons (int enable)
 static void set_cpu_state (void)
 {
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (a24m_widget), changed_prefs.address_space_24 != 0);
-    gtk_widget_set_sensitive (a24m_widget, changed_prefs.cpu_level > 1);
+    gtk_widget_set_sensitive (a24m_widget, changed_prefs.cpu_level > 1 && changed_prefs.cpu_level < 4);
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (ccpu_widget), changed_prefs.cpu_compatible != 0);
     gtk_widget_set_sensitive (ccpu_widget, changed_prefs.cpu_level == 0);
     gtk_widget_set_sensitive (cpuspeed_scale, changed_prefs.m68k_speed > 0);
@@ -265,7 +264,7 @@ static void cputype_changed (void)
 
     oldcl = changed_prefs.cpu_level;
 
-    changed_prefs.cpu_level = find_current_toggle (cpu_widget, 4);
+    changed_prefs.cpu_level = find_current_toggle (cpu_widget, 5);
     changed_prefs.cpu_compatible = GTK_TOGGLE_BUTTON (ccpu_widget)->active;
     changed_prefs.address_space_24 = GTK_TOGGLE_BUTTON (a24m_widget)->active;
 
@@ -277,7 +276,7 @@ static void cputype_changed (void)
     /* Changing from 68000/68010 to 68020 should set a sane default.  */
     else if (oldcl < 2)
 	changed_prefs.address_space_24 = 0;
-    
+
     set_cpu_state ();
 }
 
@@ -612,7 +611,7 @@ static void make_cpu_widgets (GtkWidget *vbox)
     GtkWidget *newbox, *hbox, *frame;
     GtkWidget *thing;
     static const char *radiolabels[] = {
-	"68000", "68010", "68020", "68020+68881",
+	"68000", "68010", "68020", "68020+68881", "68040",
 	NULL
     };
 
@@ -647,7 +646,7 @@ static void make_cpu_widgets (GtkWidget *vbox)
     ccpu_widget = gtk_check_button_new_with_label ("Slow but compatible");
     add_centered_to_vbox (newbox, ccpu_widget);
     gtk_widget_show (ccpu_widget);
-    
+
     add_empty_vbox (vbox);
 
     gtk_signal_connect (GTK_OBJECT (ccpu_widget), "clicked",

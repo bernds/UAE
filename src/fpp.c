@@ -15,7 +15,6 @@
 #include "options.h"
 #include "memory.h"
 #include "custom.h"
-#include "readcpu.h"
 #include "newcpu.h"
 #include "ersatz.h"
 #include "md-fpp.h"
@@ -608,6 +607,14 @@ void fsave_opp (uae_u32 opcode)
     }
 
     if (currprefs.cpu_level == 4) {
+	/* 4 byte 68040 IDLE frame.  */
+	if (incr < 0) {
+	    ad -= 4;
+	    put_long (ad, 0x41000000);
+	} else {
+	    put_long (ad, 0x41000000);
+	    ad += 4;
+	}
     } else {
 	if (incr < 0) {
 	    ad -= 4;
@@ -651,6 +658,31 @@ void frestore_opp (uae_u32 opcode)
 	return;
     }
     if (currprefs.cpu_level == 4) {
+	/* 68040 */
+	if (incr < 0) {
+	    /* @@@ This may be wrong.  */
+	    ad -= 4;
+	    d = get_long (ad);
+	    if ((d & 0xff000000) != 0) { /* Not a NULL frame? */
+		if ((d & 0x00ff0000) == 0) { /* IDLE */
+		} else if ((d & 0x00ff0000) == 0x00300000) { /* UNIMP */
+		    ad -= 44;
+		} else if ((d & 0x00ff0000) == 0x00600000) { /* BUSY */
+		    ad -= 92;
+		}
+	    }
+	} else {
+	    d = get_long (ad);
+	    ad += 4;
+	    if ((d & 0xff000000) != 0) { /* Not a NULL frame? */
+		if ((d & 0x00ff0000) == 0) { /* IDLE */
+		} else if ((d & 0x00ff0000) == 0x00300000) { /* UNIMP */
+		    ad += 44;
+		} else if ((d & 0x00ff0000) == 0x00600000) { /* BUSY */
+		    ad += 92;
+		}
+	    }
+	}
     } else {
 	if (incr < 0) {
 	    ad -= 4;

@@ -20,6 +20,9 @@
 #include <sys/mman.h>
 #endif
 
+/* Set by each memory handler that does not simply access real memory.  */
+int special_mem;
+
 int ersatzkickfile = 0;
 
 uae_u32 allocated_chipmem;
@@ -76,6 +79,7 @@ static int dummy_check (uaecptr addr, uae_u32 size) REGPARAM;
 
 uae_u32 REGPARAM2 dummy_lget (uaecptr addr)
 {
+    special_mem |= S_READ;
     if (currprefs.illegal_mem)
 	write_log ("Illegal lget at %08lx\n", addr);
 
@@ -84,6 +88,7 @@ uae_u32 REGPARAM2 dummy_lget (uaecptr addr)
 
 uae_u32 REGPARAM2 dummy_wget (uaecptr addr)
 {
+    special_mem |= S_READ;
     if (currprefs.illegal_mem)
 	write_log ("Illegal wget at %08lx\n", addr);
 
@@ -92,6 +97,7 @@ uae_u32 REGPARAM2 dummy_wget (uaecptr addr)
 
 uae_u32 REGPARAM2 dummy_bget (uaecptr addr)
 {
+    special_mem |= S_READ;
     if (currprefs.illegal_mem)
 	write_log ("Illegal bget at %08lx\n", addr);
 
@@ -100,16 +106,19 @@ uae_u32 REGPARAM2 dummy_bget (uaecptr addr)
 
 void REGPARAM2 dummy_lput (uaecptr addr, uae_u32 l)
 {
+    special_mem |= S_WRITE;
     if (currprefs.illegal_mem)
 	write_log ("Illegal lput at %08lx\n", addr);
 }
 void REGPARAM2 dummy_wput (uaecptr addr, uae_u32 w)
 {
+    special_mem |= S_WRITE;
     if (currprefs.illegal_mem)
 	write_log ("Illegal wput at %08lx\n", addr);
 }
 void REGPARAM2 dummy_bput (uaecptr addr, uae_u32 b)
 {
+    special_mem |= S_WRITE;
     if (currprefs.illegal_mem)
 	write_log ("Illegal bput at %08lx\n", addr);
 }
@@ -135,6 +144,7 @@ static int mbres_val = 0;
 
 uae_u32 REGPARAM2 mbres_lget (uaecptr addr)
 {
+    special_mem |= S_READ;
     if (currprefs.illegal_mem)
 	write_log ("Illegal lget at %08lx\n", addr);
 
@@ -143,6 +153,7 @@ uae_u32 REGPARAM2 mbres_lget (uaecptr addr)
 
 uae_u32 REGPARAM2 mbres_wget (uaecptr addr)
 {
+    special_mem |= S_READ;
     if (currprefs.illegal_mem)
 	write_log ("Illegal wget at %08lx\n", addr);
 
@@ -151,6 +162,7 @@ uae_u32 REGPARAM2 mbres_wget (uaecptr addr)
 
 uae_u32 REGPARAM2 mbres_bget (uaecptr addr)
 {
+    special_mem |= S_READ;
     if (currprefs.illegal_mem)
 	write_log ("Illegal bget at %08lx\n", addr);
 
@@ -159,16 +171,19 @@ uae_u32 REGPARAM2 mbres_bget (uaecptr addr)
 
 void REGPARAM2 mbres_lput (uaecptr addr, uae_u32 l)
 {
+    special_mem |= S_WRITE;
     if (currprefs.illegal_mem)
 	write_log ("Illegal lput at %08lx\n", addr);
 }
 void REGPARAM2 mbres_wput (uaecptr addr, uae_u32 w)
 {
+    special_mem |= S_WRITE;
     if (currprefs.illegal_mem)
 	write_log ("Illegal wput at %08lx\n", addr);
 }
 void REGPARAM2 mbres_bput (uaecptr addr, uae_u32 b)
 {
+    special_mem |= S_WRITE;
     if (currprefs.illegal_mem)
 	write_log ("Illegal bput at %08lx\n", addr);
 
@@ -194,6 +209,7 @@ static uae_u8 *chipmem_xlate (uaecptr addr) REGPARAM;
 uae_u32 REGPARAM2 chipmem_lget (uaecptr addr)
 {
     uae_u32 *m;
+
     addr -= chipmem_start & chipmem_mask;
     addr &= chipmem_mask;
     m = (uae_u32 *)(chipmemory + addr);
@@ -203,6 +219,7 @@ uae_u32 REGPARAM2 chipmem_lget (uaecptr addr)
 uae_u32 REGPARAM2 chipmem_wget (uaecptr addr)
 {
     uae_u16 *m;
+
     addr -= chipmem_start & chipmem_mask;
     addr &= chipmem_mask;
     m = (uae_u16 *)(chipmemory + addr);
@@ -219,6 +236,7 @@ uae_u32 REGPARAM2 chipmem_bget (uaecptr addr)
 void REGPARAM2 chipmem_lput (uaecptr addr, uae_u32 l)
 {
     uae_u32 *m;
+
     addr -= chipmem_start & chipmem_mask;
     addr &= chipmem_mask;
     m = (uae_u32 *)(chipmemory + addr);
@@ -228,6 +246,7 @@ void REGPARAM2 chipmem_lput (uaecptr addr, uae_u32 l)
 void REGPARAM2 chipmem_wput (uaecptr addr, uae_u32 w)
 {
     uae_u16 *m;
+
     addr -= chipmem_start & chipmem_mask;
     addr &= chipmem_mask;
     m = (uae_u16 *)(chipmemory + addr);

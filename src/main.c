@@ -21,7 +21,6 @@
 #include "memory.h"
 #include "custom.h"
 #include "serial.h"
-#include "readcpu.h"
 #include "newcpu.h"
 #include "disk.h"
 #include "debug.h"
@@ -149,6 +148,7 @@ void default_prefs (struct uae_prefs *p)
 
     p->immediate_blits = 0;
     p->blits_32bit_enabled = 0;
+    p->collision_level = 1;
 
     strcpy (p->df[0], "df0.adf");
     strcpy (p->df[1], "df1.adf");

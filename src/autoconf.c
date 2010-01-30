@@ -15,7 +15,6 @@
 #include "uae.h"
 #include "memory.h"
 #include "custom.h"
-#include "readcpu.h"
 #include "newcpu.h"
 #include "compiler.h"
 #include "autoconf.h"
@@ -260,25 +259,39 @@ uae_u8 REGPARAM2 *rtarea_xlate (uaecptr addr)
 
 uae_u32 REGPARAM2 rtarea_lget (uaecptr addr)
 {
+    special_mem |= S_READ;
     addr &= 0xFFFF;
     return (uae_u32)(rtarea_wget (addr) << 16) + rtarea_wget (addr+2);
 }
 
 uae_u32 REGPARAM2 rtarea_wget (uaecptr addr)
 {
+    special_mem |= S_READ;
     addr &= 0xFFFF;
     return (rtarea[addr]<<8) + rtarea[addr+1];
 }
 
 uae_u32 REGPARAM2 rtarea_bget (uaecptr addr)
 {
+    special_mem |= S_READ;
     addr &= 0xFFFF;
     return rtarea[addr];
 }
 
-void REGPARAM2 rtarea_lput (uaecptr addr, uae_u32 value) { }
-void REGPARAM2 rtarea_wput (uaecptr addr, uae_u32 value) { }
-void REGPARAM2 rtarea_bput (uaecptr addr, uae_u32 value) { }
+void REGPARAM2 rtarea_lput (uaecptr addr, uae_u32 value)
+{
+    special_mem |= S_WRITE;
+}
+
+void REGPARAM2 rtarea_wput (uaecptr addr, uae_u32 value)
+{
+    special_mem |= S_WRITE;
+}
+
+void REGPARAM2 rtarea_bput (uaecptr addr, uae_u32 value)
+{
+    special_mem |= S_WRITE;
+}
 
 static int trace_traps = 1;
 

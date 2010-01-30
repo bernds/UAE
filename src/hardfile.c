@@ -13,7 +13,6 @@
 #include "options.h"
 #include "memory.h"
 #include "custom.h"
-#include "readcpu.h"
 #include "newcpu.h"
 #include "disk.h"
 #include "autoconf.h"

@@ -30,6 +30,33 @@ static void oops(void)
     abort();
 }
 
+/* Not strictly true to definition, as it only checks for match/no match,
+   not for ordering */
+static int mystrncmp(const char* a, const char* b, int len)
+{
+    int biswhite=0;
+    while (len) {
+	if (isspace(*a)) {
+	    if (!biswhite) {
+		biswhite=isspace(*b++);
+		while (isspace(*b))
+		    b++;
+	    }
+	    if (!biswhite)
+		return -1;
+	}
+	else {
+	    biswhite=0;
+	    if (*a!=*b++)
+		return -1;
+	}
+	a++;
+	len--;
+    }
+    return 0;
+}
+
+
 static char * match(struct line *l, const char *m)
 {
     char *str = l->data;
@@ -37,7 +64,7 @@ static char * match(struct line *l, const char *m)
     while (isspace(*str))
 	str++;
 
-    if (strncmp(str, m, len) != 0)
+    if (mystrncmp(str, m, len) != 0)
 	return NULL;
     return str + len;
 }
@@ -249,7 +276,7 @@ int main(int argc, char **argv)
 	if (s != NULL)
 	    *s = 0;
 
-	if (strncmp(tmp, ".globl op_", 10) == 0) {
+	if (mystrncmp(tmp, ".globl op_", 10) == 0) {
 	    struct line *first_line = NULL, *prev = NULL;
 	    struct line **nextp = &first_line;
 	    struct func f;

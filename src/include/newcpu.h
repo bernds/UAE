@@ -6,7 +6,8 @@
   * Copyright 1995 Bernd Schmidt
   */
 
-#include <machdep/m68k.h>
+#include "readcpu.h"
+#include "machdep/m68k.h"
 
 #ifndef SET_CFLG
 
@@ -89,6 +90,16 @@ extern struct regstruct
      */
     uae_u32 prefetch;
 } regs, lastint_regs;
+
+STATIC_INLINE void set_special (uae_u32 x)
+{
+    regs.spcflags |= x;
+}
+
+STATIC_INLINE void unset_special (uae_u32 x)
+{
+    regs.spcflags &= ~x;
+}
 
 #define m68k_dreg(r,num) ((r).regs[(num)])
 #define m68k_areg(r,num) (((r).regs + 8)[(num)])
@@ -244,16 +255,18 @@ extern uaecptr last_fault_for_exception_3;
 
 #define CPU_OP_NAME(a) op ## a
 
+/* 68040 */
+extern struct cputbl op_smalltbl_0_ff[];
 /* 68020 + 68881 */
-extern struct cputbl op_smalltbl_0[];
+extern struct cputbl op_smalltbl_1_ff[];
 /* 68020 */
-extern struct cputbl op_smalltbl_1[];
+extern struct cputbl op_smalltbl_2_ff[];
 /* 68010 */
-extern struct cputbl op_smalltbl_2[];
+extern struct cputbl op_smalltbl_3_ff[];
 /* 68000 */
-extern struct cputbl op_smalltbl_3[];
+extern struct cputbl op_smalltbl_4_ff[];
 /* 68000 slow but compatible.  */
-extern struct cputbl op_smalltbl_4[];
+extern struct cputbl op_smalltbl_5_ff[];
 
 extern cpuop_func *cpufunctbl[65536] ASM_SYM_FOR_FUNC ("cpufunctbl");
 

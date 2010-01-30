@@ -20,13 +20,16 @@
 /* calculate shift depending on resolution (replaced "decided_hires ? 4 : 8") (TW) */
 #define RES_SHIFT(res) ((res) == RES_LORES ? 8 : (res) == RES_HIRES ? 4 : 2)
 
+/* According to the HRM, pixel data spends a couple of cycles somewhere in the chips
+   before it appears on-screen.  */
+#define DIW_DDF_OFFSET 9
+
 /* We ignore that many lores pixels at the start of the display. These are
  * invisible anyway due to hardware DDF limits. */
 #define DISPLAY_LEFT_SHIFT 0x38
-#define PIXEL_XPOS(HPOS) (((HPOS)*2 - DISPLAY_LEFT_SHIFT) << lores_shift)
+#define PIXEL_XPOS(HPOS) (((HPOS)*2 - DISPLAY_LEFT_SHIFT + DIW_DDF_OFFSET - 1) << lores_shift)
 
-/* @@@ Is maxhpos + 4 - 1 correct? (4 less isn't enough) */
-#define max_diwlastword (PIXEL_XPOS(maxhpos + 4 - 1))
+#define max_diwlastword (PIXEL_XPOS(maxhpos))
 
 extern int lores_factor, lores_shift, sprite_width;
 
@@ -34,6 +37,11 @@ STATIC_INLINE int coord_hw_to_window_x (int x)
 {
     x -= DISPLAY_LEFT_SHIFT;
     return x << lores_shift;
+}
+
+STATIC_INLINE int coord_diw_to_window_x (int x)
+{
+    return (x - DISPLAY_LEFT_SHIFT + DIW_DDF_OFFSET - 1) << lores_shift;
 }
 
 extern int framecnt;
@@ -103,9 +111,8 @@ STATIC_INLINE void color_reg_cpy (struct color_entry *dst, struct color_entry *s
  * line, we decide how to draw this line. There are many more-or-less
  * independent decisions, each of which can be taken at a different horizontal
  * position.
- * Sprites, color changes and bitplane delay changes are handled specially:
- * There isn't a single decision, but a list of structures containing
- * information on how to draw the line.
+ * Sprites and color changes are handled specially: There isn't a single decision,
+ * but a list of structures containing information on how to draw the line.
  */
 
 struct color_change {
@@ -114,72 +121,67 @@ struct color_change {
     unsigned long value;
 };
 
-struct sprite_draw {
-    int linepos;
-    int num;
-    int ctl;
-    uae_u32 datab;
+/* 440 rather than 880, since sprites are always lores.  */
+#define MAX_SPR_PIXELS (((MAXVPOS + 1)*2 + 1) * 440)
+
+struct sprite_entry
+{
+    unsigned short pos;
+    unsigned short max;
+    unsigned int first_pixel;
+    unsigned int has_attached;
 };
 
-struct delay_change {
-    int linepos;
-    unsigned int value;
+union sps_union {
+    uae_u8 bytes[2 * MAX_SPR_PIXELS];
+    uae_u32 words[2 * MAX_SPR_PIXELS / 4];
 };
+extern union sps_union spixstate;
+extern uae_u16 spixels[MAX_SPR_PIXELS * 2];
 
 /* Way too much... */
 #define MAX_REG_CHANGE ((MAXVPOS + 1) * 2 * MAXHPOS)
 
 #ifdef OS_WITHOUT_MEMORY_MANAGEMENT
-extern struct sprite_draw  *sprite_positions[2];
 extern struct color_change *color_changes[2];
-extern struct delay_change *delay_changes;
 #else
-extern struct sprite_draw sprite_positions[2][MAX_REG_CHANGE];
 extern struct color_change color_changes[2][MAX_REG_CHANGE];
-/* We don't remember those across frames, that would be too much effort.
- * We simply redraw the line whenever we see one of these. */
-extern struct delay_change delay_changes[MAX_REG_CHANGE];
 #endif
 
 extern struct color_entry color_tables[2][(MAXVPOS+1) * 2];
 extern struct color_entry *curr_color_tables, *prev_color_tables;
 
-extern struct sprite_draw *curr_sprite_positions, *prev_sprite_positions;
+extern struct sprite_entry *curr_sprite_entries, *prev_sprite_entries;
 extern struct color_change *curr_color_changes, *prev_color_changes;
 extern struct draw_info *curr_drawinfo, *prev_drawinfo;
 
 /* struct decision contains things we save across drawing frames for
  * comparison (smart update stuff). */
 struct decision {
-    unsigned long color0;
-    int which;
-
-    /* Data fetching coordinates.  */
-    int plfstrt, plflinelen;
     /* Records the leftmost access of BPL1DAT.  */
-    int plfleft;
+    int plfleft, plfright, plflinelen;
     /* Display window: native coordinates, depend on lores state.  */
     int diwfirstword, diwlastword;
     int ctable;
 
-    uae_u16 bplcon0, bplcon1, bplcon2;
+    uae_u16 bplcon0, bplcon2;
     uae_u16 fmode, bplcon4;
+    uae_u8 nr_planes;
+    uae_u8 bplres;
 };
 
 extern int fetchmode, prefetch, fetchsize, fetchstart, fetchstart_shift;
 extern void expand_fetchmodes (int, int);
 
-/* Compute the number of bitplanes from a value written to BPLCON0  */
-#define GET_PLANES(x) ((((x) >> 12) & 7) | (((x) & 0x10) >> 1))
-
 /* Anything related to changes in hw registers during the DDF for one
  * line. */
 struct draw_info {
-    int first_sprite_draw, last_sprite_draw;
+    int first_sprite_entry, last_sprite_entry;
     int first_color_change, last_color_change;
-    int first_delay_change, last_delay_change;
     int nr_color_changes, nr_sprites;
 };
+
+extern int next_sprite_entry;
 
 extern struct decision line_decisions[2 * (MAXVPOS+1) + 1];
 extern struct draw_info line_drawinfo[2][2 * (MAXVPOS+1) + 1];

@@ -576,7 +576,7 @@ void gui_messagereceive(void)
     case message_QUIT:
       if(uae_startedup)
       {
-	regs.spcflags |= SPCFLAG_BRK;
+	set_special (SPCFLAG_BRK);
 	quit_program=1;
 	uae_running=1;
       }

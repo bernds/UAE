@@ -22,7 +22,6 @@
 #include "gui.h"
 #include "zfile.h"
 #include "autoconf.h"
-#include "readcpu.h"
 #include "newcpu.h"
 #include "xwin.h"
 #include "osemu.h"

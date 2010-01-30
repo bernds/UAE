@@ -19,7 +19,6 @@
 #include "uae.h"
 #include "memory.h"
 #include "custom.h"
-#include "readcpu.h"
 #include "newcpu.h"
 #include "debug.h"
 #include "cia.h"
@@ -42,7 +41,7 @@ void activate_debugger (void)
     if (debugger_active)
 	return;
     debugger_active = 1;
-    regs.spcflags |= SPCFLAG_BRK;
+    set_special (SPCFLAG_BRK);
     debugging = 1;
     /* use_debugger = 1; */
 }
@@ -172,7 +171,6 @@ static void modulesearch (void)
 			printf ("Found possible MarkII module at %lx, length unknown.\n", ptr);
 		    }
 	    }
-		
 	}
     }
 }
@@ -278,6 +276,9 @@ static void writeintomem (char **c)
       printf("Invalid address %08x\n",addr);
 }
 
+static int trace_same_insn_count;
+static uae_u8 trace_insn_copy[10];
+static struct regstruct trace_prev_regs;
 void debug (void)
 {
     char input[80];
@@ -286,11 +287,26 @@ void debug (void)
     bogusframe = 1;
 
     if (do_skip && skipaddr == 0xC0DEDBAD) {
+#if 0
+	if (trace_same_insn_count > 0) {
+	    if (memcmp (trace_insn_copy, regs.pc_p, 10) == 0
+		&& memcmp (trace_prev_regs.regs, regs.regs, sizeof regs.regs) == 0)
+	    {
+		trace_same_insn_count++;
+		return;
+	    }
+	}
+	if (trace_same_insn_count > 1)
+	    fprintf (logfile, "[ repeated %d times ]\n", trace_same_insn_count);
+#endif
 	m68k_dumpstate (logfile, &nextpc);
+	trace_same_insn_count = 1;
+	memcpy (trace_insn_copy, regs.pc_p, 10);
+	memcpy (&trace_prev_regs, &regs, sizeof regs);
     }
 
     if (do_skip && (m68k_getpc() != skipaddr/* || regs.a[0] != 0x1e558*/)) {
-	regs.spcflags |= SPCFLAG_BRK;
+	set_special (SPCFLAG_BRK);
 	return;
     }
     do_skip = 0;
@@ -384,19 +400,23 @@ void debug (void)
 		m68k_disasm (stdout, daddr, &nxdis, count);
 	    }
 	    break;
-	 case 't': regs.spcflags |= SPCFLAG_BRK; return;
+	 case 't': set_special (SPCFLAG_BRK); return;
 	 case 'z':
 	    skipaddr = nextpc;
 	    do_skip = 1;
-	    regs.spcflags |= SPCFLAG_BRK;
+	    set_special (SPCFLAG_BRK);
 	    return;
 
 	 case 'f':
 	    skipaddr = readhex (&inptr);
 	    do_skip = 1;
-	    regs.spcflags |= SPCFLAG_BRK;
-	    if (skipaddr == 0xC0DEDBAD)
+	    set_special (SPCFLAG_BRK);
+	    if (skipaddr == 0xC0DEDBAD) {
+	        trace_same_insn_count = 0;
 		logfile = fopen ("uae.trace", "w");
+		memcpy (trace_insn_copy, regs.pc_p, 10);
+		memcpy (&trace_prev_regs, &regs, sizeof regs);
+	    }
 	    return;
 
 	 case 'q': uae_quit();

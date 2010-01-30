@@ -1,3 +1,17 @@
+9A0825 Put in the new sprite code.  This has existed for many months but
+       I've only now found the final bugs.
+       New version of Bernd Meyer's special_mem code.  Also add his
+       set_special/unset_special code, the noflags changes for gencpu,
+       and a fix for cpuopti's string matching.
+       Tiny clarification in table68k.
+       Add 68040 support from Basilisk.
+       readcpu.h is now included from newcpu.h.
+9A0824 Rather massive overhaul of the DDF code.  Many other timing fixes
+       (copper state machine mostly) (Sam Jordan and myself)
+       Get rid of stupid optimizations in color recording.
+       Synchronize CPU and copper in custom_wget.
+9A0816 Introduce variable "special_mem", set it in each memory handler
+       that doesn't work on real memory (Bernd Meyer).
 9A0815 Fix a really stupid bug in cfgfile_strval.
        Nonfunctional support for switching between windowed/fullscreen modes
        in gtkui.

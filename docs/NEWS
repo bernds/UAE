@@ -2,6 +2,13 @@ Note! This file only contains user-visible changes. There may be others. For a
 more detailed description of changes between releases, read src/ChangeLog, and
 for the full picture, make a diff between releases.
 
+User-visible changes in 0.8.15:
+  - A few changes in the core of the custom chip emulation; this should mean
+    more accuracy in general, but likely also a few new bugs in this version.
+    It may be a little slower as well.
+  - "68040" emulation.  Dedicated to all the clueless folks out there.
+    (with thanks to Christian Bauer)
+
 User-visible changes in 0.8.14:
   - More bug fixes:
     * CPU emulation problem that could have caused copy protection schemes to

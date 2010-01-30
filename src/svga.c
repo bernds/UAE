@@ -26,7 +26,6 @@
 #include "custom.h"
 #include "drawing.h"
 #include "keybuf.h"
-#include "readcpu.h"
 #include "newcpu.h"
 #include "tui.h"
 #include "gui.h"

@@ -62,7 +62,7 @@ static void read_counts (void)
     if (file) {
 	fscanf (file, "Total: %lu\n", &total);
 	while (fscanf (file, "%lx: %lu %s\n", &opcode, &count, name) == 3) {
-	    opcode_next_clev[nr] = 3;
+	    opcode_next_clev[nr] = 4;
 	    opcode_last_postfix[nr] = -1;
 	    opcode_map[nr++] = opcode;
 	    counts[opcode] = count;
@@ -75,7 +75,7 @@ static void read_counts (void)
 	if (table68k[opcode].handler == -1 && table68k[opcode].mnemo != i_ILLG
 	    && counts[opcode] == 0)
 	{
-	    opcode_next_clev[nr] = 3;
+	    opcode_next_clev[nr] = 4;
 	    opcode_last_postfix[nr] = -1;
 	    opcode_map[nr++] = opcode;
 	    counts[opcode] = count;
@@ -569,10 +569,12 @@ static void duplicate_carry (void)
     printf ("\tCOPY_CARRY;\n");
 }
 
-typedef enum {
-    flag_logical_noclobber, flag_logical, flag_add, flag_sub, flag_cmp, flag_addx, flag_subx, flag_zn,
-    flag_av, flag_sv
-} flagtypes;
+typedef enum
+{
+  flag_logical_noclobber, flag_logical, flag_add, flag_sub, flag_cmp, flag_addx, flag_subx, flag_zn,
+  flag_av, flag_sv
+}
+flagtypes;
 
 static void genflags_normal (flagtypes type, wordsizes size, char *value, char *src, char *dst)
 {
@@ -922,7 +924,8 @@ static void gen_opcode (unsigned long int opcode)
 	printf ("\tint cflg;\n");
 	printf ("\tif (newv_lo > 9) { newv_lo-=6; newv_hi-=0x10; }\n");
 	printf ("\tnewv = newv_hi + (newv_lo & 0xF);");
-	printf ("\tSET_CFLG (cflg = (newv_hi & 0x1F0) > 0x90);\n");
+	printf ("\tcflg = (newv_hi & 0x1F0) > 0x90;\n");
+	printf ("\tSET_CFLG (cflg);\n");
 	duplicate_carry ();
 	printf ("\tif (cflg) newv -= 0x60;\n");
 	genflags (flag_zn, curi->size, "newv", "", "");
@@ -962,7 +965,8 @@ static void gen_opcode (unsigned long int opcode)
 	printf ("\tint cflg;\n");
 	printf ("\tif (newv_lo > 9) { newv_lo +=6; }\n");
 	printf ("\tnewv = newv_hi + newv_lo;");
-	printf ("\tSET_CFLG (cflg = (newv & 0x1F0) > 0x90);\n");
+	printf ("\tcflg = (newv & 0x1F0) > 0x90;\n");
+	printf ("\tSET_CFLG (cflg);\n");
 	duplicate_carry ();
 	printf ("\tif (cflg) newv += 0x60;\n");
 	genflags (flag_zn, curi->size, "newv", "", "");
@@ -992,7 +996,8 @@ static void gen_opcode (unsigned long int opcode)
 	printf ("\tint cflg;\n");
 	printf ("\tif (newv_lo > 9) { newv_lo-=6; newv_hi-=0x10; }\n");
 	printf ("\tnewv = newv_hi + (newv_lo & 0xF);");
-	printf ("\tSET_CFLG (cflg = (newv_hi & 0x1F0) > 0x90);\n");
+	printf ("\tcflg = cflg = (newv_hi & 0x1F0) > 0x90;\n");
+	printf ("\tSET_CFLG (cflg);\n");
 	duplicate_carry();
 	printf ("\tif (cflg) newv -= 0x60;\n");
 	genflags (flag_zn, curi->size, "newv", "", "");
@@ -1656,12 +1661,12 @@ static void gen_opcode (unsigned long int opcode)
 	}
 	printf ("\tcnt &= 63;\n");
 	printf ("\tCLEAR_CZNV;\n");
-	if (! source_is_imm1_8 (curi))
-	    force_range_for_rox ("cnt", curi->size);
 	if (source_is_imm1_8 (curi))
 	    printf ("{");
-	else
+	else {
+	    force_range_for_rox ("cnt", curi->size);
 	    printf ("\tif (cnt > 0) {\n");
+	}
 	printf ("\tcnt--;\n");
 	printf ("\t{\n\tuae_u32 carry;\n");
 	printf ("\tuae_u32 loval = val >> (%d - cnt);\n", bit_size (curi->size) - 1);
@@ -1686,12 +1691,12 @@ static void gen_opcode (unsigned long int opcode)
 	}
 	printf ("\tcnt &= 63;\n");
 	printf ("\tCLEAR_CZNV;\n");
-	if (! source_is_imm1_8 (curi))
-	    force_range_for_rox ("cnt", curi->size);
 	if (source_is_imm1_8 (curi))
 	    printf ("{");
-	else
+	else {
+	    force_range_for_rox ("cnt", curi->size);
 	    printf ("\tif (cnt > 0) {\n");
+	}
 	printf ("\tcnt--;\n");
 	printf ("\t{\n\tuae_u32 carry;\n");
 	printf ("\tuae_u32 hival = (val << 1) | GET_XFLG;\n");
@@ -2128,6 +2133,26 @@ static void gen_opcode (unsigned long int opcode)
 	sync_m68k_pc ();
 	printf ("\tfrestore_opp(opcode);\n");
 	break;
+
+     case i_CINVL:
+     case i_CINVP:
+     case i_CINVA:
+     case i_CPUSHL:
+     case i_CPUSHP:
+     case i_CPUSHA:
+	break;
+     case i_MOVE16:
+	printf ("\tuaecptr mems = m68k_areg(regs, srcreg) & ~15, memd;\n");
+	printf ("\tdstreg = (%s >> 12) & 7;\n", gen_nextiword());
+	printf ("\tmemd = m68k_areg(regs, dstreg) & ~15;\n");
+	printf ("\tput_long(memd, get_long(mems));\n");
+	printf ("\tput_long(memd+4, get_long(mems+4));\n");
+	printf ("\tput_long(memd+8, get_long(mems+8));\n");
+	printf ("\tput_long(memd+12, get_long(mems+12));\n");
+	printf ("\tm68k_areg(regs, srcreg) += 16;\n");
+	printf ("\tm68k_areg(regs, dstreg) += 16;\n");
+	break;
+
     case i_MMUOP:
 	genamode (curi->smode, "srcreg", curi->size, "extra", 1, 0);
 	sync_m68k_pc ();
@@ -2149,10 +2174,14 @@ static void generate_includes (FILE * f)
     fprintf (f, "#include \"options.h\"\n");
     fprintf (f, "#include \"memory.h\"\n");
     fprintf (f, "#include \"custom.h\"\n");
-    fprintf (f, "#include \"readcpu.h\"\n");
     fprintf (f, "#include \"newcpu.h\"\n");
     fprintf (f, "#include \"compiler.h\"\n");
     fprintf (f, "#include \"cputbl.h\"\n");
+    
+    fprintf (f, "#define CPUFUNC(x) x##_ff\n"
+	     "#ifdef NOFLAGS\n"
+	     "#include \"noflags.h\"\n"
+	     "#endif\n");
 }
 
 static int postfix;
@@ -2176,13 +2205,14 @@ static void generate_one_opcode (int rp)
 	return;
 
     if (opcode_next_clev[rp] != cpu_level) {
-	fprintf (stblfile, "{ op_%lx_%d, 0, %ld }, /* %s */\n", opcode, opcode_last_postfix[rp],
+	fprintf (stblfile, "{ CPUFUNC(op_%lx_%d), 0, %ld }, /* %s */\n", opcode, opcode_last_postfix[rp],
 		 opcode, lookuptab[i].name);
 	return;
     }
-    fprintf (stblfile, "{ op_%lx_%d, 0, %ld }, /* %s */\n", opcode, postfix, opcode, lookuptab[i].name);
-    fprintf (headerfile, "extern cpuop_func op_%lx_%d;\n", opcode, postfix);
-    printf ("unsigned long REGPARAM2 op_%lx_%d(uae_u32 opcode) /* %s */\n{\n", opcode, postfix, lookuptab[i].name);
+    fprintf (stblfile, "{ CPUFUNC(op_%lx_%d), 0, %ld }, /* %s */\n", opcode, postfix, opcode, lookuptab[i].name);
+    fprintf (headerfile, "extern cpuop_func op_%lx_%d_nf;\n", opcode, postfix);
+    fprintf (headerfile, "extern cpuop_func op_%lx_%d_ff;\n", opcode, postfix);
+    printf ("unsigned long REGPARAM2 CPUFUNC(op_%lx_%d)(uae_u32 opcode) /* %s */\n{\n", opcode, postfix, lookuptab[i].name);
 
     switch (table68k[opcode].stype) {
      case 0: smsk = 7; break;
@@ -2211,11 +2241,6 @@ static void generate_one_opcode (int rp)
 	    char source[100];
 	    int pos = table68k[opcode].spos;
 
-#if 0
-	    /* Check that we can do the little endian optimization safely.  */
-	    if (pos < 8 && (smsk >> (8 - pos)) != 0)
-		abort ();
-#endif
 	    if (pos)
 		sprintf (source, "((opcode >> %d) & %d)", pos, smsk);
 	    else
@@ -2272,17 +2297,18 @@ static void generate_func (void)
 
     using_prefetch = 0;
     using_exception_3 = 0;
-    for (i = 0; i < 5; i++) {
-	cpu_level = 3 - i;
-	if (i == 4) {
+    for (i = 0; i < 6; i++) {
+	cpu_level = 4 - i;
+	if (i == 5) {
 	    cpu_level = 0;
 	    using_prefetch = 1;
 	    using_exception_3 = 1;
 	    for (rp = 0; rp < nr_cpuop_funcs; rp++)
 		opcode_next_clev[rp] = 0;
 	}
+
 	postfix = i;
-	fprintf (stblfile, "struct cputbl op_smalltbl_%d[] = {\n", postfix);
+	fprintf (stblfile, "struct cputbl CPUFUNC(op_smalltbl_%d)[] = {\n", postfix);
 
 	/* sam: this is for people with low memory (eg. me :)) */
 	printf ("\n"
