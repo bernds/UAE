@@ -1,7 +1,14 @@
+A10826 Screenmode now configurable in the gui.  So is the bootrom.
 A10825 Merge mousehack in ROM from WinUAE, minus the crazy startup logic.
        Merge a stripped-down gayle.c from WinUAE, just enough to get the A4000
        Kickstart working properly.  GUI changes to take ROM requirements into
        account, and to allow for selectable motherboard types.
+       Merge A1000 ROM handling, m68k RESET instruction handling, and some
+       memory reset changes from WinUAE.  m68k_reset now happens after
+       memory_reset so that it picks up the right start address.
+       Call handle_events during reset - sometimes we reset so quickly in
+       succession that vsync_handler never happens.
+       Sort the config file presets by a new option, "config_sortstr".
 A10824 Fix two state save bugs (writing out incorrect values for fastmem size,
        and a memory clobber in save_cpu).
        Merge minor drawing.c changes from WinUAE.

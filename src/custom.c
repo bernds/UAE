@@ -3432,6 +3432,10 @@ void customreset (void)
     struct timeval tv;
 #endif
 
+    /* If we're in a loop of quick successive resets, we should give
+       the GUI some time to respond to a "Quit" event.  */
+    handle_events ();
+
     if (! savestate_state) {
 	currprefs.chipset_mask = changed_prefs.chipset_mask;
 	if ((currprefs.chipset_mask & CSMASK_AGA) == 0) {
@@ -3471,7 +3475,7 @@ void customreset (void)
 
     gayle_reset (1);
     expamem_reset ();
-
+    a1000_reset ();
     DISK_reset ();
     CIA_reset ();
     unset_special (~(SPCFLAG_BRK | SPCFLAG_MODE_CHANGE));
@@ -3670,7 +3674,7 @@ static void custom_bput (uaecptr, uae_u32) REGPARAM;
 addrbank custom_bank = {
     custom_lget, custom_wget, custom_bget,
     custom_lput, custom_wput, custom_bput,
-    default_xlate, default_check, NULL
+    default_xlate, default_check, NULL, "Custom chipset"
 };
 
 STATIC_INLINE uae_u32 REGPARAM2 custom_wget_1 (uaecptr addr)

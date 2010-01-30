@@ -172,7 +172,7 @@ static void write_gfx_params (FILE *f, struct gfx_params *p, char *suffix)
     cfgfile_write (f, "gfx_center_vertical_%s=%s\n", suffix, centermode1[p->ycenter]);
 }
 
-void save_options (FILE *f, struct uae_prefs *p)
+void save_options (FILE *f, const struct uae_prefs *p)
 {
     struct strlist *sl;
     char *str;
@@ -533,7 +533,8 @@ static int cfgfile_parse_host (struct uae_prefs *p, char *option, char *value)
 	return 1;
     }
 
-    if (cfgfile_string (option, value, "config_description", p->description, 256))
+    if (cfgfile_string (option, value, "config_description", p->description, 256)
+	|| cfgfile_string (option, value, "config_sortstr", p->sortstr, 256))
 	return 1;
 
     /* Tricky ones... */
@@ -1222,7 +1223,6 @@ void built_in_chipset_prefs (struct uae_prefs *p, int cstype)
     p->cs_fatgaryrev = -1;
     p->cs_ide = 0;
     p->cs_ramseyrev = -1;
-    p->chipset_mask = CSMASK_ECS_AGNUS;
 
     switch (cstype)
     {
@@ -1236,6 +1236,8 @@ void built_in_chipset_prefs (struct uae_prefs *p, int cstype)
     case CP_CD32: // CD32
 	break;
     case CP_A500: // A500
+	if (p->chipset_mask & CSMASK_AGA)
+	    p->chipset_mask = CSMASK_ECS_AGNUS;
 	break;
     case CP_A500P: // A500+
 	p->chipset_mask = CSMASK_FULL_ECS;
@@ -1253,6 +1255,8 @@ void built_in_chipset_prefs (struct uae_prefs *p, int cstype)
 	p->chipset_mask = CSMASK_AGA;
 	break;
     case CP_A2000: // A2000
+	if (p->chipset_mask & CSMASK_AGA)
+	    p->chipset_mask = CSMASK_ECS_AGNUS;
 	p->cs_rtc = 1;
 	break;
     case CP_A3000: // A3000

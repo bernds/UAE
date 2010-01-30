@@ -24,6 +24,7 @@
 #include "keybuf.h"
 #include "gui.h"
 #include "savestate.h"
+#include "audio.h"
 
 #define DIV10 (5*CYCLE_UNIT) /* Yes, a bad identifier. */
 
@@ -406,10 +407,10 @@ static void bfe001_change (void)
 	oldovl = v & 1;
 
 	if (!oldovl || ersatzkickfile) {
-	    map_banks (&chipmem_bank, 0, i, allocated_chipmem);
+	    map_overlay (1);
 	} else if (!(currprefs.chipset_mask & CSMASK_AGA)) {
 	    /* pin disconnected in AGA chipset, CD audio mute on/off on CD32 */
-	    map_banks (&kickmem_bank, 0, i, 0x80000);
+	    map_overlay (0);
 	}
     }
 }
@@ -534,7 +535,7 @@ static uae_u8 ReadCIAB (unsigned int addr)
     return 0;
 }
 
-static void WriteCIAA (uae_u16 addr,uae_u8 val)
+static void WriteCIAA (uae_u16 addr, uae_u8 val)
 {
     int oldled, oldovl;
     switch (addr & 0xf) {
@@ -669,16 +670,16 @@ static void WriteCIAA (uae_u16 addr,uae_u8 val)
     }
 }
 
-static void WriteCIAB (uae_u16 addr,uae_u8 val)
+static void WriteCIAB (uae_u16 addr, uae_u8 val)
 {
     int oldval;
     switch (addr & 0xf) {
     case 0:
 	if (currprefs.use_serial) {
 	    oldval = ciabpra;
-	    ciabpra  = serial_writestatus(oldval,val);
+	    ciabpra = serial_writestatus (oldval, val);
 	} else
-	    ciabpra  = val;
+	    ciabpra = val;
 	break;
     case 1:
 	ciabprb = val; DISK_select(val); break;
@@ -824,7 +825,7 @@ static void cia_bput (uaecptr, uae_u32) REGPARAM;
 addrbank cia_bank = {
     cia_lget, cia_wget, cia_bget,
     cia_lput, cia_wput, cia_bput,
-    default_xlate, default_check, NULL
+    default_xlate, default_check, NULL, "CIA"
 };
 
 static void cia_wait (void)
@@ -934,7 +935,7 @@ static void clock_bput (uaecptr, uae_u32) REGPARAM;
 addrbank clock_bank = {
     clock_lget, clock_wget, clock_bget,
     clock_lput, clock_wput, clock_bput,
-    default_xlate, default_check, NULL
+    default_xlate, default_check, NULL, "Battery backed up clock"
 };
 
 uae_u32 REGPARAM2 clock_lget (uaecptr addr)

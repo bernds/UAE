@@ -22,10 +22,18 @@ struct strlist {
 struct config_list {
     const char *filename;
     const char *description;
+    const char *sortstr;
 };
 
 extern struct config_list *predef_configs;
 extern int n_predef_configs;
+
+struct uae_rect {
+    int w, h;
+};
+
+extern struct uae_rect *gfx_fullscreen_modes, *gfx_windowed_modes;
+extern int n_fullscreen_modes, n_windowed_modes;
 
 #define FILTER_SOUND_OFF 0
 #define FILTER_SOUND_EMUL 1
@@ -54,8 +62,8 @@ struct uae_input_device {
 
 typedef enum { DRV_NONE = -1, DRV_35_DD = 0, DRV_35_HD, DRV_525_SD, DRV_35_DD_ESCOM } drive_type;
 
-typedef enum { CP_GENERIC = 1, CP_CDTV, CP_CD32, CP_A500, CP_A500P, CP_A600, CP_A1000,
-	       CP_A1200, CP_A2000, CP_A3000, CP_A3000T, CP_A4000, CP_A4000T };
+enum { CP_GENERIC = 1, CP_CDTV, CP_CD32, CP_A500, CP_A500P, CP_A600, CP_A1000,
+       CP_A1200, CP_A2000, CP_A3000, CP_A3000T, CP_A4000, CP_A4000T };
 
 struct gfx_params {
     int width;
@@ -71,6 +79,7 @@ struct uae_prefs {
     struct strlist *unknown_lines;
 
     char description[256];
+    char sortstr[256];
     char info[256];
 
     int illegal_mem;
@@ -145,6 +154,7 @@ struct uae_prefs {
     int kickshifter;
 
     struct uaedev_mount_info *mountinfo;
+    int bootrom;
 
     int nr_floppies;
     drive_type dfxtype[4];
@@ -180,7 +190,7 @@ struct uae_prefs {
 
 /* Contains the filename of .uaerc */
 extern char optionsfile[];
-extern void save_options (FILE *, struct uae_prefs *);
+extern void save_options (FILE *, const struct uae_prefs *);
 
 extern void default_prefs (struct uae_prefs *);
 extern void discard_prefs (struct uae_prefs *);
@@ -194,8 +204,8 @@ extern int cfgfile_strval (const char *option, const char *value, const char *na
 extern int cfgfile_string (const char *option, const char *value, const char *name, char *location, int maxsz);
 extern char *cfgfile_subst_path (const char *path, const char *subst, const char *file);
 
-extern int target_parse_option (struct uae_prefs *, char *option, char *value);
-extern void target_save_options (FILE *, struct uae_prefs *);
+extern int target_parse_option (struct uae_prefs *, const char *option, const char *value);
+extern void target_save_options (FILE *, const struct uae_prefs *);
 
 extern int cfgfile_load (struct uae_prefs *, const char *filename);
 extern int cfgfile_save (struct uae_prefs *, const char *filename);
@@ -207,7 +217,7 @@ extern void cfgfile_show_usage (void);
 extern int cstype_from_prefs (struct uae_prefs *p);
 extern void built_in_chipset_prefs (struct uae_prefs *p, int);
 
-extern void fixup_prefs_dimensions (struct gfx_params *);
+extern int fixup_prefs_dimensions (struct gfx_params *, struct uae_rect *, int);
 extern void fixup_cpu (struct uae_prefs *);
 
 extern void check_prefs_changed_custom (void);

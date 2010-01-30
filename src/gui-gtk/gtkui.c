@@ -86,6 +86,15 @@ static GtkWidget *fcop_widget;
 static GtkAdjustment *framerate_adj;
 static GtkWidget *bimm_widget, *showleds_widget, *b32_widget, *afscr_widget, *pfscr_widget;
 
+struct scrmode_widgets
+{
+    GtkWidget *modelist;
+    GtkWidget *hcenter, *vcenter, *aspect, *linedbl, *leds;
+    GtkWidget *hc_label, *vc_label, *ld_label;
+};
+
+static struct scrmode_widgets gw_windowed, gw_fullscreen;
+
 static GtkWidget *joy_widget[2][6], *legacy_widget, *kbdlang_widget;
 
 static GtkWidget *led_widgets[5];
@@ -93,15 +102,15 @@ static GdkColor led_on[5], led_off[5];
 static unsigned int prevledstate;
 
 static GtkListStore *hd_store;
-static GtkWidget *hdlist_widget;
+static GtkWidget *hdlist_widget, *bootrom_widget;
 static GtkWidget *hdchange_button, *hddel_button;
 static GtkTreeSelection *hd_selection;
 
 static GtkWidget *preset_list, *preset_button;
 static GtkTreeSelection *preset_selection;
 
-static GtkWidget *req68020, *req68ec020, *req68030, *reqa4000;
-static int rom_cpu_req;
+static GtkWidget *req68020, *req68ec020, *req68030, *reqa4000, *reqa1000;
+static int rom_req;
 
 static GtkWidget *lab_info;
 static GtkWidget *notebook;
@@ -246,7 +255,7 @@ static void do_message_box (const guchar *title, const guchar *message, gboolean
 	uae_sem_wait (&msg_quit_sem);
 }
 
-void gui_message (const char *format,...)
+void gui_message (const char *format, ...)
 {
     char msg[2048];
     va_list parms;
@@ -308,8 +317,12 @@ static void set_disk_state (void)
     ignore_gui_changes++;
     for (i = 0; i < 4; i++) {
 	drive_type t = changed_prefs.dfxtype[i];
-	gtk_combo_box_set_active (GTK_COMBO_BOX (dftype_widget[i]),
-				  t == DRV_35_DD ? 1 : t == DRV_35_HD ? 2 : 0);
+	int n;
+	if (i == 0)
+	    n = t == DRV_35_DD ? 0 : 1;
+	else
+	    n = t == DRV_35_DD ? 1 : t == DRV_35_HD ? 2 : 0;
+	gtk_combo_box_set_active (GTK_COMBO_BOX (dftype_widget[i]), n);
     }
     ignore_gui_changes--;
 }
@@ -370,13 +383,63 @@ static void set_cpu_widget (void)
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (fpu_widget[nr]), TRUE);
     nr = changed_prefs.m68k_speed + 1 < 3 ? changed_prefs.m68k_speed + 1 : 2;
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (cpuspeed_widgets[nr]), TRUE);
+}
 
+/* The idea behind this is to keep entries in aspect/centering boxes even
+   if a screen mode is selected where they are unnecessary, but set the
+   prefs to sane values.  */
+static void adjust_gfx_prefs (struct gfx_params *gp, struct scrmode_widgets *w)
+{
+    int need_hcenter, need_vcenter, need_aspect, need_linedbl;
+    need_hcenter = gp->width < 400 || (gp->width > 512 && gp->width < 800);
+    need_vcenter = gp->height <= 256 || (gp->height > 300 && gp->height <= 512);
+    need_linedbl = gp->height >= 400;
+    need_aspect = gp->height * 4 / 3 != gp->width;
+
+    gtk_widget_set_sensitive (w->vc_label, need_vcenter);
+    gtk_widget_set_sensitive (w->hc_label, need_hcenter);
+    gtk_widget_set_sensitive (w->aspect, need_aspect);
+    gtk_widget_set_sensitive (w->ld_label, need_linedbl);
+
+    if (!need_linedbl)
+	gp->linedbl = 0;
+    if (!need_aspect)
+	gp->correct_aspect = FALSE;
+    if (!need_vcenter)
+	gp->ycenter = 0;
+    if (!need_hcenter)
+	gp->xcenter = 0;
+}
+
+static void set_gfx_mode_state (struct gfx_params *gp, struct scrmode_widgets *w)
+{
+    ignore_gui_changes++;
+
+    gtk_combo_box_set_active (GTK_COMBO_BOX (w->linedbl), gp->linedbl);
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (w->aspect), gp->correct_aspect);
+
+    gtk_combo_box_set_active (GTK_COMBO_BOX (w->hcenter), gp->xcenter);
+    gtk_combo_box_set_active (GTK_COMBO_BOX (w->vcenter), gp->ycenter);
+    ignore_gui_changes--;
 }
 
 static void set_gfx_state (void)
 {
+    int t;
+
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (bimm_widget), changed_prefs.immediate_blits != 0);
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (showleds_widget), changed_prefs.leds_on_screen != 0);
+
+    t = fixup_prefs_dimensions (&changed_prefs.gfx_w, gfx_windowed_modes, n_windowed_modes);
+    gtk_combo_box_set_active (GTK_COMBO_BOX (gw_windowed.modelist), t);
+    t = fixup_prefs_dimensions (&changed_prefs.gfx_f, gfx_fullscreen_modes, n_fullscreen_modes);
+    gtk_combo_box_set_active (GTK_COMBO_BOX (gw_fullscreen.modelist), t);
+
+    adjust_gfx_prefs (&changed_prefs.gfx_w, &gw_windowed);
+    adjust_gfx_prefs (&changed_prefs.gfx_f, &gw_fullscreen);
+    set_gfx_mode_state (&changed_prefs.gfx_w, &gw_windowed);
+    set_gfx_mode_state (&changed_prefs.gfx_f, &gw_fullscreen);
+
 #if 0
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (b32_widget), changed_prefs.blits_32bit_enabled != 0);
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (afscr_widget), changed_prefs.gfx_afullscreen != 0);
@@ -384,38 +447,15 @@ static void set_gfx_state (void)
 #endif
 }
 
-static void set_chipset_state (void)
+/* The intended behaviour here is that on startup, and when loading a state
+   file, we examine the prefs to see if they match a given motherboard, and
+   initialize the combo box accordingly.  When the user changes it, default
+   settings are automatically chosen unless the user sets "Generic", in which
+   case he has control over all the options.  */
+static void discover_cstype (void)
 {
-    int t0 = 0;
-    int cstype;
-    int needs_aga, allows_ocs, allows_ecs;
-
-    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (coll_widget[changed_prefs.collision_level]), TRUE);
-    cstype = cstype_from_prefs (&changed_prefs);
-
-    needs_aga = cstype == CP_A1200 || cstype == CP_A4000 || cstype == CP_A4000T || cstype == CP_CD32;
-    allows_ocs = cstype == CP_A1000 || cstype == CP_A500 || cstype == CP_A2000;
-    allows_ecs = !needs_aga && cstype != CP_A1000;
-
-    gtk_widget_set_sensitive (cslevel_widget[0], cstype == CP_GENERIC || allows_ocs);
-    gtk_widget_set_sensitive (cslevel_widget[1], cstype == CP_GENERIC || allows_ecs);
-    gtk_widget_set_sensitive (cslevel_widget[2], cstype == CP_GENERIC || allows_ecs);
-    gtk_widget_set_sensitive (cslevel_widget[3], cstype == CP_GENERIC || needs_aga);
-
-    if (cstype != CP_GENERIC) {
-	if (needs_aga)
-	    changed_prefs.chipset_mask = CSMASK_AGA | CSMASK_FULL_ECS;
-	else if (! allows_ecs)
-	    changed_prefs.chipset_mask = 0;
-    }
-
-    if (changed_prefs.chipset_mask & CSMASK_AGA)
-	t0 = 3;
-    else if (changed_prefs.chipset_mask & CSMASK_ECS_DENISE)
-	t0 = 2;
-    else if (changed_prefs.chipset_mask & CSMASK_ECS_AGNUS)
-	t0 = 1;
-    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (cslevel_widget[t0]), TRUE);
+    int t0;
+    int cstype = cstype_from_prefs (&changed_prefs);
 
     t0 = (cstype == CP_GENERIC ? 0
 	  : cstype == CP_A1000 ? 1
@@ -424,7 +464,24 @@ static void set_chipset_state (void)
 	  : cstype == CP_A1200 ? 4
 	  : cstype == CP_A3000 ? 5
 	  : 6);
+
+    ignore_gui_changes++;
     gtk_combo_box_set_active (GTK_COMBO_BOX (mbtype_widget), t0);
+    ignore_gui_changes--;
+}
+
+static void set_chipset_state (void)
+{
+    int t0 = 0;
+
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (coll_widget[changed_prefs.collision_level]), TRUE);
+    if (changed_prefs.chipset_mask & CSMASK_AGA)
+	t0 = 3;
+    else if (changed_prefs.chipset_mask & CSMASK_ECS_DENISE)
+	t0 = 2;
+    else if (changed_prefs.chipset_mask & CSMASK_ECS_AGNUS)
+	t0 = 1;
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (cslevel_widget[t0]), TRUE);
 }
 
 static void set_sound_state (void)
@@ -452,7 +509,8 @@ static void set_mem_state (void)
     for (i = 0; i < 10; i++)
 	gtk_widget_set_sensitive (z3size_widget[i], ! changed_prefs.address_space_24);
     for (i = 0; i < 7; i++)
-	gtk_widget_set_sensitive (p96size_widget[i], ! changed_prefs.address_space_24);
+	gtk_widget_set_sensitive (p96size_widget[i],
+				  changed_prefs.bootrom && ! changed_prefs.address_space_24);
 
     bogo2m_ok = !((changed_prefs.chipset_mask & CSMASK_AGA) || changed_prefs.cpu_model >= 68020);
     gtk_widget_set_sensitive (bogosize_widget[3], bogo2m_ok);
@@ -598,6 +656,9 @@ static void set_hd_state (void)
     }
     gtk_widget_set_sensitive (hdchange_button, FALSE);
     gtk_widget_set_sensitive (hddel_button, FALSE);
+
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (bootrom_widget),
+				  changed_prefs.bootrom != 0);
 }
 
 static void rom_requirements_change (void)
@@ -607,24 +668,28 @@ static void rom_requirements_change (void)
     gtk_widget_hide (req68020);
     gtk_widget_hide (req68ec020);
     gtk_widget_hide (req68030);
+    gtk_widget_hide (reqa1000);
     gtk_widget_hide (reqa4000);
-    if ((rom_cpu_req & 3) == 1) {
+    if ((rom_req & ROMREQ_CPUMASK) == ROMREQ_68EC020) {
 	min_widget = 2;
 	gtk_widget_show (req68ec020);
-    } else if ((rom_cpu_req & 3) == 2) {
+    } else if ((rom_req & ROMREQ_CPUMASK) == ROMREQ_68020) {
 	min_widget = 3;
 	gtk_widget_show (req68020);
-    } else if ((rom_cpu_req & 3) == 3) {
+    } else if ((rom_req & ROMREQ_CPUMASK) == ROMREQ_68030) {
 	min_widget = 4;
 	gtk_widget_show (req68030);
     }
-    if (rom_cpu_req & 4) {
+    if (rom_req & ROMREQ_A4000MB) {
 	gtk_widget_show (reqa4000);
 	gtk_combo_box_set_active (GTK_COMBO_BOX (mbtype_widget), 6);
 	gtk_widget_set_sensitive (mbtype_labelled, 0);
+    } else if (rom_req & ROMREQ_A1000) {
+	gtk_widget_show (reqa1000);
+	gtk_combo_box_set_active (GTK_COMBO_BOX (mbtype_widget), 1);
+	gtk_widget_set_sensitive (mbtype_labelled, 0);
     } else
 	gtk_widget_set_sensitive (mbtype_labelled, 1);
-
 
     i = find_current_toggle (cpu_widget, 7);
     if (i < min_widget)
@@ -662,6 +727,7 @@ static void set_widgets_from_config (void)
     set_sound_state ();
     set_mem_state ();
     set_hd_state ();
+    discover_cstype ();
     set_chipset_state ();
     rom_requirements_change ();
 }
@@ -744,6 +810,8 @@ static void dftype_changed (GtkWidget *w, gpointer data)
 	return;
     for (i = 0; i < 4; i++) {
 	int which = gtk_combo_box_get_active (GTK_COMBO_BOX (dftype_widget[i]));
+	if (i == 0)
+	    which++;
 	changed_prefs.dfxtype[i] = (which == 0 ? DRV_NONE : which == 1 ? DRV_35_DD : DRV_35_HD);
     }
     enable_disk_buttons (1);
@@ -809,6 +877,67 @@ static void custom_changed (void)
     changed_prefs.gfx_afullscreen = GTK_TOGGLE_BUTTON (afscr_widget)->active;
     changed_prefs.gfx_pfullscreen = GTK_TOGGLE_BUTTON (pfscr_widget)->active;
 #endif
+}
+
+static void leds_changed (void)
+{
+    int w_leds = GTK_TOGGLE_BUTTON (gw_windowed.leds)->active;
+    int f_leds = GTK_TOGGLE_BUTTON (gw_fullscreen.leds)->active;
+    changed_prefs.leds_on_screen = w_leds && f_leds;
+}
+
+static void screenmode_changed (void)
+{
+    int w = gtk_combo_box_get_active (GTK_COMBO_BOX (gw_windowed.modelist));
+    int f = gtk_combo_box_get_active (GTK_COMBO_BOX (gw_fullscreen.modelist));
+    int need_set_w, need_set_f;
+
+    if (ignore_gui_changes)
+	return;
+
+    need_set_w = (changed_prefs.gfx_w.width != gfx_windowed_modes[w].w
+		  || changed_prefs.gfx_w.height != gfx_windowed_modes[w].h);
+    need_set_f = (changed_prefs.gfx_f.width != gfx_fullscreen_modes[f].w
+		  || changed_prefs.gfx_f.height != gfx_fullscreen_modes[f].h);
+    changed_prefs.gfx_w.width = gfx_windowed_modes[w].w;
+    changed_prefs.gfx_w.height = gfx_windowed_modes[w].h;
+    changed_prefs.gfx_f.width = gfx_fullscreen_modes[f].w;
+    changed_prefs.gfx_f.height = gfx_fullscreen_modes[f].h;
+    if (need_set_w) {
+	fixup_prefs_dimensions (&changed_prefs.gfx_w, gfx_windowed_modes, n_windowed_modes);
+	adjust_gfx_prefs (&changed_prefs.gfx_w, &gw_windowed);
+    }
+    if (need_set_f) {
+	fixup_prefs_dimensions (&changed_prefs.gfx_f, gfx_fullscreen_modes, n_fullscreen_modes);
+	adjust_gfx_prefs (&changed_prefs.gfx_f, &gw_fullscreen);
+    }
+}
+
+static void aspect_changed (void)
+{
+    int w_aspect = GTK_TOGGLE_BUTTON (gw_windowed.aspect)->active;
+    int f_aspect = GTK_TOGGLE_BUTTON (gw_fullscreen.aspect)->active;
+    int w_ldbl = gtk_combo_box_get_active (GTK_COMBO_BOX (gw_windowed.linedbl));
+    int f_ldbl = gtk_combo_box_get_active (GTK_COMBO_BOX (gw_fullscreen.linedbl));
+    int w_hc = gtk_combo_box_get_active (GTK_COMBO_BOX (gw_windowed.hcenter));
+    int f_hc = gtk_combo_box_get_active (GTK_COMBO_BOX (gw_fullscreen.hcenter));
+    int w_vc = gtk_combo_box_get_active (GTK_COMBO_BOX (gw_windowed.vcenter));
+    int f_vc = gtk_combo_box_get_active (GTK_COMBO_BOX (gw_fullscreen.vcenter));
+
+    if (ignore_gui_changes)
+	return;
+
+    changed_prefs.gfx_w.ycenter = w_vc;
+    changed_prefs.gfx_w.xcenter = w_hc;
+    changed_prefs.gfx_w.correct_aspect = w_aspect;
+    changed_prefs.gfx_w.linedbl = w_ldbl;
+    changed_prefs.gfx_f.ycenter = f_vc;
+    changed_prefs.gfx_f.xcenter = f_hc;
+    changed_prefs.gfx_f.correct_aspect = f_aspect;
+    changed_prefs.gfx_f.linedbl = f_ldbl;
+
+    adjust_gfx_prefs (&changed_prefs.gfx_w, &gw_windowed);
+    adjust_gfx_prefs (&changed_prefs.gfx_f, &gw_fullscreen);
 }
 
 static void cpuspeed_changed (void)
@@ -903,7 +1032,7 @@ static void rom_combo_changed (void)
     gtk_widget_set_sensitive (romsel_button, t == 0);
     gtk_widget_set_sensitive (rom_text_widget, t == 0);
 
-    rom_cpu_req = 0;
+    rom_req = 0;
 
     if (t == 0) {
 	changed_prefs.rom_crc32 = 0;
@@ -911,7 +1040,7 @@ static void rom_combo_changed (void)
 	struct romlist *rl = romlist_from_idx (t - 1, ROMTYPE_KICK, 1);
 	if (rl) {
 	    changed_prefs.rom_crc32 = rl->rd->crc32;
-	    rom_cpu_req = rl->rd->cpu;
+	    rom_req = rl->rd->cpu;
 	}
     }
     rom_requirements_change ();
@@ -939,19 +1068,46 @@ static void sound_changed (void)
     gtk_widget_set_sensitive (stereo_delay_scale, changed_prefs.sound_stereo == SND_STEREO);
 }
 
+static void bootrom_changed (void)
+{
+    changed_prefs.bootrom = GTK_TOGGLE_BUTTON (bootrom_widget)->active ? 1 : 0;
+    set_mem_state ();
+}
+
 static void mbtype_changed (void)
 {
-    int n;
+    int needs_aga, allows_ocs, allows_ecs;
+    int n, cstype;
+
+    if (ignore_gui_changes)
+	return;
 
     n = gtk_combo_box_get_active (GTK_COMBO_BOX (mbtype_widget));
-    n = (n == 0 ? CP_GENERIC
-	 : n == 1 ? CP_A1000
-	 : n == 2 ? CP_A500
-	 : n == 3 ? CP_A600
-	 : n == 4 ? CP_A1200
-	 : n == 5 ? CP_A3000
-	 : CP_A4000);
-    built_in_chipset_prefs (&changed_prefs, n);
+    cstype = (n == 0 ? CP_GENERIC
+	      : n == 1 ? CP_A1000
+	      : n == 2 ? CP_A500
+	      : n == 3 ? CP_A600
+	      : n == 4 ? CP_A1200
+	      : n == 5 ? CP_A3000
+	      : CP_A4000);
+    if (cstype != CP_GENERIC)
+	built_in_chipset_prefs (&changed_prefs, cstype);
+
+    needs_aga = cstype == CP_A1200 || cstype == CP_A4000 || cstype == CP_A4000T || cstype == CP_CD32;
+    allows_ocs = cstype == CP_A1000 || cstype == CP_A500 || cstype == CP_A2000;
+    allows_ecs = !needs_aga && cstype != CP_A1000;
+
+    gtk_widget_set_sensitive (cslevel_widget[0], cstype == CP_GENERIC || allows_ocs);
+    gtk_widget_set_sensitive (cslevel_widget[1], cstype == CP_GENERIC || allows_ecs);
+    gtk_widget_set_sensitive (cslevel_widget[2], cstype == CP_GENERIC || allows_ecs);
+    gtk_widget_set_sensitive (cslevel_widget[3], cstype == CP_GENERIC || needs_aga);
+
+    if (cstype != CP_GENERIC) {
+	if (needs_aga)
+	    changed_prefs.chipset_mask = CSMASK_AGA | CSMASK_FULL_ECS;
+	else if (! allows_ecs)
+	    changed_prefs.chipset_mask = 0;
+    }
     set_chipset_state ();
 }
 
@@ -1169,7 +1325,7 @@ static void did_romchange (GtkWidget *w, gpointer data)
 	char *filename;
 
 	filename = gtk_file_chooser_get_filename (GTK_FILE_CHOOSER (romsel));
-	rom_cpu_req = 0;
+	rom_req = 0;
 	rom_requirements_change ();
 
 	uae_sem_wait (&gui_sem);
@@ -1424,7 +1580,10 @@ static void make_floppy_disks (GtkWidget *vbox)
 	gtk_box_pack_start (GTK_BOX (file_vbox), buttonbox, FALSE, FALSE, 0);
 	gtk_widget_show (buttonbox);
 
-	thing = make_chooser (3, "Disabled", "3.5 DD", "3.5 HD");
+	if (i == 0)
+	    thing = make_chooser (2, "3.5 DD", "3.5 HD");
+	else
+	    thing = make_chooser (3, "Disabled", "3.5 DD", "3.5 HD");
 	gtk_signal_connect (GTK_OBJECT (thing), "changed", (GtkSignalFunc) dftype_changed,
 			    GINT_TO_POINTER (i));
 	dftype_widget[i] = thing;
@@ -1520,12 +1679,84 @@ static void make_cpu_widgets (GtkWidget *vbox)
     add_centered_to_vbox (vbox, label, 0);
 }
 
+static GtkWidget *make_screenmode_box (const char *title, struct scrmode_widgets *mw,
+				       struct uae_rect *modes, int n_modes)
+{
+    GtkWidget *frame, *vbox;
+    int i;
+
+    frame = gtk_frame_new (title);
+    gtk_widget_show (frame);
+
+    vbox = gtk_vbox_new (FALSE, 10);
+    gtk_widget_show (vbox);
+    gtk_container_add (GTK_CONTAINER (frame), vbox);
+    gtk_container_set_border_width (GTK_CONTAINER (vbox), 4);
+
+    mw->modelist = gtk_combo_box_new_text ();
+    gtk_widget_show (mw->modelist);
+    gtk_box_pack_start (GTK_BOX (vbox), mw->modelist, FALSE, TRUE, 0);
+
+    for (i = 0; i < n_modes; i++) {
+	char t[200];
+	sprintf (t, "%dx%d", modes[i].w, modes[i].h);
+	gtk_combo_box_append_text (GTK_COMBO_BOX (mw->modelist), t);
+    }
+
+    mw->hcenter = make_chooser (3, "Off", "Simple", "Smart");
+    mw->hc_label = make_labelled_widget ("Horizontal bounds detect:", mw->hcenter, TRUE);
+    gtk_widget_show (mw->hc_label);
+    gtk_box_pack_start (GTK_BOX (vbox), mw->hc_label, FALSE, TRUE, 0);
+    
+    mw->vcenter = make_chooser (3, "Off", "Simple", "Smart");
+    mw->vc_label = make_labelled_widget ("Vertical bounds detect:", mw->vcenter, TRUE);
+    gtk_widget_show (mw->vc_label);
+    gtk_box_pack_start (GTK_BOX (vbox), mw->vc_label, FALSE, TRUE, 0);
+
+    mw->linedbl = make_chooser (3, "Off", "Double", "Scanlines");
+    mw->ld_label = make_labelled_widget ("Line doubling:", mw->linedbl, TRUE);
+    gtk_widget_show (mw->ld_label);
+    gtk_box_pack_start (GTK_BOX (vbox), mw->ld_label, FALSE, TRUE, 0);
+
+    mw->aspect = gtk_check_button_new_with_label ("Correct aspect ratio");
+    gtk_widget_show (mw->aspect);
+    gtk_box_pack_start (GTK_BOX (vbox), mw->aspect, FALSE, TRUE, 0);
+
+    mw->leds = gtk_check_button_new_with_label ("Show LEDs on screen");
+    gtk_widget_show (mw->leds);
+    gtk_box_pack_start (GTK_BOX (vbox), mw->leds, FALSE, TRUE, 0);
+
+    gtk_signal_connect (GTK_OBJECT (mw->leds), "clicked",
+			(GtkSignalFunc) leds_changed, NULL);
+    gtk_signal_connect (GTK_OBJECT (mw->aspect), "clicked",
+			(GtkSignalFunc) aspect_changed, NULL);
+    gtk_signal_connect (GTK_OBJECT (mw->linedbl), "changed",
+			(GtkSignalFunc) aspect_changed, NULL);
+    gtk_signal_connect (GTK_OBJECT (mw->hcenter), "changed",
+			(GtkSignalFunc) aspect_changed, NULL);
+    gtk_signal_connect (GTK_OBJECT (mw->vcenter), "changed",
+			(GtkSignalFunc) aspect_changed, NULL);
+    gtk_signal_connect (GTK_OBJECT (mw->modelist), "changed",
+			(GtkSignalFunc) screenmode_changed, NULL);
+
+    return frame;
+}
+
 static void make_gfx_widgets (GtkWidget *vbox)
 {
     GtkWidget *thing, *frame, *newbox, *hbox;
 
     add_empty_vbox (vbox);
 
+    hbox = gtk_hbox_new (FALSE, 10);
+    gtk_widget_show (hbox);
+    add_centered_to_vbox (vbox, hbox, 0);
+
+    thing = make_screenmode_box ("Fullscreen mode", &gw_fullscreen, gfx_fullscreen_modes, n_fullscreen_modes);
+    gtk_box_pack_start (GTK_BOX (hbox), thing, FALSE, FALSE, 0);
+    thing = make_screenmode_box ("Windowed mode", &gw_windowed, gfx_windowed_modes, n_windowed_modes);
+    gtk_box_pack_start (GTK_BOX (hbox), thing, FALSE, FALSE, 0);
+    
     hbox = gtk_hbox_new (FALSE, 10);
     gtk_widget_show (hbox);
     add_centered_to_vbox (vbox, hbox, 0);
@@ -1626,6 +1857,9 @@ static void make_chipset_widgets (GtkWidget *vbox)
     reqa4000 = gtk_label_new ("The selected ROM requires at least an A4000.");
     add_centered_to_vbox (vbox, reqa4000, 0);
 
+    reqa1000 = gtk_label_new ("The selected ROM requires an A1000 motherboard.");
+    add_centered_to_vbox (vbox, reqa1000, 0);
+
     add_empty_vbox (vbox);
 }
 
@@ -1723,7 +1957,7 @@ static void make_rom_widgets (GtkWidget *dvbox)
     GtkWidget *hbox = gtk_hbox_new (FALSE, 10);
     GtkWidget *label, *frame;
 
-    rom_cpu_req = 0;
+    rom_req = 0;
 
     add_empty_vbox (dvbox);
 
@@ -1870,7 +2104,7 @@ static void make_joy_widgets (GtkWidget *dvbox)
 	gtk_box_pack_start (GTK_BOX (hbox), frame, FALSE, TRUE, 0);
     }
 
-    thing = make_chooser (7, "English (QUERTY)", "Danish", "Deutsch (QWERTZ)", "Swedish",
+    thing = make_chooser (7, "English (QWERTY)", "Danish", "Deutsch (QWERTZ)", "Swedish",
 			  "Francais (AZERTY)", "Italian", "Spanish");
     gtk_signal_connect (GTK_OBJECT (thing), "changed", (GtkSignalFunc) kbdlang_changed,
 			GINT_TO_POINTER (i));
@@ -2313,7 +2547,9 @@ static void make_hd_widgets (GtkWidget *dvbox)
 				   G_TYPE_STRING, G_TYPE_STRING,
 				   G_TYPE_INT);
 
+#if 0
     add_empty_vbox (dvbox);
+#endif
 
     hbox = gtk_hbox_new (FALSE, 0);
     gtk_box_pack_start (GTK_BOX (dvbox), hbox, TRUE, TRUE, 20);
@@ -2371,7 +2607,14 @@ static void make_hd_widgets (GtkWidget *dvbox)
     hdchange_button = make_button ("Change...", buttonbox, did_hdchange);
     hddel_button = make_button ("Delete", buttonbox, did_hddel);
 
+    bootrom_widget = gtk_check_button_new_with_label ("Enable bootrom - needed for filesystem, Picasso96 and better mouse support;\ndisable only in case of (unlikely) compatibility issues");
+    add_centered_to_vbox (dvbox, bootrom_widget, 0);
+    gtk_widget_show (bootrom_widget);
+    gtk_signal_connect (GTK_OBJECT (bootrom_widget), "clicked",
+			(GtkSignalFunc) bootrom_changed, NULL);
+#if 0
     add_empty_vbox (dvbox);
+#endif
 }
 
 static void make_presets (GtkWidget *dvbox)

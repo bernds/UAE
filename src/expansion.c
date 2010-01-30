@@ -832,42 +832,25 @@ static void allocate_expamem (void)
     }
 }
 
-int need_uae_boot_rom (void)
-{
-    return 1; /* always want mousehack */
-    if (nr_units (currprefs.mountinfo) > 0)
-	return 1;
-    if (currprefs.socket_emu)
-	return 1;
-    if (currprefs.gfxmem_size)
-	return 1;
-    return 0;
-}
-
 void expamem_reset (void)
 {
-    int do_mount = 1;
+    int do_mount = currprefs.bootrom && !ersatzkickfile;
     int cardno = 0;
     ecard = 0;
 
     allocate_expamem ();
 
     /* check if Kickstart version is below 1.3 */
-    if (! ersatzkickfile
+    if (! ersatzkickfile && kickstart_version
 	&& (/* Kickstart 1.0 & 1.1! */
-	    get_word (0xF8000C) == 0xFFFF
+	    kickstart_version == 0xFFFF
 	    /* Kickstart < 1.3 */
-	    || get_word (0xF8000C) < 34))
+	    || kickstart_version < 34))
     {
 	/* warn user */
 	write_log ("Kickstart version is below 1.3!  Disabling autoconfig devices.\n");
 	do_mount = 0;
     }
-#if 0 /* Always want this, for mousehack.  */
-    /* No need for filesystem stuff if there aren't any mounted.  */
-    if (nr_units (currprefs.mountinfo) == 0)
-	do_mount = 0;
-#endif
 
     if (fastmemory != NULL) {
 	card_init[cardno] = expamem_init_fastcard;
@@ -883,7 +866,7 @@ void expamem_reset (void)
 	card_map[cardno++] = expamem_map_gfxcard;
     }
 #endif
-    if (do_mount && ! ersatzkickfile) {
+    if (do_mount) {
 	card_init[cardno] = expamem_init_filesys;
 	card_map[cardno++] = expamem_map_filesys;
     }

@@ -1,5 +1,14 @@
 config_description=Power User configuration (128 MB + 32 MB RTG)
+config_sortstr=A9000.0
 config_version=0.8.25
+# A4000 (Cloanto)
+kickstart_rom_crc_attempt=0x43b6dd22
+# A4000 3.X Cloanto
+kickstart_rom_crc_attempt=0x08b69382
+# A4000T
+kickstart_rom_crc_attempt=0x75932c3a
+# A4000
+kickstart_rom_crc_attempt=0xd6bae334
 # A1200 3.1
 kickstart_rom_crc_attempt=0x1483a091
 # A500 3.1
@@ -25,8 +34,8 @@ chipset=aga
 collision_level=playfields
 ide=none
 a1000ram=false
-fatgary=-1
-ramsey=-1
+fatgary=0
+ramsey=15
 fastmem_size=0
 a3000mem_size=0
 mbresmem_size=0

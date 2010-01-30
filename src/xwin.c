@@ -1770,14 +1770,14 @@ void setcapslockstate (int state)
 /*
  * Handle gfx cfgfile options
  */
-void target_save_options (FILE *f, struct uae_prefs *p)
+void target_save_options (FILE *f, const struct uae_prefs *p)
 {
     fprintf (f, "x11.low_bandwidth=%s\n", p->x11_use_low_bandwidth ? "true" : "false");
     fprintf (f, "x11.use_mitshm=%s\n", p->x11_use_mitshm ? "true" : "false");
     fprintf (f, "x11.hide_cursor=%s\n", p->x11_hide_cursor ? "true" : "false");
 }
 
-int target_parse_option (struct uae_prefs *p, char *option, char *value)
+int target_parse_option (struct uae_prefs *p, const char *option, const char *value)
 {
     return (cfgfile_yesno (option, value, "low_bandwidth", &p->x11_use_low_bandwidth)
 	    || cfgfile_yesno (option, value, "use_mitshm", &p->x11_use_mitshm)

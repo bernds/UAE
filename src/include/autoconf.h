@@ -34,8 +34,6 @@ extern uaecptr ROM_hardfile_resname, ROM_hardfile_resid;
 extern uaecptr ROM_hardfile_init;
 extern uaecptr filesys_initcode;
 
-extern int need_uae_boot_rom (void);
-
 extern void hardfile_install (void);
 extern void emulib_install (void);
 extern void expansion_init (void);

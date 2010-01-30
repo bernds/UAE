@@ -1,4 +1,5 @@
 config_description=Original unexpanded A500 (1.2 ROM, 68000, OCS)
+config_sortstr=A0500.0
 config_version=0.8.26
 # A500 1.3
 kickstart_rom_crc_attempt=0xc4f0f55f

@@ -16,6 +16,16 @@ struct romheader {
     int id;
 };
 
+/* Mask to determine CPU type required by the ROM.  */
+#define ROMREQ_CPUMASK 3
+
+#define ROMREQ_68EC020 1
+#define ROMREQ_68020 2
+#define ROMREQ_68030 3
+#define ROMREQ_A4000MB 4
+#define ROMREQ_A4000 (ROMREQ_A4000MB | ROMREQ_68020)
+#define ROMREQ_A1000 8
+
 struct romdata {
     char *name;
     int ver, rev;

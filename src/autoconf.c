@@ -76,7 +76,7 @@ static void REGPARAM2 rtarea_bput (uaecptr addr, uae_u32 value)
 addrbank rtarea_bank = {
     rtarea_lget, rtarea_wget, rtarea_bget,
     rtarea_lput, rtarea_wput, rtarea_bput,
-    rtarea_xlate, default_check, NULL
+    rtarea_xlate, default_check, NULL, "UAE Boot ROM"
 };
 
 /* some quick & dirty code to fill in the rt area and save me a lot of

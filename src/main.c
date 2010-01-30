@@ -76,9 +76,27 @@ char *colormodes[] = { "256 colors", "32768 colors", "65536 colors",
     "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""
 };
 
+struct uae_rect *gfx_fullscreen_modes, *gfx_windowed_modes;
+int n_fullscreen_modes, n_windowed_modes;
+
+static struct uae_rect default_windowed_modes[] =
+{
+    { 320, 256 },
+    { 400, 300 },
+    { 640, 512 },
+    { 800, 600 }
+};
+
 struct config_list *predef_configs;
 int n_predef_configs;
 int predef_configs_space;
+
+static int sortfn (const void *a, const void *b)
+{
+    struct config_list *pa = (struct config_list *)a;
+    struct config_list *pb = (struct config_list *)b;
+    return strcmp (pa->sortstr, pb->sortstr);
+}
 
 static void scan_configs (const char *path)
 {
@@ -89,7 +107,7 @@ static void scan_configs (const char *path)
     uae_u8 *data;
 
     predef_configs_space = 20;
-    predef_configs = malloc (sizeof (struct uae_prefs) * 20);
+    predef_configs = malloc (sizeof (struct config_list) * 20);
     n_predef_configs = 0;
 
     dir = opendir (path);
@@ -122,6 +140,7 @@ static void scan_configs (const char *path)
 	    bufsz = len + pathlen + 200;
 	    buffer = realloc (buffer, bufsz);
 	    if (!buffer) {
+		free (data);
 		goto out;
 	    }
 	}
@@ -130,17 +149,19 @@ static void scan_configs (const char *path)
 	if (n_predef_configs >= predef_configs_space) {
 	    predef_configs_space += 20;
 	    predef_configs = realloc (predef_configs,
-				      sizeof (struct uae_prefs) * predef_configs_space);
+				      sizeof (struct config_list) * predef_configs_space);
 	}
 	default_prefs (&p);
 	strcpy (p.description, "");
+	strcpy (p.sortstr, "");
 	cfgfile_load (&p, buffer);
 	if (strlen (p.description) > 0) {
 	    predef_configs[n_predef_configs].filename = strdup (buffer);
-	    predef_configs[n_predef_configs++].description = strdup (p.description);
+	    predef_configs[n_predef_configs].description = strdup (p.description);
+	    predef_configs[n_predef_configs++].sortstr = strdup (p.sortstr);
 	}
     }
-
+    qsort (predef_configs, n_predef_configs, sizeof *predef_configs, sortfn);
     free (data);
   out1:
     free (buffer);
@@ -268,21 +289,28 @@ void default_prefs (struct uae_prefs *p)
 
     p->mountinfo = alloc_mountinfo ();
     inputdevice_default_prefs (p);
+    p->bootrom = 1;
 }
 
-void fixup_prefs_dimensions (struct gfx_params *p)
+int fixup_prefs_dimensions (struct gfx_params *p, struct uae_rect *modes, int n_modes)
 {
+    int i;
     if (p->width < 320)
 	p->width = 320;
     if (p->height < 200)
 	p->height = 200;
-    if (p->height > 300 && ! p->linedbl)
-	p->height = 300;
-    if (p->height > 600)
-	p->height = 600;
-
-    p->width += 7; /* X86.S wants multiples of 4 bytes, might be 8 in the future. */
-    p->width &= ~7;
+    for (i = 0; i < n_modes; i++) {
+	if ((modes[i].w >= p->width && modes[i].h >= p->height)
+	    || i == n_modes - 1)
+	{
+	    p->width = modes[i].w;
+	    p->height = modes[i].h;
+	    p->lores = p->width <= 512;
+	    if (p->height > 300 && !p->linedbl)
+		p->linedbl = 1;
+	    return i;
+	}
+    }
 }
 
 void fixup_cpu (struct uae_prefs *p)
@@ -560,6 +588,11 @@ void real_main (int argc, char **argv)
 #ifdef SYSTEM_CFGDIR
     scan_configs (SYSTEM_CFGDIR);
 #endif
+
+    /* Can be overriden in graphics_setup, although there's not much of a
+       point.  Fullscreen modes are filled in by graphics_setup.  */
+    gfx_windowed_modes = default_windowed_modes;
+    n_windowed_modes = sizeof default_windowed_modes / sizeof *default_windowed_modes;
 
     if (! graphics_setup ()) {
 	exit (1);

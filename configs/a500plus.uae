@@ -1,4 +1,5 @@
 config_description=ECS A500+ with memory expansion (2.04 ROM, 68000, ECS)
+config_sortstr=A0500.2
 config_version=0.8.26
 # A600 2.05
 kickstart_rom_crc_attempt=0x83028fb5

@@ -52,11 +52,6 @@ static SDL_Surface *screen;
 static int x_size_table[MAX_SCREEN_MODES] = { 320, 320, 320, 320, 640, 640, 640, 800, 1024, 1152, 1280 };
 static int y_size_table[MAX_SCREEN_MODES] = { 200, 240, 256, 400, 350, 480, 512, 600, 768,  864,  1024 };
 
-/* Supported SDL screen modes */
-#define MAX_SDL_SCREENMODE 32
-SDL_Rect screenmode[MAX_SDL_SCREENMODE];
-int mode_count;
-
 static int sdlgfx_init_ok;
 
 static int red_bits, green_bits, blue_bits;
@@ -237,17 +232,15 @@ static int find_best_mode (int *width, int *height, int depth, int *try_fs)
     /* First test whether the specified mode is supported */
     found = SDL_VideoModeOK (*width, *height, depth, *try_fs ? SDL_FULLSCREEN : 0);
 
-    if (!found && mode_count > 0) {
+    if (!found && n_fullscreen_modes > 0) {
 	/* The specified mode wasn't available, so we'll try and find
 	 * a supported resolution which best matches it.
 	 */
 	int i;
 	write_log ("SDLGFX: Requested mode (%dx%d%d) not available.\n", *width, *height, depth);
 
-	/* Note: the screenmode array should already be sorted from largest to smallest, since
-	 * that's the order SDL gives us the screenmodes. */
-	for (i = mode_count - 1; i >= 0; i--) {
-	    if (screenmode[i].w >= *width && screenmode[i].h >= *height)
+	for (i = 0; i < n_fullscreen_modes; i--) {
+	    if (gfx_fullscreen_modes[i].w >= *width && gfx_fullscreen_modes[i].h >= *height)
 		break;
 	}
 
@@ -255,8 +248,8 @@ static int find_best_mode (int *width, int *height, int depth, int *try_fs)
 	if (i < 0)
 	    i = 0;
 
-	*width  = screenmode[i].w;
-	*height = screenmode[i].h;
+	*width  = gfx_fullscreen_modes[i].w;
+	*height = gfx_fullscreen_modes[i].h;
 	found   = 1;
 
 	write_log ("SDLGFX: Using mode (%dx%d)\n", *width, *height);
@@ -344,7 +337,7 @@ static int get_p96_pixel_format (const struct SDL_PixelFormat *fmt)
  * Returns a count of the number of supported modes, -1 if any mode is supported,
  * or 0 if there are no modes with this pixel format.
  */
-static long find_screen_modes (struct SDL_PixelFormat *vfmt, SDL_Rect *mode_list, int mode_list_size)
+static void find_screen_modes (struct SDL_PixelFormat *vfmt)
 {
     long count = 0;
     SDL_Rect **modes = SDL_ListModes (vfmt, SDL_FULLSCREEN | SDL_HWSURFACE);
@@ -355,10 +348,20 @@ static long find_screen_modes (struct SDL_PixelFormat *vfmt, SDL_Rect *mode_list
 	int h = -1;
 
 	/* Filter list of modes SDL gave us and ignore duplicates */
-	for (i = 0; modes[i] && count < mode_list_size; i++) {
+	for (i = 0; modes[i]; i++)
+	    if (modes[i]->w != w || modes[i]->h != h)
+		count++;
+
+	gfx_fullscreen_modes = malloc (sizeof (struct uae_rect) * count);
+	n_fullscreen_modes = count;
+
+	w = h = -1;
+	for (i = count = 0; count < n_fullscreen_modes; i++) {
 	    if (modes[i]->w != w || modes[i]->h != h) {
-		mode_list[count].w = w = modes[i]->w;
-		mode_list[count].h = h = modes[i]->h;
+		/* Fill the array in reverse, as SDL gives us a list of
+		   screenmodes sorted largest to smallest.  */
+		gfx_fullscreen_modes[n_fullscreen_modes - 1 - count].w = w = modes[i]->w;
+		gfx_fullscreen_modes[n_fullscreen_modes - 1 - count].h = h = modes[i]->h;
 		count++;
 
 		write_log ("SDLGFX: Found screenmode: %dx%d.\n", w, h);
@@ -429,7 +432,6 @@ int graphics_setup (void)
     int result = 0;
 
     if (SDL_InitSubSystem (SDL_INIT_VIDEO) == 0) {
-
 	const SDL_version   *version = SDL_Linked_Version ();
 	const SDL_VideoInfo *info    = SDL_GetVideoInfo ();
 
@@ -443,7 +445,7 @@ int graphics_setup (void)
 	write_log ("SDLGFX: Display is %d bits deep.\n", bitdepth);
 
 	/* Build list of screenmodes */
-	mode_count = find_screen_modes (info->vfmt, &screenmode[0], MAX_SDL_SCREENMODE);
+	find_screen_modes (info->vfmt);
 
 	result = 1;
 	sdlgfx_init_ok = 1;
@@ -472,7 +474,7 @@ static int graphics_subinit (void)
 	    curr_gfx = &currprefs.gfx_f;
 	else
 	    curr_gfx = &currprefs.gfx_w;
-	    
+
 	current_width  = curr_gfx->width;
 	current_height = curr_gfx->height;
     }
@@ -604,8 +606,8 @@ int graphics_init (void)
 #endif
     mousegrab = 0;
 
-    fixup_prefs_dimensions (&currprefs.gfx_w);
-    fixup_prefs_dimensions (&currprefs.gfx_f);
+    fixup_prefs_dimensions (&currprefs.gfx_w, gfx_windowed_modes, n_windowed_modes);
+    fixup_prefs_dimensions (&currprefs.gfx_f, gfx_fullscreen_modes, n_fullscreen_modes);
 
     if (graphics_subinit ()) {
 	if (init_colors ()) {
@@ -627,9 +629,11 @@ static void graphics_subshutdown (int final)
        by reinitializing SDL.  */
     SDL_QuitSubSystem (SDL_INIT_VIDEO);
     SDL_InitSubSystem (SDL_INIT_VIDEO);
-    if (fullscreen)
+    if (fullscreen) {
+	struct uae_rect *biggest = gfx_fullscreen_modes + n_fullscreen_modes - 1;
 	/* Try switching back to the previous screenmode.  */
-	SDL_SetVideoMode (screenmode[0].w, screenmode[0].h, bitdepth, SDL_FULLSCREEN);
+	SDL_SetVideoMode (biggest->w, biggest->h, bitdepth, SDL_FULLSCREEN);
+    }
 
     display = screen = 0;
 
@@ -658,70 +662,70 @@ void handle_events (void)
 
     while (SDL_PollEvent (&rEvent)) {
 	switch (rEvent.type) {
-	    case SDL_QUIT:
-		DEBUG_LOG ("Event: quit\n");
-		uae_quit();
-		break;
+	case SDL_QUIT:
+	    DEBUG_LOG ("Event: quit\n");
+	    uae_quit ();
+	    break;
 
-	    case SDL_MOUSEBUTTONDOWN:
-	    case SDL_MOUSEBUTTONUP: {
-		int state = (rEvent.type == SDL_MOUSEBUTTONDOWN);
-		int buttonno = -1;
+	case SDL_MOUSEBUTTONDOWN:
+	case SDL_MOUSEBUTTONUP: {
+	    int state = (rEvent.type == SDL_MOUSEBUTTONDOWN);
+	    int buttonno = -1;
 
-		DEBUG_LOG ("Event: mouse button %d %s\n", rEvent.button.button, state ? "down" : "up");
+	    DEBUG_LOG ("Event: mouse button %d %s\n", rEvent.button.button, state ? "down" : "up");
 
-		switch (rEvent.button.button) {
-		    case SDL_BUTTON_LEFT:      buttonno = 0; break;
-		    case SDL_BUTTON_MIDDLE:    buttonno = 2; break;
-		    case SDL_BUTTON_RIGHT:     buttonno = 1; break;
+	    switch (rEvent.button.button) {
+	    case SDL_BUTTON_LEFT:      buttonno = 0; break;
+	    case SDL_BUTTON_MIDDLE:    buttonno = 2; break;
+	    case SDL_BUTTON_RIGHT:     buttonno = 1; break;
 #ifdef SDL_BUTTON_WHEELUP
-		    case SDL_BUTTON_WHEELUP:   if (state) record_key (0x7a << 1); break;
-		    case SDL_BUTTON_WHEELDOWN: if (state) record_key (0x7b << 1); break;
+	    case SDL_BUTTON_WHEELUP:   if (state) record_key (0x7a << 1); break;
+	    case SDL_BUTTON_WHEELDOWN: if (state) record_key (0x7b << 1); break;
 #endif
-		}
-		if (buttonno >= 0)
-		    setmousebuttonstate (0, buttonno, rEvent.type == SDL_MOUSEBUTTONDOWN ? 1:0);
-		break;
 	    }
+	    if (buttonno >= 0)
+		setmousebuttonstate (0, buttonno, rEvent.type == SDL_MOUSEBUTTONDOWN ? 1:0);
+	    break;
+	}
 
-	    case SDL_KEYUP:
-	    case SDL_KEYDOWN: {
-		int state = (rEvent.type == SDL_KEYDOWN);
-		int keycode;
-		int ievent;
+	case SDL_KEYUP:
+	case SDL_KEYDOWN: {
+	    int state = (rEvent.type == SDL_KEYDOWN);
+	    int keycode;
+	    int ievent;
 
-		keycode = rEvent.key.keysym.sym;
+	    keycode = rEvent.key.keysym.sym;
 
-		DEBUG_LOG ("Event: key %d %s\n", keycode, state ? "down" : "up");
+	    DEBUG_LOG ("Event: key %d %s\n", keycode, state ? "down" : "up");
 
-		if ((ievent = match_hotkey_sequence (keycode, state))) {
-		     DEBUG_LOG ("Hotkey event: %d\n", ievent);
-		     handle_hotkey_event (ievent, state);
-		} else {
-		     inputdevice_do_keyboard (keysym2amiga (keycode), state);
-		}
-		break;
+	    if ((ievent = match_hotkey_sequence (keycode, state))) {
+		DEBUG_LOG ("Hotkey event: %d\n", ievent);
+		handle_hotkey_event (ievent, state);
+	    } else {
+		inputdevice_do_keyboard (keysym2amiga (keycode), state);
 	    }
+	    break;
+	}
 
-	    case SDL_MOUSEMOTION:
-		//DEBUG_LOG ("Event: mouse motion\n");
+	case SDL_MOUSEMOTION:
+	    //DEBUG_LOG ("Event: mouse motion\n");
 
-		if (!fullscreen && !mousegrab) {
-		    setmousestate (0, 0,rEvent.motion.x, 1);
-		    setmousestate (0, 1,rEvent.motion.y, 1);
-		} else {
-		    setmousestate (0, 0, rEvent.motion.xrel, 0);
-		    setmousestate (0, 1, rEvent.motion.yrel, 0);
-		}
-		break;
+	    if (!fullscreen && !mousegrab) {
+		setmousestate (0, 0,rEvent.motion.x, 1);
+		setmousestate (0, 1,rEvent.motion.y, 1);
+	    } else {
+		setmousestate (0, 0, rEvent.motion.xrel, 0);
+		setmousestate (0, 1, rEvent.motion.yrel, 0);
+	    }
+	    break;
 
-	  case SDL_ACTIVEEVENT:
-		if (rEvent.active.state & SDL_APPINPUTFOCUS && !rEvent.active.gain) {
-		    DEBUG_LOG ("Lost input focus\n");
-		    inputdevice_release_all_keys ();
-		    reset_hotkeys ();
-		}
-		break;
+	case SDL_ACTIVEEVENT:
+	    if (rEvent.active.state & SDL_APPINPUTFOCUS && !rEvent.active.gain) {
+		DEBUG_LOG ("Lost input focus\n");
+		inputdevice_release_all_keys ();
+		reset_hotkeys ();
+	    }
+	    break;
 	} /* end switch() */
     } /* end while() */
 
@@ -770,14 +774,14 @@ int check_prefs_changed_gfx (void)
 	    && memcmp (&changed_prefs.gfx_w, &currprefs.gfx_w, sizeof (struct gfx_params)) != 0)
 	{
 	    a_changed = 1;
-	    fixup_prefs_dimensions (&changed_prefs.gfx_w);
+	    fixup_prefs_dimensions (&changed_prefs.gfx_w, gfx_windowed_modes, n_windowed_modes);
 	    currprefs.gfx_w = changed_prefs.gfx_w;
-    } else if (fullscreen
-	       && memcmp (&changed_prefs.gfx_f, &currprefs.gfx_f, sizeof (struct gfx_params)) != 0)
+	} else if (fullscreen
+		   && memcmp (&changed_prefs.gfx_f, &currprefs.gfx_f, sizeof (struct gfx_params)) != 0)
 	{
 	    a_changed = 1;
-	    fixup_prefs_dimensions (&changed_prefs.gfx_f);
-	currprefs.gfx_f = changed_prefs.gfx_f;
+	    fixup_prefs_dimensions (&changed_prefs.gfx_f, gfx_fullscreen_modes, n_fullscreen_modes);
+	    currprefs.gfx_f = changed_prefs.gfx_f;
 	}
 	if (changed_prefs.gfx_afullscreen != currprefs.gfx_afullscreen) {
 	    a_changed = 1;
@@ -977,12 +981,12 @@ int DX_FillResolutions (uae_u16 *ppixel_format)
     }
 
     /* Check list of supported SDL screenmodes */
-    for (i = 0; i < mode_count; i++) {
+    for (i = 0; i < n_fullscreen_modes; i++) {
 	int j;
 	int found = 0;
 	for (j = 0; j < MAX_SCREEN_MODES - 1; j++) {
-	    if (screenmode[i].w == x_size_table[j] &&
-		screenmode[i].h == y_size_table[j])
+	    if (gfx_fullscreen_modes[i].w == x_size_table[j] &&
+		gfx_fullscreen_modes[i].h == y_size_table[j])
 	    {
 		found = 1;
 		break;
@@ -992,7 +996,8 @@ int DX_FillResolutions (uae_u16 *ppixel_format)
 	/* If SDL mode is not a standard P96 mode (and thus already added to the
 	 * list, above) then add it */
 	if (!found)
-	    add_p96_mode (screenmode[i].w, screenmode[i].h, emulate_chunky, &count);
+	    add_p96_mode (gfx_fullscreen_modes[i].w, gfx_fullscreen_modes[i].h,
+			  emulate_chunky, &count);
     }
 
     return count;
@@ -1006,8 +1011,8 @@ static void set_window_for_picasso (void)
 	return;
 #endif
 
-    graphics_subshutdown(0);
-    graphics_subinit();
+    graphics_subshutdown (0);
+    graphics_subinit ();
 }
 
 void gfx_set_picasso_modeinfo (int w, int h, int depth, int rgbfmt)
@@ -1024,7 +1029,7 @@ void gfx_set_picasso_modeinfo (int w, int h, int depth, int rgbfmt)
     picasso_vidinfo.depth = depth;
     picasso_vidinfo.pixbytes = bit_unit >> 3;
     if (screen_is_picasso)
-	set_window_for_picasso();
+	set_window_for_picasso ();
 }
 
 void gfx_set_picasso_baseaddr (uaecptr a)
@@ -1303,11 +1308,11 @@ void input_get_default_mouse (struct uae_input_device *uid)
  * Handle gfx specific cfgfile options
  */
 
-void target_save_options (FILE *f, struct uae_prefs *p)
+void target_save_options (FILE *f, const struct uae_prefs *p)
 {
 }
 
-int target_parse_option (struct uae_prefs *p, char *option, char *value)
+int target_parse_option (struct uae_prefs *p, const char *option, const char *value)
 {
     return 0;
 }

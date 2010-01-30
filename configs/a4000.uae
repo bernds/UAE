@@ -1,4 +1,5 @@
 config_description=A4000 with a lot of fastmem (3.1 ROM, 68040, AGA)
+config_sortstr=A4000
 config_version=0.8.25
 # A1200 3.0
 kickstart_rom_crc_attempt=0x6c9b07d2

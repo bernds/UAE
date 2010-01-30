@@ -7,6 +7,7 @@
   */
 
 extern void memory_reset (void);
+extern void a1000_reset (void);
 
 typedef uae_u32 (*mem_get_func)(uaecptr) REGPARAM;
 typedef void (*mem_put_func)(uaecptr, uae_u32) REGPARAM;
@@ -43,6 +44,7 @@ extern uae_u32 allocated_a3000mem;
 
 extern int ersatzkickfile;
 extern int cloanto_rom;
+extern uae_u16 kickstart_version;
 extern int uae_boot_rom, uae_boot_rom_size;
 
 extern uae_u8* baseaddr[];
@@ -117,6 +119,7 @@ extern uae_u8 *baseaddr[65536];
 extern void memory_init (void);
 extern void memory_cleanup (void);
 extern void map_banks (addrbank *bank, int first, int count, int realsize);
+extern void map_overlay (int chip);
 
 #ifndef NO_INLINE_MEMORY_ACCESS
 
