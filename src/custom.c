@@ -1452,6 +1452,12 @@ STATIC_INLINE void decide_line (int hpos)
  * but the new color has not been entered into the table yet. */
 static void record_color_change (int hpos, int regno, unsigned long value)
 {
+    if (regno == -1 && value) {
+	thisline_decision.ham_seen = 1;
+	if (hpos < 0x18)
+	    thisline_decision.ham_at_start = 1;
+    }
+
     /* Early positions don't appear on-screen. */
     if (framecnt != 0 || vpos < minfirstline || hpos < 0x18
 	/*|| currprefs.emul_accuracy == 0*/)
@@ -1899,6 +1905,8 @@ static void reset_decisions (void)
 
     thisline_decision.plfleft = -1;
     thisline_decision.plflinelen = -1;
+    thisline_decision.ham_seen = !! (bplcon0 & 0x800);
+    thisline_decision.ham_at_start = !! (bplcon0 & 0x800);
 
     /* decided_res shouldn't be touched before it's initialized by decide_line(). */
     thisline_decision.diwfirstword = -1;
@@ -1989,14 +1997,14 @@ static void calcdiw (void)
 #if 0
     /* This happens far too often. */
     if (plffirstline < minfirstline) {
-	fprintf(stderr, "Warning: Playfield begins before line %d!\n", minfirstline);
+	write_log ("Warning: Playfield begins before line %d!\n", minfirstline);
 	plffirstline = minfirstline;
     }
 #endif
 
 #if 0 /* Turrican does this */
     if (plflastline > 313) {
-	fprintf (stderr, "Warning: Playfield out of range!\n");
+	write_log ("Warning: Playfield out of range!\n");
 	plflastline = 313;
     }
 #endif
@@ -2355,7 +2363,7 @@ static void DMACON (int hpos, uae_u16 v)
 STATIC_INLINE void INTENA (uae_u16 v)
 {
 /*    if (trace_intena)
-	fprintf (stderr, "INTENA: %04x\n", v);*/
+	write_log ("INTENA: %04x\n", v);*/
     setclr (&intena,v);
     /* There's stupid code out there that does
         [some INTREQ bits at level 3 are set]
@@ -2407,7 +2415,8 @@ static void ADKCON (uae_u16 v)
 
 static void BEAMCON0 (uae_u16 v)
 {
-    new_beamcon0 = v & 0x20;
+    if (currprefs.chipset_mask & CSMASK_ECS_AGNUS)
+	new_beamcon0 = v & 0x20;
 }
 
 static void BPLPTH (int hpos, uae_u16 v, int num)
@@ -2435,6 +2444,11 @@ static void BPLCON0 (int hpos, uae_u16 v)
     decide_line (hpos);
     decide_fetch (hpos);
 
+    /* HAM change?  */
+    if ((bplcon0 ^ v) & 0x800) {
+	record_color_change (hpos, -1, !! (v & 0x800));
+    }
+    
     bplcon0 = v;
     curr_diagram = cycle_diagram_table[fetchmode][GET_RES(bplcon0)][GET_PLANES (v)];
 
@@ -3563,7 +3577,7 @@ static void adjust_array_sizes (void)
 	if (p1) sprite_entries[0] = p1;
 	if (p2) sprite_entries[1] = p2;
 	if (p1 && p2) {
-	    fprintf (stderr, "new max_sprite_entry=%d\n",mcc);
+	    write_log ("new max_sprite_entry=%d\n",mcc);
 	    max_sprite_entry = mcc;
 	}
     }
@@ -3576,7 +3590,7 @@ static void adjust_array_sizes (void)
 	if (p1) color_changes[0] = p1;
 	if (p2) color_changes[1] = p2;
 	if (p1 && p2) {
-	    fprintf (stderr, "new max_color_change=%d\n",mcc);
+	    write_log ("new max_color_change=%d\n",mcc);
 	    max_color_change = mcc;
 	}
     }
@@ -3660,8 +3674,10 @@ static void vsync_handler (void)
     if (bplcon0 & 4)
 	lof ^= 0x8000;
 
+#ifdef PICASSO96
     if (picasso_on)
 	picasso_handle_vsync ();
+#endif
     vsync_handle_redraw (lof, lof_changed);
 
     if (quit_program > 0)
@@ -4065,7 +4081,7 @@ void dumpcustom (void)
 	if (total_skipped)
 	    write_log ("Skipped frames: %d\n", total_skipped);
     }
-    /*for (i=0; i<256; i++) if (blitcount[i]) fprintf (stderr, "minterm %x = %d\n",i,blitcount[i]);  blitter debug */
+    /*for (i=0; i<256; i++) if (blitcount[i]) write_log ("minterm %x = %d\n",i,blitcount[i]);  blitter debug */
 }
 
 int intlev (void)
@@ -4128,11 +4144,11 @@ void custom_init (void)
 
     pos = here ();
 
-    org (0xF0FF70);
+    org (RTAREA_BASE+0xFF70);
     calltrap (deftrap (mousehack_helper));
     dw (RTS);
 
-    org (0xF0FFA0);
+    org (RTAREA_BASE+0xFFA0);
     calltrap (deftrap (timehack_helper));
     dw (RTS);
 

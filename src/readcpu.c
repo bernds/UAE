@@ -685,7 +685,7 @@ static void build_insn (int insn)
       endofline:
 	/* now, we have a match */
 	if (table68k[opc].mnemo != i_ILLG)
-	    fprintf(stderr, "Double match: %x: %s\n", opc, opcstr);
+	    write_log ("Double match: %x: %s\n", opc, opcstr);
 	if (find == -1) {
 	    for (find = 0;; find++) {
 		if (strcmp(mnemonic, lookuptab[find].name) == 0) {

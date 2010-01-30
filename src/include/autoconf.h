@@ -84,3 +84,5 @@ extern void expansion_cleanup (void);
 
 extern uaecptr libemu_InstallFunction (TrapFunction, uaecptr, int, const char *);
 extern uaecptr libemu_InstallFunctionFlags (TrapFunction, uaecptr, int, int, const char *);
+
+#define RTAREA_BASE 0xF00000

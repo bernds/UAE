@@ -12,8 +12,10 @@ extern void gui_exit (void);
 extern void gui_led (int, int);
 extern void gui_handle_events (void);
 extern void gui_filename (int, const char *);
-extern void gui_fps( int fps );
+extern void gui_fps (int fps);
 extern void gui_changesettings (void);
+extern void gui_lock (void);
+extern void gui_unlock (void);
 
 extern unsigned int gui_ledstate;
 

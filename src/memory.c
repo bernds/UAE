@@ -18,6 +18,7 @@
 #include "custom.h"
 #include "events.h"
 #include "newcpu.h"
+#include "autoconf.h"
 #include "savestate.h"
 
 #ifdef USE_MAPPED_MEMORY
@@ -79,6 +80,7 @@ __inline__ void byteput (uaecptr addr, uae_u32 b)
 
 uae_u32 chipmem_mask, kickmem_mask, bogomem_mask, a3000mem_mask;
 
+static int illegal_count;
 /* A dummy bank that only contains zeros */
 
 static uae_u32 dummy_lget (uaecptr) REGPARAM;
@@ -92,8 +94,12 @@ static int dummy_check (uaecptr addr, uae_u32 size) REGPARAM;
 uae_u32 REGPARAM2 dummy_lget (uaecptr addr)
 {
     special_mem |= S_READ;
-    if (currprefs.illegal_mem)
-	write_log ("Illegal lget at %08lx\n", addr);
+    if (currprefs.illegal_mem) {
+	if (illegal_count < 20) {
+	    illegal_count++;
+	    write_log ("Illegal lget at %08lx\n", addr);
+	}
+    }
 
     return 0xFFFFFFFF;
 }
@@ -101,17 +107,25 @@ uae_u32 REGPARAM2 dummy_lget (uaecptr addr)
 uae_u32 REGPARAM2 dummy_wget (uaecptr addr)
 {
     special_mem |= S_READ;
-    if (currprefs.illegal_mem)
-	write_log ("Illegal wget at %08lx\n", addr);
-
+    if (currprefs.illegal_mem) {
+	if (illegal_count < 20) {
+	    illegal_count++;
+	    write_log ("Illegal wget at %08lx\n", addr);
+	}
+    }
+	
     return 0xFFFF;
 }
 
 uae_u32 REGPARAM2 dummy_bget (uaecptr addr)
 {
     special_mem |= S_READ;
-    if (currprefs.illegal_mem)
-	write_log ("Illegal bget at %08lx\n", addr);
+    if (currprefs.illegal_mem) {
+	if (illegal_count < 20) {
+	    illegal_count++;
+	    write_log ("Illegal bget at %08lx\n", addr);
+	}
+    }
 
     return 0xFF;
 }
@@ -119,27 +133,43 @@ uae_u32 REGPARAM2 dummy_bget (uaecptr addr)
 void REGPARAM2 dummy_lput (uaecptr addr, uae_u32 l)
 {
     special_mem |= S_WRITE;
-    if (currprefs.illegal_mem)
-	write_log ("Illegal lput at %08lx\n", addr);
+    if (currprefs.illegal_mem) {
+	if (illegal_count < 20) {
+	    illegal_count++;
+	    write_log ("Illegal lput at %08lx\n", addr);
+	}
+    }
 }
 void REGPARAM2 dummy_wput (uaecptr addr, uae_u32 w)
 {
     special_mem |= S_WRITE;
-    if (currprefs.illegal_mem)
-	write_log ("Illegal wput at %08lx\n", addr);
+    if (currprefs.illegal_mem) {
+	if (illegal_count < 20) {
+	    illegal_count++;
+	    write_log ("Illegal wput at %08lx\n", addr);
+	}
+    }
 }
 void REGPARAM2 dummy_bput (uaecptr addr, uae_u32 b)
 {
     special_mem |= S_WRITE;
-    if (currprefs.illegal_mem)
-	write_log ("Illegal bput at %08lx\n", addr);
+    if (currprefs.illegal_mem) {
+	if (illegal_count < 20) {
+	    illegal_count++;
+	    write_log ("Illegal bput at %08lx\n", addr);
+	}
+    }
 }
 
 int REGPARAM2 dummy_check (uaecptr addr, uae_u32 size)
 {
     special_mem |= S_READ;
-    if (currprefs.illegal_mem)
-	write_log ("Illegal check at %08lx\n", addr);
+    if (currprefs.illegal_mem) {
+	if (illegal_count < 20) {
+	    illegal_count++;
+	    write_log ("Illegal check at %08lx\n", addr);
+	}
+    }
 
     return 0;
 }
@@ -538,7 +568,7 @@ static int load_kickstart (void)
 #if defined AMIGA || defined __POS__
 #define USE_UAE_ERSATZ "USE_UAE_ERSATZ"
 	if (!getenv (USE_UAE_ERSATZ)) {
-	    fprintf (stderr, "Using current ROM. (create ENV:%s to "
+	    write_log ("Using current ROM. (create ENV:%s to "
 		     "use uae's ROM replacement)\n", USE_UAE_ERSATZ);
 	    memcpy (kickmemory, (char*)0x1000000 - kickmem_size, kickmem_size);
 	    goto chk_sum;
@@ -933,7 +963,7 @@ void memory_reset (void)
 	map_banks (&a3000mem_bank, a3000mem_start >> 16, allocated_a3000mem >> 16,
 		   allocated_a3000mem);
 
-    map_banks (&rtarea_bank, 0xF0, 1, 0);
+    map_banks (&rtarea_bank, RTAREA_BASE >> 16, 1, 0);
 
     map_banks (&kickmem_bank, 0xF8, 8, 0);
     map_banks (&expamem_bank, 0xE8, 1, 0);
@@ -999,10 +1029,10 @@ void map_banks (addrbank *bank, int start, int size, int realsize)
 	realsize = size << 16;
 
     if ((size << 16) < realsize) {
-	fprintf (stderr, "Please report to bmeyer@cs.monash.edu.au, and mention:\n");
-	fprintf (stderr, "Broken mapping, size=%x, realsize=%x\n",size,realsize);
-	fprintf (stderr, "Start is %x\n",start);
-	fprintf (stderr, "Reducing memory sizes, especially chipmem, may fix this problem\n");
+	write_log ("Please report to bmeyer@cs.monash.edu.au, and mention:\n");
+	write_log ("Broken mapping, size=%x, realsize=%x\n",size,realsize);
+	write_log ("Start is %x\n",start);
+	write_log ("Reducing memory sizes, especially chipmem, may fix this problem\n");
 	abort ();
     }
 

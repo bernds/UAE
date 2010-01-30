@@ -457,7 +457,7 @@ static int post_enter_graphics (void)
     mouse_init("/dev/mouse", vga_getmousetype (), 10);
     if (keyboard_init() != 0) {
 	leave_graphics_mode ();
-	fprintf (stderr, "Are you sure you have a keyboard??\n");
+	write_log ("Are you sure you have a keyboard??\n");
 	return 0;
     }
     keyboard_seteventhandler (my_kbd_handler);
@@ -477,7 +477,7 @@ static int enter_graphics_mode (int which)
     if (vga_setmode (which) < 0) {
 	sleep(1);
 	vga_setmode (TEXT);
-	fprintf (stderr, "SVGAlib doesn't like my video mode (%d). Giving up.\n", which);
+	write_log ("SVGAlib doesn't like my video mode (%d). Giving up.\n", which);
 	return 0;
     }
     current_vgamode = which;
@@ -491,12 +491,12 @@ static int enter_graphics_mode (int which)
 	else
 	    if (using_linear != new_ul) {
 		leave_graphics_mode ();
-		fprintf (stderr, "SVGAlib feeling not sure about linear modes???\n");
+		write_log ("SVGAlib feeling not sure about linear modes???\n");
 		abort ();
 	    }
 	if (val != -1) {
 	    linear_mem = (char *)vga_getgraphmem ();
-	    fprintf (stderr, "Using linear addressing: %p.\n", linear_mem);
+	    write_log ("Using linear addressing: %p.\n", linear_mem);
 	}
     }
 
@@ -513,7 +513,7 @@ static int enter_graphics_mode_picasso (int which)
     if (vga_setmode (which) < 0) {
 	sleep (1);
 	vga_setmode (TEXT);
-	fprintf (stderr, "SVGAlib doesn't like my video mode (%d). Giving up.\n", which);
+	write_log ("SVGAlib doesn't like my video mode (%d). Giving up.\n", which);
 	exit (1);
     }
     current_vgamode = which;
@@ -523,7 +523,7 @@ static int enter_graphics_mode_picasso (int which)
 	int val = vga_setlinearaddressing ();
 	if (val != -1) {
 	    linear_mem = (char *)vga_getgraphmem ();
-	    fprintf (stderr, "Using linear addressing: %p.\n", linear_mem);
+	    write_log ("Using linear addressing: %p.\n", linear_mem);
 	}
     }
 
@@ -609,7 +609,7 @@ static int select_mode_from_prefs (void)
     int i;
 
     if (currprefs.color_mode > 5)
-	fprintf (stderr, "Bad color mode selected. Using default.\n"), currprefs.color_mode = 0;
+	write_log ("Bad color mode selected. Using default.\n"), currprefs.color_mode = 0;
 
     mode_nr0 = 0;
     for (i = 1; i < MAX_SCREEN_MODES; i++) {
@@ -630,15 +630,15 @@ static int select_mode_from_prefs (void)
 	}
     }
     if (mode_nr == -1) {
-	fprintf (stderr, "Sorry, this combination of color and video mode is not supported.\n");
+	write_log ("Sorry, this combination of color and video mode is not supported.\n");
 	return 0;
     }
     vgamode = vga_mode_table[mode_nr][currprefs.color_mode];
     if (vgamode == -1) {
-	fprintf (stderr, "Bug!\n");
+	write_log ("Bug!\n");
 	abort ();
     }
-    fprintf (stderr, "Desired resolution: %dx%d, using: %dx%d\n",
+    write_log ("Desired resolution: %dx%d, using: %dx%d\n",
 	     currprefs.gfx_width, currprefs.gfx_height,
 	     x_size_table[mode_nr], y_size_table[mode_nr]);
 

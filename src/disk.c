@@ -731,10 +731,12 @@ void DISK_check_change (void)
 
     for (i = 0; i < 4; i++) {
 	drive *drv = floppy + i;
+	gui_lock ();
 	if (strcmp (currprefs.df[i], changed_prefs.df[i])) {
 	    strcpy (currprefs.df[i], changed_prefs.df[i]);
 	    disk_insert (i, currprefs.df[i]);
 	}
+	gui_unlock ();
 	/* emulate drive motor turn on time */
 	if (drv->dskready_time) {
 	    drv->dskready_time--;

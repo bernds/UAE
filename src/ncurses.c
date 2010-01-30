@@ -460,12 +460,12 @@ int graphics_init(void)
     int i;
 
     if (currprefs.color_mode > 16)
-	fprintf(stderr, "Bad color mode selected. Using default.\n"), currprefs.color_mode = 0;
+	write_log ("Bad color mode selected. Using default.\n"), currprefs.color_mode = 0;
 
     init_colors();
 
     curses_init();
-    fprintf(stderr,"Using %s.\n",longname());
+    write_log("Using %s.\n",longname());
 
     if (debugging)
 	curses_exit ();
@@ -498,7 +498,7 @@ int graphics_init(void)
 	break;
     }
     if(!gfxvidinfo.bufmem) {
-	fprintf(stderr,"Not enough memory.\n");
+	write_log("Not enough memory.\n");
 	return 0;
     }
 

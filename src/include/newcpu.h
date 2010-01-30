@@ -148,7 +148,7 @@ STATIC_INLINE void refill_prefetch (uae_u32 currpc, uae_u32 offs)
     r = *(uae_u32 *)ptr;
     regs.prefetch = r;
 #else
-    r = do_mem_get_long ((uae_u32 *)ptr);
+    r = do_get_mem_long ((uae_u32 *)ptr);
     do_put_mem_long (&regs.prefetch, r);
 #endif
     /* printf ("PC %lx T %lx PCPOFFS %d R %lx\n", currpc, t, pc_p_offs, r); */

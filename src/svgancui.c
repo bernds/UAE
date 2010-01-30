@@ -438,9 +438,9 @@ char *tui_filereq(char *s, char *oldfile, const char *title)
 
     pattern = s;
     if (s[0] != '*')
-	fprintf(stderr, "Can't handle wildcard %s\n", s);
+	write_log ("Can't handle wildcard %s\n", s);
     if (s[1] != 0 && strchr (s+1, '*') != NULL)
-	fprintf(stderr, "Can't handle wildcard %s\n", s);
+	write_log ("Can't handle wildcard %s\n", s);
     for (;!fin;) {
 	struct dirent **names;
 	int i, w, n, l, yp, oldyp, s;

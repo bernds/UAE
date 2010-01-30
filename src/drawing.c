@@ -563,7 +563,15 @@ static void init_ham_decoding (void)
     ham_decode_pixel = src_pixel;
     ham_lastcolor = color_reg_get (&colors_for_drawing, 0);
 
-    if (currprefs.chipset_mask & CSMASK_AGA) {
+    if (! bplham || (bplplanecnt != 6 && ((currprefs.chipset_mask & CSMASK_AGA) == 0 || bplplanecnt != 8))) {
+	if (unpainted_amiga > 0) {
+	    int pv = pixdata.apixels[ham_decode_pixel + unpainted_amiga - 1];
+	    if (currprefs.chipset_mask & CSMASK_AGA)
+		ham_lastcolor = colors_for_drawing.color_regs_aga[pv];
+	    else
+		ham_lastcolor = colors_for_drawing.color_regs_ecs[pv];
+	}
+    } else if (currprefs.chipset_mask & CSMASK_AGA) {
 	if (bplplanecnt == 8) { /* AGA mode HAM8 */
 	    while (unpainted_amiga-- > 0) {
 		int pv = pixdata.apixels[ham_decode_pixel++];
@@ -574,7 +582,7 @@ static void init_ham_decoding (void)
 		case 0x3: ham_lastcolor &= 0xFF03FF; ham_lastcolor |= (pv & 0xFC) << 8; break;
 		}
 	    }
-	} else if(bplplanecnt == 6) { /* AGA mode HAM6 */
+	} else if (bplplanecnt == 6) { /* AGA mode HAM6 */
 	    while (unpainted_amiga-- > 0) {
     		int pv = pixdata.apixels[ham_decode_pixel++];
 		switch (pv & 0x30) {
@@ -603,10 +611,18 @@ static void init_ham_decoding (void)
 static void decode_ham (int pix, int stoppos)
 {
     int todraw_amiga = res_shift_from_window (stoppos - pix);
-    if (!bplham)
-	abort ();
 
-    if (currprefs.chipset_mask & CSMASK_AGA) {
+    if (! bplham || (bplplanecnt != 6 && ((currprefs.chipset_mask & CSMASK_AGA) == 0 || bplplanecnt != 8))) {
+	while (todraw_amiga-- > 0) {
+	    int pv = pixdata.apixels[ham_decode_pixel];
+	    if (currprefs.chipset_mask & CSMASK_AGA)
+		ham_lastcolor = colors_for_drawing.color_regs_aga[pv];
+	    else
+		ham_lastcolor = colors_for_drawing.color_regs_ecs[pv];
+
+	    ham_linebuf[ham_decode_pixel++] = ham_lastcolor;
+	}
+    } else if (currprefs.chipset_mask & CSMASK_AGA) {
 	if (bplplanecnt == 8) { /* AGA mode HAM8 */
 	    while (todraw_amiga-- > 0) {
 		int pv = pixdata.apixels[ham_decode_pixel];
@@ -618,7 +634,7 @@ static void decode_ham (int pix, int stoppos)
 		}
 		ham_linebuf[ham_decode_pixel++] = ham_lastcolor;
 	    }
-	} else if(bplplanecnt == 6) { /* AGA mode HAM6 */
+	} else if (bplplanecnt == 6) { /* AGA mode HAM6 */
 	    while (todraw_amiga-- > 0) {
 		int pv = pixdata.apixels[ham_decode_pixel];
 		switch (pv & 0x30) {
@@ -817,9 +833,9 @@ STATIC_INLINE void draw_sprites_aga (struct sprite_entry *e)
 {
     int diff = RES_HIRES - bplres;
     if (diff > 0)
-	draw_sprites_1 (e, bplham, bpldualpf, 0, diff, e->has_attached, 1);
+	draw_sprites_1 (e, dp_for_drawing->ham_seen, bpldualpf, 0, diff, e->has_attached, 1);
     else
-	draw_sprites_1 (e, bplham, bpldualpf, -diff, 0, e->has_attached, 1);
+	draw_sprites_1 (e, dp_for_drawing->ham_seen, bpldualpf, -diff, 0, e->has_attached, 1);
 }
 
 
@@ -827,7 +843,7 @@ STATIC_INLINE void draw_sprites_ecs (struct sprite_entry *e)
 {
     if (e->has_attached)
 	if (bplres == 1)
-	    if (bplham)
+	    if (dp_for_drawing->ham_seen)
 		draw_sprites_ham_sp_hi_at (e);
 	    else
 		if (bpldualpf)
@@ -835,7 +851,7 @@ STATIC_INLINE void draw_sprites_ecs (struct sprite_entry *e)
 		else
 		    draw_sprites_normal_sp_hi_at (e);
 	else
-	    if (bplham)
+	    if (dp_for_drawing->ham_seen)
 		draw_sprites_ham_sp_lo_at (e);
 	    else
 		if (bpldualpf)
@@ -844,7 +860,7 @@ STATIC_INLINE void draw_sprites_ecs (struct sprite_entry *e)
 		    draw_sprites_normal_sp_lo_at (e);
     else
 	if (bplres == 1)
-	    if (bplham)
+	    if (dp_for_drawing->ham_seen)
 		draw_sprites_ham_sp_hi_nat (e);
 	    else
 		if (bpldualpf)
@@ -852,7 +868,7 @@ STATIC_INLINE void draw_sprites_ecs (struct sprite_entry *e)
 		else
 		    draw_sprites_normal_sp_hi_nat (e);
 	else
-	    if (bplham)
+	    if (dp_for_drawing->ham_seen)
 		draw_sprites_ham_sp_lo_nat (e);
 	    else
 		if (bpldualpf)
@@ -1097,6 +1113,7 @@ STATIC_INLINE void do_flush_screen (int start, int stop)
     if (gfxvidinfo.maxblocklines != 0 && first_block_line != -2) {
 	flush_block (first_block_line, last_block_line);
     }
+    unlockscr ();
     if (start <= stop)
 	flush_screen (start, stop);
 }
@@ -1106,10 +1123,10 @@ static enum { color_match_acolors, color_match_full } color_match_type;
 
 /* Set up colors_for_drawing to the state at the beginning of the currently drawn
    line.  Try to avoid copying color tables around whenever possible.  */
-static void adjust_drawing_colors (int ctable, int bplham)
+static void adjust_drawing_colors (int ctable, int need_full)
 {
     if (drawing_color_matches != ctable) {
-	if (bplham) {
+	if (need_full) {
 	    color_reg_cpy (&colors_for_drawing, curr_color_tables + ctable);
 	    color_match_type = color_match_full;
 	} else {
@@ -1118,7 +1135,7 @@ static void adjust_drawing_colors (int ctable, int bplham)
 	    color_match_type = color_match_acolors;
 	}
 	drawing_color_matches = ctable;
-    } else if (bplham && color_match_type != color_match_full) {
+    } else if (need_full && color_match_type != color_match_full) {
 	color_reg_cpy (&colors_for_drawing, &curr_color_tables[ctable]);
 	color_match_type = color_match_full;
     }
@@ -1162,8 +1179,12 @@ STATIC_INLINE void do_color_changes (line_draw_func worker_border, line_draw_fun
 	    lastpos = nextpos_in_range;
 	}
 	if (i != dip_for_drawing->last_color_change) {
-	    color_reg_set (&colors_for_drawing, regno, value);
-	    colors_for_drawing.acolors[regno] = getxcolor (value);
+	    if (regno == -1)
+		bplham = value;
+	    else {
+		color_reg_set (&colors_for_drawing, regno, value);
+		colors_for_drawing.acolors[regno] = getxcolor (value);
+	    }
 	}
 	if (lastpos >= visible_right_border)
 	    break;
@@ -1178,9 +1199,8 @@ static void pfield_expand_dp_bplcon (void)
     int plf1pri, plf2pri;
     bplres = dp_for_drawing->bplres;
     bplplanecnt = dp_for_drawing->nr_planes;
-    bplham = ((dp_for_drawing->bplcon0 & 0x800) == 0x800
-	      && (bplplanecnt == 6
-		  || ((currprefs.chipset_mask & CSMASK_AGA) != 0 && bplplanecnt == 8)));
+    bplham = dp_for_drawing->ham_at_start;
+
     if (currprefs.chipset_mask & CSMASK_AGA) {
 	/* The KILLEHB bit exists in ECS, but is apparently meant for Genlock
 	 * stuff, and it's set by some demos (e.g. Andromeda Seven Seas) */
@@ -1274,11 +1294,11 @@ STATIC_INLINE void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 	pfield_init_linetoscr ();
 	pfield_doline (lineno);
 
-	adjust_drawing_colors (dp_for_drawing->ctable, bplham || bplehb);
+	adjust_drawing_colors (dp_for_drawing->ctable, dp_for_drawing->ham_seen || bplehb);
 
 	/* The problem is that we must call decode_ham() BEFORE we do the
 	   sprites. */
-	if (! border && bplham) {
+	if (! border && dp_for_drawing->ham_seen) {
 	    init_ham_decoding ();
 	    if (dip_for_drawing->nr_color_changes == 0) {
 		/* The easy case: need to do HAM decoding only once for the
@@ -1286,8 +1306,9 @@ STATIC_INLINE void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 		decode_ham (visible_left_border, visible_right_border);
 	    } else /* Argh. */ {
 		do_color_changes (dummy_worker, decode_ham);
-		adjust_drawing_colors (dp_for_drawing->ctable, bplham || bplehb);
+		adjust_drawing_colors (dp_for_drawing->ctable, dp_for_drawing->ham_seen || bplehb);
 	    }
+	    bplham = dp_for_drawing->ham_at_start;
 	}
 
 	{
@@ -1295,7 +1316,7 @@ STATIC_INLINE void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 	    for (i = 0; i < dip_for_drawing->nr_sprites; i++) {
 		if (currprefs.chipset_mask & CSMASK_AGA)
 		    draw_sprites_aga (curr_sprite_entries + dip_for_drawing->first_sprite_entry + i);
-		    else
+		else
 		    draw_sprites_ecs (curr_sprite_entries + dip_for_drawing->first_sprite_entry + i);
 	    }
 	}
@@ -1587,17 +1608,19 @@ void finish_drawing_frame (void)
 {
     int i;
 
-#ifndef SMART_UPDATE
-    /* @@@ This isn't exactly right yet. FIXME */
-    if (!interlace_seen) {
-	do_flush_screen (first_drawn_line, last_drawn_line);
-	return;
-    }
-#endif
     if (! lockscr ()) {
 	notice_screen_contents_lost ();
 	return;
     }
+
+#ifndef SMART_UPDATE
+    /* @@@ This isn't exactly right yet. FIXME */
+    if (!interlace_seen)
+	do_flush_screen (first_drawn_line, last_drawn_line);
+    else
+	unlockscr ();
+    return;
+#endif
     for (i = 0; i < max_ypos_thisframe; i++) {
 	int where;
 	int i1 = i + min_ypos_for_screen;
@@ -1620,7 +1643,6 @@ void finish_drawing_frame (void)
 	do_flush_line (line);
     }
 
-    unlockscr ();
     do_flush_screen (first_drawn_line, last_drawn_line);
 }
 

@@ -3819,3 +3819,11 @@ void gui_message(const char *format,...)
 
     resume_sound();
 }
+
+void gui_lock (void)
+{
+}
+
+void gui_unlock (void)
+{
+}

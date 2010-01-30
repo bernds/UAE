@@ -343,12 +343,12 @@ void parse_cmdline (int argc, char **argv)
 	/* Check for new-style "-f xxx" argument, where xxx is config-file */
 	else if (strcmp (argv[i], "-f") == 0) {
 	    if (i + 1 == argc)
-		fprintf (stderr, "Missing argument for '-f' option.\n");
+		write_log ("Missing argument for '-f' option.\n");
 	    else
 		cfgfile_load (&currprefs, argv[++i]);
 	} else if (strcmp (argv[i], "-s") == 0) {
 	    if (i + 1 == argc)
-		fprintf (stderr, "Missing argument for '-s' option.\n");
+		write_log ("Missing argument for '-s' option.\n");
 	    else
 		cfgfile_parse_line (&currprefs, argv[++i]);
 	} else if (strcmp (argv[i], "-h") == 0 || strcmp (argv[i], "-help") == 0) {
@@ -390,8 +390,8 @@ static void parse_cmdline_and_init_file (int argc, char **argv)
 	/* sam: if not found in $HOME then look in current directory */
 	strcpy (optionsfile, OPTIONSFILENAME);
 	cfgfile_load (&currprefs, optionsfile);
-    }
 #endif
+    }
 
     parse_cmdline (argc, argv);
 }

@@ -1,3 +1,19 @@
+9B1230 lockscr/unlockscr fixes in drawing.c.
+       Add sdlgfx from Bernd [4] Lachner.
+       Filesystem asm code improvements from Toni (make it pic, call
+       setup_exter earlier in the boot sequence, etc.)
+       Also add Toni's patch to make rtarea position configurable (keep it
+       at 0xF00000 for now, though).
+       Avoid installing filesystem stuff if user didn't request to mount
+       directories.
+       BEAMCON0 is only available with ECS Agnus.
+       Revert some bogus parts of the write_log patch.
+9B1219 Add some missing clipping to the Picasso code.
+       Limit number of illegal-mem warnings.
+9B1217 Fix the GUI crash when changing floppies.
+       Changes to support programs that change between HAM/no HAM in the
+       middle of a line.
+       Some bug fixes, and a big fprintf->write_log patch from Alex Kazik.
 9B1125 Panning support for Picasso96 (in part from WinUAE).
        More state save fixes from Toni, and a small disk.c update as well
        which corrects track/gap lengths.

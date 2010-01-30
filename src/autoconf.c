@@ -44,9 +44,9 @@ int lasttrap;
  *   setjmp saves current context [1]
  *  longjmp back to execute_fn_on_extra_stack [0]
  * pointer to new stack is saved on m68k stack. m68k return address set
- * to 0xF0FF00. m68k PC set to called function
+ * to RTAREA_BASE + 0xFF00. m68k PC set to called function
  * m68k function executes, stack is main
- * m68k function returns to 0xF0FF00
+ * m68k function returns to RTAREA_BASE + 0xFF00
  * calltrap to m68k_mode_return
  * do_stack_magic is called again
  * current context is saved again with setjmp [0]
@@ -130,7 +130,7 @@ static void do_stack_magic (TrapFunction f, void *s, int has_retval)
 	*((void **)get_real_address (a7 + 4)) = s;
 	/* Save special return address: this address contains a
 	 * calltrap that will longjmp to the right stack. */
-	put_long (m68k_areg (regs, 7), 0xF0FF00);
+	put_long (m68k_areg (regs, 7), RTAREA_BASE + 0xFF00);
 	m68k_setpc (m68k_calladdr);
 	fill_prefetch_0 ();
 	/*write_log ("native function calls m68k\n");*/
@@ -215,6 +215,7 @@ uae_u32 CallLib (uaecptr base, uae_s16 offset)
 uaecptr EXPANSION_explibname, EXPANSION_doslibname, EXPANSION_uaeversion;
 uaecptr EXPANSION_uaedevname, EXPANSION_explibbase = 0, EXPANSION_haveV36;
 uaecptr EXPANSION_bootcode, EXPANSION_nullfunc;
+uaecptr EXPANSION_cddevice;
 
 /* ROM tag area memory access */
 
@@ -357,7 +358,7 @@ static int rt_straddr = 0xFF00 - 2;
 
 uae_u32 addr (int ptr)
 {
-    return (uae_u32)ptr + 0x00F00000;
+    return (uae_u32)ptr + RTAREA_BASE;
 }
 
 void db (uae_u8 data)
@@ -400,7 +401,7 @@ void calltrap (uae_u32 n)
 
 void org (uae_u32 a)
 {
-    rt_addr = a - 0x00F00000;
+    rt_addr = a - RTAREA_BASE;
 }
 
 uae_u32 here (void)
@@ -429,7 +430,7 @@ void align (int b)
 
 static uae_u32 nullfunc(void)
 {
-    fprintf (stderr, "Null function called\n");
+    write_log ("Null function called\n");
     return 0;
 }
 
@@ -477,13 +478,13 @@ void rtarea_init (void)
 
     a = here();
     /* Standard "return from 68k mode" trap */
-    org (0xF0FF00);
+    org (RTAREA_BASE + 0xFF00);
     calltrap (deftrap2 (m68k_mode_return, TRAPFLAG_NO_RETVAL, ""));
 
-    org (0xF0FF80);
+    org (RTAREA_BASE + 0xFF80);
     calltrap (deftrap2 (getchipmemsize, TRAPFLAG_DORET, ""));
 
-    org (0xF0FF10);
+    org (RTAREA_BASE + 0xFF10);
     calltrap (deftrap2 (uae_puts, TRAPFLAG_NO_RETVAL, ""));
     dw (RTS);
 

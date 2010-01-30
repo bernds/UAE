@@ -204,7 +204,7 @@ int GFX_WritePixel(uaecptr rp, int x, int y)
     int x2, y2;
 
     if (bitmap == 0) {
-	fprintf(stderr, "bogus RastPort in WritePixel\n");
+	write_log ("bogus RastPort in WritePixel\n");
 	return -1;
     }
 
@@ -236,7 +236,7 @@ int GFX_WritePixel(uaecptr rp, int x, int y)
 	 * suppose if we can't find a ClipRect, we aren't supposed to draw
 	 * the dot.
 	 */
-	/*fprintf(stderr, "Weirdness in WritePixel\n");*/
+	/*write_log ("Weirdness in WritePixel\n");*/
 	v = -1;
     } else if (get_long(cliprect + 8) == 0) {
 	v = GFX_Bitmap_WritePixel(bitmap, x2, y2, rp);
@@ -270,7 +270,7 @@ static uae_u32 gfxl_BltClear(void)
     }
 
     if ((mem & 1) != 0 || (count & 1) != 0)
-	fprintf(stderr, "gfx: BltClear called with odd parameters\n");
+	write_log ("gfx: BltClear called with odd parameters\n");
 
     /* Bit 2 set means use pattern (V36+ only, but we might as well emulate
      * it always) */
@@ -568,7 +568,7 @@ static void region_splitrects_band(struct RectList *rl, struct BandList *bl)
 		rl->rects[i].MaxY = bl->maxy[j];
 		break;
 	    }
-	    fprintf(stderr, "Foo..\n");
+	    write_log ("Foo..\n");
 	}
     }
     qsort(rl->rects, rl->count, sizeof (struct Rectangle), regionrect_cmpfn);
@@ -1072,7 +1072,7 @@ static uae_u32 gfxl_perform_regionop(regionop op, int with_rect)
 	    rpp = rr;
 	}
 	if (get_long(rpp) != 0)
-	    fprintf(stderr, "BUG\n");
+	    write_log ("BUG\n");
     }
     put_word(reg2+0, rl3.bounds.MinX);
     put_word(reg2+2, rl3.bounds.MinY);
@@ -1646,7 +1646,7 @@ void gfxlib_install(void)
     if (! currprefs.use_gfxlib)
 	return;
 
-    fprintf (stderr, "Warning: you enabled the graphics.library replacement with -g\n"
+    write_log ("Warning: you enabled the graphics.library replacement with -g\n"
 	     "This may be buggy right now, and will not speed things up much.\n");
 
     resname = ds ("UAEgfxlib.resource");

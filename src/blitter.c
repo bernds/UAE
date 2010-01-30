@@ -110,7 +110,7 @@ static void blitter_dofast(void)
 	uae_u32 preva = 0, prevb = 0;
 	uaecptr dstp = 0;
 
-	/*if (!blitfill) fprintf(stderr, "minterm %x not present\n",mt); */
+	/*if (!blitfill) write_log ("minterm %x not present\n",mt); */
 	for (j = 0; j < blt_info.vblitsize; j++) {
 	    blitfc = !!(bltcon1 & 0x4);
 	    for (i = 0; i < blt_info.hblitsize; i++) {
@@ -197,7 +197,7 @@ static void blitter_dofast_desc(void)
 	uae_u32 preva = 0, prevb = 0;
 	uaecptr dstp = 0;
 
-/*	if (!blitfill) fprintf(stderr, "minterm %x not present\n",mt);*/
+/*	if (!blitfill) write_log ("minterm %x not present\n",mt);*/
 	for (j = 0; j < blt_info.vblitsize; j++) {
 	    blitfc = !!(bltcon1 & 0x4);
 	    for (i = 0; i < blt_info.hblitsize; i++) {
@@ -377,7 +377,7 @@ static void blit_init(void)
 	blineb = (blt_info.bltbdat >> blt_info.blitbshift) | (blt_info.bltbdat << (16-blt_info.blitbshift));
 #if 0
 	if (blineb != 0xFFFF && blineb != 0)
-	    fprintf(stderr, "%x %x %d %x\n", blineb, blt_info.bltbdat, blt_info.blitbshift, bltcon1);
+	    write_log ("%x %x %d %x\n", blineb, blt_info.bltbdat, blt_info.blitbshift, bltcon1);
 #endif
 	blitsign = bltcon1 & 0x40;
 	blitonedot = 0;

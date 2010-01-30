@@ -162,12 +162,17 @@ static uae_u16 expamem_hi;
 
 static void expamem_map_clear (void)
 {
-    fprintf (stderr, "expamem_map_clear() got called. Shouldn't happen.\n");
+    write_log ("expamem_map_clear() got called. Shouldn't happen.\n");
 }
 
 static void expamem_init_clear (void)
 {
     memset (expamem, 0xff, sizeof expamem);
+}
+static void expamem_init_clear2 (void)
+{
+    expamem_init_clear();
+    ecard = MAX_EXPANSION_BOARDS - 1;
 }
 
 static uae_u32 expamem_lget (uaecptr) REGPARAM;
@@ -244,7 +249,7 @@ static void REGPARAM2 expamem_wput (uaecptr addr, uae_u32 value)
 		if (ecard < MAX_EXPANSION_BOARDS)
 		    (*card_init[ecard]) ();
 		else
-		    expamem_init_clear ();
+		    expamem_init_clear2 ();
 	    }
 	    break;
 	}
@@ -271,7 +276,7 @@ static void REGPARAM2 expamem_bput (uaecptr addr, uae_u32 value)
 	    if (ecard < MAX_EXPANSION_BOARDS)
 		(*card_init[ecard]) ();
 	    else
-		expamem_init_clear ();
+		expamem_init_clear2 ();
 	} else if (expamem_type() == zorroIII)
 	    expamem_lo = value;
 	break;
@@ -287,7 +292,7 @@ static void REGPARAM2 expamem_bput (uaecptr addr, uae_u32 value)
 	if (ecard < MAX_EXPANSION_BOARDS)
 	    (*card_init[ecard]) ();
 	else
-	    expamem_init_clear ();
+	    expamem_init_clear2 ();
 	break;
     }
 }
@@ -441,11 +446,11 @@ static void REGPARAM2 filesys_wput (uaecptr addr, uae_u32 w)
 static void REGPARAM2 filesys_bput (uaecptr addr, uae_u32 b)
 {
     special_mem |= S_WRITE;
-    fprintf (stderr, "filesys_bput called. This usually means that you are using\n");
-    fprintf (stderr, "Kickstart 1.2. Please give UAE the \"-a\" option next time\n");
-    fprintf (stderr, "you start it. If you are _not_ using Kickstart 1.2, then\n");
-    fprintf (stderr, "there's a bug somewhere.\n");
-    fprintf (stderr, "Exiting...\n");
+    write_log ("filesys_bput called. This usually means that you are using\n");
+    write_log ("Kickstart 1.2. Please give UAE the \"-a\" option next time\n");
+    write_log ("you start it. If you are _not_ using Kickstart 1.2, then\n");
+    write_log ("there's a bug somewhere.\n");
+    write_log ("Exiting...\n");
     uae_quit ();
 }
 
@@ -607,7 +612,7 @@ static void expamem_map_filesys (void)
     write_log ("Filesystem: mapped memory @$%lx.\n", filesys_start);
     /* 68k code needs to know this. */
     a = here ();
-    org (0xF0FFFC);
+    org (RTAREA_BASE+0xFFFC);
     dl (filesys_start + 0x2000);
     org (a);
 }
@@ -846,6 +851,9 @@ void expamem_reset (void)
 	write_log ("Kickstart version is below 1.3!  Disabling autoconfig devices.\n");
 	do_mount = 0;
     }
+    /* No need for filesystem stuff if there aren't any mounted.  */
+    if (nr_units (currprefs.mountinfo) == 0)
+	do_mount = 0;
 
     if (fastmemory != NULL) {
 	card_init[cardno] = expamem_init_fastcard;

@@ -84,7 +84,7 @@ AC_CHECK_HEADERS(windows.h ddraw.h)
 AC_CHECK_HEADER(be_math.h, HAVE_BEOS=yes, HAVE_BEOS=no)
 AC_CHECK_HEADERS(machine/joystick.h)
 AC_CHECK_HEADERS(devices/ahi.h)
-AC_CHECK_HEADERS(dmedia/audio.h SDL/SDL.h)
+AC_CHECK_HEADERS(dmedia/audio.h)
 AC_CHECK_HEADERS(libraries/cybergraphics.h cybergraphx/cybergraphics.h)
 
 AC_CHECK_SIZEOF(char, 1)
@@ -228,7 +228,9 @@ WANT_VIDMODE=no
 
 AC_ARG_ENABLE(profiling,[  --enable-profiling      Build a profiling (SLOW!) version],[DO_PROFILING=$enableval],[])
 AC_ARG_WITH(svgalib,[  --with-svgalib          Use SVGAlib for graphics output],[WANT_SVGALIB=$withval],[])
-AC_ARG_WITH(sdl,[  --with-sdl              Use SDL library],[WANT_SDL=$withval],[])
+AC_ARG_WITH(sdl,[  --with-sdl              Use SDL library for low-level functions],[WANT_SDL=$withval],[])
+AC_ARG_WITH(sdl-sound,[  --with-sdl-sound        Use SDL library for sound],[WANT_SDLSND=$withval],[])
+AC_ARG_WITH(sdl-gfx,[  --with-sdl-gfx        Use SDL library for graphics],[WANT_SDLGFX=$withval],[])
 AC_ARG_WITH(asciiart,[  --with-asciiart         Use ncurses ascii art for graphics output],[WANT_ASCIIART=$withval],[])
 AC_ARG_ENABLE(dga,[  --enable-dga            X11 version: Use the DGA extension],[WANT_DGA=$enableval],[])
 AC_ARG_ENABLE(vidmode,[  --enable-vidmode        X11 version: Use the XF86VidMode extension],[WANT_VIDMODE=$enableval],[])
@@ -237,8 +239,25 @@ AC_ARG_WITH(hostcc,[  --with-hostcc=x         Use a x as compiler for the host s
 
 dnl Some simple plausibility tests...
 
+if [[ "x$WANT_SDLSND" = "xyes" -o "x$WANT_SDLGFX" = "xyes" ]]; then
+  WANT_SDL=yes    
+fi
+
+if [[ "x$WANT_SDL" = "xyes" ]]; then
+  if [[ "x$HAVE_SDL_LIB" = "xno" ]]; then
+    echo "Could not find libSDL, disabling SDL support."
+    NR_ERRORS=`expr $NR_ERRORS + 1`
+    WANT_SDL=no
+    WANT_SDLSND=no
+    WANT_SDLGFX=no
+  else
+    LIBS="$LIBS $SDL_LIBS"
+    ADDITIONAL_CFLAGS="$ADDITIONAL_CFLAGS $SDL_CFLAGS -DUSE_SDL"
+  fi
+fi
+
 if [[ "x$WANT_DGA" = "xyes" ]]; then
-  if [[ "x$WANT_SVGALIB" = "xyes" -o "x$WANT_ASCIIART" = "xyes" -o "x$WANT_SDL" = "xyes" ]]; then
+  if [[ "x$WANT_SVGALIB" = "xyes" -o "x$WANT_ASCIIART" = "xyes" -o "x$WANT_SDLGFX" = "xyes" ]]; then
     echo "You can't enable DGA for SVGAlib, SDL and ncurses targets!"
     NR_ERRORS=`expr $NR_ERRORS + 1`
     WANT_DGA=no
@@ -246,7 +265,7 @@ if [[ "x$WANT_DGA" = "xyes" ]]; then
 fi
 
 if [[ "x$WANT_SVGALIB" = "xyes" ]]; then
-  if [[ "x$WANT_ASCIIART" = "xyes" -o "x$WANT_SDL" = "xyes" ]]; then
+  if [[ "x$WANT_ASCIIART" = "xyes" -o "x$WANT_SDLGFX" = "xyes" ]]; then
     echo "You can't enable both SVGAlib and other targets!"
     NR_ERRORS=`expr $NR_ERRORS + 1`
     WANT_DGA=no
@@ -277,23 +296,12 @@ if [[ "x$WANT_SVGALIB" = "xyes" ]]; then
   fi
 fi
 
-if [[ "x$WANT_SDL" = "xyes" ]]; then
-  if [[ "x$HAVE_SDL_LIB" = "xno" ]]; then
-    echo "Could not find libSDL, disabling SDL support."
-    NR_ERRORS=`expr $NR_ERRORS + 1`
-    WANT_SDL=no
-  else
-    LIBS="$LIBS $SDL_LIBS"
-    ADDITIONAL_CFLAGS="$ADDITIONAL_CFLAGS $SDL_CFLAGS -DUSE_SDL"
-  fi
-fi
-
 if [[ "x$WANT_ASCIIART" = "xyes" ]]; then
   if [[ "x$HAVE_NCURSES_LIB" = "xno" ]]; then
     echo "Could not find libncurses, disabling ascii art support."
     NR_ERRORS=`expr $NR_ERRORS + 1`
     WANT_ASCIIART=no
-  else if [[ "x$WANT_SVGALIB" = "xyes" -o "x$WANT_SDL" = "xyes" ]]; then
+  else if [[ "x$WANT_SVGALIB" = "xyes" -o "x$WANT_SDLGFX" = "xyes" ]]; then
     echo "You can't configure for both ncurses and another target. Disabling ncurses."
     NR_ERRORS=`expr $NR_ERRORS + 1`
     WANT_ASCIIART=no
@@ -372,12 +380,19 @@ DEBUGOBJS="debug.o"
 
 AC_MSG_CHECKING(which target to use)
 
-if [[ "x$HAVE_DIRECTX" = "xyes" ]]; then
+if [[ "x$WANT_SDLGFX" = "xyes" ]]; then
+  AC_MSG_RESULT(SDL)
+  MATHLIB=
+  TARGET=x11
+  GFXOBJS="sdlgfx.o"
+  # @@@ Kludge.  This may get changed later.
+  TARGETDEP=t-x11.h
+else if [[ "x$HAVE_DIRECTX" = "xyes" ]]; then
   AC_MSG_RESULT(Win32/DirectX)
   MATHLIB=
   TARGET=win32
   TARGETDEP=t-win32.h
-  GFXOBJS="osdep/win32.o osdep/win32gui.o osdep/parser.o osdep/keyboard.o osdep/posixemu.o"
+  GFXOBJS="osdep/win32.o osdep/parser.o osdep/keyboard.o osdep/posixemu.o"
   RESOBJS="osdep/winuae.res"
 else if [[ "x$HAVE_BEOS" = "xyes" ]]; then
   AC_MSG_RESULT(BeOS)
@@ -385,26 +400,22 @@ else if [[ "x$HAVE_BEOS" = "xyes" ]]; then
   TARGET=beos
   TARGETDEP=t-beos.h
   GFXOBJS=osdep/beos.o
-  GUIOBJS=
   OPTIMIZE_CFLAGS=-O7
 else if [[ "x$HAVE_POS" = "xyes" ]]; then
   AC_MSG_RESULT(p.OS)
   TARGET=p_os
   TARGETDEP=t-pos.h
   GFXOBJS="osdep/pos-win.o osdep/pos-disk.o osdep/pos-rexx.o"
-  GUIOBJS="osdep/pos-gui.o"
 else if [[ "x$HAVE_AMIGA_LIB" = "xyes" ]]; then
   AC_MSG_RESULT(AmigaOS)
   TARGET=amigaos
   TARGETDEP=t-amiga.h
   GFXOBJS="osdep/ami-win.o osdep/ami-disk.o osdep/ami-rexx.o osdep/ami-appw.o"
-  GUIOBJS="osdep/ami-gui.o"
 else if [[ "x$HAVE_NEXT_LIB" = "xyes" ]]; then
   AC_MSG_RESULT(NeXTStep)
   MATHLIB=
   TARGET=next
   GFXOBJS="NeXTwin.o"
-  GUIOBJS=
   TARGETDEP=t-next.h
   LIBRARIES="-sectcreate __ICON __header ../Uae.app/Uae.iconheader -segprot __ICON r r -sectcreate __ICON app ../Uae.app/Uae.tiff -lMedia_s -lNeXT_s"
 else
@@ -434,7 +445,7 @@ else
     TARGET=asciiart
     TARGETDEP=t-ascii.h
     GFXOBJS="ncurses.o"
-    GUIOBJS="tui.o svgancui.o"
+    WANT_NCURSES_UI=yes
     LIBRARIES="-lncurses"
   else if [[ "x$no_x" = "xyes" ]]; then
     AC_MSG_RESULT(Ummm....)
@@ -445,7 +456,6 @@ else
     TARGET=x11
     TARGETDEP=t-x11.h
     GFXOBJS=xwin.o
-    GUIOBJS=nogui.o
 
     LIBRARIES="$X_LIBS $X_PRE_LIBS"
     dnl If we still think we want DGA, set it up.
@@ -458,53 +468,75 @@ else
       fi
     fi
     LIBRARIES="$LIBRARIES -lXext -lX11 $X_EXTRA_LIBS"
+  fi
+  fi
+  fi
+fi
+fi
+fi
+fi
+fi
+fi
 
-    if [[ "x$WANT_UI" != "xno" ]]; then
-      if [[ "x$no_gtk" = "xyes" ]]; then
-	echo "Did not find gtk+, disabling user interface"
-	GTK_CFLAGS=
-	GTK_LIBS=
-	if [[ "x$WANT_UI" = "xyes" ]]; then
-	  NR_ERRORS=`expr $NR_ERRORS + 1`
-	fi
-      else
-        echo "Using gtk+ GUI."
-	NEED_THREAD_SUPPORT=yes
-	ADDITIONAL_CFLAGS="$ADDITIONAL_CFLAGS -DUSING_GTK_GUI"
-	GUIOBJS=gtkui.o
+if [[ "x$HAVE_DIRECTX" = "xyes" ]]; then
+  TARGETDEP=t-win32.h
+  TARGET=win32
+fi
+
+if [[ "x$WANT_UI" != "xno" ]]; then
+  if [[ "x$HAVE_DIRECTX" = "xyes" ]]; then
+    GUIOBJS=osdep/win32gui.o
+  else if [[ "x$HAVE_AMIGA_LIB" = "xyes" ]]; then
+    GUIOBJS="osdep/ami-gui.o"
+  else if [[ "x$HAVE_POS" = "xyes" ]]; then
+    GUIOBJS="osdep/pos-gui.o"
+  else if [[ "x$WANT_NCURSES_UI" = "xyes" ]]; then
+    if [[ "x$HAVE_NCURSES_LIB" = "xno" ]]; then
+      echo "ncurses is unavailable, can't provide a user interface"
+      if [[ "x$WANT_UI" = "xyes" ]]; then
+        NR_ERRORS=`expr $NR_ERRORS + 1`
+      fi
+      WANT_UI=no
+      GUIOBJS=nogui.o
+    else
+      GUIOBJS="tui.o svgancui.o"
+      LIBRARIES="$LIBRARIES -lncurses"
+      ADDITIONAL_CFLAGS="$ADDITIONAL_CFLAGS -DUSING_CURSES_UI"
+      if [[ "x$ac_cv_header_ncurses_h" = "xno" ]]; then
+        echo "Found libncurses, but no ncurses.h. This is normal with recent versions"
+        echo "of ncurses, but it might indicate a problem with older versions."
+        NR_WARNINGS=`expr $NR_WARNINGS + 1`
       fi
     fi
-  fi
-  fi
-  fi
-fi
-fi
-fi
-fi
-fi
-
-if [[ "x$WANT_NCURSES_UI" = "xyes" ]]; then
-  if [[ "x$HAVE_NCURSES_LIB" = "xno" ]]; then
+  else if [[ "x$no_x" != "xno" ]]; then
+    if [[ "x$no_gtk" = "xyes" ]]; then
+      echo "Did not find gtk+, disabling user interface"
+      GTK_CFLAGS=
+      TK_LIBS=
+      if [[ "x$WANT_UI" = "xyes" ]]; then
+        NR_ERRORS=`expr $NR_ERRORS + 1`
+      fi
+    else
+      echo "Using gtk+ GUI."
+      NEED_THREAD_SUPPORT=yes
+      DDITIONAL_CFLAGS="$ADDITIONAL_CFLAGS -DUSING_GTK_GUI"
+      GUIOBJS=gtkui.o
+    fi
+  else 
     if [[ "x$WANT_UI" = "xyes" ]]; then
-      echo "ncurses is unavailable, can't provide a user interface"
-      NR_ERRORS=`expr $NR_ERRORS + 1`      
+      echo "GUI requested, but no suitable libraries found."
+      NR_ERRORS=`expr $NR_ERRORS + 1`
     fi
-    WANT_UI=no
-  fi
-  if [[ "x$WANT_UI" != "xno" ]]; then
-    GUIOBJS="tui.o svgancui.o"
-    LIBRARIES="$LIBRARIES -lncurses"
-    ADDITIONAL_CFLAGS="$ADDITIONAL_CFLAGS -DUSING_CURSES_UI"
-    if [[ "x$ac_cv_header_ncurses_h" = "xno" ]]; then
-      echo "Found libncurses, but no ncurses.h. This is normal with recent versions"
-      echo "of ncurses, but it might indicate a problem with older versions."
-      NR_WARNINGS=`expr $NR_WARNINGS + 1`
-    fi
-  else
     GUIOBJS=nogui.o
   fi
+  fi
+  fi
+  fi
+  fi
+else
+  GUIOBJS=nogui.o
 fi
- 
+
 GFXOBJS="$GFXOBJS $GUIOBJS"
  
 dnl Find out some things about the system 
@@ -816,7 +848,7 @@ if [[ "x$USE_FILE_SOUND" = "xyes" ]]; then
   AC_MSG_RESULT(file output)
   SOUNDDEP=sd-file
   USE_SOUND=yes  
-else if [[ "x$WANT_SDL" = "xyes" ]]; then
+else if [[ "x$WANT_SDLSND" = "xyes" ]]; then
   AC_MSG_RESULT(SDL)
   SOUNDDEP=sd-sdl
   USE_SOUND=yes

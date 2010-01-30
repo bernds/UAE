@@ -208,7 +208,7 @@ static void forget_block(struct hash_block *hb)
     freelist_block = hb;
 
     if (hb->cpage != NULL)
-	fprintf(stderr, "Discarding block with code. Tsk.\n");
+	write_log ("Discarding block with code. Tsk.\n");
 
     do {
 	struct hash_entry *next = h->next_same_block;
@@ -269,7 +269,7 @@ uae_u32 flush_icache(void)
 
 void possible_loadseg(void)
 {
-    fprintf(stderr, "Possible LoadSeg() detected\n");
+    write_log ("Possible LoadSeg() detected\n");
     flush_icache();
 }
 
@@ -726,18 +726,18 @@ static int m68k_scan_func(struct hash_entry *h)
 	if (h->block != NULL && h->block != found_block) {
 	    if (found_block == NULL) {
 		if (h->block->cpage != NULL)
-		    fprintf(stderr, "Found compiled code\n");
+		    write_log ("Found compiled code\n");
 		else
 		    found_block = h->block;
 	    } else {
-		fprintf(stderr, "Multiple blocks found.\n");
+		write_log ("Multiple blocks found.\n");
 		if (h->block->cpage == NULL)
 		    forget_block(h->block);
 		else if (found_block->cpage == NULL) {
 		    forget_block(found_block);
 		    found_block = h->block;
 		} else
-		    fprintf(stderr, "Bad case.\n");
+		    write_log ("Bad case.\n");
 	    }
 	}
 #endif
@@ -930,7 +930,7 @@ static struct bb_info *find_bb(struct hash_entry *h)
 	if (bb_stack[i].h == h)
 	    return bb_stack + i;
     if (!quiet_compile)
-	fprintf(stderr, "BB not found!\n");
+	write_log ("BB not found!\n");
     return NULL;
 }
 
@@ -1108,7 +1108,7 @@ static int m68k_scan_block(struct hash_block *hb, int *movem_count)
 		    current_live |= bb->bb_next2->flags_live_at_start;
 	    } else {
 		if (bb->bb_next1 == NULL && bb->bb_next2 == NULL)
-		    fprintf(stderr, "Can't happen\n");
+		    write_log ("Can't happen\n");
 		current_live = 0;
 		if (bb->bb_next1 != NULL)
 		    current_live |= bb->bb_next1->flags_live_at_start;
@@ -1123,7 +1123,7 @@ static int m68k_scan_block(struct hash_block *hb, int *movem_count)
 	    } while (iip-- != bb->first_iip);
 
 	    if (bb->flags_live_at_start != current_live && !quiet_compile)
-		fprintf(stderr, "Fascinating %d!\n", round), changed = 1;
+		write_log ("Fascinating %d!\n", round), changed = 1;
 	    bb->flags_live_at_start = current_live;
 	}
 	round++;
@@ -1291,7 +1291,7 @@ static void compile_move_reg_reg(int dstreg, int srcreg, wordsizes size)
 	&& (((1 << dstreg) & DATA_X86_REGS) == 0
 	    || ((1 << srcreg) & DATA_X86_REGS) == 0))
     {
-	fprintf(stderr, "Moving wrong register types!\n");
+	write_log ("Moving wrong register types!\n");
     }
     if (size == sz_word)
 	assemble(0x66);
@@ -1312,7 +1312,7 @@ static void compile_move_between_reg_mem_regoffs(int dstreg, int srcreg,
 	      && ((1 << dstreg) & DATA_X86_REGS) == 0)
 	     || (size != sz_byte && (dstreg & 0x80) != 0))
     {
-	fprintf(stderr, "Moving wrong register types!\n");
+	write_log ("Moving wrong register types!\n");
     }
     if (size == sz_word)
 	assemble(0x66);
@@ -3053,7 +3053,7 @@ static int compile_flush_cc_cache(struct register_mapping *map, int status,
 	    live_at_end &= ~CC68K_X;
 
 	if (status == CC_C_FROM_86C && (live_at_end & CC68K_C) != 0)
-	    fprintf(stderr, "Shouldn't be needing C here!\n");
+	    write_log ("Shouldn't be needing C here!\n");
 	else if (live_at_end) {
 	    if ((live_at_end & CC68K_X) == 0)
 		status &= ~CC_X_FROM_86C;
@@ -4516,7 +4516,7 @@ static int m68k_compile_block(struct hash_block *hb)
 	while ((allocmask & hb->page_allocmask) != allocmask)
 	    allocmask <<= 1;
 	if ((hb->page_allocmask & ~allocmask) != 0 && !quiet_compile)
-	    fprintf(stderr, "Gaining some bits: %08lx\n", hb->page_allocmask & ~allocmask);
+	    write_log ("Gaining some bits: %08lx\n", hb->page_allocmask & ~allocmask);
 	hb->cpage->allocmask &= ~hb->page_allocmask;
 	hb->page_allocmask = allocmask;
 	hb->cpage->allocmask |= allocmask;
@@ -4525,7 +4525,7 @@ static int m68k_compile_block(struct hash_block *hb)
 
     oops:
     if (1 || !quiet_compile)
-	fprintf(stderr, "Compile failed!\n");
+	write_log ("Compile failed!\n");
     hb->cpage->allocmask &= ~hb->page_allocmask;
     hb->cpage = NULL;
     hb->untranslatable = 1;

@@ -73,7 +73,7 @@ static afile *read_file (unsigned char *filebuf)
 		blockpos = 0x134;
 		numblocks = readlong (filebuf, 0x8);
 		if (!filebuf) {
-		    fprintf (stderr, "Disk structure corrupted. Use DISKDOCTOR to correct it.\n");
+		    write_log ("Disk structure corrupted. Use DISKDOCTOR to correct it.\n");
 		    abort ();
 		}
 	    }
@@ -97,7 +97,7 @@ static directory *read_dir (unsigned char *dirbuf)
     if (!hashsize)
 	hashsize = 72;
     if (hashsize != 72)
-	fprintf (stderr, "Warning: Hash table with != 72 entries.\n");
+	write_log ("Warning: Hash table with != 72 entries.\n");
     for (i = 0; i < hashsize; i++) {
 	uae_u32 subblock = readlong (dirbuf, 0x18 + 4 * i);
 
@@ -117,7 +117,7 @@ static directory *read_dir (unsigned char *dirbuf)
 		subfile->sibling = d->files;
 		d->files = subfile;
 	    } else {
-		fprintf (stderr, "Disk structure corrupted. Use DISKDOCTOR to correct it.\n");
+		write_log ("Disk structure corrupted. Use DISKDOCTOR to correct it.\n");
 		abort ();
 	    }
 	    subblock = readlong (subbuf, 0x1F0);
@@ -132,11 +132,11 @@ static void writedir (directory * dir)
     afile *f;
 
     if (mkdir (dir->name, 0777) < 0 && errno != EEXIST) {
-	fprintf (stderr, "Could not create directory \"%s\". Giving up.\n", dir->name);
+	write_log ("Could not create directory \"%s\". Giving up.\n", dir->name);
 	exit (20);
     }
     if (chdir (dir->name) < 0) {
-	fprintf (stderr, "Could not enter directory \"%s\". Giving up.\n", dir->name);
+	write_log ("Could not enter directory \"%s\". Giving up.\n", dir->name);
 	exit (20);
     }
     for (subdir = dir->subdirs; subdir; subdir = subdir->sibling)
@@ -144,7 +144,7 @@ static void writedir (directory * dir)
     for (f = dir->files; f; f = f->sibling) {
 	int fd = creat (f->name, 0666);
 	if (fd < 0) {
-	    fprintf (stderr, "Could not create file. Giving up.\n");
+	    write_log ("Could not create file. Giving up.\n");
 	    exit (20);
 	}
 	write (fd, f->data, f->size);
@@ -159,12 +159,12 @@ int main (int argc, char **argv)
     FILE *inf;
 
     if (argc < 2 || argc > 3) {
-	fprintf (stderr, "Usage: readdisk <file> [<destdir>]\n");
+	write_log ("Usage: readdisk <file> [<destdir>]\n");
 	exit (20);
     }
     inf = fopen (argv[1], "rb");
     if (inf == NULL) {
-	fprintf (stderr, "can't open file\n");
+	write_log ("can't open file\n");
 	exit (20);
     }
     fread (filemem, 1, 901120, inf);
@@ -178,14 +178,14 @@ int main (int argc, char **argv)
 	secdatasize = 512;
 	secdataoffset = 0;
     } else {
-	fprintf (stderr, "Not a DOS disk.\n");
+	write_log ("Not a DOS disk.\n");
 	exit (20);
     }
     root = read_dir (filemem + 880 * 512);
 
     if (argc == 3)
 	if (chdir (argv[2]) < 0) {
-	    fprintf (stderr, "Couldn't change to %s. Giving up.\n", argv[2]);
+	    write_log ("Couldn't change to %s. Giving up.\n", argv[2]);
 	    exit (20);
 	}
     writedir (root);

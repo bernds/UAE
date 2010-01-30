@@ -1,10 +1,12 @@
-	SECTION code
+	SECTION code,code
 ; This file can be translated with A68k or PhxAss and then linked with BLink
 ; to produce an Amiga executable. Make sure it does not contain any
 ; relocations, then run it through the filesys.sh script
 ;
 ; Patrick: It also works with SAS/C asm+slink, but I had to remove
 ; the .l from jsr.l and jmp.l.
+; Toni Wilen: modified SECTION, compiles now with AsmOne and clones(?)
+; Removed absolute RT_AREA references
 
 	dc.l 16
 our_seglist:
@@ -15,6 +17,7 @@ start:
 	dc.l filesys_init-start
 	dc.l exter_server-start
 	dc.l bootcode-start
+	dc.l setup_exter-start
 
 bootcode:
 	lea.l doslibname(pc),a1
@@ -28,7 +31,9 @@ bootcode:
 filesys_init:
 	movem.l d0-d7/a0-a6,-(sp)
 	move.l 4.w,a6
-	move.l $F0FFFC,a5 ; filesys base
+	move.w #$FFFC,d0 ; filesys base
+	bsr getrtbase
+	move.l (a0),a5
 	lea.l explibname(pc),a1 ; expansion lib name
 	moveq.l #36,d0
 	moveq.l #0,d5
@@ -68,9 +73,9 @@ FSIN_units_ok:
 	move.l 4.w,a6
 	move.l a4,a1
 	jsr -414(a6) ; CloseLibrary
-	bsr.w setup_exter
-	move.l 4.w,a6
-	jsr $F0FF80
+	move.w #$FF80,d0
+	bsr.w getrtbase
+	jsr (a0)
 	moveq.l #3,d1
 	moveq.l #-10,d2
 	move.l #$200000,a0
@@ -88,15 +93,19 @@ general_ret:
 exter_data:
 exter_server:
 	movem.l a2,-(sp)
+	move.w #$FF50,d0
+	bsr.w getrtbase
 	moveq.l #0,d0
-	jsr $F0FF50
+	jsr (a0)
 	tst.l d0
 	beq.b exter_server_exit
 	; This is the hard part - we have to send some messages.
 	move.l 4.w,a6
 EXTS_loop:
+	move.w #$FF50,d0
+	bsr.w getrtbase
 	moveq.l #2,d0
-	jsr $F0FF50
+	jsr (a0)
 	cmp.l #1,d0
 	blt.b EXTS_done
 	bgt.b EXTS_signal_reply
@@ -109,18 +118,36 @@ EXTS_signal_reply:
 	jsr -$144(a6)	; Signal
 	bra.b EXTS_loop
 EXTS_reply:
-        jsr -$17a(a6)   ; ReplyMsg
-        bra.b EXTS_loop
+	cmp.l #3,d0
+	bgt.b EXTS_cause
+	jsr -$17a(a6)   ; ReplyMsg
+	bra.b EXTS_loop
+EXTS_cause:
+	cmp.l #4,d0
+	bgt.b EXTS_jump
+	jsr -$b4(a6)	; Cause
+	bra.b EXTS_loop
+EXTS_jump:
+	movem.l a2/a5,-(sp)
+	move.l a1,a2 ;CDXL structure
+	move.l 20(a2),a1
+	move.l 24(a2),a5
+	move.l a2,-(sp)
+	jsr (a5)	; cd.device CD_READXL callback
+	move.l (sp)+,d2
+	clr.l 24(a2)  ; ugly sync-hack
+	movem.l (sp)+,a2/a5
 EXTS_done:
+	move.w #$FF50,d0
+	bsr.w getrtbase
 	moveq.l #4,d0
-	jsr $F0FF50
+	jsr (a0)	
 	moveq.l #1,d0 ; clear Z - it was for us.
 exter_server_exit:
 	movem.l (sp)+,a2
 	rts
 
 setup_exter:
-	move.l 4.w,a6
 	moveq.l #26,d0
 	move.l #$10001,d1
 	jsr -198(a6) ; AllocMem
@@ -131,13 +158,22 @@ setup_exter:
 	move.l a0,14(a1)
 	lea.l exter_server(pc),a0
 	move.l a0,18(a1)
+	move.b #200,9(a1)
+	move.b #2,8(a1)
 	moveq.l #13,d0
 	jmp -168(a6) ; AddIntServer
 
 make_dev: ; IN: A0 param_packet, D6: unit_no, D7: boot, A4: expansionbase
-	move.l $F0FFFC,a5 ; filesys base
 
-	jsr $F0FF28 ; fill in unit-dependent info, return 1 if hardfile.
+	move.l a0,-(sp)
+	move.w #$FFFC,d0 ; filesys base
+	bsr.w getrtbase
+	move.l (a0),a5
+	move.w #$FF28,d0 ; fill in unit-dependent info, return 1 if hardfile.
+	bsr.w getrtbase
+	move.l a0,a1
+	move.l (sp)+,a0
+	jsr (a1)
 	move.l d0,d3
 
 	; Don't init hardfiles if < V36
@@ -147,7 +183,9 @@ make_dev: ; IN: A0 param_packet, D6: unit_no, D7: boot, A4: expansionbase
 	move.l a4,a6
 	jsr -144(a6) ; MakeDosNode()
 	move.l d0,a3 ; devicenode
-	jsr $F0FF20 ; record in ui.startup
+	move.w #$FF20,d0 ; record in ui.startup
+	bsr.w getrtbase
+	jsr (a0)
 	moveq.l #0,d0
 	move.l d0,8(a3)          ; dn_Task
 	move.l d0,16(a3)         ; dn_Handler
@@ -231,8 +269,10 @@ filesys_mainloop:
 	jsr -372(a6) ; GetMsg
 	move.l d0,a4
 	move.l 10(a4),d3 ; ln_Name
+	move.w #$FF40,d0
+	bsr.w getrtbase
 	moveq.l #0,d0
-	jsr $F0FF40
+	jsr (a0)
 	bra.b FSML_Reply
 
 	; We abuse some of the fields of the message we get. Offset 0 is
@@ -253,8 +293,10 @@ FSML_loop:
 	bne.b FSML_FromDOS
 
 	; It's a dummy packet indicating that some queued command finished.
+	move.w #$FF50,d0
+	bsr.w getrtbase
 	moveq.l #1,d0
-	jsr $F0FF50
+	jsr (a0)
 	; Go through the queue and reply all those that finished.
 	lea.l 4(a3),a2
 	move.l (a2),a0
@@ -292,7 +334,9 @@ FSML_FromDOS:
 
 FSML_DoCommand:
 	bsr.b LockCheck  ; Make sure there are enough locks for the C code to grab.
-	jsr $F0FF30
+	move.w #$FF30,d0
+	bsr.w getrtbase
+	jsr (a0)
 	tst.l d0
 	beq.b FSML_Reply
 	; The command did not complete yet. Enqueue it and increase number of
@@ -307,7 +351,7 @@ FSML_Enqueue:
 FSML_Reply:
 	move.l d3,a4
 	bsr.b ReplyOne
-	bra.b FSML_loop
+	bra.w FSML_loop
 
 ReplyOne:
 	move.l (a4),a1  ; dp_Link
@@ -368,6 +412,12 @@ LKCK_TooManyLoop:
 LKCK_ret:
 	move.l d7,(a3)
 	move.l (a7)+,d5
+	rts
+
+getrtbase:
+	lea start-8-4(pc),a0
+	and.l #$FFFF,d0
+	add.l d0,a0
 	rts
 
 exter_name: dc.b 'UAE filesystem',0

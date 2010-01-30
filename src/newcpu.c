@@ -750,7 +750,7 @@ kludge_me_do:
     unset_special (SPCFLAG_TRACE | SPCFLAG_DOTRACE);
 }
 
-static void Interrupt(int nr)
+static void Interrupt (int nr)
 {
     assert(nr < 8 && nr >= 0);
     lastint_regs = regs;
@@ -1150,14 +1150,14 @@ unsigned long REGPARAM2 op_illg (uae_u32 opcode)
 	    ersatz_perform (arg);
 	    fill_prefetch_0 ();
 	    return 4;
-	} else if ((pc & 0xF80000) == 0xF00000) {
+	} else if ((pc & 0xFFFF0000) == RTAREA_BASE) {
 	    /* User-mode STOP replacement */
 	    m68k_setstopped (1);
 	    return 4;
 	}
     }
 
-    if ((opcode & 0xF000) == 0xA000 && (pc & 0xF80000) == 0xF00000) {
+    if ((opcode & 0xF000) == 0xA000 && (pc & 0xFFFF0000) == RTAREA_BASE) {
 	/* Calltrap. */
 	m68k_incpc(2);
 	call_calltrap (opcode & 0xFFF);
@@ -1170,7 +1170,7 @@ unsigned long REGPARAM2 op_illg (uae_u32 opcode)
 	return 4;
     }
     if ((opcode & 0xF000) == 0xA000) {
-	if ((pc & 0xF80000) == 0xF00000) {
+	if ((pc & 0xFFFF0000) == RTAREA_BASE) {
 	    /* Calltrap. */
 	    call_calltrap (opcode & 0xFFF);
 	}
@@ -1302,7 +1302,7 @@ static void m68k_run_1 (void)
 	uae_u32 opcode = get_iword_prefetch (0);
 #ifdef DEBUG_PREFETCH
 	if (get_ilong (0) != do_get_mem_long (&regs.prefetch)) {
-	    fprintf (stderr, "Prefetch differs from memory.\n");
+	    write_log ("Prefetch differs from memory.\n");
 	    debugging = 1;
 	    return;
 	}
@@ -1327,7 +1327,7 @@ static void m68k_run_1 (void)
 #endif
 #ifdef DEBUG_PREFETCH
 	if (memcmp (saved_bytes, oldpcp, 20) != 0) {
-	    fprintf (stderr, "Self-modifying code detected.\n");
+	    write_log ("Self-modifying code detected.\n");
 	    set_special (SPCFLAG_BRK);
 	    debugging = 1;
 	}

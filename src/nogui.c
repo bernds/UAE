@@ -57,5 +57,12 @@ void gui_changesettings (void)
 
 void gui_update_gfx (void)
 {
-  
+}
+
+void gui_lock (void)
+{
+}
+
+void gui_unlock (void)
+{
 }

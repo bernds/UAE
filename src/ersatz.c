@@ -32,7 +32,7 @@
 
 void init_ersatz_rom (uae_u8 *data)
 {
-    fprintf(stderr, "Trying to use Kickstart replacement.\n");
+    write_log ("Trying to use Kickstart replacement.\n");
     *data++ = 0x00; *data++ = 0x08; /* initial SP */
     *data++ = 0x00; *data++ = 0x00;
     *data++ = 0x00; *data++ = 0xF8; /* initial PC */
@@ -75,7 +75,7 @@ static void ersatz_doio (void)
 	break;
 
      default:
-	fprintf(stderr, "Only CMD_READ supported in DoIO()\n");
+	write_log ("Only CMD_READ supported in DoIO()\n");
 	abort();
     }
     {
@@ -100,7 +100,7 @@ static void ersatz_init (void)
     uaecptr a;
 
     if (disk_empty (0)) {
-	fprintf (stderr, "You need to have a diskfile in DF0 to use the Kickstart replacement!\n");
+	write_log ("You need to have a diskfile in DF0 to use the Kickstart replacement!\n");
 	uae_quit ();
 	m68k_setpc (0xF80010);
 	return;
@@ -140,9 +140,9 @@ static void ersatz_init (void)
     /* kickstart disk loader */
     if (get_long(0x4000) == 0x4b49434b) {
 	/* a kickstart disk was found in drive 0! */
-	fprintf (stderr, "Loading Kickstart rom image from Kickstart disk\n");
+	write_log ("Loading Kickstart rom image from Kickstart disk\n");
 	/* print some notes... */
-	fprintf (stderr, "NOTE: if UAE crashes set CPU to 68000 and/or chipmem size to 512KB!\n");
+	write_log ("NOTE: if UAE crashes set CPU to 68000 and/or chipmem size to 512KB!\n");
 
 	/* read rom image from kickstart disk */
 	put_word (request + 0x1C, 2);
@@ -224,7 +224,7 @@ void ersatz_perform (uae_u16 what)
 	break;
 
      case EOP_NIMP:
-	fprintf (stderr, "Unimplemented Kickstart function called\n");
+	write_log ("Unimplemented Kickstart function called\n");
 	uae_quit ();
 	
 	/* fall through */
@@ -234,7 +234,7 @@ void ersatz_perform (uae_u16 what)
 
      case EOP_OPENLIB:
      default:
-	fprintf(stderr, "Internal error. Giving up.\n");
+	write_log ("Internal error. Giving up.\n");
 	abort ();
     }
 }

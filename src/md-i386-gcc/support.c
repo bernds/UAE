@@ -88,17 +88,17 @@ static RETSIGTYPE illhandler(int foo)
 void machdep_init (void)
 {
     rpt_available = 1;
-    fprintf (stderr,"Testing the RDTSC instruction ... ");
+    write_log ("Testing the RDTSC instruction ... ");
     signal (SIGILL, illhandler);
     if (setjmp (catch_test) == 0)
 	read_processor_time ();
     signal (SIGILL, SIG_DFL);
-    fprintf (stderr,"done.\n");
+    write_log ("done.\n");
     if (! rpt_available) {
-	fprintf (stderr, "Your processor does not support the RDTSC instruction.\n");
+	write_log ("Your processor does not support the RDTSC instruction.\n");
 	return;
     }
-    fprintf (stderr, "Calibrating delay loop.. ");
+    write_log ("Calibrating delay loop.. ");
     fflush (stderr);
     best_time = (frame_time_t)-1;
     loops_to_go = 5;
@@ -109,7 +109,7 @@ void machdep_init (void)
     set_alarm ();
     while (loops_to_go != 0)
 	usleep (10000);
-    fprintf (stderr, "ok - %.2f BogoMIPS\n",
+    write_log ("ok - %.2f BogoMIPS\n",
 	     ((double)best_time / TIME_UNIT), best_time);
     syncbase = best_time * (1000000 / TIME_UNIT);
 }

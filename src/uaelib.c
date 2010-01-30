@@ -135,7 +135,7 @@ static uae_u32 emulib_ChgCMemSize (uae_u32 memsize)
     if (memsize != 0x80000 && memsize != 0x100000 &&
 	memsize != 0x200000) {
 	memsize = 0x200000;
-	fprintf (stderr, "Unsupported chipmem size!\n");
+	write_log ("Unsupported chipmem size!\n");
     }
     m68k_dreg(regs, 0) = 0;
 
@@ -153,7 +153,7 @@ static uae_u32 emulib_ChgSMemSize (uae_u32 memsize)
     if (memsize != 0x80000 && memsize != 0x100000 &&
 	memsize != 0x180000 && memsize != 0x1C0000) {
 	memsize = 0;
-	fprintf (stderr, "Unsupported bogomem size!\n");
+	write_log ("Unsupported bogomem size!\n");
     }
 
     m68k_dreg(regs, 0) = 0;
@@ -171,7 +171,7 @@ static uae_u32 emulib_ChgFMemSize (uae_u32 memsize)
     if (memsize != 0x100000 && memsize != 0x200000 &&
 	memsize != 0x400000 && memsize != 0x800000) {
 	memsize = 0;
-	fprintf (stderr, "Unsupported fastmem size!\n");
+	write_log ("Unsupported fastmem size!\n");
     }
     m68k_dreg(regs, 0) = 0;
     currprefs.fastmem_size = memsize;
@@ -408,7 +408,7 @@ static uae_u32 uaelib_demux (void)
 void emulib_install (void)
 {
     uaecptr a = here ();
-    org (0xF0FF60);
+    org (RTAREA_BASE + 0xFF60);
     calltrap (deftrap (uaelib_demux));
     dw (RTS);
     org (a);

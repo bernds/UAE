@@ -102,7 +102,7 @@ static void save_config (void)
 
     f = fopen (optionsfile, "w");
     if (f == NULL) {
-	fprintf (stderr, "Error saving options file!\n");
+	write_log ("Error saving options file!\n");
 	return;
     }
     save_options (f, &currprefs);
@@ -366,7 +366,7 @@ static int find_current_toggle (GtkWidget **widgets, int count)
     for (i = 0; i < count; i++)
 	if (GTK_TOGGLE_BUTTON (*widgets++)->active)
 	    return i;
-    fprintf (stderr, "GTKUI: Can't happen!\n");
+    write_log ("GTKUI: Can't happen!\n");
     return -1;
 }
 
@@ -550,7 +550,7 @@ static void did_close_insert (gpointer data)
 static void did_insert_select (GtkObject *o)
 {
     char *s = gtk_file_selection_get_filename (GTK_FILE_SELECTION (disk_selector));
-    printf ("%s\n", s);
+    printf ("%d %s\n", filesel_active, s);
     if (quit_gui)
 	return;
 
@@ -1654,7 +1654,7 @@ void gui_handle_events (void)
 		uae_sem_wait (&gui_sem);
 		strncpy (changed_prefs.df[n], new_disk_string[n], 255);
 		free (new_disk_string[n]);
-		new_disk_string[n][0] = '\0';
+		new_disk_string[n] = 0;
 		changed_prefs.df[n][255] = '\0';
 		uae_sem_post (&gui_sem);
 		break;
@@ -1757,4 +1757,14 @@ void gui_exit (void)
 
     quit_gui = 1;
     uae_sem_wait (&gui_quit_sem);
+}
+
+void gui_lock (void)
+{
+    uae_sem_wait (&gui_sem);
+}
+
+void gui_unlock (void)
+{
+    uae_sem_post (&gui_sem);
 }

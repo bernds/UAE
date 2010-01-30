@@ -361,7 +361,7 @@ void setup_dither (int bits, allocfunc_type allocfunc)
 	    }
 	}
     }
-/*    fprintf(stderr, "%d color(s) lost\n",maxcol - l);*/
+/*    write_log ("%d color(s) lost\n",maxcol - l);*/
 
     /*
      * for each component compute the mapping

@@ -22,7 +22,7 @@ static volatile int loops_to_go;
 void machdep_init (void)
 {
     rpt_available = 1;
-    fprintf(stderr, "Calibrating delay loop.. ");
+    write_log ("Calibrating delay loop.. ");
     fflush(stderr);
     loops_to_go = 5;
 
@@ -33,7 +33,7 @@ void machdep_init (void)
     sync();
 
     vsynctime = best_time / (50*loops_to_go);
-    fprintf(stderr,"ok - %d\n",best_time/loops_to_go);
+    write_log("ok - %d\n",best_time/loops_to_go);
     last_time = read_processor_time();
     best_time = read_processor_time()-last_time;
 }

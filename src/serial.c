@@ -99,7 +99,7 @@ void SERPER (uae_u16 w)
     serper=w;
 
     if (w&0x8000)
-	fprintf (stdout, "SERPER: 9bit transmission not implemented.\n");
+	write_log ("SERPER: 9bit transmission not implemented.\n");
 
     switch (w & 0x7fff) {
      /* These values should be calculated by the current
@@ -125,28 +125,28 @@ void SERPER (uae_u16 w)
      case 0x001e: baud=115200; pspeed=B115200; break;
      case 0x000f: baud=230400; pspeed=B230400; break;
      default:
-	fprintf (stdout,"SERPER: unsupported baudrate (0x%04x) %d\n",w&0x7fff,
+	write_log ("SERPER: unsupported baudrate (0x%04x) %d\n",w&0x7fff,
 		 (unsigned int)(3579546.471/(double)((w&0x7fff)+1)));  return;
     }
 
     /* Only access hardware when we own it */
     if (serdev == 1) {
 	if (tcgetattr (sd, &tios) < 0) {
-	    fprintf (stderr, "SERPER: TCGETATTR failed\n");
+	    write_log ("SERPER: TCGETATTR failed\n");
 	    return;
 	}
 
 	if (cfsetispeed (&tios, pspeed) < 0) {    /* set serial input speed */
-	    fprintf (stderr, "SERPER: CFSETISPEED (%d bps) failed\n", baud);
+	    write_log ("SERPER: CFSETISPEED (%d bps) failed\n", baud);
 	    return;
 	}
 	if (cfsetospeed (&tios, pspeed) < 0) {    /* set serial output speed */
-	    fprintf (stderr, "SERPER: CFSETOSPEED (%d bps) failed\n", baud);
+	    write_log ("SERPER: CFSETOSPEED (%d bps) failed\n", baud);
 	    return;
 	}
 
 	if (tcsetattr (sd, TCSADRAIN, &tios) < 0) {
-	    fprintf (stderr, "SERPER: TCSETATTR failed\n");
+	    write_log ("SERPER: TCSETATTR failed\n");
 	    return;
 	}
     }
@@ -154,7 +154,7 @@ void SERPER (uae_u16 w)
 
 #if SERIALDEBUG > 0
     if (serdev == 1)
-	fprintf (stdout, "SERPER: baudrate set to %d bit/sec\n", baud);
+	write_log ("SERPER: baudrate set to %d bit/sec\n", baud);
 #endif
 }
 
@@ -185,7 +185,7 @@ void SERDAT (uae_u16 w)
 
     if (currprefs.serial_demand && !dtr) {
 	if (!isbaeh) {
-	    fprintf(stdout,"SERDAT: Baeh.. Your software needs SERIAL_ALWAYS to work properly.\n");
+	    write_log("SERDAT: Baeh.. Your software needs SERIAL_ALWAYS to work properly.\n");
 	    isbaeh=1;
 	}
 	return;
@@ -196,7 +196,7 @@ void SERDAT (uae_u16 w)
     }
 
 #if SERIALDEBUG > 2
-    fprintf (stderr, "SERDAT: wrote 0x%04x\n", w);
+    write_log ("SERDAT: wrote 0x%04x\n", w);
 #endif
 
     serdat|=0x2000; /* Set TBE in the SERDATR ... */
@@ -209,7 +209,7 @@ uae_u16 SERDATR (void)
     if (!currprefs.use_serial)
 	return 0;
 #if SERIALDEBUG > 2
-    fprintf (stdout, "SERDATR: read 0x%04x\n", serdat);
+    write_log ("SERDATR: read 0x%04x\n", serdat);
 #endif
     waitqueue = 0;
     return serdat;
@@ -234,7 +234,7 @@ int SERDATS (void)
 	intreq |= 0x0800; /* Set RBF flag (Receive Buffer full) */
 
 #if SERIALDEBUG > 1
-	fprintf (stdout, "SERDATS: received 0x%02x --> serdat==0x%04x\n",
+	write_log ("SERDATS: received 0x%02x --> serdat==0x%04x\n",
 		 (unsigned int)z, (unsigned int)serdat);
 #endif
 	return 1;
@@ -245,7 +245,7 @@ int SERDATS (void)
 void serial_dtr_on(void)
 {
 #if SERIALDEBUG > 0
-    fprintf (stdout, "DTR on.\n");
+    write_log ("DTR on.\n");
 #endif
     dtr=1;
 
@@ -256,7 +256,7 @@ void serial_dtr_on(void)
 void serial_dtr_off(void)
 {
 #if SERIALDEBUG > 0
-    fprintf (stdout, "DTR off.\n");
+    write_log ("DTR off.\n");
 #endif
     dtr=0;
     if (currprefs.serial_demand)
@@ -310,7 +310,7 @@ int serial_readstatus(void)
 	    ciabpra |= 0x20; /* Push up Carrier Detect line */
 	    carrier = 1;
 #if SERIALDEBUG > 0
-	    fprintf (stdout, "Carrier detect.\n");
+	    write_log ("Carrier detect.\n");
 #endif
 	}
     } else {
@@ -318,7 +318,7 @@ int serial_readstatus(void)
 	    ciabpra &= ~0x20;
 	    carrier = 0;
 #if SERIALDEBUG > 0
-	    fprintf (stdout, "Carrier lost.\n");
+	    write_log ("Carrier lost.\n");
 #endif
 	}
     }
@@ -346,10 +346,10 @@ uae_u16 serial_writestatus (int old, int nw)
 	serial_dtr_off();
 
     if ((old & 0x40) != (nw & 0x40))
-	fprintf (stdout, "RTS %s.\n", ((nw & 0x40) == 0x40) ? "set" : "cleared");
+	write_log ("RTS %s.\n", ((nw & 0x40) == 0x40) ? "set" : "cleared");
 
     if ((old & 0x10) != (nw & 0x10))
-	fprintf (stdout, "CTS %s.\n", ((nw & 0x10) == 0x10) ? "set" : "cleared");
+	write_log ("CTS %s.\n", ((nw & 0x10) == 0x10) ? "set" : "cleared");
 
     return nw; /* This value could also be changed here */
 }
@@ -360,7 +360,7 @@ void serial_open(void)
 	return;
 
     if ((sd = open (currprefs.sername, O_RDWR|O_NONBLOCK|O_BINARY, 0)) < 0) {
-	fprintf (stdout, "Error: Could not open Device %s\n", currprefs.sername);
+	write_log ("Error: Could not open Device %s\n", currprefs.sername);
 	return;
     }
 
@@ -368,7 +368,7 @@ void serial_open(void)
 
 #ifdef POSIX_SERIAL
     if (tcgetattr (sd, &tios) < 0) {		/* Initialize Serial tty */
-	fprintf (stderr, "Serial: TCGETATTR failed\n");
+	write_log ("Serial: TCGETATTR failed\n");
 	return;
     }
     cfmakeraw (&tios);
@@ -380,7 +380,7 @@ void serial_open(void)
 #endif
 
     if (tcsetattr (sd, TCSADRAIN, &tios) < 0) {
-	fprintf (stderr,"Serial: TCSETATTR failed\n");
+	write_log ("Serial: TCSETATTR failed\n");
 	return;
     }
 #endif

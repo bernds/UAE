@@ -197,7 +197,7 @@ static void sync_m68k_pc (void)
     printf ("m68k_incpc(%d);\n", m68k_pc_offset);
     switch (m68k_pc_offset) {
      case 0:
-	/*fprintf (stderr, "refilling prefetch at 0\n"); */
+	/*write_log ("refilling prefetch at 0\n"); */
 	break;
      case 2:
 	fill_prefetch_2 ();
@@ -448,7 +448,7 @@ static void genastore (char *from, amodes mode, char *reg, wordsizes size, char 
      case Areg:
 	switch (size) {
 	 case sz_word:
-	    fprintf (stderr, "Foo\n");
+	    write_log ("Foo\n");
 	    printf ("\tm68k_areg(regs, %s) = (uae_s32)(uae_s16)(%s);\n", reg, from);
 	    break;
 	 case sz_long:

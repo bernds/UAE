@@ -9,7 +9,7 @@
 
 #define UAEMAJOR 0
 #define UAEMINOR 8
-#define UAESUBREV 19
+#define UAESUBREV 20
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 

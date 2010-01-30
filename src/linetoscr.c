@@ -5,7 +5,7 @@ static int LNAME (int spix, int dpix, int stoppos)
     uae_u8 xor_val;
 
     if (AGA) xor_val = (uae_u8)(dp_for_drawing->bplcon4 >> 8);
-    if (bplham && bplplanecnt >= 6) {
+    if (dp_for_drawing->ham_seen) {
 	/* HAM 6 / HAM 8 */
 	while (dpix < stoppos) {
 	    TYPE d = AGA ? CONVERT_RGB (ham_linebuf[spix]) : xcolors[ham_linebuf[spix]];

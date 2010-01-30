@@ -622,7 +622,7 @@ static void audio_handler (int nr)
 
     switch (cdp->state) {
      case 0:
-	fprintf(stderr, "Bug in sound code\n");
+	write_log ("Bug in sound code\n");
 	break;
 
      case 1:
@@ -743,7 +743,7 @@ static void ahi_handler (int nr)
 
     switch (cdp->state) {
     case 0:
-	fprintf(stderr, "Bug in sound code\n");
+	write_log ("Bug in sound code\n");
 	break;
 
     case 1:
@@ -887,9 +887,9 @@ void check_prefs_changed_audio (void)
 		next_sample_evtime = scaled_sample_evtime;
 	    } else
 		if (! sound_available) {
-		    fprintf (stderr, "Sound is not supported.\n");
+		    write_log ("Sound is not supported.\n");
 		} else {
-		    fprintf (stderr, "Sorry, can't initialize sound.\n");
+		    write_log ("Sorry, can't initialize sound.\n");
 		    currprefs.produce_sound = 0;
 		    /* So we don't do this every frame */
 		    changed_prefs.produce_sound = 0;
@@ -1131,7 +1131,7 @@ static uae_u32 ahi_entry (void)
 void ahi_install (void)
 {
     uaecptr a = here ();
-    org (0xF0FFB0);
+    org (RTAREA_BASE + 0xFFB0);
     calltrap (deftrap (ahi_entry));
     dw (RTS);
     org (a);

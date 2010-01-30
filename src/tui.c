@@ -53,7 +53,7 @@ static void save_settings (void)
     tui_backup_optionsfile ();
     f = fopen (optionsfile, "w");
     if (f == NULL) {
-	fprintf (stderr, "Error saving options file!\n");
+	write_log ("Error saving options file!\n");
 	return;
     }
     save_options (f, &currprefs);
@@ -719,4 +719,12 @@ void gui_changesettings (void)
 int gui_update (void)
 {
     return 0;
+}
+
+void gui_lock (void)
+{
+}
+
+void gui_unlock (void)
+{
 }

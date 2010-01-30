@@ -237,7 +237,7 @@ static void get_image (int w, int h, struct disp_info *dispi)
 	    XDestroyImage (new_img);
 	    shminfo->shmid = -1;
 	    shmavail = 0;
-	    fprintf (stderr, "MIT-SHM extension failed, trying fallback.\n");
+	    write_log ("MIT-SHM extension failed, trying fallback.\n");
 	} else {
 	    /* now deleting means making it temporary */
 	    shmctl (shminfo->shmid, IPC_RMID, 0);
@@ -257,7 +257,7 @@ static void get_image (int w, int h, struct disp_info *dispi)
     new_img = XCreateImage (display, vis, bitdepth, ZPixmap, 0, p,
 			    w, h, 32, 0);
     if (new_img->bytes_per_line != w * ((bit_unit + 7) / 8))
-	fprintf (stderr, "Possible bug here... graphics may look strange.\n");
+	write_log ("Possible bug here... graphics may look strange.\n");
 
     dispi->image_mem = p;
     dispi->ximg = new_img;
@@ -422,7 +422,7 @@ void flush_line (int y)
 	len = currprefs.gfx_width;
 	DitherLine (target, (uae_u16 *)linebuf, 0, y, gfxvidinfo.width, bit_unit);
     } else {
-	fprintf (stderr, "Bug!\n");
+	write_log ("Bug!\n");
 	abort();
     }
 
@@ -518,7 +518,7 @@ static int init_colors (void)
     } else {
 	if (bitdepth != 8 && bitdepth != 12 && bitdepth != 15
 	    && bitdepth != 16 && bitdepth != 24) {
-	    fprintf (stderr, "Unsupported bit depth (%d)\n", bitdepth);
+	    write_log ("Unsupported bit depth (%d)\n", bitdepth);
 	    return 0;
 	}
 
@@ -529,10 +529,10 @@ static int init_colors (void)
 
 	    XParseColor (display, cmap, "#000000", &black);
 	    if (! XAllocColor (display, cmap, &black))
-		fprintf (stderr, "Whoops??\n");
+		write_log ("Whoops??\n");
 	    XParseColor (display, cmap, "#ffffff", &white);
 	    if (! XAllocColor (display, cmap, &white))
-		fprintf (stderr, "Whoops??\n");
+		write_log ("Whoops??\n");
 	    break;
 
 	 case GrayScale:
@@ -541,7 +541,7 @@ static int init_colors (void)
 	    break;
 
 	 default:
-	    fprintf (stderr, "Unsupported visual class (%d)\n", visualInfo.VI_CLASS);
+	    write_log ("Unsupported visual class (%d)\n", visualInfo.VI_CLASS);
 	    return 0;
 	}
     }
@@ -586,35 +586,35 @@ static int dga_available (void)
     int EventBase, ErrorBase;
 
     if (! XF86DGAQueryVersion (display, &MajorVersion, &MinorVersion)) {
-	fprintf (stderr, "Unable to query video extension version\n");
+	write_log ("Unable to query video extension version\n");
 	return 0;
     }
     if (! XF86DGAQueryExtension (display, &EventBase, &ErrorBase)) {
-	fprintf (stderr, "Unable to query video extension information\n");
+	write_log ("Unable to query video extension information\n");
 	return 0;
     }
     /* Fail if the extension version in the server is too old */
     if (MajorVersion < DGA_MINMAJOR
 	|| (MajorVersion == DGA_MINMAJOR && MinorVersion < DGA_MINMINOR))
     {
-	fprintf (stderr,
+	write_log (
 		 "Xserver is running an old XFree86-DGA version"
 		 " (%d.%d)\n", MajorVersion, MinorVersion);
-	fprintf (stderr, "Minimum required version is %d.%d\n",
+	write_log ("Minimum required version is %d.%d\n",
 		 DGA_MINMAJOR, DGA_MINMINOR);
 	return 0;
     }
     if (geteuid () != 0) {
-	fprintf (stderr, "UAE is not running as root, DGA extension disabled.\n");
+	write_log ("UAE is not running as root, DGA extension disabled.\n");
 	return 0;
     }
     if (! XF86DGAGetVideo (display, screen, &fb_addr, &fb_width, &fb_bank, &fb_mem)
 	|| fb_bank < fb_mem)
     {
-	fprintf (stderr, "Problems with DGA - disabling DGA extension.\n");
+	write_log ("Problems with DGA - disabling DGA extension.\n");
 	return 0;
     }
-    fprintf (stderr, "DGA extension: addr:%X, width %d, bank size %d mem size %d\n",
+    write_log ("DGA extension: addr:%X, width %d, bank size %d mem size %d\n",
 	     fb_addr, fb_width, fb_bank, fb_mem);
 
     return 1;
@@ -632,24 +632,24 @@ static int vid_mode_available (void)
     if (! dgaavail)
 	return 0;
     if (! XF86VidModeQueryVersion (display, &MajorVersion, &MinorVersion)) {
-	fprintf (stderr, "Unable to query video extension version\n");
+	write_log ("Unable to query video extension version\n");
 	return 0;
     }
     if (! XF86VidModeQueryExtension (display, &EventBase, &ErrorBase)) {
-	fprintf (stderr, "Unable to query video extension information\n");
+	write_log ("Unable to query video extension information\n");
 	return 0;
     }
     if (MajorVersion < VidMode_MINMAJOR
 	|| (MajorVersion == VidMode_MINMAJOR && MinorVersion < VidMode_MINMINOR)) {
 	/* Fail if the extension version in the server is too old */
-	fprintf (stderr, "Xserver is running an old XFree86-VidMode version (%d.%d)\n",
+	write_log ("Xserver is running an old XFree86-VidMode version (%d.%d)\n",
 		 MajorVersion, MinorVersion);
-	fprintf (stderr, "Minimum required version is %d.%d\n",
+	write_log ("Minimum required version is %d.%d\n",
 		 VidMode_MINMAJOR, VidMode_MINMINOR);
 	return 0;
     }
     if (! get_vidmodes ()) {
-	fprintf (stderr, "Error getting video mode information\n");
+	write_log ("Error getting video mode information\n");
 	return 0;
     }
     return 1;
@@ -673,7 +673,7 @@ int graphics_setup (void)
 
     display = XOpenDisplay (display_name);
     if (display == 0)  {
-	fprintf (stderr, "Can't connect to X server %s\n", XDisplayName (display_name));
+	write_log ("Can't connect to X server %s\n", XDisplayName (display_name));
 	return 0;
     }
 
@@ -848,10 +848,10 @@ int graphics_init (void)
     XPixmapFormatValues *xpfvs;
 
     if (currprefs.x11_use_mitshm && ! shmavail) {
-	fprintf (stderr, "MIT-SHM extension not supported by X server.\n");
+	write_log ("MIT-SHM extension not supported by X server.\n");
     }
     if (currprefs.color_mode > 5)
-	fprintf (stderr, "Bad color mode selected. Using default.\n"), currprefs.color_mode = 0;
+	write_log ("Bad color mode selected. Using default.\n"), currprefs.color_mode = 0;
 
     x11_init_ok = 0;
     need_dither = 0;
@@ -877,7 +877,7 @@ int graphics_init (void)
     } else if (XMatchVisualInfo (display, screen, 1, StaticGray, &visualInfo)) {
 	/* Mono server. Yuk */
     } else {
-	fprintf (stderr, "Can't obtain appropriate X visual.\n");
+	write_log ("Can't obtain appropriate X visual.\n");
 	return 0;
     }
     vis = visualInfo.visual;
@@ -893,11 +893,11 @@ int graphics_init (void)
 	bit_unit = xpfvs[j].bits_per_pixel;
     XFree (xpfvs);
     if (j == i) {
-	fprintf (stderr, "Your X server is feeling ill.\n");
+	write_log ("Your X server is feeling ill.\n");
 	return 0;
     }
 
-    fprintf (stderr, "Using %d bit visual, %d bits per pixel\n", bitdepth, bit_unit);
+    write_log ("Using %d bit visual, %d bits per pixel\n", bitdepth, bit_unit);
 
     fixup_prefs_dimensions (&currprefs);
 
