@@ -13,6 +13,7 @@
 #include "memory.h"
 #include "events.h"
 #include "custom.h"
+#include "newcpu.h"
 #include "gensound.h"
 #include "sounddep/sound.h"
 #include "threaddep/thread.h"
@@ -50,14 +51,19 @@ static int exact_log2 (int v)
 
 void finish_sound_buffers (void)
 {
-    dont_block = currprefs.m68k_speed == -1;
-    write_comm_pipe_int (&to_sound_pipe, 2, 1);
-    uae_sem_wait (&sound_comm_sem);
+    dont_block = currprefs.m68k_speed == -1 && (!regs.stopped || active_fs_packets > 0);
+    if (!dont_block) {
+	write (sound_fd, sndbuffer[which_buffer], sndbufsize);
+    } else {
+	write_comm_pipe_int (&to_sound_pipe, 2, 1);
+	uae_sem_wait (&sound_comm_sem);
+    }
     sndbufpt = sndbuf_base = sndbuffer[which_buffer ^= 1];
 }
 
 void close_sound (void)
 {
+    sync_with_sound = 0;
     if (have_sound)
 	close (sound_fd);
 
@@ -99,6 +105,8 @@ static void open_sound (void)
     int tmp;
     int rate;
     int dspbits;
+
+    sync_with_sound = 0;
 
     sound_fd = open ("/dev/dsp", O_WRONLY);
     have_sound = !(sound_fd < 0);
@@ -154,6 +162,7 @@ static void open_sound (void)
 	    rate, sndbufsize, sndbufsize * 1000 / (rate * 2 * (currprefs.sound_stereo ? 2 : 1)));
     sndbufpt = sndbuf_base = sndbuffer[which_buffer = 0];
 
+    sync_with_sound = 1;
     return;
 
   out_err:
@@ -164,6 +173,7 @@ static void open_sound (void)
 
 static void *sound_thread (void *dummy)
 {
+    uae_u16 *base;
     for (;;) {
 	int cmd = read_comm_pipe_int_blocking (&to_sound_pipe);
 	int n;
@@ -178,18 +188,19 @@ static void *sound_thread (void *dummy)
 	    return 0;
 	case 2:
 	    /* If trying for maximum CPU speed, don't block the main
-	       thread, instead set the blocking_on_sound variable.  If
+	       thread, instead set the delaying_for_sound variable.  If
 	       not trying for maximum CPU speed, synchronize here by
 	       delaying the sem_post until after the write.  */
-	    blocking_on_sound = dont_block;
+	    delaying_for_sound = dont_block;
+	    base = sndbuf_base;
 	    if (dont_block)
 		uae_sem_post (&sound_comm_sem);
 
-	    write (sound_fd, sndbuffer[which_buffer], sndbufsize);
+	    write (sound_fd, sndbuf_base, sndbufsize);
 	    if (!dont_block)
 		uae_sem_post (&sound_comm_sem);
 
-	    blocking_on_sound = 0;
+	    delaying_for_sound = 0;
 	    break;
 	}
     }

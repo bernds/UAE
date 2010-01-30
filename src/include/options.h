@@ -36,6 +36,8 @@ struct uae_input_device {
     uae_u8 enabled;
 };
 
+typedef enum { DRV_NONE = -1, DRV_35_DD = 0, DRV_35_HD, DRV_525_SD, DRV_35_DD_ESCOM } drive_type;
+
 struct gfx_params {
     int width;
     int height;
@@ -53,7 +55,6 @@ struct uae_prefs {
     char info[256];
 
     int illegal_mem;
-    int no_xhair;
     int use_serial;
     int serial_demand;
     int parallel_demand;
@@ -70,13 +71,10 @@ struct uae_prefs {
 
     int produce_sound;
     int sound_stereo;
-    int mixed_stereo;
-    int sound_bits;
+    int sound_stereo_separation;
+    int sound_mixed_stereo_delay;
     int sound_freq;
-    int sound_minbsiz;
     int sound_maxbsiz;
-    int sound_pri_time;
-    int sound_pri_cutoff;
     int sound_interpol;
 
     int gfx_framerate;
@@ -104,8 +102,8 @@ struct uae_prefs {
     char path_rom[256];
 
     int m68k_speed;
-    int cpu_level;
-    int cpu_compatible;
+    int cpu_model;
+    int fpu_model;
     int address_space_24;
 
     uae_u32 z3fastmem_size;
@@ -120,7 +118,7 @@ struct uae_prefs {
     struct uaedev_mount_info *mountinfo;
 
     int nr_floppies;
-    int dfxtype[4];
+    drive_type dfxtype[4];
 
     /* Target specific options */
     int x11_use_low_bandwidth;
@@ -158,12 +156,12 @@ extern void save_options (FILE *, struct uae_prefs *);
 extern void default_prefs (struct uae_prefs *);
 extern void discard_prefs (struct uae_prefs *);
 
-extern int parse_cmdline_option (char, char *);
+extern int parse_cmdline_option (struct uae_prefs *, char, char *);
 
-extern int cfgfile_yesno (char *option, char *value, char *name, int *location);
-extern int cfgfile_intval (char *option, char *value, char *name, int *location, int scale);
-extern int cfgfile_strval (char *option, char *value, char *name, int *location, const char *table[], int more);
-extern int cfgfile_string (char *option, char *value, char *name, char *location, int maxsz);
+extern int cfgfile_yesno (const char *option, const char *value, const char *name, int *location);
+extern int cfgfile_intval (const char *option, const char *value, const char *name, int *location, int scale);
+extern int cfgfile_strval (const char *option, const char *value, const char *name, int *location, const char *table[], int more);
+extern int cfgfile_string (const char *option, const char *value, const char *name, char *location, int maxsz);
 extern char *cfgfile_subst_path (const char *path, const char *subst, const char *file);
 
 extern int target_parse_option (struct uae_prefs *, char *option, char *value);
@@ -177,6 +175,7 @@ extern int cfgfile_get_description (const char *filename, char *description);
 extern void cfgfile_show_usage (void);
 
 extern void fixup_prefs_dimensions (struct gfx_params *);
+extern void fixup_cpu (struct uae_prefs *);
 
 extern void check_prefs_changed_custom (void);
 extern void check_prefs_changed_cpu (void);

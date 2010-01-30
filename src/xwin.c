@@ -767,7 +767,7 @@ static void graphics_subinit (void)
     /* set class hint */
     classhint.res_name = "UAE";
     classhint.res_class = "UAEScreen";
-    XSetClassHint(display, mywin, &classhint);
+    XSetClassHint (display, mywin, &classhint);
 
     hints = XAllocWMHints();
     /* Set window group leader to self to become an application
@@ -776,7 +776,8 @@ static void graphics_subinit (void)
      * (optional) GTK+ window ID is :-/ */
     hints->window_group = mywin;
     hints->flags = WindowGroupHint;
-    XSetWMHints(display, mywin, hints);
+    XSetWMHints (display, mywin, hints);
+    XFree (hints);
 
     XMapRaised (display, mywin);
     XSync (display, 0);

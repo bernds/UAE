@@ -12,8 +12,6 @@
 #include "options.h"
 #include "zfile.h"
 
-#ifdef USE_ZFILE
-
 #ifdef AMIGA
 extern char *amiga_dev_path;   /* dev: */
 extern char *ixemul_dev_path;  /* /dev/ */
@@ -23,6 +21,7 @@ extern int readdevice (const char *, char *);
 struct zfile
 {
     struct zfile *next;
+    struct zfile **pprev;
     FILE *f;
     char name[L_tmpnam];
 };
@@ -30,7 +29,7 @@ struct zfile
 static struct zfile *zlist = 0;
 
 /*
- * called on exit()
+ * called on exit ()
  */
 void zfile_exit (void)
 {
@@ -39,36 +38,48 @@ void zfile_exit (void)
     while ((l = zlist)) {
 	zlist = l->next;
 	fclose (l->f);
-	unlink (l->name); /* sam: in case unlink() after fopen() fails */
+	unlink (l->name); /* sam: in case unlink () after fopen () fails */
 	free (l);
     }
 }
 
 /*
- * fclose() but for a compressed file
+ * fclose () but for a compressed file
  */
-int zfile_close (FILE *f)
+int zfile_fclose (struct zfile *f)
 {
-    struct zfile *pl = NULL;
-    struct zfile *l  = zlist;
     int ret;
 
-    while (l && l->f!=f) {
-	pl = l;
-	l = l->next;
-    }
-    if (l == 0)
-	return fclose (f);
-    ret = fclose (l->f);
-    unlink (l->name);
+    if (f->next)
+	f->next->pprev = f->pprev;
+    (*f->pprev) = f->next;
+    
+    ret = fclose (f->f);
+    unlink (f->name);
 
-    if(!pl)
-	zlist = l->next;
-    else
-	pl->next = l->next;
-    free (l);
+    free (f);
 
     return ret;
+}
+
+int zfile_fseek (struct zfile *z, long offset, int mode)
+{
+    return fseek (z->f, offset, mode);
+}
+
+long zfile_ftell (struct zfile *z)
+{
+    return ftell (z->f);
+}
+
+size_t zfile_fread (void *b, size_t l1, size_t l2, struct zfile *z)
+{
+    return fread (b, l1, l2, z->f);
+}
+
+size_t zfile_fwrite (void *b, size_t l1, size_t l2, struct zfile *z)
+{
+    return fwrite (b, l1, l2, z->f);
 }
 
 /*
@@ -80,7 +91,7 @@ static int gunzip (const char *decompress, const char *src, const char *dst)
     char *ext = strrchr (src, '.');
     if (!dst)
 	return 1;
-#if defined(AMIGA)
+#if defined (AMIGA)
     sprintf (cmd, "%s -c -d -S %s \"%s\" > \"%s\"", decompress, ext, src, dst);
 #else
     sprintf (cmd, "%s -c -d \"%s\" > \"%s\"", decompress, src, dst);
@@ -108,7 +119,7 @@ static int lha (const char *src, const char *dst)
     char cmd[1024];
     if (!dst)
 	return 1;
-#if defined(AMIGA)
+#if defined (AMIGA)
     sprintf (cmd, "lha -q -N p %s >%s", src, dst);
 #else
     sprintf (cmd, "lha pq %s >%s", src, dst);
@@ -187,7 +198,7 @@ static int uncompress (const char *name, char *dest)
        return unzip (nam, dest);
 #endif
 
-#if defined(AMIGA)
+#if defined (AMIGA)
     /* sam: must be before real access to work */
     if (!strnicmp (name, ixemul_dev_path, strlen (ixemul_dev_path)))
 	return readdevice (name + strlen (ixemul_dev_path), dest);
@@ -199,67 +210,48 @@ static int uncompress (const char *name, char *dest)
 }
 
 /*
- * fopen() for a compressed file
+ * fopen () for a compressed file
  */
-FILE *zfile_open (const char *name, const char *mode)
+struct zfile *zfile_open (const char *name, const char *mode)
 {
-    struct zfile *l;
+    struct zfile *l = malloc (sizeof *l);
     int fd = 0;
 
-    if (! uncompress (name, NULL))
-	return fopen (name, mode);
-
-    l = malloc (sizeof *l);
     if (! l)
 	return NULL;
 
-    tmpnam (l->name);
+    strcpy (l->name, "");
 
-    fd = creat (l->name, S_IRUSR | S_IWUSR);
-    if (fd < 0)
-	return NULL;
+    if (! uncompress (name, NULL))
+	l->f = fopen (name, mode);
+    else {
+	tmpnam (l->name);
+	fd = creat (l->name, S_IRUSR | S_IWUSR);
+	if (fd < 0)
+	    return NULL;
 
-    if (! uncompress (name, l->name)) {
+	if (! uncompress (name, l->name)) {
+	    close (fd);
+	    unlink (l->name);
+	    free (l);
+	    return NULL;
+	}
+	l->f = fopen (l->name, mode);
 	close (fd);
-	unlink (l->name);
-	free (l);
-	return NULL;
+
     }
-
-    l->f = fopen (l->name, mode);
-
-    close (fd);
-
     if (l->f == NULL) {
-	unlink (l->name);
+	if (strlen (l->name) > 0)
+	    unlink (l->name);
 	free (l);
 	return NULL;
     }
 
+    l->pprev = &zlist;
     l->next = zlist;
+    if (l->next)
+	l->next->pprev = &l->next;
     zlist = l;
 
-    return l->f;
+    return l;
 }
-
-#else
-
-/*
- * Stubs for machines that this doesn't work on.
- */
-
-void zfile_exit (void)
-{
-}
-
-int zfile_close (FILE *f)
-{
-    return fclose(f);
-}
-
-FILE *zfile_open (const char *name, const char *mode)
-{
-    return fopen (name, mode);
-}
-
-#endif

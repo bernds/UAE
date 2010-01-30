@@ -13,7 +13,7 @@ extern void disk_eject (int num);
 extern int disk_empty (int num);
 extern void disk_insert (int num, const char *name);
 extern void DISK_check_change (void);
-extern FILE *DISK_validate_filename (const char *, int, int *);
+extern struct zfile *DISK_validate_filename (const char *, int, int *);
 extern void DISK_handler (void);
 extern void DISK_update (void);
 extern void DISK_reset (void);
@@ -26,3 +26,4 @@ extern void DSKSYNC (uae_u16);
 extern void DSKPTL (uae_u16);
 extern void DSKPTH (uae_u16);
 
+#define MAX_PREVIOUS_FLOPPIES 99

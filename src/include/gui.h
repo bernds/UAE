@@ -6,7 +6,7 @@
   * Copyright 1996 Bernd Schmidt
   */
 
-extern int gui_init (void);
+extern int gui_init (int);
 extern int gui_update (void);
 extern void gui_exit (void);
 extern void gui_led (int, int);

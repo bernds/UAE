@@ -24,3 +24,32 @@ extern void audio_evhandler (void);
 extern void audio_hsync (int);
 extern void update_adkmasks (void);
 extern void update_sound (unsigned int freq);
+
+/* Must match the stereomode array in cfgfile.c.  */
+enum {
+    SND_MONO, SND_STEREO, SND_NONE
+};
+
+STATIC_INLINE int get_audio_nativechannels (void)
+{
+    int ch[] = { 1, 2, 0 };
+    return ch[currprefs.sound_stereo];
+}
+
+STATIC_INLINE int get_audio_amigachannels (void)
+{
+    int ch[] = { 1, 2, 0 };
+    return ch[currprefs.sound_stereo];
+}
+
+STATIC_INLINE int get_audio_ismono (void)
+{
+    if (currprefs.sound_stereo == 0)
+	return 1;
+    return 0;
+}
+
+#define SOUND_MAX_DELAY_BUFFER 1024
+#define SOUND_MAX_LOG_DELAY 10
+#define MIXED_STEREO_MAX 16
+#define MIXED_STEREO_SCALE 32

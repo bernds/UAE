@@ -272,11 +272,11 @@ static int init_colors(void)
 
     switch(currprefs.color_mode) {
       case 0: case 2:
-	write_log("Using 256 gray scales.\n");
+	write_log ("Using 256 gray scales.\n");
 	use_gray = 1;
 	/* fall through */
       case 1:
-	if(!use_gray) write_log("Using 256 colors.\n");
+	if(!use_gray) write_log ("Using 256 colors.\n");
 	alloc_colors256(get_color);
 	break;
       case 3:
@@ -319,7 +319,7 @@ static int setup_publicscreen(void)
 
     S = pOS_LockPubScreen(NULL);
     if(!S) {
-	write_log("No public screen !\n");
+	write_log ("No public screen !\n");
 	return 0;
     }
 
@@ -508,7 +508,7 @@ int graphics_init(void)
 				   GFXTAG_ColorMap,    (ULONG)CM,
 				   TAG_END);
 	if(GM8) break;
-	write_log("trying 24bit GfxMap...\n");
+	write_log ("trying 24bit GfxMap...\n");
 	/* fall through */
       case 3:  /* 24 bits */
 	gfxvidinfo.pixbytes = 2;
@@ -540,7 +540,7 @@ int graphics_init(void)
 	oldpixbuf = (char *)calloc(gfxvidinfo.rowbytes,
 				   currprefs.gfx_height);
 	if(!gfxvidinfo.bufmem) {
-	    write_log("Not enough mem for low-bandwidth!\n");
+	    write_log ("Not enough mem for low-bandwidth!\n");
 	    currprefs.use_low_bandwidth = 0;
 	} else gfxvidinfo.maxblocklines = currprefs.gfx_height-1;
     }
@@ -548,7 +548,7 @@ int graphics_init(void)
     set_title();
 
     if (!init_colors()) {
-	write_log("Failed to init colors.\n");
+	write_log ("Failed to init colors.\n");
 	return 0;
     }
 
@@ -909,13 +909,13 @@ static void disk_hotkeys(void)
 
     if(!gb_PSLBase) gb_PSLBase=(void*)pOS_OpenLibrary("psl.library",0);
     if(!gb_PSLBase) {
-	write_log("Can't open psl.library!\n");
+	write_log ("Can't open psl.library!\n");
 	return;
     }
 
     FileRequest = pOS_AllocFileRequest(TAG_DONE);
     if(!FileRequest) {
-	write_log("Unable to allocate file requester.\n");
+	write_log ("Unable to allocate file requester.\n");
 	return;
     }
 

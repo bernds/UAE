@@ -14,20 +14,21 @@
 #include "custom.h"
 #include "newcpu.h"
 #include "disk.h"
+#include "traps.h"
 #include "autoconf.h"
 #include "filesys.h"
 #include "execlib.h"
 
 static int opencount = 0;
 
-static uae_u32 hardfile_open (void)
+static uae_u32 hardfile_open (TrapContext *dummy)
 {
-    uaecptr tmp1 = m68k_areg(regs, 1); /* IOReq */
+    uaecptr tmp1 = m68k_areg (regs, 1); /* IOReq */
 
     /* Check unit number */
     if (get_hardfile_data (m68k_dreg (regs, 0))) {
 	opencount++;
-	put_word (m68k_areg(regs, 6)+32, get_word (m68k_areg(regs, 6)+32) + 1);
+	put_word (m68k_areg (regs, 6)+32, get_word (m68k_areg (regs, 6)+32) + 1);
 	put_long (tmp1 + 24, m68k_dreg (regs, 0)); /* io_Unit */
 	put_byte (tmp1 + 31, 0); /* io_Error */
 	put_byte (tmp1 + 8, 7); /* ln_type = NT_REPLYMSG */
@@ -39,33 +40,33 @@ static uae_u32 hardfile_open (void)
     return (uae_u32)-1;
 }
 
-static uae_u32 hardfile_close (void)
+static uae_u32 hardfile_close (TrapContext *dummy)
 {
     opencount--;
-    put_word (m68k_areg(regs, 6) + 32, get_word (m68k_areg(regs, 6) + 32) - 1);
+    put_word (m68k_areg (regs, 6) + 32, get_word (m68k_areg (regs, 6) + 32) - 1);
 
     return 0;
 }
 
-static uae_u32 hardfile_expunge (void)
+static uae_u32 hardfile_expunge (TrapContext *dummy)
 {
     return 0; /* Simply ignore this one... */
 }
 
-static uae_u32 hardfile_beginio (void)
+static uae_u32 hardfile_beginio (TrapContext *dummy)
 {
     uae_u32 tmp1, tmp2, dataptr, offset;
-    uae_u32 retval = m68k_dreg(regs, 0);
+    uae_u32 retval = m68k_dreg (regs, 0);
     int unit;
     struct hardfiledata *hfd;
 
-    tmp1 = m68k_areg(regs, 1);
+    tmp1 = m68k_areg (regs, 1);
     unit = get_long (tmp1 + 24);
 #undef DEBUGME
 #ifdef DEBUGME
     printf ("hardfile: unit = %d\n", unit);
     printf ("hardfile: tmp1 = %08lx\n", (unsigned long)tmp1);
-    printf ("hardfile: cmd  = %d\n", (int)get_word(tmp1+28));
+    printf ("hardfile: cmd  = %d\n", (int)get_word (tmp1+28));
 #endif
     hfd = get_hardfile_data (unit);
 
@@ -94,7 +95,7 @@ static uae_u32 hardfile_beginio (void)
 	    char buffer[512];
 	    fread (buffer, 1, 512, hfd->fd);
 	    for (i = 0; i < 512; i++, dataptr++)
-		put_byte(dataptr, buffer[i]);
+		put_byte (dataptr, buffer[i]);
 	    tmp2 -= 512;
 	}
 	break;
@@ -119,7 +120,7 @@ static uae_u32 hardfile_beginio (void)
 	    char buffer[512];
 	    int i;
 	    for (i=0; i < 512; i++, dataptr++)
-		buffer[i] = get_byte(dataptr);
+		buffer[i] = get_byte (dataptr);
 	    fwrite (buffer, 1, 512, hfd->fd);
 	    tmp2 -= 512;
 	}
@@ -162,14 +163,14 @@ static uae_u32 hardfile_beginio (void)
 #if 0
     if ((get_byte (tmp1+30) & 1) == 0) {
 	/* Not IOF_QUICK -- need to ReplyMsg */
-	m68k_areg(regs, 1) = tmp1;
-	CallLib (get_long(4), -378);
+	m68k_areg (regs, 1) = tmp1;
+	CallLib (get_long (4), -378);
     }
 #endif
     return retval;
 }
 
-static uae_u32 hardfile_abortio (void)
+static uae_u32 hardfile_abortio (TrapContext *dummy)
 {
     return (uae_u32)-3;
 }

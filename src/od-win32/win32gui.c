@@ -612,13 +612,13 @@ static BOOL CreateHardFile (HWND hDlg, UINT hfsize)
 	    }
 	    else
 	    {
-		write_log( "SetFilePointer() failure for %s to posn %d\n", init_path, hfsize );
+		write_log ( "SetFilePointer() failure for %s to posn %d\n", init_path, hfsize );
 	    }
 	    CloseHandle( hf );
 	}
 	else
 	{
-	    write_log( "CreateFile() failed to create %s\n", init_path );
+	    write_log ( "CreateFile() failed to create %s\n", init_path );
 	}
 	SetCursor( LoadCursor( NULL, IDC_ARROW ) );
     }
@@ -1830,7 +1830,7 @@ static BOOL CALLBACK DisplayDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM 
 	    }
 	    else
 	    {
-		write_log( "WinUAE is missing HKEY_LOCAL_MACHINE Registry keys!  These can only be created by a valid Setup program.\n" );
+		write_log ( "WinUAE is missing HKEY_LOCAL_MACHINE Registry keys!  These can only be created by a valid Setup program.\n" );
 	    }
 	    DirectDraw_Release();
 	}
@@ -2463,7 +2463,7 @@ static void fill_sound_frequency_supported( void )
 	}
 	else
 	{
-	    write_log( "WAVEOUT: Unsupported format of %d Hz\n", wavfmt.nSamplesPerSec );
+	    write_log ( "WAVEOUT: Unsupported format of %d Hz\n", wavfmt.nSamplesPerSec );
 	}
     }
 }
@@ -3799,7 +3799,7 @@ void gui_message(const char *format,...)
     va_start (parms, format);
     vsprintf( msg, format, parms );
     va_end (parms);
-    write_log( msg );
+    write_log ( msg );
 
     WIN32GUI_LoadUIString( IDS_ERRORTITLE, szTitle, MAX_PATH );
     if( mouseactive )

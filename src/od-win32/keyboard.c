@@ -82,7 +82,7 @@ static int scancode2amiga (int keycode, int scancode)
 	    firstscan=1;
 	}
 #if DEBUG_KBD
-    write_log( "keycode = 0x%x, scancode = 0x%x\n", keycode, scancode ); 
+    write_log ( "keycode = 0x%x, scancode = 0x%x\n", keycode, scancode ); 
 #endif
 
     if(keyboardlangid==MAKELANGID(LANG_GERMAN, SUBLANG_GERMAN))
@@ -398,7 +398,7 @@ int my_kbd_handler (int keycode, int scancode, int newstate)
     int akey = scancode2amiga (keycode, scancode);
 
 #ifdef DEBUG_KBD
-    write_log( "kbd_handler: keycode 0x%x, scancode 0x%x, newstate %d\n", keycode, scancode, newstate );
+    write_log ( "kbd_handler: keycode 0x%x, scancode 0x%x, newstate %d\n", keycode, scancode, newstate );
 #endif
     if (akey < 0) {
 	

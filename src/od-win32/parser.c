@@ -49,16 +49,16 @@ void flushprtbuf (void)
 	if( WritePrinter( hPrt, prtbuf, prtbufbytes, &written ) )
 	{
 	    if( written != prtbufbytes )
-		write_log( "PRINTER: Only wrote %d of %d bytes!\n", written, prtbufbytes );
+		write_log ( "PRINTER: Only wrote %d of %d bytes!\n", written, prtbufbytes );
 	}
 	else
 	{
-	    write_log( "PRINTER: Couldn't write data!\n" );
+	    write_log ( "PRINTER: Couldn't write data!\n" );
 	}
     }
     else
     {
-	write_log( "PRINTER: Not open!\n" );
+	write_log ( "PRINTER: Not open!\n" );
     }
     prtbufbytes = 0;
 }
@@ -114,11 +114,11 @@ FILE *openprinter( void )
     }
     if( hPrt != INVALID_HANDLE_VALUE )
     {
-	write_log( "PRINTER: Opening printer \"%s\" with handle 0x%x.\n", currprefs.prtname, hPrt );
+	write_log ( "PRINTER: Opening printer \"%s\" with handle 0x%x.\n", currprefs.prtname, hPrt );
     }
     else if( *currprefs.prtname )
     {
-	write_log( "PRINTER: ERROR - Couldn't open printer \"%s\" for output.\n", currprefs.prtname );
+	write_log ( "PRINTER: ERROR - Couldn't open printer \"%s\" for output.\n", currprefs.prtname );
     }
 
     return result;
@@ -132,7 +132,7 @@ void closeprinter( void )
 	EndDocPrinter( hPrt );
 	ClosePrinter( hPrt );
 	hPrt = INVALID_HANDLE_VALUE;
-	write_log( "PRINTER: Closing printer.\n" );
+	write_log ( "PRINTER: Closing printer.\n" );
     }
     KillTimer( hAmigaWnd, prttimer );
     prttimer = 0;
@@ -446,7 +446,7 @@ void getserstat (int *status)
 
 int setbaud (long baud)
 {
-    write_log( "Baud-rate is %d\n", baud );
+    write_log ( "Baud-rate is %d\n", baud );
     {
 	if (hCom != INVALID_HANDLE_VALUE) 
 	{

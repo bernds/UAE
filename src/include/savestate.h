@@ -37,7 +37,7 @@ extern char *restore_string_func (const uae_u8 **);
 extern const uae_u8 *restore_cpu (const uae_u8 *);
 extern uae_u8 *save_cpu (int *, uae_u8 *);
 
-extern uae_u8 *restore_fpu (uae_u8 *);
+extern const uae_u8 *restore_fpu (const uae_u8 *);
 extern uae_u8 *save_fpu (int *, uae_u8 *);
 
 extern const uae_u8 *restore_disk (int, const uae_u8 *);
@@ -82,6 +82,7 @@ extern uae_u8 *save_rom (int, int *, uae_u8 *);
 
 extern void save_state (const char *filename, const char *description);
 extern void restore_state (const char *filename);
+extern void savestate_restore_finish (void);
 
 extern void custom_save_state (void);
 
@@ -92,4 +93,4 @@ extern void custom_save_state (void);
 
 extern int savestate_state;
 extern char *savestate_filename;
-extern FILE *savestate_file;
+extern struct zfile *savestate_file;

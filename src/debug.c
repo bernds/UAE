@@ -112,7 +112,7 @@ static void debug_help (void)
 
 static void ignore_ws (char **c)
 {
-    while (**c && isspace(**c)) (*c)++;
+    while (**c && isspace (**c)) (*c)++;
 }
 
 static uae_u32 readint (char **c);
@@ -126,11 +126,11 @@ static uae_u32 readhex (char **c)
 	(*c)++;
 	return readint (c);
     }
-    while (isxdigit(nc = **c)) {
+    while (isxdigit (nc = **c)) {
 	(*c)++;
 	val *= 16;
-	nc = toupper(nc);
-	if (isdigit(nc)) {
+	nc = toupper (nc);
+	if (isdigit (nc)) {
 	    val += nc - '0';
 	} else {
 	    val += nc - 'A' + 10;
@@ -150,13 +150,13 @@ static uae_u32 readint (char **c)
 	(*c)++;
 	return readhex (c);
     }
-    if (**c == '0' && toupper((*c)[1]) == 'X') {
+    if (**c == '0' && toupper ((*c)[1]) == 'X') {
 	(*c)+= 2;
 	return readhex (c);
     }
     if (**c == '-')
 	negative = 1, (*c)++;
-    while (isdigit(nc = **c)) {
+    while (isdigit (nc = **c)) {
 	(*c)++;
 	val *= 10;
 	val += nc - '0';
@@ -164,7 +164,7 @@ static uae_u32 readint (char **c)
     return val * (negative ? -1 : 1);
 }
 
-static char next_char( char **c)
+static char next_char ( char **c)
 {
     ignore_ws (c);
     return *(*c)++;
@@ -307,7 +307,7 @@ static void dump_vectors (void)
 	    console_out ("\t\t\t\t");
 	}
 	if (trap_labels[j].name) {
-	    console_out("$%08X: %s  \t $%08X", trap_labels[j].adr + regs.vbr,
+	    console_out ("$%08X: %s  \t $%08X", trap_labels[j].adr + regs.vbr,
 	       trap_labels[j].name, get_long (trap_labels[j].adr + regs.vbr));
 	    j++;
 	}
@@ -635,7 +635,7 @@ static uae_u32 REGPARAM2 debug_lget (uaecptr addr)
 {
     int off = debug_mem_off (addr);
     uae_u32 v;
-    v = debug_mem_banks[off]->lget(addr);
+    v = debug_mem_banks[off]->lget (addr);
     memwatch_func (addr, 0, 4, v);
     return v;
 }
@@ -643,7 +643,7 @@ static uae_u32 REGPARAM2 debug_wget (uaecptr addr)
 {
     int off = debug_mem_off (addr);
     uae_u32 v;
-    v = debug_mem_banks[off]->wget(addr);
+    v = debug_mem_banks[off]->wget (addr);
     memwatch_func (addr, 0, 2, v);
     return v;
 }
@@ -651,7 +651,7 @@ static uae_u32 REGPARAM2 debug_bget (uaecptr addr)
 {
     int off = debug_mem_off (addr);
     uae_u32 v;
-    v = debug_mem_banks[off]->bget(addr);
+    v = debug_mem_banks[off]->bget (addr);
     memwatch_func (addr, 0, 1, v);
     return v;
 }
@@ -659,19 +659,19 @@ static void REGPARAM2 debug_lput (uaecptr addr, uae_u32 v)
 {
     int off = debug_mem_off (addr);
     memwatch_func (addr, 1, 4, v);
-    debug_mem_banks[off]->lput(addr, v);
+    debug_mem_banks[off]->lput (addr, v);
 }
 static void REGPARAM2 debug_wput (uaecptr addr, uae_u32 v)
 {
     int off = debug_mem_off (addr);
     memwatch_func (addr, 1, 2, v);
-    debug_mem_banks[off]->wput(addr, v);
+    debug_mem_banks[off]->wput (addr, v);
 }
 static void REGPARAM2 debug_bput (uaecptr addr, uae_u32 v)
 {
     int off = debug_mem_off (addr);
     memwatch_func (addr, 1, 1, v);
-    debug_mem_banks[off]->bput(addr, v);
+    debug_mem_banks[off]->bput (addr, v);
 }
 static int REGPARAM2 debug_check (uaecptr addr, uae_u32 size)
 {
@@ -746,7 +746,7 @@ static void memwatch_dump (int num)
 		console_out (" =%X", mwn->val);
 	    if (mwn->modval_written)
 		console_out (" =M");
-	    console_out("\n");
+	    console_out ("\n");
 	}
     }
 }
@@ -825,13 +825,13 @@ static void memwatch (char **c)
 	    char nc = toupper (next_char (c));
 	    if (nc == 'W')
 		mwn->rw = 1;
-	    else if (nc == 'R' && toupper(**c) != 'W')
+	    else if (nc == 'R' && toupper (**c) != 'W')
 		mwn->rw = 0;
-	    else if (nc == 'R' && toupper(**c) == 'W')
+	    else if (nc == 'R' && toupper (**c) == 'W')
 		next_char (c);
 	    ignore_ws (c);
 	    if (more_params (c)) {
-		if (toupper(**c) == 'M') {
+		if (toupper (**c) == 'M') {
 		    mwn->modval_written = 1;
 		} else {
 		    mwn->val = readhex (c);
@@ -849,9 +849,9 @@ static void writeintomem (char **c)
     uae_u32 val = 0;
     char cc;
 
-    ignore_ws(c);
+    ignore_ws (c);
     addr = readhex (c);
-    ignore_ws(c);
+    ignore_ws (c);
     val = readhex (c);
     if (val > 0xffff) {
 	put_long (addr, val);
@@ -903,7 +903,7 @@ static int instruction_breakpoint (char **c)
     int i;
 
     if (more_params (c)) {
-	char nc = toupper((*c)[0]);
+	char nc = toupper ((*c)[0]);
 	if (nc == 'I') {
 	    next_char (c);
 	    if (more_params (c))
@@ -1047,7 +1047,7 @@ static void searchmem (char **cc)
 	    nc = toupper (next_char (cc));
 	    if (isspace (nc))
 		break;
-	    if (isdigit(nc))
+	    if (isdigit (nc))
 		val = nc - '0';
 	    else
 		val = nc - 'A' + 10;
@@ -1059,7 +1059,7 @@ static void searchmem (char **cc)
 	    nc = toupper (next_char (cc));
 	    if (isspace (nc))
 		break;
-	    if (isdigit(nc))
+	    if (isdigit (nc))
 		val += nc - '0';
 	    else
 		val += nc - 'A' + 10;
@@ -1148,7 +1148,7 @@ static void debug_1 (void)
 	switch (cmd) {
 	case 'c': dumpcia (); dumpdisk (); dumpcustom (); break;
 	case 'i': dump_vectors (); break;
-	case 'r': if (more_params(&inptr))
+	case 'r': if (more_params (&inptr))
 		      m68k_modify (&inptr);
 		  else
 		      m68k_dumpstate (stdout, &nextpc);
@@ -1164,12 +1164,12 @@ static void debug_1 (void)
 	    uae_u32 daddr;
 	    int count;
 
-	    if (more_params(&inptr))
-		daddr = readhex(&inptr);
+	    if (more_params (&inptr))
+		daddr = readhex (&inptr);
 	    else
 		daddr = nxdis;
-	    if (more_params(&inptr))
-		count = readhex(&inptr);
+	    if (more_params (&inptr))
+		count = readhex (&inptr);
 	    else
 		count = 10;
 	    m68k_disasm (stdout, daddr, &nxdis, count);
@@ -1196,7 +1196,7 @@ static void debug_1 (void)
 		return;
 	    break;
 
-	case 'q': uae_quit();
+	case 'q': uae_quit ();
 	    debugger_active = 0;
 	    debugging = 0;
 	    return;
@@ -1220,8 +1220,8 @@ static void debug_1 (void)
 	    union flagu save_flags = regflags;
 #endif
 
-	    if (more_params(&inptr))
-		count = readhex(&inptr);
+	    if (more_params (&inptr))
+		count = readhex (&inptr);
 	    else
 		count = 10;
 	    if (count < 0)
@@ -1249,15 +1249,15 @@ static void debug_1 (void)
 	case 'm':
 	{
 	    uae_u32 maddr; int lines;
-	    if (more_params(&inptr))
-		maddr = readhex(&inptr);
+	    if (more_params (&inptr))
+		maddr = readhex (&inptr);
 	    else
 		maddr = nxmem;
-	    if (more_params(&inptr))
-		lines = readhex(&inptr);
+	    if (more_params (&inptr))
+		lines = readhex (&inptr);
 	    else
 		lines = 20;
-	    dumpmem(maddr, &nxmem, lines);
+	    dumpmem (maddr, &nxmem, lines);
 	}
 	break;
 	case 'o':
@@ -1265,8 +1265,8 @@ static void debug_1 (void)
 	    uae_u32 maddr;
 	    int lines;
 
-	    if (more_params(&inptr)) {
-		maddr = readhex(&inptr);
+	    if (more_params (&inptr)) {
+		maddr = readhex (&inptr);
 		if (maddr == 1 || maddr == 2)
 		    maddr = get_copper_address (maddr);
 	    }
@@ -1328,8 +1328,8 @@ void debug (void)
 
     if (!memwatch_triggered) {
 	if (do_skip) {
-	    uae_u32 pc = munge24 (m68k_getpc());
-	    uae_u16 opcode = currprefs.cpu_compatible ? regs.ir : get_word (pc);
+	    uae_u32 pc = munge24 (m68k_getpc ());
+	    uae_u16 opcode = currprefs.cpu_model == 68000 ? regs.ir : get_word (pc);
 	    int bp = 0;
 
 	    for (i = 0; i < BREAKPOINT_TOTAL; i++) {
@@ -1382,7 +1382,7 @@ void debug (void)
     history[lasthist] = regs;
     historyf[lasthist] = regflags;
 #else
-    history[lasthist] = m68k_getpc();
+    history[lasthist] = m68k_getpc ();
 #endif
     if (++lasthist == MAX_HIST) lasthist = 0;
     if (lasthist == firsthist) {
@@ -1415,7 +1415,7 @@ void debug (void)
 
 int notinrom (void)
 {
-    if (munge24 (m68k_getpc()) < 0xe0000)
+    if (munge24 (m68k_getpc ()) < 0xe0000)
 	return 1;
     return 0;
 }
@@ -1423,8 +1423,8 @@ int notinrom (void)
 const char *debuginfo (int mode)
 {
     static char txt[100];
-    uae_u32 pc = m68k_getpc();
+    uae_u32 pc = m68k_getpc ();
     sprintf (txt, "PC=%08.8X INS=%04.4X %04.4X %04.4X",
-	pc, get_word(pc), get_word(pc+2), get_word(pc+4));
+	pc, get_word (pc), get_word (pc+2), get_word (pc+4));
     return txt;
 }

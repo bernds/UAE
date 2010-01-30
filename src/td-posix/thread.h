@@ -28,4 +28,10 @@ static __inline__ int uae_start_thread (void *(*f) (void *), void *arg, uae_thre
 {
     return pthread_create (foo, 0, f, arg);
 }
+
+STATIC_INLINE int uae_wait_thread (uae_thread_id thread)
+{
+    return pthread_join (thread, (void**)0);
+}
+
 #define UAE_THREAD_EXIT pthread_exit(0)

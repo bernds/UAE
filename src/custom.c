@@ -27,12 +27,13 @@
 #include "disk.h"
 #include "blitter.h"
 #include "xwin.h"
-#include "inputdevice.h"
 #include "audio.h"
-#include "keybuf.h"
 #include "serial.h"
 #include "osemu.h"
+#include "traps.h"
 #include "autoconf.h"
+#include "inputdevice.h"
+#include "keybuf.h"
 #include "gui.h"
 #include "picasso96.h"
 #include "drawing.h"
@@ -77,7 +78,6 @@ int maxvpos = MAXVPOS_PAL;
 int minfirstline = MINFIRSTLINE_PAL;
 int vblank_endline = VBLANK_ENDLINE_PAL;
 int vblank_hz = VBLANK_HZ_PAL;
-unsigned long syncbase;
 static int fmode;
 static unsigned int beamcon0, new_beamcon0;
 
@@ -526,17 +526,17 @@ static int fetchstart, fetchstart_shift, fetchstart_mask;
 static int fm_maxplane, fm_maxplane_shift;
 
 /* The corresponding values, by fetchmode and display resolution.  */
-static int fetchunits[] = { 8,8,8,0, 16,8,8,0, 32,16,8,0 };
-static int fetchstarts[] = { 3,2,1,0, 4,3,2,0, 5,4,3,0 };
-static int fm_maxplanes[] = { 3,2,1,0, 3,3,2,0, 3,3,3,0 };
+static const unsigned int fetchunits[] = { 8,8,8,0, 16,8,8,0, 32,16,8,0 };
+static const unsigned int fetchstarts[] = { 3,2,1,0, 4,3,2,0, 5,4,3,0 };
+static const unsigned int fm_maxplanes[] = { 3,2,1,0, 3,3,2,0, 3,3,3,0 };
 
 static uae_u8 cycle_diagram_table[3][3][9][32];
 static uae_u8 cycle_diagram_free_cycles[3][3][9];
 static uae_u8 cycle_diagram_total_cycles[3][3][9];
 static uae_u8 *curr_diagram;
-static uae_u8 cycle_sequences[3*8] = { 2,1,2,1,2,1,2,1, 4,2,3,1,4,2,3,1, 8,4,6,2,7,3,5,1 };
+static uae_u8 cycle_sequences[3 * 8] = { 2,1,2,1,2,1,2,1, 4,2,3,1,4,2,3,1, 8,4,6,2,7,3,5,1 };
 
-static void debug_cycle_diagram(void)
+static void debug_cycle_diagram (void)
 {
     int fm, res, planes, cycle, v;
     char aa;
@@ -545,22 +545,22 @@ static void debug_cycle_diagram(void)
 	write_log ("FMODE %d\n=======\n", fm);
 	for (res = 0; res <= 2; res++) {
 	    for (planes = 0; planes <= 8; planes++) {
-		write_log("%d: ",planes);
+		write_log ("%d: ",planes);
 		for (cycle = 0; cycle < 32; cycle++) {
 		    v=cycle_diagram_table[fm][res][planes][cycle];
 		    if (v==0) aa='-'; else if(v>0) aa='1'; else aa='X';
-		    write_log("%c",aa);
+		    write_log ("%c",aa);
 		}
-		write_log(" %d:%d\n",
+		write_log (" %d:%d\n",
 			  cycle_diagram_free_cycles[fm][res][planes], cycle_diagram_total_cycles[fm][res][planes]);
 	    }
-	    write_log("\n");
+	    write_log ("\n");
 	}
     }
     fm=0;
 }
 
-static void create_cycle_diagram_table(void)
+static void create_cycle_diagram_table (void)
 {
     int fm, res, cycle, planes, v;
     int fetch_start, max_planes, freecycles;
@@ -1968,7 +1968,7 @@ static void calcdiw (void)
 
 static int timehack_alive = 0;
 
-static uae_u32 timehack_helper (void)
+static uae_u32 timehack_helper (TrapContext *dummy)
 {
 #ifdef HAVE_GETTIMEOFDAY
     struct timeval tv;
@@ -3360,7 +3360,8 @@ static void hsync_handler (void)
 
     DISK_update ();
 
-    is_lastline = (vpos + 1 == maxvpos + (lof == 0 ? 0 : 1)
+    is_lastline = (!sync_with_sound
+		   && vpos + 1 == maxvpos + (lof == 0 ? 0 : 1)
 		   && currprefs.m68k_speed == -1
 		   && vsyncmintime_valid);
 
@@ -3672,7 +3673,6 @@ addrbank custom_bank = {
 STATIC_INLINE uae_u32 REGPARAM2 custom_wget_1 (uaecptr addr)
 {
     uae_u16 v;
-    special_mem |= S_READ;
     switch (addr & 0x1FE) {
      case 0x002: v = DMACONR (); break;
      case 0x004: v = VPOSR (); break;
@@ -3686,6 +3686,7 @@ STATIC_INLINE uae_u32 REGPARAM2 custom_wget_1 (uaecptr addr)
      case 0x010: v = ADKCONR (); break;
 
      case 0x012: v = POT0DAT (); break;
+     case 0x014: v = POT1DAT (); break;
      case 0x016: v = POTGOR (); break;
      case 0x018: v = SERDATR (); break;
      case 0x01A: v = DSKBYTR (current_hpos ()); break;
@@ -3720,13 +3721,11 @@ uae_u32 REGPARAM2 custom_wget (uaecptr addr)
 
 uae_u32 REGPARAM2 custom_bget (uaecptr addr)
 {
-    special_mem |= S_READ;
     return custom_wget (addr & 0xfffe) >> (addr & 1 ? 0 : 8);
 }
 
 uae_u32 REGPARAM2 custom_lget (uaecptr addr)
 {
-    special_mem |= S_READ;
     return ((uae_u32)custom_wget (addr & 0xfffe) << 16) | custom_wget ((addr + 2) & 0xfffe);
 }
 
@@ -3901,7 +3900,6 @@ void REGPARAM2 custom_wput_1 (int hpos, uaecptr addr, uae_u32 value)
 void REGPARAM2 custom_wput (uaecptr addr, uae_u32 value)
 {
     int hpos = current_hpos ();
-    special_mem |= S_WRITE;
 
     sync_copper_with_cpu (hpos, 1);
     custom_wput_1 (hpos, addr, value);
@@ -3912,7 +3910,6 @@ void REGPARAM2 custom_bput (uaecptr addr, uae_u32 value)
     static int warned = 0;
     /* Is this correct now? (There are people who bput things to the upper byte of AUDxVOL). */
     uae_u16 rval = (value << 8) | (value & 0xFF);
-    special_mem |= S_WRITE;
     custom_wput (addr, rval);
     if (!warned)
 	write_log ("Byte put to custom register.\n"), warned++;
@@ -3920,7 +3917,6 @@ void REGPARAM2 custom_bput (uaecptr addr, uae_u32 value)
 
 void REGPARAM2 custom_lput(uaecptr addr, uae_u32 value)
 {
-    special_mem |= S_WRITE;
     custom_wput (addr & 0xfffe, value >> 16);
     custom_wput ((addr + 2) & 0xfffe, (uae_u16)value);
 }
@@ -4093,7 +4089,7 @@ uae_u8 *save_custom (int *len, uae_u8 *dstptr, int full)
     if (dstptr)
 	dstbak = dst = dstptr;
     else
-	dstbak = dst = malloc (8+256*2);
+	dstbak = dst = malloc (8 + 256 * 2);
 
     SL (currprefs.chipset_mask);
     SW (0);			/* 000 ? */

@@ -51,17 +51,40 @@ unsigned long nr_gtod_done;
 /* A counter used internally by do_cycles to skip calls to gettimeofday.  */
 unsigned long gtod_counter;
 
-int rpt_available = 0;
+/* Set by the sound initialization code if the sound code can be used for
+   letting the m68k get extra cycles.  */
+int sync_with_sound;
+
+/* The number of ticks in a frame_time_t per second.  */
+unsigned long syncbase;
 
 int is_lastline;
-volatile int blocking_on_sound;
+volatile int delaying_for_sound;
+
+unsigned long gtod_resolution, gtod_secs;
+
+void init_gtod (void)
+{
+    struct timeval tv1, tv2;
+    gettimeofday (&tv1, NULL);
+    do {
+	gettimeofday (&tv2, NULL);
+    } while (tv1.tv_sec == tv2.tv_sec
+	     && tv1.tv_usec == tv2.tv_usec);
+
+    gtod_resolution = (tv2.tv_usec - tv1.tv_usec + 1000000 * (tv2.tv_sec - tv1.tv_sec));
+    if (gtod_resolution < 1000) {
+	use_gtod = 1;
+	syncbase = 1000000;
+    }
+}
 
 void reset_frame_rate_hack (void)
 {
     if (currprefs.m68k_speed != -1)
 	return;
 
-    if (! rpt_available) {
+    if (! sync_with_sound && ! use_gtod) {
 	currprefs.m68k_speed = 0;
 	return;
     }
@@ -78,31 +101,30 @@ void compute_vsynctime (void)
     vsynctime = syncbase / vblank_hz;
     if (use_gtod)
 	vsynctime -= gtod_resolution < 100 ? 100 : gtod_resolution;
-    if (currprefs.produce_sound > 1) {
+    if (currprefs.produce_sound > 1 && !sync_with_sound) {
 	vsynctime = vsynctime * 19 / 20;
     }
 }
 
 void time_vsync (void)
 {
-    if (vsyncmintime_valid) {
-	frame_time_t measured = vsyncmintime - first_measured_gtod;
-	unsigned long ideal;
-	if (nr_gtod_done) {
-	    if (use_gtod && gtod_resolution < measured)
-		measured -= gtod_resolution;
-	    /* Interval between gettimeofday calls.  */
-	    measured /= nr_gtod_done;
+    if (sync_with_sound) {
+	/* We don't strictly need it, but keep vsyncmintime accurate.  */
+	if (use_gtod) {
+	    vsyncmintime = get_current_time(1) + vsynctime;
+	    nr_gtod_done = 0;
+	    vsyncmintime_valid = 1;
+	}
+	return;
+    }
 
-	    /* syncbase has the number of ticks in one second.
-	       Hence, syncbase / 5000 ~= 0.2ms.  We want to have at least 100
-	       gtod calls per frame.  */
-	    if (measured < syncbase / 5000) {
-		if (max_gtod_to_skip == ULONG_MAX)
-		    max_gtod_to_skip = nr_gtod_to_skip;
-		else
-		    max_gtod_to_skip = max_gtod_to_skip * 19 / 20;
-	    }
+    if (vsyncmintime_valid) {
+	if (nr_gtod_done > 50 && nr_gtod_to_skip < ULONG_MAX / 2) {
+	    /* Try to reduce the number of gtod calls per frame - 50
+	       should be enough, so whenever we exceed that number,
+	       increase the number of gtod calls we skip - about 12%
+	       each time.  */
+	    nr_gtod_to_skip += nr_gtod_to_skip / 8;
 	}
     }
 
@@ -120,13 +142,9 @@ void time_vsync (void)
 	nr_gtod_done = 0;
 	vsyncmintime_valid = 1;
     } else {
-	if (vsyncmintime_valid
-	    && (use_gtod
-#ifdef RPT_WORKS_OK
-		|| RPT_WORKS_OK
-#endif
-		))
-	{
+	/* No sound, and not using maximum CPU speed: delay until the frame
+	   has taken 20ms.  */
+	if (currprefs.produce_sound < 2 && vsyncmintime_valid && use_gtod) {
 	    frame_time_t curr_time;
 	    do
 		curr_time = get_current_time (0);
@@ -134,5 +152,6 @@ void time_vsync (void)
 	}
 	vsyncmintime = get_current_time (1) + vsynctime;
 	vsyncmintime_valid = 1;
+	nr_gtod_done = 0;
     }
 }

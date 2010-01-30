@@ -9,62 +9,15 @@
 
 #include <alsa/asoundlib.h>
 
-extern int sound_fd;
-extern uae_u16 sndbuffer[];
-extern uae_u16 *sndbufpt;
+extern uae_u16 *sndbufpt, *sndbuf_base;
 extern int sndbufsize;
-extern snd_pcm_t *alsa_playback_handle;
-extern int alsa_to_frames_divisor;
 
-/* alsa_xrun_recovery() function is copied from ALSA manual. why the hell did
-   they make ALSA this hard?! i bet 95% of ALSA programmers would like a
-   simpler way to do error handling.. let the 5% use tricky APIs.
-*/
-static int alsa_xrun_recovery(snd_pcm_t *handle, int err)
-{
-  if (err == -EPIPE) {
-    /* under-run */
-    err = snd_pcm_prepare(handle);
-    if (err < 0)
-      fprintf(stderr, "uae: no recovery with alsa from underrun, prepare failed: %s\n", snd_strerror(err));
-    return 0;
-  } else if (err == -ESTRPIPE) {
-    while ((err = snd_pcm_resume(handle)) == -EAGAIN) {
-      /* wait until the suspend flag is released */
-      fprintf(stderr, "uae: sleeping for alsa.\n");
-      sleep(1);
-    }
-    if (err < 0) {
-      err = snd_pcm_prepare(handle);
-      if (err < 0)
-	fprintf(stderr, "uae: no recovery with alsa from suspend, prepare failed: %s\n", snd_strerror(err));
-    }
-    return 0;
-  }
-  return err;
-}
+extern void finish_sound_buffers (void);
 
 static int check_sound_buffers (void)
 {
-    if ((char *)sndbufpt - (char *)sndbuffer >= sndbufsize) {
-	int frames = sndbufsize / alsa_to_frames_divisor;
-	char *buf = (char *) sndbuffer;
-	int ret;
-	while (frames > 0) {
-	    ret = snd_pcm_writei(alsa_playback_handle, buf, frames);
-	    if (ret < 0) {
-		if (ret == -EAGAIN || ret == -EINTR)
-		    continue;
-		if (alsa_xrun_recovery(alsa_playback_handle, ret) < 0) {
-		    fprintf(stderr, "uae: write error with alsa: %s\n", snd_strerror(ret));
-		    exit(-1);
-		}
-		continue;
-	    }
-	    frames -= ret;
-	    buf += ret * alsa_to_frames_divisor;
-	}
-	sndbufpt = sndbuffer;
+    if ((char *) sndbufpt - (char *) sndbuf_base >= sndbufsize) {
+	finish_sound_buffers ();
 	return 1;
     }
     return 0;
@@ -79,8 +32,8 @@ static int check_sound_buffers (void)
 #define SOUND16_BASE_VAL 0
 #define SOUND8_BASE_VAL 128
 
-#define DEFAULT_SOUND_MAXB 8192
-#define DEFAULT_SOUND_MINB 8192
+#define DEFAULT_SOUND_MAXB 2048
+#define DEFAULT_SOUND_MINB 2048
 #define DEFAULT_SOUND_BITS 16
 #define DEFAULT_SOUND_FREQ 44100
 #define HAVE_STEREO_SUPPORT

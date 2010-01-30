@@ -198,18 +198,18 @@ static int set_ddraw (int width, int height, int wantfull, int wantoverlay, int 
 
     if (wantfull) 
     {
-	write_log( "set_ddraw: Trying %dx%d, %d bits\n", width, height, bits );
+	write_log ( "set_ddraw: Trying %dx%d, %d bits\n", width, height, bits );
 	ddrval = DirectDraw_SetDisplayMode( width, height, bits, 0 );
 	if (ddrval != DD_OK)
 	{
-	    write_log( "set_ddraw: Couldn't SetDisplayMode()\n" );
+	    write_log ( "set_ddraw: Couldn't SetDisplayMode()\n" );
 	    goto oops;
 	}
 
 	ddrval = DirectDraw_GetDisplayMode();
 	if (ddrval != DD_OK)
 	{
-	    write_log( "set_ddraw: Couldn't GetDisplayMode()\n" );
+	    write_log ( "set_ddraw: Couldn't GetDisplayMode()\n" );
 	    goto oops;
 	}
     }
@@ -217,14 +217,14 @@ static int set_ddraw (int width, int height, int wantfull, int wantoverlay, int 
     ddrval = DirectDraw_CreateClipper();
     if (ddrval != DD_OK)
     {
-	write_log( "set_ddraw: No clipping support\n" );
+	write_log ( "set_ddraw: No clipping support\n" );
 	goto oops;
     }
 
     ddrval = DirectDraw_CreateSurface( width, height );
     if( ddrval != DD_OK )
     {
-	write_log( "set_ddraw: Couldn't CreateSurface() for primary because %s.\n", DirectDraw_ErrorString( ddrval ) );
+	write_log ( "set_ddraw: Couldn't CreateSurface() for primary because %s.\n", DirectDraw_ErrorString( ddrval ) );
 	goto oops;
     }
 
@@ -235,7 +235,7 @@ static int set_ddraw (int width, int height, int wantfull, int wantoverlay, int 
 	    ddrval = DirectDraw_CreateOverlaySurface( width, height, bits );
 	    if( ddrval != DD_OK )
 	    {
-		write_log( "set_ddraw: Couldn't CreateOverlaySurface(%d,%d,%d) because %s.\n", width, height, bits, DirectDraw_ErrorString( ddrval ) );
+		write_log ( "set_ddraw: Couldn't CreateOverlaySurface(%d,%d,%d) because %s.\n", width, height, bits, DirectDraw_ErrorString( ddrval ) );
 		overlay = 0;
 	    }
 	}
@@ -249,7 +249,7 @@ static int set_ddraw (int width, int height, int wantfull, int wantoverlay, int 
 
     if( !DirectDraw_DetermineLocking( wantfull ) )
     {
-	write_log( "set_ddraw: Couldn't determine locking.\n" );
+	write_log ( "set_ddraw: Couldn't determine locking.\n" );
 	goto oops;
     }
 
@@ -257,20 +257,20 @@ static int set_ddraw (int width, int height, int wantfull, int wantoverlay, int 
 
     if (ddrval != DD_OK)
     {
-	write_log( "set_ddraw: Couldn't SetHWnd()\n" );
+	write_log ( "set_ddraw: Couldn't SetHWnd()\n" );
 	    goto oops;
     }
 
     current_pixbytes = DirectDraw_GetBytesPerPixel();
 
-    write_log( "set_ddraw() called, and is %dx%d@%d-bytes\n", width, height, current_pixbytes );
+    write_log ( "set_ddraw() called, and is %dx%d@%d-bytes\n", width, height, current_pixbytes );
 
     if (current_pixbytes == 1) {
 	current_palette = pal;
 	ddrval = DirectDraw_CreatePalette( pal );
 	if (ddrval != DD_OK)
 	{
-	    write_log( "set_ddraw: Couldn't CreatePalette()\n" );
+	    write_log ( "set_ddraw: Couldn't CreatePalette()\n" );
 		goto oops;
 	}
     }
@@ -352,14 +352,14 @@ RGBFTYPE WIN32GFX_FigurePixelFormats( RGBFTYPE colortype )
 	    ddrval = DirectDraw_SetCooperativeLevel( hAmigaWnd, TRUE ); /* TRUE indicates full-screen */
 	    if( ddrval != DD_OK )
 	    {
-		write_log( "WIN32GFX_FigurePixelFormats: ERROR -  %s\n", DirectDraw_ErrorString(ddrval) );
+		write_log ( "WIN32GFX_FigurePixelFormats: ERROR -  %s\n", DirectDraw_ErrorString(ddrval) );
 		gui_message( "WIN32GFX_FigurePixelFormats: ERROR - %s\n", DirectDraw_ErrorString(ddrval) );
 		goto out;
 	    }
 	}
 	else
 	{
-	    write_log( "WIN32GFX_FigurePixelFormats: ERROR - test-window could not be created.\n" );
+	    write_log ( "WIN32GFX_FigurePixelFormats: ERROR - test-window could not be created.\n" );
 	    gui_message( "WIN32GFX_FigurePixelFormats: ERROR - test-window could not be created.\n" );
 	}
     }
@@ -391,7 +391,7 @@ RGBFTYPE WIN32GFX_FigurePixelFormats( RGBFTYPE colortype )
 		dm->colormodes &= ~(RGBFF_R5G6B5PC|RGBFF_R5G5B5PC|RGBFF_R5G6B5|RGBFF_R5G5B5|RGBFF_B5G6R5PC|RGBFF_B5G5R5PC);
 		dm->colormodes |= 1 << colortype;
 		got_16bit_mode = 1;
-		write_log( "Got real 16-bit colour-depth information: 0x%x\n", colortype );
+		write_log ( "Got real 16-bit colour-depth information: 0x%x\n", colortype );
 	    }
 	}
 	else if (dm->colormodes & (RGBFF_R5G6B5PC|RGBFF_R5G5B5PC|RGBFF_R5G6B5|RGBFF_R5G5B5|RGBFF_B5G6R5PC|RGBFF_B5G5R5PC) ) 
@@ -924,7 +924,7 @@ static COLORREF BuildColorRef( int color, RGBFTYPE pixelformat )
     return result;
 #if 0
     int r,g,b;
-    write_log( "DX_Blit() called to fill with color of 0x%x, rgbtype of 0x%x\n", color, pixelformat );
+    write_log ( "DX_Blit() called to fill with color of 0x%x, rgbtype of 0x%x\n", color, pixelformat );
 
     switch( pixelformat )
     {
@@ -969,11 +969,11 @@ static COLORREF BuildColorRef( int color, RGBFTYPE pixelformat )
 	    b = color & 0xFF000000 >> 24;
 	break;
 	default:
-	    write_log( "Uknown 0x%x pixel-format\n", pixelformat );
+	    write_log ( "Uknown 0x%x pixel-format\n", pixelformat );
 	break;
     }
     result = RGB(r,g,b);
-    write_log( "R = 0x%02x, G = 0x%02x, B = 0x%02x - result = 0x%08x\n", r, g, b, result );
+    write_log ( "R = 0x%02x, G = 0x%02x, B = 0x%02x - result = 0x%08x\n", r, g, b, result );
     return result;
 #endif
 }
@@ -1407,10 +1407,10 @@ static BOOL doInit (void)
 	if (fullscreen)
 	{
 #if 0
-	    write_log( "Calling adjust_screenmode with %d,%d,%d\n", window_width, window_height, window_depth );
+	    write_log ( "Calling adjust_screenmode with %d,%d,%d\n", window_width, window_height, window_depth );
 	    if( WIN32GFX_AdjustScreenmode( &window_width, &window_height, &window_depth ) < 0 )
 		abort ();
-	    write_log( "Finished adjust_screenmode with %d,%d,%d\n", window_width, window_height, window_depth );
+	    write_log ( "Finished adjust_screenmode with %d,%d,%d\n", window_width, window_height, window_depth );
 #endif
 	}
 	if (! set_ddraw (current_width, current_height, fullscreen, overlay, window_depth, colors256))
@@ -1435,7 +1435,7 @@ static BOOL doInit (void)
 
     if( ( DirectDraw_GetPixelFormatFlags() & (DDPF_RGB | DDPF_PALETTEINDEXED8 | DDPF_RGBTOYUV ) ) ) 
     {
-	write_log( "%s mode (bits: %d, pixbytes: %d)\n", fullscreen ? "Full screen" : "Window",
+	write_log ( "%s mode (bits: %d, pixbytes: %d)\n", fullscreen ? "Full screen" : "Window",
 		   DirectDraw_GetSurfaceBitCount(), current_pixbytes );
     }
     else

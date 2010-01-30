@@ -16,31 +16,32 @@
  * the exec.library functions is impossible.
  */
 #ifdef SUPPORT_THREADS
-void uae_ReplyMsg(uaecptr msg);
-void uae_PutMsg(uaecptr port, uaecptr msg);
-void uae_Signal(uaecptr task, uae_u32 mask);
+extern void uae_ReplyMsg (uaecptr msg);
+extern void uae_PutMsg (uaecptr port, uaecptr msg);
+extern void uae_Signal (uaecptr task, uae_u32 mask);
 #endif
-void uae_NewList(uaecptr list);
+extern void uae_NewList (uaecptr list);
 
 /*
  * The following functions are shortcuts for calling
- * the exec.library function with CallLib(), so they
+ * the exec.library function with CallLib (), so they
  * are only available in a trap function. This trap
  * function has to be setup with deftrap2() and
  * TRAPFLAG_EXTRA_STACK and stack magic is required.
  */
-uaecptr uae_AllocMem (uae_u32 size, uae_u32 flags);
+extern uaecptr uae_AllocMem (TrapContext *, uae_u32 size, uae_u32 flags);
+extern void uae_FreeMem (TrapContext *ctx, uaecptr memory, uae_u32 size);
 
 
 /*
  * to be called when setting up the hardware
  */
-void native2amiga_install (void);
+extern void native2amiga_install (void);
 
 /*
  * to be called when the Amiga boots, i.e. by filesys_diagentry()
  */
-void native2amiga_startup (void);
+extern void native2amiga_startup (void);
 
 /**** internal stuff ****/
 #ifdef SUPPORT_THREADS
@@ -52,7 +53,7 @@ void native2amiga_startup (void);
 extern smp_comm_pipe native2amiga_pending;
 #endif
 
-STATIC_INLINE void do_uae_int_requested(void)
+STATIC_INLINE void do_uae_int_requested (void)
 {
 	uae_int_requested = 1;
 	set_uae_int_flag ();

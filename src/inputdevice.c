@@ -22,9 +22,6 @@
 #include "sysdeps.h"
 
 #include "options.h"
-#include "keyboard.h"
-#include "inputdevice.h"
-#include "keybuf.h"
 #include "custom.h"
 #include "xwin.h"
 #include "drawing.h"
@@ -37,6 +34,10 @@
 #include "gui.h"
 #include "disk.h"
 #include "audio.h"
+#include "traps.h"
+#include "keyboard.h"
+#include "inputdevice.h"
+#include "keybuf.h"
 #include "savestate.h"
 
 #define DIR_LEFT 1
@@ -525,7 +526,7 @@ int mousehack_alive (void)
     return ievent_alive > 0;
 }
 
-uae_u32 mousehack_helper (void)
+uae_u32 mousehack_helper (TrapContext *dummy)
 {
     int mousexpos, mouseypos;
 
@@ -689,7 +690,7 @@ void JOYTEST (uae_u16 v)
     mouse_frame_y[0] = mouse_y[0];
     mouse_frame_x[1] = mouse_x[1];
     mouse_frame_y[1] = mouse_y[1];
-//    write_log ("%d:%04.4X %p\n",vpos,v,m68k_getpc());
+//    write_log ("%d:%04.4X %p\n",vpos,v,m68k_getpc ());
 }
 
 static uae_u8 parconvert (uae_u8 v, int jd, int shift)
@@ -820,7 +821,7 @@ static uae_u16 handle_joystick_potgor (uae_u16 potgor)
 		potgor &= ~p9dat; /* shift at zero == return zero */
 	    if (cd32_shifter[i] >= 2 && (joybutton[i] & ((1 << JOYBUTTON_CD32_PLAY) << (cd32_shifter[i] - 2))))
 		potgor &= ~p9dat;
-	    //write_log ("%d:%04.4X %08.8X\n", cd32_shifter[i], potgor, m68k_getpc());
+	    //write_log ("%d:%04.4X %08.8X\n", cd32_shifter[i], potgor, m68k_getpc ());
 	} else {
 	    if (getbuttonstate (i, JOYBUTTON_3))
 		potgor &= ~p5dat;
@@ -901,7 +902,7 @@ void POTGO (uae_u16 v)
 {
     int i;
 
-    //write_log ("W:%d: %04.4X %p\n", vpos, v, m68k_getpc());
+    //write_log ("W:%d: %04.4X %p\n", vpos, v, m68k_getpc ());
 #ifdef DONGLE_DEBUG
     if (notinrom ())
 	write_log ("POTGO %04.4X %s\n", v, debuginfo(0));
@@ -933,7 +934,7 @@ void POTGO (uae_u16 v)
 uae_u16 POTGOR (void)
 {
     uae_u16 v = handle_joystick_potgor (potgo_value) & 0x5500;
-    //write_log("R:%d:%04.4X %d %p\n", vpos, v, cd32_shifter[1], m68k_getpc());
+    //write_log ("R:%d:%04.4X %d %p\n", vpos, v, cd32_shifter[1], m68k_getpc ());
     return v;
 }
 
@@ -1012,7 +1013,7 @@ void inputdevice_do_keyboard (int code, int state)
 	    uae_reset (r);
 	}
 	record_key ((uae_u8)((key << 1) | (key >> 7)));
-	//write_log("Amiga key %02.2X %d\n", key & 0x7f, key >> 7);
+	//write_log ("Amiga key %02.2X %d\n", key & 0x7f, key >> 7);
 	return;
     }
     inputdevice_add_inputcode (code, state);
@@ -1204,7 +1205,7 @@ void handle_input_event (int nr, int state, int max, int autofire)
     if (nr <= 0)
 	return;
     ie = &events[nr];
-    //write_log("'%s' %d %d\n", ie->name, state, max);
+    //write_log ("'%s' %d %d\n", ie->name, state, max);
     if (autofire) {
 	if (state)
 	    queue_input_event (nr, state, max, currprefs.input_autofire_framecnt, 1);

@@ -19,7 +19,6 @@
 #include "filesys.h"
 #include "autoconf.h"
 #include "fsusage.h"
-#include "native2amiga.h"
 #include "scsidev.h"
 #include "fsdb.h"
 

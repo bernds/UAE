@@ -222,20 +222,20 @@ static void figure_processor_speed (void)
     if( QueryPerformanceFrequency( &freq ) )
     {
 	if (freq.LowPart > 90000000) /* looks like CPU freq. */
-	    write_log( "CLOCKFREQ: QueryPerformanceFrequency() reports %d-MHz\n", freq.LowPart / 1000000 ); 
+	    write_log ( "CLOCKFREQ: QueryPerformanceFrequency() reports %d-MHz\n", freq.LowPart / 1000000 ); 
 	else
-	    write_log( "CLOCKFREQ: QueryPerformanceFrequency() reports %.2f-MHz\n", (float)freq.LowPart / 1000000.0f );
+	    write_log ( "CLOCKFREQ: QueryPerformanceFrequency() reports %.2f-MHz\n", (float)freq.LowPart / 1000000.0f );
 
 	if( freq.LowPart < 1000000 )
 	{
-	    write_log( "CLOCKFREQ: Weird value.  Using QueryPerformanceCounter() instead of RDTSC.\n" );
+	    write_log ( "CLOCKFREQ: Weird value.  Using QueryPerformanceCounter() instead of RDTSC.\n" );
 	    useqpc = 1;
 	}
 	rpt_available = 1;
     }
     else
     {
-	write_log( "CLOCKFREQ: No support for clock-rate stuff!\n" );
+	write_log ( "CLOCKFREQ: No support for clock-rate stuff!\n" );
 	rpt_available = 0;
     }
 #endif
@@ -245,7 +245,7 @@ static void figure_processor_speed (void)
     clockrate = read_processor_time() - clockrate;
     SetPriorityClass( GetCurrentProcess(), NORMAL_PRIORITY_CLASS );
 
-    write_log( "CLOCKFREQ: Measured as %d-MHz\n", clockrate / 1000000 );
+    write_log ( "CLOCKFREQ: Measured as %d-MHz\n", clockrate / 1000000 );
     syncbase = clockrate;
     vsynctime = syncbase / VBLANK_HZ_PAL; /* default to 50Hz */
 }
@@ -267,7 +267,7 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 	case WM_PALETTECHANGED:
 	    if( (HWND)wParam != hWnd )
 	    {
-		write_log( "WM_PALETTECHANGED Request\n" );
+		write_log ( "WM_PALETTECHANGED Request\n" );
 		WIN32GFX_PaletteChange();
 	    }
 	break;
@@ -303,7 +303,7 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 	    minimized = HIWORD( wParam );
 	    if (LOWORD (wParam) != WA_INACTIVE) 
 	    {
-		write_log( "WinUAE now active via WM_ACTIVATE\n" );
+		write_log ( "WinUAE now active via WM_ACTIVATE\n" );
 		if( !minimized )
 		{
 		    if( currprefs.win32_iconified_nospeed )
@@ -325,7 +325,7 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 	    }
 	    else
 	    {
-		write_log( "WinUAE now inactive via WM_ACTIVATE\n" );
+		write_log ( "WinUAE now inactive via WM_ACTIVATE\n" );
 		if( minimized && !quit_program )
 		{
 		    if( currprefs.win32_iconified_nospeed )
@@ -449,7 +449,7 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 	break;
 
      case WM_VSCROLL:
-	 write_log( "WM_VSCROLL\n" );
+	 write_log ( "WM_VSCROLL\n" );
 	 if( LOWORD( wParam ) == SB_LINEDOWN )
 	     record_key(0x7A<<1);
 	 else if( LOWORD( wParam ) == SB_LINEUP )
@@ -458,7 +458,7 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 
      case WM_MOUSEWHEEL:
 	 wheeldelta = HIWORD(wParam);
-	 write_log( "WM_MOUSEWHEEL with delta %d\n", wheeldelta );
+	 write_log ( "WM_MOUSEWHEEL with delta %d\n", wheeldelta );
 	 if( wheeldelta > 0 )
 	     record_key(0x7A<<1);
 	 else if( wheeldelta < 0 )
@@ -592,7 +592,7 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
     if( message >= 0xB000 && message < 0xB000+MAXPENDINGASYNC*2 )
     {
 #if DEBUG_SOCKETS
-	write_log( "sockmsg(0x%x, 0x%x, 0x%x)\n", message, wParam, lParam );
+	write_log ( "sockmsg(0x%x, 0x%x, 0x%x)\n", message, wParam, lParam );
 #endif
 	sockmsg( message, wParam, lParam );
 	return 0;
@@ -1310,7 +1310,7 @@ void write_log (const char *format, ...)
 	fflush( debugfile );
 	if( count >= WRITE_LOG_BUF_SIZE-1 )
 	{
-	    fprintf( debugfile, "SHIT in write_log()\n" );
+	    fprintf( debugfile, "SHIT in write_log ()\n" );
 	    fflush( debugfile );
 	    *blah = 0; /* Access Violation here! */
 	    abort();
@@ -1321,7 +1321,7 @@ void write_log (const char *format, ...)
     }
 }
 #else /* MSVC likes this one, and so do I */
-int write_log( const char *format, ... )
+int write_log ( const char *format, ... )
 {
     int result = 0;
 #ifdef _DEBUG
@@ -1603,7 +1603,7 @@ __asm{
 	    if( EnumDisplaySettings( NULL, ENUM_CURRENT_SETTINGS, (LPDEVMODE)&devmode ) )
 	    {
 		default_freq = devmode.actual_devmode.dmDisplayFrequency;
-		write_log( "Your Windows desktop refresh frequency is %d Hz\n", default_freq );
+		write_log ( "Your Windows desktop refresh frequency is %d Hz\n", default_freq );
 		if( default_freq >= 70 )
 		    default_freq = 70;
 		else
@@ -1615,7 +1615,7 @@ __asm{
 	    {
 		char szMessage[ MAX_PATH ];
 		WIN32GUI_LoadUIString( IDS_NOHELP, szMessage, MAX_PATH );
-		write_log( szMessage );
+		write_log ( szMessage );
 	    }
 
 	    DirectDraw_Release();

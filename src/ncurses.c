@@ -464,7 +464,7 @@ int graphics_init(void)
     init_colors();
 
     curses_init();
-    write_log("Using %s.\n",longname());
+    write_log ("Using %s.\n",longname());
 
     if (debugging)
 	curses_exit ();
@@ -497,7 +497,7 @@ int graphics_init(void)
 	break;
     }
     if(!gfxvidinfo.bufmem) {
-	write_log("Not enough memory.\n");
+	write_log ("Not enough memory.\n");
 	return 0;
     }
 

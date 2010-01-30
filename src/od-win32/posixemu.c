@@ -213,13 +213,13 @@ int truncate (const char *name, long int len)
 	}
 	else
 	{
-	    write_log( "SetFilePointer() failure for %s to posn %d\n", buf, len );
+	    write_log ( "SetFilePointer() failure for %s to posn %d\n", buf, len );
 	}
 	CloseHandle( hFile );
     }
     else
     {
-	write_log( "CreateFile() failed to open %s\n", buf );
+	write_log ( "CreateFile() failed to open %s\n", buf );
     }
 #else
     if( ( hFile = CreateFile( name, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
@@ -232,13 +232,13 @@ int truncate (const char *name, long int len)
 	}
 	else
 	{
-	    write_log( "SetFilePointer() failure for %s to posn %d\n", name, len );
+	    write_log ( "SetFilePointer() failure for %s to posn %d\n", name, len );
 	}
 	CloseHandle( hFile );
     }
     else
     {
-	write_log( "CreateFile() failed to open %s\n", name );
+	write_log ( "CreateFile() failed to open %s\n", name );
     }
 #endif
     if( result == -1 )

@@ -29,11 +29,12 @@ install:
 
 
 clean:
-	-rm -f *.o
+	-rm -f *.o cpudefs.c lientoscr.c
 	-rm -f gencpu genblitter cpuopti build68k
 
 
 streifenfrei: clean
+	rm -f Makefile config.* sysconfig.h
 
 genblitter: genblitter.o blitops.o writelog.o
 	$(CC) $(LDFLAGS) -o genblitter genblitter.o blitops.o writelog.o

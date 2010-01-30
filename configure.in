@@ -80,6 +80,7 @@ AC_CHECK_LIB(ncurses, waddch, HAVE_NCURSES_LIB=yes, HAVE_NCURSES_LIB=no)
 AC_CHECK_LIB(posix4, sem_init, HAVE_POSIX4_LIB=yes, HAVE_POSIX4_LIB=no)
 AC_CHECK_LIB(rt, sem_init, HAVE_RT_LIB=yes, HAVE_RT_LIB=no)
 AC_CHECK_LIB(audio, alOpenPort, HAVE_SGIAUDIO_LIB=yes, HAVE_SGIAUDIO_LIB=no)
+AC_CHECK_LIB(asound, snd_pcm_open, HAVE_ALSA=yes, HAVE_ALSA=no)
 
 AC_PATH_XTRA
 AC_CONFIG_HEADER(src/sysconfig.h)
@@ -102,6 +103,7 @@ AC_CHECK_SIZEOF(char, 1)
 AC_CHECK_SIZEOF(short, 2)
 AC_CHECK_SIZEOF(int, 4)
 AC_CHECK_SIZEOF(long, 4)
+AC_CHECK_SIZEOF(void *, 4)
 AC_CHECK_SIZEOF(long long, 8)
 AC_CHECK_SIZEOF(__int64, 8)
 
@@ -223,6 +225,26 @@ AC_MSG_RESULT(no)])
 CFLAGS=$TMP_SAVE_CFLAGS
 LIBS=$TMP_SAVE_LIBS
 
+HAVE_OSS_SOUND=no
+if [[ "x$ac_cv_header_sys_soundcard_h" = "xyes" -o "x$ac_cv_header_machine_soundcard_h" = "xyes" ]]; then
+  dnl Avoid surprises
+  AC_MSG_CHECKING(whether sys/soundcard.h or machine/soundcard.h works)
+  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+#include "confdefs.h"
+#ifdef HAVE_SYS_SOUNDCARD_H
+#include <sys/soundcard.h>
+#else
+#include <machine/soundcard.h>
+#endif
+#include <sys/ioctl.h>
+]], [[int soundfd; ioctl (soundfd, SNDCTL_DSP_GETFMTS, 0);]])],[AC_MSG_RESULT(yes)
+HAVE_OSS_SOUND=yes],[AC_MSG_RESULT(no)])
+fi
+
+if [[ "x$ac_cv_header_dmedia_audio.h" = "xno" ]]; then
+  HAVE_SGIAUDIO_LIB=no
+fi
+
 DO_PROFILING=no
 WANT_SVGALIB=dunno
 WANT_ASCIIART=dunno
@@ -236,6 +258,7 @@ AC_ARG_WITH(svgalib,[  --with-svgalib          Use SVGAlib for graphics output],
 AC_ARG_WITH(sdl,[  --with-sdl              Use SDL library for low-level functions],[WANT_SDL=$withval],[])
 AC_ARG_WITH(sdl-sound,[  --with-sdl-sound        Use SDL library for sound],[WANT_SDLSND=$withval],[])
 AC_ARG_WITH(sdl-gfx,[  --with-sdl-gfx          Use SDL library for graphics],[WANT_SDLGFX=$withval],[])
+AC_ARG_WITH(oss-sound,[  --with-oss-sound        Use OSS interface sound (default)],[WANT_OSS=$withval],[])
 AC_ARG_WITH(alsa,[  --with-alsa             Use ALSA library for sound],[WANT_ALSA=$withval],[])
 AC_ARG_WITH(asciiart,[  --with-asciiart         Use ncurses ascii art for graphics output],[WANT_ASCIIART=$withval],[])
 AC_ARG_ENABLE(dga,[  --enable-dga            X11 version: Use the DGA extension],[WANT_DGA=$enableval],[])
@@ -243,7 +266,55 @@ AC_ARG_ENABLE(vidmode,[  --enable-vidmode        X11 version: Use the XF86VidMod
 AC_ARG_ENABLE(ui,[  --enable-ui             Use a user interface if possible (default on)],[WANT_UI=$enableval],[])
 AC_ARG_WITH(hostcc,[  --with-hostcc=x         Use a x as compiler for the host system],[HOSTCC=$withval],[HOSTCC=$CC])
 
+dnl Configure tools directory first, so that warning messages appear near the
+dnl end of the output.
+
+mkdir -p src/tools
+progname=$0
+changequote(,)dnl
+srcd=`echo ${progname} | sed -e 's,[^/]*$,,;s,/$,,;s,^$,.,'`
+changequote([,])dnl
+topsrcdir=`cd $srcd; pwd`
+tcc=$CC
+CC=$HOSTCC
+(cd src/tools && $topsrcdir/src/tools/configure)
+CC=$tcc
+
 dnl Some simple plausibility tests...
+
+if [[ "x$WANT_ALSA" = "xyes" ]]; then
+  if [[ "x$HAVE_ALSA" = "xno" ]]; then
+    echo "Could not find libasound, disabling ALSA support."
+    NR_ERRORS=`expr $NR_ERRORS + 1`
+    WANT_ALSA=no
+  else
+    LIBS="$LIBS -lasound"
+  fi
+fi
+
+if [[ "x$WANT_OSS" = "xyes" ]]; then
+  if [[ "x$HAVE_OSS_SOUND" = "xno" ]]; then
+    echo "Could not find OSS interface, disabling OSS support."
+    NR_ERRORS=`expr $NR_ERRORS + 1`
+    WANT_ALSA=no
+  else
+    LIBS="$LIBS -lasound"
+  fi
+fi
+
+if [[ "x$WANT_SDLSND" = "xyes" ]]; then
+  if [[ "x$WANT_ALSA" = "xyes" -o "x$WANT_OSS" = "xyes" ]]; then
+    echo "Multiple sound backends selected; disabling SDL sound."
+    WANT_SDLSND=no
+  fi
+fi
+
+if [[ "x$WANT_ALSA" = "xyes" ]]; then
+  if [[ "x$WANT_OSS" = "xyes" ]]; then
+    echo "Multiple sound backends selected; disabling ALSA."
+    WANT_ALSA=no
+  fi
+fi
 
 if [[ "x$WANT_SDLSND" = "xyes" -o "x$WANT_SDLGFX" = "xyes" ]]; then
   WANT_SDL=yes    
@@ -260,10 +331,6 @@ if [[ "x$WANT_SDL" = "xyes" ]]; then
     LIBS="$LIBS $SDL_LIBS"
     ADDITIONAL_CFLAGS="$ADDITIONAL_CFLAGS $SDL_CFLAGS -DUSE_SDL"
   fi
-fi
-
-if [[ "x$WANT_ALSA" = "xyes" ]]; then
-  LIBS="$LIBS -lasound"
 fi
 
 if [[ "x$WANT_DGA" = "xyes" ]]; then
@@ -392,6 +459,9 @@ fi
 MATHLIB=-lm
 DEBUGOBJS="debug.o"
 
+GUIDEP=gui-none
+GUIOBJS_IN=nogui.o
+
 AC_MSG_CHECKING(which target to use)
 
 if [[ "x$WANT_SDLGFX" = "xyes" ]]; then
@@ -511,7 +581,6 @@ if [[ "x$WANT_UI" != "xno" ]]; then
         NR_ERRORS=`expr $NR_ERRORS + 1`
       fi
       WANT_UI=no
-      GUIOBJS=nogui.o
     else
       GUIOBJS="tui.o svgancui.o"
       LIBRARIES="$LIBRARIES -lncurses"
@@ -526,37 +595,29 @@ if [[ "x$WANT_UI" != "xno" ]]; then
     if [[ "x$no_gtk" = "xyes" ]]; then
       echo "Did not find gtk+, disabling user interface"
       GTK_CFLAGS=
-      GUIOBJS=nogui.o
       if [[ "x$WANT_UI" = "xyes" ]]; then
         NR_ERRORS=`expr $NR_ERRORS + 1`
       fi
     else
       echo "Using gtk+ GUI."
       NEED_THREAD_SUPPORT=yes
-      DDITIONAL_CFLAGS="$ADDITIONAL_CFLAGS -DUSING_GTK_GUI"
+      ADDITIONAL_CFLAGS="$ADDITIONAL_CFLAGS -DUSING_GTK_GUI -I$abssrcdir/src/gui-gtk"
 dnl      GUIOBJS="gtkui.o chipsetspeedpanel.o chipsettypepanel.o chooserwidget.o"
 dnl      GUIOBJS="$GUIOBJS cpuspeedpanel.o cputypepanel.o floppyfileentry.o led.o util.o"
-dnl      for x in $GUIOBJS; do
-dnl	ln -s $abssrcdir/src/gui-gtk/`echo $x |sed s,'\.o$,.c,'` src
-dnl      done
-      GUIOBJS=gtkui.o
+      GUIDEP=gui-gtk
+      GUIOBJS_IN="gtkui.o chooserwidget.o util.o"
     fi
   else 
     if [[ "x$WANT_UI" = "xyes" ]]; then
       echo "GUI requested, but no suitable libraries found."
       NR_ERRORS=`expr $NR_ERRORS + 1`
     fi
-    GUIOBJS=nogui.o
   fi
   fi
   fi
   fi
   fi
-else
-  GUIOBJS=nogui.o
 fi
-
-GFXOBJS="$GFXOBJS $GUIOBJS"
 
 dnl
 dnl  MULTIPLICATION_PROFITABLE?
@@ -850,26 +911,6 @@ if [[ "x$TARGET" = "xx11" -o "x$TARGET" = "xsvgalib" -o "x$TARGET" = "xamigaos" 
   CFLAGS="$CFLAGS -DUSE_ZFILE"
 fi
 
-HAVE_USS_SOUND=no
-if [[ "x$ac_cv_header_sys_soundcard_h" = "xyes" -o "x$ac_cv_header_machine_soundcard_h" = "xyes" ]]; then
-  dnl Avoid surprises
-  AC_MSG_CHECKING(whether sys/soundcard.h or machine/soundcard.h works)
-  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
-#include "confdefs.h"
-#ifdef HAVE_SYS_SOUNDCARD_H
-#include <sys/soundcard.h>
-#else
-#include <machine/soundcard.h>
-#endif
-#include <sys/ioctl.h>
-]], [[int soundfd; ioctl (soundfd, SNDCTL_DSP_GETFMTS, 0);]])],[AC_MSG_RESULT(yes)
-HAVE_USS_SOUND=yes],[AC_MSG_RESULT(no)])
-fi
-
-if [[ "x$ac_cv_header_dmedia_audio.h" = "xno" ]]; then
-  HAVE_SGIAUDIO_LIB=no
-fi
-
 AC_MSG_CHECKING(which sound system to use)
 AC_ARG_ENABLE(file-sound,[  --enable-file-sound     Enable sound output to file],[USE_FILE_SOUND=$enableval],[])
 
@@ -882,12 +923,16 @@ else if [[ "x$WANT_SDLSND" = "xyes" ]]; then
   SOUNDDEP=sd-sdl
   USE_SOUND=yes
   NEED_THREAD_SUPPORT=yes
+  if [[ "x$HAVE_ALSA" = "xyes" -o "x$HAVE_OSS_SOUND" = "xyes" ]]; then
+    NR_WARNINGS=`expr $NR_WARNINGS + 1`
+    echo "SDL sound support was selected, but OSS or ALSA are more reliable."
+  fi
 else if [[ "x$WANT_ALSA" = "xyes" ]]; then
   AC_MSG_RESULT(ALSA)
   SOUNDDEP=sd-alsa
   USE_SOUND=yes
-else if [[ "x$HAVE_USS_SOUND" = "xyes" ]]; then
-  AC_MSG_RESULT(USS)
+else if [[ "x$HAVE_OSS_SOUND" = "xyes" ]]; then
+  AC_MSG_RESULT(OSS)
   SOUNDDEP=sd-uss
   USE_SOUND=yes
 else if [[ "x$ac_cv_header_sys_audioio_h" = "xyes" -o "x$ac_cv_header_sun_audioio_h" = "xyes" ]]; then
@@ -954,6 +999,7 @@ fi
 if [[ "x$USE_THREADS" = "xyes" -o "x$NEED_THREAD_SUPPORT" = "xyes" ]]; then
   if [[ "x$WANT_SDL" = "xyes" ]]; then
     THREADDEP=td-sdl
+    CFLAGS="$CFLAGS -DSUPPORT_THREADS -D_REENTRANT"
   else if [[ "x$HAVE_PTHREAD_LIB" = "xyes" ]]; then
     THREADDEP=td-posix
     CFLAGS="$CFLAGS -DSUPPORT_THREADS -D_REENTRANT"
@@ -1018,6 +1064,7 @@ fi
 
 rm -f src/machdep
 rm -f src/osdep
+rm -rf src/guidep
 rm -f src/threaddep
 rm -f src/sounddep
 rm -f src/scsidep
@@ -1046,27 +1093,6 @@ if [[ "x$TARGET" = "xamigaos" -o "x$TARGET" = "xp_os" ]]; then
     AC_MSG_RESULT(none)
   fi
 fi
-
-AC_SUBST(ac_cv_c_inline)
-AC_SUBST(WRCPRG)
-AC_SUBST(NO_SCHED_CFLAGS)
-AC_SUBST(NO_REORDER_CFLAGS)
-AC_SUBST(LIBRARIES)
-AC_SUBST(TARGET)
-AC_SUBST(GFXOBJS)
-AC_SUBST(RESOBJS)
-AC_SUBST(ASMOBJS)
-AC_SUBST(SCSIOBJS)
-AC_SUBST(CPUOBJS)
-AC_SUBST(DEBUGOBJS)
-AC_SUBST(FSDBOBJS)
-AC_SUBST(SET_MAKE)
-AC_SUBST(MATHLIB)
-AC_SUBST(SHM_SUPPORT_LINKS)
-
-AC_SUBST(top_srcdir)
-
-AC_CONFIG_FILES([src/Makefile Makefile])
 
 if [[ "x$DO_PROFILING" = "xyes" ]]; then
   echo "Building a profiling version of UAE (select this option only if you know"
@@ -1098,7 +1124,13 @@ AC_CONFIG_LINKS(src/threaddep:src/$THREADDEP)
 AC_CONFIG_LINKS(src/machdep:src/$MACHDEP)
 dnl AC_CONFIG_LINKS(src/gfxdep:src/$GFX_DEP)
 
-AC_OUTPUT
+mkdir src/guidep
+for x in $GUIOBJS_IN; do
+  src=`echo $x |sed s,'\.o$,.c,'`
+  AC_CONFIG_LINKS(src/guidep/$src:src/$GUIDEP/$src)
+  GUIOBJS="$GUIOBJS guidep/$x"
+done
+
 
 echo "#include \"$abssrcdir/src/targets/$TARGETDEP\"" > src/target.h
 
@@ -1111,15 +1143,31 @@ if [[ "x$MACHDEP" = "xmd-i386-gcc" ]]; then
 fi
 echo "#include \"$abssrcdir/src/include/$FPP_H\"" >src/md-fpp.h
 
-mkdir -p src/tools
 mkdir -p src/keymap
-progname=$0
-changequote(,)dnl
-srcd=`echo ${progname} | sed -e 's,[^/]*$,,;s,/$,,;s,^$,.,'`
-changequote([,])dnl
-topsrcdir=`cd $srcd; pwd`
-cd src/tools
-CC=$HOSTCC $topsrcdir/src/tools/configure
+
+AC_SUBST(ac_cv_c_inline)
+AC_SUBST(WRCPRG)
+AC_SUBST(NO_SCHED_CFLAGS)
+AC_SUBST(NO_REORDER_CFLAGS)
+AC_SUBST(LIBRARIES)
+AC_SUBST(TARGET)
+AC_SUBST(GFXOBJS)
+AC_SUBST(GUIOBJS)
+AC_SUBST(RESOBJS)
+AC_SUBST(ASMOBJS)
+AC_SUBST(SCSIOBJS)
+AC_SUBST(CPUOBJS)
+AC_SUBST(DEBUGOBJS)
+AC_SUBST(FSDBOBJS)
+AC_SUBST(SET_MAKE)
+AC_SUBST(MATHLIB)
+AC_SUBST(SHM_SUPPORT_LINKS)
+
+AC_SUBST(top_srcdir)
+
+AC_CONFIG_FILES([src/Makefile Makefile])
+
+AC_OUTPUT
 
 echo
 echo
@@ -1135,3 +1183,4 @@ else
   echo "not get all the features you asked for."
 fi
 echo
+

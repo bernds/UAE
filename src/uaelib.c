@@ -21,6 +21,7 @@
 #include "custom.h"
 #include "newcpu.h"
 #include "xwin.h"
+#include "traps.h"
 #include "autoconf.h"
 #include "disk.h"
 #include "debug.h"
@@ -176,7 +177,7 @@ static uae_u32 emulib_ChgFMemSize (uae_u32 memsize)
 	memsize = 0;
 	write_log ("Unsupported fastmem size!\n");
     }
-    m68k_dreg(regs, 0) = 0;
+    m68k_dreg (regs, 0) = 0;
     currprefs.fastmem_size = memsize;
     uae_reset (0);
     return 0;
@@ -352,7 +353,7 @@ static uae_u32 emulib_ExecuteNativeCode (void)
     return 0;
 }
 
-static uae_u32 uaelib_demux (void)
+static uae_u32 uaelib_demux (TrapContext *dummy)
 {
 #define ARG0 (get_long (m68k_areg (regs, 7) + 4))
 #define ARG1 (get_long (m68k_areg (regs, 7) + 8))

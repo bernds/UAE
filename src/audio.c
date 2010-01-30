@@ -93,15 +93,17 @@ typedef uae_u8 sample8_t;
 #define FINISH_DATA(data,b,logn)
 #endif
 
-/* Always put the right word before the left word.  */
-#define DELAY_BUFFER 32
-static uae_u32 right_word_saved[DELAY_BUFFER];
-static uae_u32 left_word_saved[DELAY_BUFFER];
+static uae_u32 right_word_saved[SOUND_MAX_DELAY_BUFFER];
+static uae_u32 left_word_saved[SOUND_MAX_DELAY_BUFFER];
 static int saved_ptr;
+
+static int mixed_on, mixed_stereo_size, mixed_mul1, mixed_mul2;
+
+/* Always put the right word before the left word.  */
 
 STATIC_INLINE void put_sound_word_right (uae_u32 w)
 {
-    if (currprefs.mixed_stereo) {
+    if (mixed_on) {
 	right_word_saved[saved_ptr] = w;
 	return;
     }
@@ -111,21 +113,22 @@ STATIC_INLINE void put_sound_word_right (uae_u32 w)
 
 STATIC_INLINE void put_sound_word_left (uae_u32 w)
 {
-    if (currprefs.mixed_stereo) {
+    if (mixed_on) {
 	uae_u32 rold, lold, rnew, lnew, tmp;
 
 	left_word_saved[saved_ptr] = w;
 	lnew = w - SOUND16_BASE_VAL;
 	rnew = right_word_saved[saved_ptr] - SOUND16_BASE_VAL;
 
-	saved_ptr = (saved_ptr + 1) & (DELAY_BUFFER - 1);
+	saved_ptr = (saved_ptr + 1) & mixed_stereo_size;
+
 	lold = left_word_saved[saved_ptr] - SOUND16_BASE_VAL;
-	tmp = (rnew * 5 + lold * 3) >> 3;
+	tmp = (rnew * mixed_mul2 + lold * mixed_mul1) / MIXED_STEREO_SCALE;
 	tmp += SOUND16_BASE_VAL;
 	PUT_SOUND_WORD_RIGHT (tmp);
 
 	rold = right_word_saved[saved_ptr] - SOUND16_BASE_VAL;
-	w = (lnew * 5 + rold * 3) >> 3;
+	w = (lnew * mixed_mul2 + rold * mixed_mul1) / MIXED_STEREO_SCALE;
     }
     PUT_SOUND_WORD_LEFT (w);
 }
@@ -378,9 +381,9 @@ static void sample16si_sinc_handler (void)
     data1 = datas[0] + datas[3];
     data2 = datas[1] + datas[2];
     FINISH_DATA (data1, 16, 1);
-    put_sound_word_left (data1);
+    put_sound_word_right (data1);
     FINISH_DATA (data2, 16, 1);
-    put_sound_word_right (data2);
+    put_sound_word_left (data2);
     check_sound_buffers ();
 }
 
@@ -569,12 +572,6 @@ static void sample16si_rh_handler (void)
 
 void switch_audio_interpol (void)
 {
-#if defined HAVE_8BIT_AUDIO_SUPPORT || defined HAVE_ULAW_AUDIO_SUPPORT
-    if (currprefs.sound_bits == 8)
-	/* only supported for 16-bit audio */
-	return;
-#endif
-
     if (currprefs.sound_interpol == 0) {
 	changed_prefs.sound_interpol = 1;
 	write_log ("Interpol on: rh\n");
@@ -808,30 +805,40 @@ STATIC_INLINE int sound_prefs_changed (void)
 {
     return (changed_prefs.produce_sound != currprefs.produce_sound
 	    || changed_prefs.sound_stereo != currprefs.sound_stereo
-	    || changed_prefs.mixed_stereo != currprefs.mixed_stereo
 	    || changed_prefs.sound_maxbsiz != currprefs.sound_maxbsiz
-	    || changed_prefs.sound_freq != currprefs.sound_freq
-	    || changed_prefs.sound_bits != currprefs.sound_bits
-	    || changed_prefs.sound_interpol != currprefs.sound_interpol);
+	    || changed_prefs.sound_freq != currprefs.sound_freq);
 }
 
 void check_prefs_changed_audio (void)
 {
+    int old_mixed_on = mixed_on;
+    int old_mixed_size = mixed_stereo_size;
+    int sep, delay;
+
+    /* Some options we can just apply without reinitializing the sound
+       backend.  */
+    currprefs.sound_interpol = changed_prefs.sound_interpol;
+    sep = currprefs.sound_stereo_separation = changed_prefs.sound_stereo_separation;
+    delay = currprefs.sound_mixed_stereo_delay = changed_prefs.sound_mixed_stereo_delay;
+    mixed_mul1 = MIXED_STEREO_SCALE / 2 - sep;
+    mixed_mul2 = MIXED_STEREO_SCALE / 2 + sep;
+    mixed_stereo_size = delay > 0 ? (1 << (delay - 1)) - 1 : 0;
+    mixed_on = (sep > 0 && sep < MIXED_STEREO_MAX) || mixed_stereo_size > 0;
+    if (mixed_on && old_mixed_size != mixed_stereo_size) {
+	saved_ptr = 0;
+	memset (right_word_saved, 0, sizeof right_word_saved);
+    }
+
     if (sound_available && sound_prefs_changed ()) {
-	close_sound ();
+	if (currprefs.produce_sound >= 2)
+	    close_sound ();
 
 	currprefs.produce_sound = changed_prefs.produce_sound;
 	currprefs.sound_stereo = changed_prefs.sound_stereo;
-	currprefs.mixed_stereo = changed_prefs.mixed_stereo;
-	currprefs.sound_bits = changed_prefs.sound_bits;
 	currprefs.sound_freq = changed_prefs.sound_freq;
-	currprefs.sound_interpol = changed_prefs.sound_interpol;
 	currprefs.sound_maxbsiz = changed_prefs.sound_maxbsiz;
 	if (currprefs.produce_sound >= 2) {
-	    if (init_audio ()) {
-		last_cycles = get_cycles () - 1;
-		next_sample_evtime = scaled_sample_evtime;
-	    } else
+	    if (!init_audio ()) {
 		if (! sound_available) {
 		    write_log ("Sound is not supported.\n");
 		} else {
@@ -840,8 +847,15 @@ void check_prefs_changed_audio (void)
 		    /* So we don't do this every frame */
 		    changed_prefs.produce_sound = 0;
 		}
+	    }
+	    next_sample_evtime = scaled_sample_evtime;
+	    last_cycles = get_cycles () - 1;
+	    compute_vsynctime ();
 	}
-	compute_vsynctime ();
+	if (currprefs.produce_sound == 0) {
+	    eventtab[ev_audio].active = 0;
+	    events_schedule ();
+	}
     }
     /* Select the right interpolation method.  */
     if (sample_handler == sample16_handler
@@ -853,9 +867,9 @@ void check_prefs_changed_audio (void)
 			  : currprefs.sound_interpol == 2 ? sample16i_crux_handler
 			  : sample16i_sinc_handler);
     } else if (sample_handler == sample16s_handler
-	     || sample_handler == sample16si_crux_handler
-	     || sample_handler == sample16si_rh_handler
-	     || sample_handler == sample16si_sinc_handler)
+	       || sample_handler == sample16si_crux_handler
+	       || sample_handler == sample16si_rh_handler
+	       || sample_handler == sample16si_sinc_handler)
 	sample_handler = (currprefs.sound_interpol == 0 ? sample16s_handler
 			  : currprefs.sound_interpol == 1 ? sample16si_rh_handler
 			  : currprefs.sound_interpol == 2 ? sample16si_crux_handler
@@ -863,10 +877,6 @@ void check_prefs_changed_audio (void)
     sample_prehandler = NULL;
     if (sample_handler == sample16si_sinc_handler || sample_handler == sample16i_sinc_handler)
 	sample_prehandler = sinc_prehandler;
-    if (currprefs.produce_sound == 0) {
-	eventtab[ev_audio].active = 0;
-	events_schedule ();
-    }
 }
 
 void update_audio (void)

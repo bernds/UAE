@@ -33,15 +33,18 @@ VPATH = @top_srcdir@/src
 
 INCLUDES=-I. -I@top_srcdir@/src/include/
 
-OBJS = main.o newcpu.o memory.o @CPUOBJS@ custom.o cia.o serial.o blitter.o \
-       autoconf.o ersatz.o filesys.o hardfile.o keybuf.o expansion.o zfile.o \
-       fpp.o readcpu.o cpudefs.o gfxutil.o traps.o gfxlib.o blitfunc.o blittable.o \
-       disk.o audio.o uaelib.o drawing.o picasso96.o cpustbl.o inputdevice.o \
-       uaeexe.o bsdsocket.o missing.o sd-sound.o od-joy.o md-support.o \
-       fsusage.o cfgfile.o native2amiga.o fsdb.o identify.o timemgr.o crc32.o \
-       savestate.o writelog.o hotkeys.o keymap/keymap.o keymap/x11pc_rawkeys.o \
-       sinctable.o \
-       @ASMOBJS@ @GFXOBJS@ @DEBUGOBJS@ @SCSIOBJS@ @FSDBOBJS@
+OBJS =  main.o newcpu.o memory.o @CPUOBJS@ custom.o cia.o serial.o blitter.o \
+	autoconf.o ersatz.o filesys.o hardfile.o keybuf.o expansion.o zfile.o \
+	fpp.o readcpu.o cpudefs.o gfxutil.o traps.o blitfunc.o blittable.o \
+	rommgr.o disk.o audio.o drawing.o cpustbl.o inputdevice.o \
+	uaelib.o picasso96.o uaeexe.o bsdsocket.o bsdsocket-posix-new.o \
+	missing.o \
+	sd-sound.o od-joy.o md-support.o \
+	fsusage.o cfgfile.o native2amiga.o fsdb.o identify.o timemgr.o crc32.o \
+	savestate.o writelog.o \
+	hotkeys.o keymap/keymap.o keymap/x11pc_rawkeys.o \
+	sinctable.o \
+	@ASMOBJS@ @GFXOBJS@ @GUIOBJS@ @DEBUGOBJS@ @SCSIOBJS@ @FSDBOBJS@
 
 
 all: $(TARGET)
@@ -87,9 +90,11 @@ halfclean:
 	-rm -f $(OBJS)
 
 streifenfrei: clean
+	$(MAKE) -C tools streifenfrei
 	-rm -f Makefile sysconfig.h
 	-rm -f od-joy.c md-X86.S sd-sound.c md-support.c
 	-rm -f machdep osdep threaddep sounddep target.h
+	-rm -f md-fpp.h
 
 blit.h: tools/genblitter
 	./tools/genblitter i >blit.h

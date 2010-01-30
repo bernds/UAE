@@ -80,7 +80,6 @@ extern uae_u8 handle_joystick_buttons (uae_u8);
 extern int getbuttonstate (int joy, int button);
 extern int getjoystate (int joy);
 
-extern uae_u32 mousehack_helper (void);
 extern int needmousehack (void);
 extern int mousehack_alive (void);
 extern int mousehack_allowed (void);

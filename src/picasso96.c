@@ -332,8 +332,13 @@ static void CopyLibResolutionStructureU2A (struct LibResolution *libres, uaecptr
     char *uaememptr = 0;
     int i;
 
-    uaememptr = gfxmem_xlate (amigamemptr);	/* I know that amigamemptr is inside my gfxmem chunk, so I can just do the xlate() */
-    memset (uaememptr, 0, PSSO_LibResolution_sizeof);	/* zero out our LibResolution structure */
+    /* I know that amigamemptr is inside my gfxmem chunk, so I can just
+     * do the xlate() */
+    uaememptr = gfxmem_xlate (amigamemptr);
+
+    /* zero out our LibResolution structure */
+    memset (uaememptr, 0, PSSO_LibResolution_sizeof);
+
     strcpy (uaememptr + PSSO_LibResolution_P96ID, libres->P96ID);
     put_long (amigamemptr + PSSO_LibResolution_DisplayID, libres->DisplayID);
     put_word (amigamemptr + PSSO_LibResolution_Width, libres->Width);
@@ -389,7 +394,6 @@ static void AmigaListAddTail (uaecptr list, uaecptr node)
  * filled rectangle in the frame buffer; it can be used as a memcpy source if
  * there is no OS specific function to fill the rectangle.
  */
-
 static void do_fillrect (uae_u8 * src, int x, int y, int width, int height,
 			 uae_u32 pen, int Bpp, RGBFTYPE rgbtype)
 {
@@ -2331,7 +2335,7 @@ static void write_gfx_byte (uaecptr addr, uae_u8 value)
 static uae_u32 REGPARAM2 gfxmem_lget (uaecptr addr)
 {
     uae_u32 *m;
-    addr -= gfxmem_start & gfxmem_mask;
+    addr -= gfxmem_start;
     addr &= gfxmem_mask;
     m = (uae_u32 *) (gfxmemory + addr);
     return do_get_mem_long (m);
@@ -2340,7 +2344,7 @@ static uae_u32 REGPARAM2 gfxmem_lget (uaecptr addr)
 static uae_u32 REGPARAM2 gfxmem_wget (uaecptr addr)
 {
     uae_u16 *m;
-    addr -= gfxmem_start & gfxmem_mask;
+    addr -= gfxmem_start;
     addr &= gfxmem_mask;
     m = (uae_u16 *) (gfxmemory + addr);
     return do_get_mem_word (m);
@@ -2348,7 +2352,7 @@ static uae_u32 REGPARAM2 gfxmem_wget (uaecptr addr)
 
 static uae_u32 REGPARAM2 gfxmem_bget (uaecptr addr)
 {
-    addr -= gfxmem_start & gfxmem_mask;
+    addr -= gfxmem_start;
     addr &= gfxmem_mask;
     return gfxmemory[addr];
 }
@@ -2356,7 +2360,7 @@ static uae_u32 REGPARAM2 gfxmem_bget (uaecptr addr)
 static void REGPARAM2 gfxmem_lput (uaecptr addr, uae_u32 l)
 {
     uae_u32 *m;
-    addr -= gfxmem_start & gfxmem_mask;
+    addr -= gfxmem_start;
     addr &= gfxmem_mask;
     m = (uae_u32 *) (gfxmemory + addr);
     do_put_mem_long (m, l);
@@ -2368,7 +2372,7 @@ static void REGPARAM2 gfxmem_lput (uaecptr addr, uae_u32 l)
 static void REGPARAM2 gfxmem_wput (uaecptr addr, uae_u32 w)
 {
     uae_u16 *m;
-    addr -= gfxmem_start & gfxmem_mask;
+    addr -= gfxmem_start;
     addr &= gfxmem_mask;
     m = (uae_u16 *) (gfxmemory + addr);
     do_put_mem_word (m, (uae_u16) w);
@@ -2379,7 +2383,7 @@ static void REGPARAM2 gfxmem_wput (uaecptr addr, uae_u32 w)
 
 static void REGPARAM2 gfxmem_bput (uaecptr addr, uae_u32 b)
 {
-    addr -= gfxmem_start & gfxmem_mask;
+    addr -= gfxmem_start;
     addr &= gfxmem_mask;
     gfxmemory[addr] = b;
 
@@ -2389,14 +2393,14 @@ static void REGPARAM2 gfxmem_bput (uaecptr addr, uae_u32 b)
 
 static int REGPARAM2 gfxmem_check (uaecptr addr, uae_u32 size)
 {
-    addr -= gfxmem_start & gfxmem_mask;
+    addr -= gfxmem_start;
     addr &= gfxmem_mask;
     return (addr + size) < allocated_gfxmem;
 }
 
 static uae_u8 REGPARAM2 *gfxmem_xlate (uaecptr addr)
 {
-    addr -= gfxmem_start & gfxmem_mask;
+    addr -= gfxmem_start;
     addr &= gfxmem_mask;
     return gfxmemory + addr;
 }

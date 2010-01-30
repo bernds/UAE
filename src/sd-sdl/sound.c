@@ -13,6 +13,7 @@
 #include "memory.h"
 #include "events.h"
 #include "custom.h"
+#include "newcpu.h"
 #include "gensound.h"
 #include "sounddep/sound.h"
 #include "threaddep/thread.h"
@@ -23,7 +24,7 @@ static int have_sound = 0;
 static unsigned long formats;
 
 uae_u16 sndbuffer[2][44100];
-uae_u16 *sndbufpt, *sndbuf_base;
+uae_u16 *sndbufpt, *sndbuf_base, *callback_sndbuf;
 int which_buffer;
 int sndbufsize;
 static SDL_AudioSpec spec;
@@ -40,30 +41,31 @@ static void sound_callback (void *userdata, Uint8 *stream, int len)
     if (closing_sound)
 	return;
     in_callback = 1;
+    delaying_for_sound = 0;
+
     /* Wait for data to finish.  */
     uae_sem_wait (&data_available_sem);
     if (! closing_sound) {
-	memcpy (stream, sndbuffer, sndbufsize);
+	memcpy (stream, callback_sndbuf, sndbufsize);
 
 	/* Notify writer that we're done.  */
 	if (!dont_block)
 	    uae_sem_post (&callback_done_sem);
-	else
-	    blocking_on_sound = 0;
     }
     in_callback = 0;
 }
 
 void finish_sound_buffer (void)
 {
-    dont_block = currprefs.m68k_speed == -1;
+    dont_block = currprefs.m68k_speed == -1 && (!regs.stopped || active_fs_packets > 0);
+    callback_sndbuf = sndbuf_base;
 
     if (dont_block)
-	blocking_on_sound = 1;
+	delaying_for_sound = 1;
     uae_sem_post (&data_available_sem);
     if (!dont_block)
 	uae_sem_wait (&callback_done_sem);
-    sndbufpt = sndbuffer[which_buffer ^= 1];
+    sndbufpt = sndbuf_base = sndbuffer[which_buffer ^= 1];
 }
 
 /* Try to determine whether sound is available.  This is only for GUI purposes.  */
@@ -85,7 +87,7 @@ int setup_sound (void)
     spec.userdata = 0;
 
     if (SDL_OpenAudio (&spec, NULL) < 0) {
-	write_log (stderr, "Couldn't open audio: %s\n", SDL_GetError());
+	write_log ("Couldn't open audio: %s\n", SDL_GetError());
 	return 0;
     }
     sound_available = 1;
@@ -95,11 +97,15 @@ int setup_sound (void)
 
 static int open_sound (void)
 {
+    SDL_AudioSpec obtained;
     int size = currprefs.sound_maxbsiz;
+
+    sync_with_sound = 0;
 
     spec.freq = currprefs.sound_freq;
     spec.format = AUDIO_S16;
     spec.channels = currprefs.sound_stereo ? 2 : 1;
+
     /* Always interpret buffer size as number of samples, not as actual
        buffer size.  Of course, since 8192 is the default, we'll have to
        scale that to a sane value (assuming that otherwise 16 bits and
@@ -115,26 +121,23 @@ static int open_sound (void)
     spec.callback = sound_callback;
     spec.userdata = 0;
 
-    if (SDL_OpenAudio (&spec, NULL) < 0) {
-	write_log (stderr, "Couldn't open audio: %s\n", SDL_GetError());
+    if (SDL_OpenAudio (&spec, &obtained) < 0) {
+	write_log ("Couldn't open audio: %s\n", SDL_GetError());
 	return 0;
     }
     have_sound = 1;
 
-    obtainedfreq = spec.freq;
+    obtainedfreq = obtained.freq;
 
-    if (spec.format == AUDIO_S16) {
-	init_sound_table16 ();
-	sample_handler = currprefs.sound_stereo ? sample16s_handler : sample16_handler;
-    } else {
-	init_sound_table8 ();
-	sample_handler = currprefs.sound_stereo ? sample8s_handler : sample8_handler;
-    }
+    init_sound_table16 ();
+    sample_handler = obtained.channels == 2 ? sample16s_handler : sample16_handler;
+
     sound_available = 1;
-    write_log ("SDL sound driver found and configured at %d Hz, buffer is %d samples\n",
-	       spec.freq, spec.samples);
     sndbufpt = sndbuf_base = sndbuffer[which_buffer = 0];
-    sndbufsize = size * 2 * spec.channels;
+    sndbufsize = size * 2 * obtained.channels;
+    write_log ("SDL sound driver found and configured at %d Hz, buffer is %d samples (%d ms).\n",
+	       obtainedfreq, obtained.samples, obtained.samples * 1000 / obtainedfreq);
+    sync_with_sound = 1;
     return 1;
 }
 
@@ -173,6 +176,8 @@ static void init_sound_thread (void)
 
 void close_sound (void)
 {
+    sync_with_sound = 0;
+
     if (! have_sound)
 	return;
 

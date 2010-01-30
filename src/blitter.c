@@ -19,14 +19,14 @@
 #include "blit.h"
 
 uae_u16 oldvblts;
-uae_u16 bltcon0,bltcon1;
-uae_u32 bltapt,bltbpt,bltcpt,bltdpt;
+uae_u16 bltcon0, bltcon1;
+uae_u32 bltapt, bltbpt, bltcpt, bltdpt;
 
 int blinea_shift;
 static uae_u16 blitlpos, blinea, blineb;
-static uaecptr bltcnxlpt,bltdnxlpt;
-static int blitline,blitfc,blitfill,blitife,blitdesc,blitsing;
-static int blitonedot,blitsign;
+static uaecptr bltcnxlpt, bltdnxlpt;
+static int blitline, blitfc, blitfill, blitife, blitdesc, blitsing;
+static int blitonedot, blitsign;
 static long int bltwait;
 
 struct bltinfo blt_info;
@@ -56,7 +56,7 @@ static uae_u8 blit_cycle_diagram_start[][10] =
     { 4, 4, 1,2,3,0, 1,2,3,4 }	/* F */
 };
 
-void build_blitfilltable(void)
+void build_blitfilltable (void)
 {
     unsigned int d, fillmask;
     int i;
@@ -84,19 +84,7 @@ void build_blitfilltable(void)
     }
 }
 
-STATIC_INLINE uae_u8 *blit_xlateptr(uaecptr bltpt, int bytecount)
-{
-    if (!chipmem_bank.check(bltpt,bytecount)) return NULL;
-    return chipmem_bank.xlateaddr(bltpt);
-}
-
-STATIC_INLINE uae_u8 *blit_xlateptr_desc(uaecptr bltpt, int bytecount)
-{
-    if (!chipmem_bank.check(bltpt-bytecount, bytecount)) return NULL;
-    return chipmem_bank.xlateaddr(bltpt);
-}
-
-static void blitter_dofast(void)
+static void blitter_dofast (void)
 {
     int i,j;
     uaecptr bltadatptr = 0, bltbdatptr = 0, bltcdatptr = 0, bltddatptr = 0;
@@ -184,7 +172,7 @@ static void blitter_dofast(void)
     bltstate = BLT_done;
 }
 
-static void blitter_dofast_desc(void)
+static void blitter_dofast_desc (void)
 {
     int i,j;
     uaecptr bltadatptr = 0, bltbdatptr = 0, bltcdatptr = 0, bltddatptr = 0;
@@ -270,9 +258,9 @@ static void blitter_dofast_desc(void)
     bltstate = BLT_done;
 }
 
-STATIC_INLINE int blitter_read(void)
+STATIC_INLINE int blitter_read (void)
 {
-    if (bltcon0 & 0xe00){
+    if (bltcon0 & 0xe00) {
 	if (!dmaen(DMA_BLITTER))
 	    return 1;
 	if (bltcon0 & 0x200) blt_info.bltcdat = chipmem_bank.wget(bltcpt);
@@ -281,10 +269,10 @@ STATIC_INLINE int blitter_read(void)
     return (bltcon0 & 0xE00) != 0;
 }
 
-STATIC_INLINE int blitter_write(void)
+STATIC_INLINE int blitter_write (void)
 {
     if (blt_info.bltddat) blt_info.blitzero = 0;
-    if ((bltcon0 & 0x100) || blitline){
+    if ((bltcon0 & 0x100) || blitline) {
 	if (!dmaen(DMA_BLITTER)) return 1;
 	chipmem_bank.wput(bltdpt, blt_info.bltddat);
     }
@@ -292,7 +280,7 @@ STATIC_INLINE int blitter_write(void)
     return (bltcon0 & 0x100) != 0;
 }
 
-STATIC_INLINE void blitter_line_incx(void)
+STATIC_INLINE void blitter_line_incx (void)
 {
     if (++blinea_shift == 16) {
 	blinea_shift = 0;
@@ -301,7 +289,7 @@ STATIC_INLINE void blitter_line_incx(void)
     }
 }
 
-STATIC_INLINE void blitter_line_decx(void)
+STATIC_INLINE void blitter_line_decx (void)
 {
     if (blinea_shift-- == 0) {
 	blinea_shift = 15;
@@ -310,21 +298,21 @@ STATIC_INLINE void blitter_line_decx(void)
     }
 }
 
-STATIC_INLINE void blitter_line_decy(void)
+STATIC_INLINE void blitter_line_decy (void)
 {
     bltcnxlpt -= blt_info.bltcmod;
     bltdnxlpt -= blt_info.bltcmod; /* ??? am I wrong or doesn't KS1.3 set bltdmod? */
     blitonedot = 0;
 }
 
-STATIC_INLINE void blitter_line_incy(void)
+STATIC_INLINE void blitter_line_incy (void)
 {
     bltcnxlpt += blt_info.bltcmod;
     bltdnxlpt += blt_info.bltcmod; /* ??? */
     blitonedot = 0;
 }
 
-static void blitter_line(void)
+static void blitter_line (void)
 {
     uae_u16 blitahold = blinea >> blinea_shift;
     uae_u16 blitbhold = blineb & 1 ? 0xFFFF : 0;
@@ -335,9 +323,9 @@ static void blitter_line(void)
 	blitahold = 0;
     blitonedot = 1;
     blt_info.bltddat = blit_func(blitahold, blitbhold, blitchold, bltcon0 & 0xFF);
-    if (!blitsign){
+    if (!blitsign) {
 	bltapt += (uae_s16)blt_info.bltamod;
-	if (bltcon1 & 0x10){
+	if (bltcon1 & 0x10) {
 	    if (bltcon1 & 0x8)
 		blitter_line_decy();
 	    else
@@ -351,7 +339,7 @@ static void blitter_line(void)
     } else {
 	bltapt += (uae_s16)blt_info.bltbmod;
     }
-    if (bltcon1 & 0x10){
+    if (bltcon1 & 0x10) {
 	if (bltcon1 & 0x4)
 	    blitter_line_decx();
 	else
@@ -366,7 +354,7 @@ static void blitter_line(void)
     bltstate = BLT_write;
 }
 
-STATIC_INLINE void blitter_nxline(void)
+STATIC_INLINE void blitter_nxline (void)
 {
     bltcpt = bltcnxlpt;
     bltdpt = bltdnxlpt;
@@ -378,7 +366,7 @@ STATIC_INLINE void blitter_nxline(void)
     }
 }
 
-static void blit_init(void)
+static void blit_init (void)
 {
     blitlpos = 0;
     blt_info.blitzero = 1;
@@ -425,25 +413,25 @@ static void blit_init(void)
     }
 }
 
-static void actually_do_blit(void)
+static void actually_do_blit (void)
 {
     if (blitline) {
 	do {
-	    blitter_read();
-	    blitter_line();
-	    blitter_write();
-	    blitter_nxline();
+	    blitter_read ();
+	    blitter_line ();
+	    blitter_write ();
+	    blitter_nxline ();
 	} while (bltstate != BLT_done);
     } else {
 	if (blitdesc)
-	    blitter_dofast_desc();
+	    blitter_dofast_desc ();
 	else
-	    blitter_dofast();
+	    blitter_dofast ();
     }
     blitter_done_notify ();
 }
 
-void blitter_handler(void)
+void blitter_handler (void)
 {
     if (!dmaen(DMA_BLITTER)) {
 	eventtab[ev_blitter].active = 1;
@@ -451,7 +439,7 @@ void blitter_handler(void)
 	eventtab[ev_blitter].evtime = 10 * CYCLE_UNIT + get_cycles (); /* wait a little */
 	return; /* gotta come back later. */
     }
-    actually_do_blit();
+    actually_do_blit ();
 
     INTREQ(0x8040);
     eventtab[ev_blitter].active = 0;
@@ -464,7 +452,7 @@ static long blit_first_cycle;
 static int blit_last_cycle;
 static uae_u8 *blit_diag;
 
-void do_blitter(void)
+void do_blitter (void)
 {
     int ch = (bltcon0 & 0x0f00) >> 8;
     blit_diag = blit_cycle_diagram_start[ch];

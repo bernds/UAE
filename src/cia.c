@@ -119,21 +119,21 @@ static void compute_passed_time (void)
 
     /* CIA A timers */
     if ((ciaacra & 0x21) == 0x01) {
-	assert ((ciaata+1) >= ciaclocks);
+	assert ((ciaata + 1) >= ciaclocks);
 	ciaata_passed = ciaclocks;
     }
     if ((ciaacrb & 0x61) == 0x01) {
-	assert ((ciaatb+1) >= ciaclocks);
+	assert ((ciaatb + 1) >= ciaclocks);
 	ciaatb_passed = ciaclocks;
     }
 
     /* CIA B timers */
     if ((ciabcra & 0x21) == 0x01) {
-	assert ((ciabta+1) >= ciaclocks);
+	assert ((ciabta + 1) >= ciaclocks);
 	ciabta_passed = ciaclocks;
     }
     if ((ciabcrb & 0x61) == 0x01) {
-	assert ((ciabtb+1) >= ciaclocks);
+	assert ((ciabtb + 1) >= ciaclocks);
 	ciabtb_passed = ciaclocks;
     }
 }
@@ -153,8 +153,8 @@ static void CIA_update (void)
 
     /* CIA A timers */
     if ((ciaacra & 0x21) == 0x01) {
-	assert ((ciaata+1) >= ciaclocks);
-	if ((ciaata+1) == ciaclocks) {
+	assert ((ciaata + 1) >= ciaclocks);
+	if ((ciaata + 1) == ciaclocks) {
 	    aovfla = 1;
 	    if ((ciaacrb & 0x61) == 0x41) {
 		if (ciaatb-- == 0)
@@ -164,16 +164,16 @@ static void CIA_update (void)
 	ciaata -= ciaclocks;
     }
     if ((ciaacrb & 0x61) == 0x01) {
-	assert ((ciaatb+1) >= ciaclocks);
-	if ((ciaatb+1) == ciaclocks)
+	assert ((ciaatb + 1) >= ciaclocks);
+	if ((ciaatb + 1) == ciaclocks)
 	    aovflb = 1;
 	ciaatb -= ciaclocks;
     }
 
     /* CIA B timers */
     if ((ciabcra & 0x21) == 0x01) {
-	assert ((ciabta+1) >= ciaclocks);
-	if ((ciabta+1) == ciaclocks) {
+	assert ((ciabta + 1) >= ciaclocks);
+	if ((ciabta + 1) == ciaclocks) {
 	    bovfla = 1;
 	    if ((ciabcrb & 0x61) == 0x41) {
 		if (ciabtb-- == 0)
@@ -183,28 +183,28 @@ static void CIA_update (void)
 	ciabta -= ciaclocks;
     }
     if ((ciabcrb & 0x61) == 0x01) {
-	assert ((ciabtb+1) >= ciaclocks);
-	if ((ciabtb+1) == ciaclocks)
+	assert ((ciabtb + 1) >= ciaclocks);
+	if ((ciabtb + 1) == ciaclocks)
 	    bovflb = 1;
 	ciabtb -= ciaclocks;
     }
     if (aovfla) {
-	ciaaicr |= 1; RethinkICRA();
+	ciaaicr |= 1; RethinkICRA ();
 	ciaata = ciaala;
 	if (ciaacra & 0x8) ciaacra &= ~1;
     }
     if (aovflb) {
-	ciaaicr |= 2; RethinkICRA();
+	ciaaicr |= 2; RethinkICRA ();
 	ciaatb = ciaalb;
 	if (ciaacrb & 0x8) ciaacrb &= ~1;
     }
     if (bovfla) {
-	ciabicr |= 1; RethinkICRB();
+	ciabicr |= 1; RethinkICRB ();
 	ciabta = ciabla;
 	if (ciabcra & 0x8) ciabcra &= ~1;
     }
     if (bovflb) {
-	ciabicr |= 2; RethinkICRB();
+	ciabicr |= 2; RethinkICRB ();
 	ciabtb = ciablb;
 	if (ciabcrb & 0x8) ciabcrb &= ~1;
     }
@@ -280,19 +280,54 @@ void CIA_handler (void)
 void cia_diskindex (void)
 {
     ciabicr |= 0x10;
-    RethinkICRB();
+    RethinkICRB ();
+}
+
+static int checkalarm (unsigned long tod, unsigned long alarm, int inc)
+{
+    if (tod == alarm)
+	return 1;
+    if (!inc)
+	return 0;
+    /* emulate buggy TODMED counter.
+     * it counts: .. 29 2A 2B 2C 2D 2E 2F 20 30 31 32 ..
+     * (2F->20->30 only takes couple of cycles but it will trigger alarm..
+     */
+    if (tod & 0x000fff)
+	return 0;
+    if (((tod - 1) & 0xfff000) == alarm)
+	return 1;
+    return 0;
+}
+
+STATIC_INLINE void ciab_checkalarm (int inc)
+{
+    if (checkalarm (ciabtod, ciabalarm, inc)) {
+	ciabicr |= 4;
+	RethinkICRB ();
+    }
+}
+
+STATIC_INLINE void ciaa_checkalarm (int inc)
+{
+    if (checkalarm (ciaatod, ciaaalarm, inc)) {
+	ciaaicr |= 4;
+	RethinkICRA ();
+    }
 }
 
 void CIA_hsync_handler (void)
 {
     static unsigned int keytime = 0, sleepyhead = 0;
 
-    if (ciabtodon)
+    if (ciabtodon) {
 	ciabtod++;
-    ciabtod &= 0xFFFFFF;
+	ciabtod &= 0xFFFFFF;
+	ciab_checkalarm (1);
+    }
 
     if (ciabtod == ciabalarm) {
-	ciabicr |= 4; RethinkICRB();
+	ciabicr |= 4; RethinkICRB ();
     }
 
     /* check wether the serial port gets some data */
@@ -330,7 +365,7 @@ void CIA_hsync_handler (void)
 		break;
 	    }
 	    ciaaicr |= 8;
-	    RethinkICRA();
+	    RethinkICRA ();
 	    sleepyhead = 0;
 	} else if (!(++sleepyhead & 15)) {
 	    ciaasdr_unread = 0;          /* give up on this key event after unread for a long time */
@@ -340,11 +375,10 @@ void CIA_hsync_handler (void)
 
 void CIA_vsync_handler ()
 {
-    if (ciaatodon)
+    if (ciaatodon) {
 	ciaatod++;
-    ciaatod &= 0xFFFFFF;
-    if (ciaatod == ciaaalarm) {
-	ciaaicr |= 4; RethinkICRA();
+	ciaatod &= 0xFFFFFF;
+	ciaa_checkalarm (1);
     }
 
     doreadser = 1;
@@ -407,7 +441,7 @@ static uae_u8 ReadCIAA (unsigned int addr)
 	    ciaasdr_unread = 2;
 	return ciaasdr;
     case 13:
-	tmp = ciaaicr; ciaaicr = 0; RethinkICRA();
+	tmp = ciaaicr; ciaaicr = 0; RethinkICRA ();
 	return tmp;
     case 14:
 	return ciaacra;
@@ -462,7 +496,7 @@ static uae_u8 ReadCIAB (unsigned int addr)
     case 12:
 	return ciabsdr;
     case 13:
-	tmp = ciabicr; ciabicr = 0; RethinkICRB();
+	tmp = ciabicr; ciabicr = 0; RethinkICRB ();
 	return tmp;
     case 14:
 	return ciabcra;
@@ -796,7 +830,6 @@ uae_u32 REGPARAM2 cia_bget (uaecptr addr)
     int r = (addr & 0xf00) >> 8;
     uae_u8 v;
 
-    special_mem |= S_READ;
     cia_wait ();
     v = 0xff;
     switch ((addr >> 12) & 3)
@@ -815,7 +848,7 @@ uae_u32 REGPARAM2 cia_bget (uaecptr addr)
 	if (currprefs.cpu_level == 0 && currprefs.cpu_compatible)
 	    v = (addr & 1) ? regs.irc : regs.irc >> 8;
 	if (warned > 0) {
-	    write_log ("cia_bget: unknown CIA address %x PC=%x\n", addr, m68k_getpc());
+	    write_log ("cia_bget: unknown CIA address %x PC=%x\n", addr, m68k_getpc ());
 	    warned--;
 	}
 	break;
@@ -828,7 +861,6 @@ uae_u32 REGPARAM2 cia_wget (uaecptr addr)
 {
     int r = (addr & 0xf00) >> 8;
     uae_u16 v;
-    special_mem |= S_READ;
     cia_wait ();
     v = 0xffff;
     switch ((addr >> 12) & 3)
@@ -849,7 +881,6 @@ uae_u32 REGPARAM2 cia_wget (uaecptr addr)
 uae_u32 REGPARAM2 cia_lget (uaecptr addr)
 {
     uae_u32 v;
-    special_mem |= S_READ;
     v = cia_wget (addr) << 16;
     v |= cia_wget (addr + 2);
     return v;
@@ -858,7 +889,6 @@ uae_u32 REGPARAM2 cia_lget (uaecptr addr)
 void REGPARAM2 cia_bput (uaecptr addr, uae_u32 value)
 {
     int r = (addr & 0xf00) >> 8;
-    special_mem |= S_WRITE;
     cia_wait ();
     if ((addr & 0x2000) == 0)
 	WriteCIAB (r, value);
@@ -869,7 +899,6 @@ void REGPARAM2 cia_bput (uaecptr addr, uae_u32 value)
 void REGPARAM2 cia_wput (uaecptr addr, uae_u32 value)
 {
     int r = (addr & 0xf00) >> 8;
-    special_mem |= S_WRITE;
     cia_wait ();
     if ((addr & 0x2000) == 0)
 	WriteCIAB (r, value >> 8);
@@ -879,7 +908,6 @@ void REGPARAM2 cia_wput (uaecptr addr, uae_u32 value)
 
 void REGPARAM2 cia_lput (uaecptr addr, uae_u32 value)
 {
-    special_mem |= S_WRITE;
     cia_wput (addr, value >> 16);
     cia_wput (addr + 2, value & 0xffff);
 }
@@ -901,13 +929,11 @@ addrbank clock_bank = {
 
 uae_u32 REGPARAM2 clock_lget (uaecptr addr)
 {
-    special_mem |= S_READ;
     return clock_bget (addr + 3);
 }
 
 uae_u32 REGPARAM2 clock_wget (uaecptr addr)
 {
-    special_mem |= S_READ;
     return clock_bget (addr + 1);
 }
 
@@ -917,7 +943,6 @@ uae_u32 REGPARAM2 clock_bget (uaecptr addr)
     struct tm *ct;
 
     ct = localtime (&t);
-    special_mem |= S_READ;
 
     switch (addr & 0x3f) {
     case 0x03: return ct->tm_sec % 10;
@@ -943,19 +968,16 @@ uae_u32 REGPARAM2 clock_bget (uaecptr addr)
 
 void REGPARAM2 clock_lput (uaecptr addr, uae_u32 value)
 {
-    special_mem |= S_WRITE;
     /* No way */
 }
 
 void REGPARAM2 clock_wput (uaecptr addr, uae_u32 value)
 {
-    special_mem |= S_WRITE;
     /* No way */
 }
 
 void REGPARAM2 clock_bput (uaecptr addr, uae_u32 value)
 {
-    special_mem |= S_WRITE;
     switch (addr & 0x3f) {
     case 0x37: clock_control_d = value; break;
     case 0x3b: clock_control_e = value; break;
@@ -1086,7 +1108,7 @@ uae_u8 *save_cia (int num, int *len, uae_u8 *dstptr)
     save_u8 (b);
     b = (num ? ciabalarm : ciaaalarm);			/* alarm LO */
     save_u8 (b);
-    b = (num ? ciabalarm >> 8 : ciaaalarm >>8 );	/* alarm MED */
+    b = (num ? ciabalarm >> 8 : ciaaalarm >> 8);	/* alarm MED */
     save_u8 (b);
     b = (num ? ciabalarm >> 16 : ciaaalarm >> 16);	/* alarm HI */
     save_u8 (b);

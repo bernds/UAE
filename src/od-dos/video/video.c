@@ -359,7 +359,7 @@ int needmousehack(void) {
     return(0);
 }
 
-void write_log(const char *buf) {
+void write_log (const char *buf) {
     printf(buf);
 }
 

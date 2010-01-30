@@ -33,5 +33,11 @@ STATIC_INLINE int uae_start_thread (void *(*f) (void *), void *arg, uae_thread_i
     return *thread == 0;
 }
 
+STATIC_INLINE int uae_wait_thread (uae_thread_id thread)
+{
+    SDL_WaitThread (thread, (int*)0);
+    return 0;
+}
+
 /* Do nothing; thread exits if thread function returns.  */
 #define UAE_THREAD_EXIT do {} while (0)

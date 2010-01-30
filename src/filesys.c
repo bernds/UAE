@@ -35,11 +35,17 @@
 #include "events.h"
 #include "newcpu.h"
 #include "filesys.h"
+#include "traps.h"
 #include "autoconf.h"
 #include "fsusage.h"
 #include "native2amiga.h"
 #include "scsidev.h"
 #include "fsdb.h"
+
+/* Count the number of FS packets waiting to be serviced, for the benefit
+ * of the idle on STOP code.  */
+int active_fs_packets;
+uae_sem_t packet_counter_sem;
 
 #define TRACING_ENABLED 0
 #if TRACING_ENABLED
@@ -549,11 +555,11 @@ static char *bstr1 (uaecptr addr)
 {
     static char buf[256];
     int i;
-    int n = get_byte(addr);
+    int n = get_byte (addr);
     addr++;
 
     for (i = 0; i < n; i++, addr++)
-	buf[i] = get_byte(addr);
+	buf[i] = get_byte (addr);
     buf[i] = 0;
     return buf;
 }
@@ -561,11 +567,11 @@ static char *bstr1 (uaecptr addr)
 static char *bstr (Unit *unit, uaecptr addr)
 {
     int i;
-    int n = get_byte(addr);
+    int n = get_byte (addr);
 
     addr++;
     for (i = 0; i < n; i++, addr++)
-	unit->tmpbuf3[i] = get_byte(addr);
+	unit->tmpbuf3[i] = get_byte (addr);
     unit->tmpbuf3[i] = 0;
     return unit->tmpbuf3;
 }
@@ -578,7 +584,7 @@ static char *bstr_cut (Unit *unit, uaecptr addr)
 
     addr++;
     for (i = 0; i < n; i++, addr++) {
-	uae_u8 c = get_byte(addr);
+	uae_u8 c = get_byte (addr);
 	unit->tmpbuf3[i] = c;
 	if (c == '/' || (c == ':' && colon_seen++ == 0))
 	    p = unit->tmpbuf3 + i + 1;
@@ -1133,7 +1139,7 @@ static a_inode *get_aino (Unit *unit, a_inode *base, const char *rel, uae_u32 *e
     return curr;
 }
 
-static uae_u32 startup_handler (void)
+static uae_u32 startup_handler (TrapContext *dummy)
 {
     /* Just got the startup packet. It's in A4. DosBase is in A2,
      * our allocated volume structure is in D6, A5 is a pointer to
@@ -2117,7 +2123,7 @@ action_read (Unit *unit, dpacket packet)
 	    int i;
 	    PUT_PCK_RES1 (packet, actual);
 	    for (i = 0; i < actual; i++)
-		put_byte(addr + i, buf[i]);
+		put_byte (addr + i, buf[i]);
 	    k->file_pos += actual;
 	}
 	free (buf);
@@ -2156,7 +2162,7 @@ action_write (Unit *unit, dpacket packet)
     }
 
     for (i = 0; i < size; i++)
-	buf[i] = get_byte(addr + i);
+	buf[i] = get_byte (addr + i);
 
     PUT_PCK_RES1 (packet, write(k->fd, buf, size));
     if (GET_PCK_RES1 (packet) != size)
@@ -2753,7 +2759,7 @@ action_flush (Unit *unit, dpacket packet)
  * know whether AmigaOS takes care of that, but this does. */
 static uae_sem_t singlethread_int_sem;
 
-static uae_u32 exter_int_helper (void)
+static uae_u32 exter_int_helper (TrapContext *dummy)
 {
     UnitInfo *uip = current_mountinfo->ui;
     uaecptr port;
@@ -2960,6 +2966,11 @@ static void *filesys_thread (void *unit_v)
 	/* The message is sent by our interrupt handler, so make sure an interrupt
 	 * happens. */
 	uae_int_requested = 1;
+ 
+	uae_sem_wait (&packet_counter_sem);
+	active_fs_packets--;
+	uae_sem_post (&packet_counter_sem);
+
 	/* Send back the locks. */
 	if (get_long (ui->self->locklist) != 0)
 	    write_comm_pipe_int (ui->back_pipe, (int)(get_long (ui->self->locklist)), 0);
@@ -2970,7 +2981,7 @@ static void *filesys_thread (void *unit_v)
 #endif
 
 /* Talk about spaghetti code... */
-static uae_u32 filesys_handler (void)
+static uae_u32 filesys_handler (TrapContext *dummy)
 {
     Unit *unit = find_unit (m68k_areg (regs, 5));
     uaecptr packet_addr = m68k_dreg (regs, 3);
@@ -3002,6 +3013,10 @@ static uae_u32 filesys_handler (void)
 	morelocks = get_long (m68k_areg (regs, 3));
 	put_long (m68k_areg (regs, 3), get_long (get_long (morelocks)));
 	put_long (get_long (morelocks), 0);
+
+	uae_sem_wait (&packet_counter_sem);
+	active_fs_packets++;
+	uae_sem_post (&packet_counter_sem);
 
 	/* The packet wasn't processed yet. */
 	do_put_mem_long ((uae_u32 *)(msg + 4), 0);
@@ -3143,7 +3158,7 @@ void filesys_prepare_reset (void)
     }
 }
 
-static uae_u32 filesys_diagentry (void)
+static uae_u32 filesys_diagentry (TrapContext *dummy)
 {
     uaecptr resaddr = m68k_areg (regs, 2) + 0x10;
     uaecptr start = resaddr;
@@ -3213,7 +3228,7 @@ static uae_u32 filesys_diagentry (void)
 
 /* Remember a pointer AmigaOS gave us so we can later use it to identify
  * which unit a given startup message belongs to.  */
-static uae_u32 filesys_dev_remember (void)
+static uae_u32 filesys_dev_remember (TrapContext *dummy)
 {
     int unit_no = m68k_dreg (regs, 6);
     uaecptr devicenode = m68k_areg (regs, 3);
@@ -3223,7 +3238,7 @@ static uae_u32 filesys_dev_remember (void)
 }
 
 /* Fill in per-unit fields of a parampacket */
-static uae_u32 filesys_dev_storeinfo (void)
+static uae_u32 filesys_dev_storeinfo (TrapContext *dummy)
 {
     UnitInfo *uip = current_mountinfo->ui;
     int unit_no = m68k_dreg (regs, 6);
@@ -3294,6 +3309,8 @@ void filesys_install (void)
     dw (RTS);
 
     org (loop);
+
+    uae_sem_init (&packet_counter_sem, 0, 0);
 }
 
 void filesys_install_code (void)

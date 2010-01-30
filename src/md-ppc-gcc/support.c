@@ -32,7 +32,7 @@ void machdep_init (void)
     sync();
 
     vsynctime = best_time / (50*loops_to_go);
-    write_log("ok - %d\n",best_time/loops_to_go);
+    write_log ("ok - %d\n",best_time/loops_to_go);
     last_time = read_processor_time();
     best_time = read_processor_time()-last_time;
 }

@@ -134,6 +134,8 @@ int main(int argc, char **argv)
 	 case '2': cpulevel = 2; break;
 	 case '3': cpulevel = 3; break;
 	 case '4': cpulevel = 4; break;
+	 case '5': cpulevel = 5; break;
+	 case '6': cpulevel = 6; break;
 	 default: abort();
 	}
 	getnextch();

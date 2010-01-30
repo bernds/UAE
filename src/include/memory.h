@@ -8,10 +8,6 @@
 
 extern void memory_reset (void);
 
-extern int special_mem;
-#define S_READ 1
-#define S_WRITE 2
-
 typedef uae_u32 (*mem_get_func)(uaecptr) REGPARAM;
 typedef void (*mem_put_func)(uaecptr, uae_u32) REGPARAM;
 typedef uae_u8 *(*xlate_func)(uaecptr) REGPARAM;
@@ -148,32 +144,92 @@ extern void byteput(uaecptr addr, uae_u32 b);
 
 #endif
 
-STATIC_INLINE uae_u32 get_long(uaecptr addr)
+STATIC_INLINE uae_u32 get_long (uaecptr addr)
 {
     return longget_1(addr);
 }
-STATIC_INLINE uae_u32 get_word(uaecptr addr)
+STATIC_INLINE uae_u32 get_word (uaecptr addr)
 {
     return wordget_1(addr);
 }
-STATIC_INLINE uae_u32 get_byte(uaecptr addr)
+STATIC_INLINE uae_u32 get_byte (uaecptr addr)
 {
     return byteget_1(addr);
 }
-STATIC_INLINE void put_long(uaecptr addr, uae_u32 l)
+
+/*
+ * Read a host pointer from addr
+ */
+#if SIZEOF_VOID_P == 4
+# define get_pointer(addr) ((void *)get_long (addr))
+#else
+# if SIZEOF_VOID_P == 8
+STATIC_INLINE void *get_pointer (uaecptr addr)
+{
+    const unsigned int n = SIZEOF_VOID_P / 4;
+    union {
+	void *ptr;
+	uae_u32  longs[SIZEOF_VOID_P / 4];
+    } p;
+    unsigned int i;
+
+    for (i = 0; i < n; i++) {
+#ifdef WORDS_BIGENDIAN
+	p.longs[i] = get_long (addr + i * 4);
+#else
+	p.longs[n - 1 - i] = get_long (addr + i * 4);
+#endif
+    }
+    return p.ptr;
+}
+# else
+#  error "Unknown or unsupported pointer size."
+# endif
+#endif
+
+STATIC_INLINE void put_long (uaecptr addr, uae_u32 l)
 {
     longput_1(addr, l);
 }
-STATIC_INLINE void put_word(uaecptr addr, uae_u32 w)
+STATIC_INLINE void put_word (uaecptr addr, uae_u32 w)
 {
     wordput_1(addr, w);
 }
-STATIC_INLINE void put_byte(uaecptr addr, uae_u32 b)
+STATIC_INLINE void put_byte (uaecptr addr, uae_u32 b)
 {
     byteput_1(addr, b);
 }
 
-STATIC_INLINE uae_u8 *get_real_address(uaecptr addr)
+/*
+ * Store host pointer v at addr
+ */
+#if SIZEOF_VOID_P == 4
+# define put_pointer(addr, p) (put_long ((addr), (uae_u32)(p)))
+#else
+# if SIZEOF_VOID_P == 8
+STATIC_INLINE void put_pointer (uaecptr addr, void *v)
+{
+    const unsigned int n = SIZEOF_VOID_P / 4;
+    union {
+	void *ptr;
+	uae_u32 longs[SIZEOF_VOID_P / 4];
+    } p;
+    unsigned int i;
+
+    p.ptr = v;
+
+    for (i = 0; i < n; i++) {
+#ifdef WORDS_BIGENDIAN
+	put_long (addr + i * 4, p.longs[i]);
+#else
+	put_long (addr + i * 4, p.longs[n - 1 - i]);
+#endif
+    }
+}
+# endif
+#endif
+
+STATIC_INLINE uae_u8 *get_real_address (uaecptr addr)
 {
     return get_mem_bank(addr).xlateaddr(addr);
 }
@@ -209,31 +265,10 @@ extern int canbang;
 extern uae_u8 *mapped_malloc (size_t, char *);
 extern void mapped_free (uae_u8 *);
 
-#define ROMTYPE_KICK 1
-#define ROMTYPE_KICKCD32 2
-#define ROMTYPE_EXTCD32 4
-#define ROMTYPE_EXTCDTV 8
-#define ROMTYPE_AR 16
-#define ROMTYPE_KEY 32
-#define ROMTYPE_ARCADIA 64
-
-struct romdata {
-    char *name;
-    int version, revision;
-    uae_u32 crc32;
-    uae_u32 size;
-    int id;
-    int cpu;
-    int cloanto;
-    int type;
-};
-
-extern struct romdata *getromdatabycrc (uae_u32 crc32);
-extern struct romdata *getromdatabydata (uae_u8 *rom, int size);
-extern struct romdata *getromdatabyid (int id);
-extern struct romdata *getarcadiarombyname (char *name);
-extern void getromname (struct romdata*, char*);
-extern struct romdata *getromdatabyname (char*);
-extern void romlist_add (char *path, struct romdata *rd);
-extern char *romlist_get (struct romdata *rd);
-extern void romlist_clear (void);
+uaecptr strcpyha_safe (uaecptr dst, const char *src);
+uaecptr strncpyha_safe (uaecptr dst, const char *src, int size);
+extern char *strcpyah_safe (char *dst, uaecptr src);
+extern void memcpyha_safe (uaecptr dst, const uae_u8 *src, int size);
+extern void memcpyha (uaecptr dst, const uae_u8 *src, int size);
+extern void memcpyah_safe (uae_u8 *dst, uaecptr src, int size);
+extern void memcpyah (uae_u8 *dst, uaecptr src, int size);

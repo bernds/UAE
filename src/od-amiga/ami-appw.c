@@ -69,12 +69,12 @@ int appw_init(struct Window *W)
 	if(AppPort) {
 	    AppWin = AddAppWindow(0,0,W,AppPort,NULL);
 	    if(AppWin) {
-		write_log("AppWindow started.\n");
+		write_log ("AppWindow started.\n");
 		return 1;
 	    }
 	}
     }
-    write_log("Failed to start AppWindow.\n");
+    write_log ("Failed to start AppWindow.\n");
 
     return 0;
 }

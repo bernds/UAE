@@ -1,3 +1,46 @@
+A10817 Move ROM management to a separate file.  Add CRC16 functions.
+       Slight adjustment to zfile API (close->fclose).
+       Drive type enum moved to options.h.
+       Set up a GUIDEP directory as in E-UAE; move gtkui.c and nogui.c.
+       Add a small util.c to gui-gtk.
+       Savestate fixes in newcpu: update changed_prefs.
+       Some disk changes from WinUAE, especially drive type updates.
+       Implement drive type selection in the GTK UI.
+       Use GTK's new file chooser dialogs instead of the old ugly file
+       selection boxes.
+A10815 Import a slightly modified version of E-UAE's new traps.c.  Merge
+       bsdsocket updates (still disabled due to problems) and related
+       infrastructure.
+       Also merge the zfile interface changes (but no implementation yet)
+       from WinUAE.
+A10813 Disable idle on stop if there are any outstanding filesys packets.
+       Try to deal more gracefully with the user closing the GUI window.
+A10812 Merge a variant of the mixed stereo enhancements from WinUAE.
+       Merge a change from WinUAE to emulate a CIA TOD bug.
+       More whitespace fixes.
+       Changes from Antonio Ospite and Florian Ernst, submitted by Peter Volkov
+       for gentoo:
+       Clean more stuff in the Makefiles.  Save changed_prefs, not currprefs,
+       in gtkui.  Fix some memory leaks.  Some gtkui type fixes.
+A10811 Overhaul the CPU type configuration.  Use the WinUAE idea of cpu_model
+       and fpu_model entries in the prefs structure.  Simplify by getting rid
+       of cpu_level and eliminating the special 020+FPU level from the CPU
+       generators.  Add 030 MMU and 060 stuff.
+       Get rid of read_processor_time entirely; always use sound or gtod to
+       sync with real time.  If a sound buffer fills while the m68k is in
+       stopped state, block on sound output.  Increase nr_gtods_to_skip if
+       we're calling gettimeofday too often.
+       Import newer version of sd-alsa from E-UAE.  Fix several sd-sdl
+       problems.  Lower default sound buffer sizes.  Change configure script
+       to warn against sd-sdl unless there's nothing better.
+A10810 Some cfgfile merges from WinUAE: split up cfgfile_parse_option into
+       _host and _hardware variants.  Add a cpu_model member to the prefs
+       structure, but don't export it to the config file (yet?)
+       Delete some obsolete options.
+A10808 Style and miscellaneous other small changes intended to unify this with
+       the other trees.
+A10806 Kill special_mem, which is only needed for JIT.
+       Support POT1DAT.
 A10805 Implement a way not to block on sound output, using the time for m68k
        cycles instead.
        Remove "config.h" and all of its #includes.

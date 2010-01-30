@@ -94,6 +94,21 @@ extern struct regstruct
     uae_u32 fpcr,fpsr,fpiar;
     uae_u32 fpsr_highbyte;
 
+    uae_u32 caar, cacr;
+    uae_u32 itt0, itt1, dtt0, dtt1;
+    uae_u32 tcr, mmusr, urp, srp, buscr;
+
+    uae_u32 mmu_fslw, mmu_fault_addr;
+    uae_u16 mmu_ssw;
+    uae_u32 wb3_data;
+    uae_u16 wb3_status;
+
+    uae_u64 srp_030, crp_030;
+    uae_u32 tt0_030, tt1_030, tc_030;
+    uae_u16 mmusr_030;
+
+    uae_u32 pcr;
+    
     uae_u32 spcflags;
     uae_u32 kick_mask;
     uae_u32 address_space_mask;
@@ -168,21 +183,21 @@ STATIC_INLINE uae_u32 next_ilong (void)
 
 STATIC_INLINE void m68k_do_rts(void)
 {
-    m68k_setpc(get_long(m68k_areg(regs, 7)));
-    m68k_areg(regs, 7) += 4;
+    m68k_setpc(get_long(m68k_areg (regs, 7)));
+    m68k_areg (regs, 7) += 4;
 }
 
 STATIC_INLINE void m68k_do_bsr(uaecptr oldpc, uae_s32 offset)
 {
-    m68k_areg(regs, 7) -= 4;
-    put_long(m68k_areg(regs, 7), oldpc);
+    m68k_areg (regs, 7) -= 4;
+    put_long(m68k_areg (regs, 7), oldpc);
     m68k_incpc(offset);
 }
 
 STATIC_INLINE void m68k_do_jsr(uaecptr oldpc, uaecptr dest)
 {
-    m68k_areg(regs, 7) -= 4;
-    put_long(m68k_areg(regs, 7), oldpc);
+    m68k_areg (regs, 7) -= 4;
+    put_long(m68k_areg (regs, 7), oldpc);
     m68k_setpc(dest);
 }
 
@@ -215,6 +230,7 @@ extern void m68k_disasm (FILE *, uaecptr, uaecptr *, int);
 extern void m68k_reset (void);
 
 extern void mmu_op (uae_u32, uae_u16);
+extern void mmu_op30 (uaecptr, uae_u32, int, uaecptr);
 
 extern void fpp_opp (uae_u32, uae_u16);
 extern void fdbcc_opp (uae_u32, uae_u16);
@@ -233,18 +249,22 @@ extern void fill_prefetch_slow (void);
 
 #define CPU_OP_NAME(a) op ## a
 
+/* 68060 */
+extern const struct cputbl op_smalltbl_0_ff[];
 /* 68040 */
-extern struct cputbl op_smalltbl_0_ff[];
-/* 68020 + 68881 */
-extern struct cputbl op_smalltbl_1_ff[];
+extern const struct cputbl op_smalltbl_1_ff[];
+/* 68030 */
+extern const struct cputbl op_smalltbl_2_ff[];
 /* 68020 */
-extern struct cputbl op_smalltbl_2_ff[];
+extern const struct cputbl op_smalltbl_3_ff[];
 /* 68010 */
-extern struct cputbl op_smalltbl_3_ff[];
-/* 68000 */
-extern struct cputbl op_smalltbl_4_ff[];
+extern const struct cputbl op_smalltbl_4_ff[];
+/* 68000 - unused */
+#if 0
+extern const struct cputbl op_smalltbl_5_ff[];
+#endif
 /* 68000 slow but compatible.  */
-extern struct cputbl op_smalltbl_5_ff[];
+extern const struct cputbl op_smalltbl_6_ff[];
 
 extern cpuop_func *cpufunctbl[65536] ASM_SYM_FOR_FUNC ("cpufunctbl");
 

@@ -17,7 +17,6 @@
 #include "newcpu.h"
 #include "autoconf.h"
 #include "traps.h"
-#include "osdep/exectasks.h"
 
 /* Commonly used autoconfig strings */
 
@@ -38,53 +37,47 @@ static void rtarea_wput (uaecptr, uae_u32) REGPARAM;
 static void rtarea_bput (uaecptr, uae_u32) REGPARAM;
 static uae_u8 *rtarea_xlate (uaecptr) REGPARAM;
 
-addrbank rtarea_bank = {
-    rtarea_lget, rtarea_wget, rtarea_bget,
-    rtarea_lput, rtarea_wput, rtarea_bput,
-    rtarea_xlate, default_check, NULL
-};
-
-uae_u8 REGPARAM2 *rtarea_xlate (uaecptr addr)
+static uae_u8 REGPARAM2 *rtarea_xlate (uaecptr addr)
 {
     addr &= 0xFFFF;
     return rtarea + addr;
 }
 
-uae_u32 REGPARAM2 rtarea_lget (uaecptr addr)
+static uae_u32 REGPARAM2 rtarea_lget (uaecptr addr)
 {
-    special_mem |= S_READ;
     addr &= 0xFFFF;
     return (uae_u32)(rtarea_wget (addr) << 16) + rtarea_wget (addr+2);
 }
 
-uae_u32 REGPARAM2 rtarea_wget (uaecptr addr)
+static uae_u32 REGPARAM2 rtarea_wget (uaecptr addr)
 {
-    special_mem |= S_READ;
     addr &= 0xFFFF;
     return (rtarea[addr]<<8) + rtarea[addr+1];
 }
 
-uae_u32 REGPARAM2 rtarea_bget (uaecptr addr)
+static uae_u32 REGPARAM2 rtarea_bget (uaecptr addr)
 {
-    special_mem |= S_READ;
     addr &= 0xFFFF;
     return rtarea[addr];
 }
 
-void REGPARAM2 rtarea_lput (uaecptr addr, uae_u32 value)
+static void REGPARAM2 rtarea_lput (uaecptr addr, uae_u32 value)
 {
-    special_mem |= S_WRITE;
 }
 
-void REGPARAM2 rtarea_wput (uaecptr addr, uae_u32 value)
+static void REGPARAM2 rtarea_wput (uaecptr addr, uae_u32 value)
 {
-    special_mem |= S_WRITE;
 }
 
-void REGPARAM2 rtarea_bput (uaecptr addr, uae_u32 value)
+static void REGPARAM2 rtarea_bput (uaecptr addr, uae_u32 value)
 {
-    special_mem |= S_WRITE;
 }
+
+addrbank rtarea_bank = {
+    rtarea_lget, rtarea_wget, rtarea_bget,
+    rtarea_lput, rtarea_wput, rtarea_bput,
+    rtarea_xlate, default_check, NULL
+};
 
 /* some quick & dirty code to fill in the rt area and save me a lot of
  * scratch paper
@@ -151,18 +144,18 @@ void align (int b)
     rt_addr = (rt_addr + b - 1) & ~(b - 1);
 }
 
-static uae_u32 nullfunc(void)
+static uae_u32 nullfunc (TrapContext *dummy)
 {
     write_log ("Null function called\n");
     return 0;
 }
 
-static uae_u32 getchipmemsize (void)
+static uae_u32 getchipmemsize (TrapContext *dummy)
 {
     return allocated_chipmem;
 }
 
-static uae_u32 uae_puts (void)
+static uae_u32 uae_puts (TrapContext *dummy)
 {
     puts (get_real_address (m68k_areg (regs, 0)));
     return 0;
@@ -199,9 +192,9 @@ void rtarea_init (void)
     dw (RTS);
 
     a = here();
-    /* Standard "return from 68k mode" trap */
+    /* Dummy trap - removing this breaks the filesys emulation. */
     org (RTAREA_BASE + 0xFF00);
-    calltrap (deftrap2 (m68k_mode_return, TRAPFLAG_NO_RETVAL, ""));
+    calltrap (deftrap2 (nullfunc, TRAPFLAG_NO_RETVAL, ""));
 
     org (RTAREA_BASE + 0xFF80);
     calltrap (deftrap2 (getchipmemsize, TRAPFLAG_DORET, ""));
@@ -213,6 +206,8 @@ void rtarea_init (void)
     org (a);
 
     filesys_install_code ();
+
+    init_extended_traps ();
 }
 
 volatile int uae_int_requested = 0;
@@ -222,6 +217,6 @@ void set_uae_int_flag (void)
     rtarea[0xFFFB] = uae_int_requested;
 }
 
-void rtarea_setup(void)
+void rtarea_setup (void)
 {
 }

@@ -17,6 +17,7 @@
 #include "memory.h"
 #include "autoconf.h"
 #include "picasso96.h"
+#include "zfile.h"
 #include "savestate.h"
 
 #define MAX_EXPANSION_BOARDS	8
@@ -168,9 +169,10 @@ static void expamem_init_clear (void)
 {
     memset (expamem, 0xff, sizeof expamem);
 }
+
 static void expamem_init_clear2 (void)
 {
-    expamem_init_clear();
+    expamem_init_clear ();
     ecard = MAX_EXPANSION_BOARDS - 1;
 }
 
@@ -189,28 +191,24 @@ addrbank expamem_bank = {
 
 static uae_u32 REGPARAM2 expamem_lget (uaecptr addr)
 {
-    special_mem |= S_READ;
     write_log ("warning: READ.L from address $%lx \n", addr);
     return 0xfffffffful;
 }
 
 static uae_u32 REGPARAM2 expamem_wget (uaecptr addr)
 {
-    special_mem |= S_READ;
     write_log ("warning: READ.W from address $%lx \n", addr);
     return 0xffff;
 }
 
 static uae_u32 REGPARAM2 expamem_bget (uaecptr addr)
 {
-    special_mem |= S_READ;
     addr &= 0xFFFF;
     return expamem[addr];
 }
 
 static void REGPARAM2 expamem_write (uaecptr addr, uae_u32 value)
 {
-    special_mem |= S_WRITE;
     addr &= 0xffff;
     if (addr == 00 || addr == 02 || addr == 0x40 || addr == 0x42) {
 	expamem[addr] = (value & 0xf0);
@@ -228,13 +226,11 @@ static int REGPARAM2 expamem_type (void)
 
 static void REGPARAM2 expamem_lput (uaecptr addr, uae_u32 value)
 {
-    special_mem |= S_WRITE;
     write_log ("warning: WRITE.L to address $%lx : value $%lx\n", addr, value);
 }
 
 static void REGPARAM2 expamem_wput (uaecptr addr, uae_u32 value)
 {
-    special_mem |= S_WRITE;
     if (expamem_type() != zorroIII)
 	write_log ("warning: WRITE.W to address $%lx : value $%x\n", addr, value);
     else {
@@ -257,7 +253,6 @@ static void REGPARAM2 expamem_wput (uaecptr addr, uae_u32 value)
 
 static void REGPARAM2 expamem_bput (uaecptr addr, uae_u32 value)
 {
-    special_mem |= S_WRITE;
     switch (addr & 0xff) {
      case 0x30:
      case 0x32:
@@ -405,7 +400,6 @@ uae_u8 *filesysory;
 uae_u32 REGPARAM2 filesys_lget (uaecptr addr)
 {
     uae_u8 *m;
-    special_mem |= S_READ;
     addr -= filesys_start & 65535;
     addr &= 65535;
     m = filesysory + addr;
@@ -415,7 +409,6 @@ uae_u32 REGPARAM2 filesys_lget (uaecptr addr)
 uae_u32 REGPARAM2 filesys_wget (uaecptr addr)
 {
     uae_u8 *m;
-    special_mem |= S_READ;
     addr -= filesys_start & 65535;
     addr &= 65535;
     m = filesysory + addr;
@@ -424,7 +417,6 @@ uae_u32 REGPARAM2 filesys_wget (uaecptr addr)
 
 uae_u32 REGPARAM2 filesys_bget (uaecptr addr)
 {
-    special_mem |= S_READ;
     addr -= filesys_start & 65535;
     addr &= 65535;
     return filesysory[addr];
@@ -432,19 +424,16 @@ uae_u32 REGPARAM2 filesys_bget (uaecptr addr)
 
 static void REGPARAM2 filesys_lput (uaecptr addr, uae_u32 l)
 {
-    special_mem |= S_WRITE;
     write_log ("filesys_lput called\n");
 }
 
 static void REGPARAM2 filesys_wput (uaecptr addr, uae_u32 w)
 {
-    special_mem |= S_WRITE;
     write_log ("filesys_wput called\n");
 }
 
 static void REGPARAM2 filesys_bput (uaecptr addr, uae_u32 b)
 {
-    special_mem |= S_WRITE;
     write_log ("filesys_bput called. This usually means that you are using\n");
     write_log ("Kickstart 1.2. Please give UAE the \"-a\" option next time\n");
     write_log ("you start it. If you are _not_ using Kickstart 1.2, then\n");
@@ -568,7 +557,7 @@ static void expamem_map_fastcard (void)
 
 static void expamem_init_fastcard (void)
 {
-    expamem_init_clear();
+    expamem_init_clear ();
     if (allocated_fastmem == 0x100000)
 	expamem_write (0x00, Z2_MEM_1MB + add_memory + zorroII);
     else if (allocated_fastmem == 0x200000)
@@ -625,7 +614,7 @@ static void expamem_init_filesys (void)
 			  0x01, 0x06  /* da_BootPoint */
     };
 
-    expamem_init_clear();
+    expamem_init_clear ();
     expamem_write (0x00, Z2_MEM_64KB | rom_card | zorroII);
 
     expamem_write (0x08, no_shutup);
@@ -686,7 +675,7 @@ static void expamem_init_z3fastmem (void)
 		: allocated_z3fastmem == 0x10000000 ? Z2_MEM_256MB
 		: allocated_z3fastmem == 0x20000000 ? Z2_MEM_512MB
 		: Z2_MEM_1GB);
-    expamem_init_clear();
+    expamem_init_clear ();
     expamem_write (0x00, add_memory | zorroIII | code);
 
     expamem_write (0x08, no_shutup | force_z3 | (allocated_z3fastmem > 0x800000 ? ext_size : Z3_MEM_AUTO));
@@ -721,7 +710,7 @@ static void expamem_map_gfxcard (void)
 
 static void expamem_init_gfxcard (void)
 {
-    expamem_init_clear();
+    expamem_init_clear ();
     expamem_write (0x00, zorroIII);
 
     switch (allocated_gfxmem) {
@@ -827,14 +816,14 @@ static void allocate_expamem (void)
 
     if (savestate_state == STATE_RESTORE) {
 	if (allocated_fastmem > 0) {
-	    fseek (savestate_file, fast_filepos, SEEK_SET);
-	    fread (fastmemory, 1, allocated_fastmem, savestate_file);
+	    zfile_fseek (savestate_file, fast_filepos, SEEK_SET);
+	    zfile_fread (fastmemory, 1, allocated_fastmem, savestate_file);
 	    map_banks (&fastmem_bank, fastmem_start >> 16, currprefs.fastmem_size >> 16,
 		       allocated_fastmem);
 	}
 	if (allocated_z3fastmem > 0) {
-	    fseek (savestate_file, z3_filepos, SEEK_SET);
-	    fread (z3fastmem, 1, allocated_z3fastmem, savestate_file);
+	    zfile_fseek (savestate_file, z3_filepos, SEEK_SET);
+	    zfile_fread (z3fastmem, 1, allocated_z3fastmem, savestate_file);
 	    map_banks (&z3fastmem_bank, z3fastmem_start >> 16, currprefs.z3fastmem_size >> 16,
 		       allocated_z3fastmem);
 	}
@@ -901,12 +890,12 @@ void expansion_init (void)
 
     allocate_expamem ();
 
-    filesysory = (uae_u8 *) mapped_malloc (0x10000, "filesys");
+    filesysory = mapped_malloc (0x10000, "filesys");
     if (!filesysory) {
 	write_log ("virtual memory exhausted (filesysory)!\n");
 	exit (0);
     }
-    filesys_bank.baseaddr = (uae_u8*)filesysory;
+    filesys_bank.baseaddr = filesysory;
 }
 
 void expansion_cleanup (void)

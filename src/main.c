@@ -30,8 +30,8 @@
 #include "zfile.h"
 #include "autoconf.h"
 #include "osemu.h"
-#include "osdep/exectasks.h"
 #include "picasso96.h"
+#include "traps.h"
 #include "bsdsocket.h"
 #include "uaeexe.h"
 #include "native2amiga.h"
@@ -74,20 +74,6 @@ char *colormodes[] = { "256 colors", "32768 colors", "65536 colors",
     "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""
 };
 
-unsigned long gtod_resolution, gtod_secs;
-
-static void init_gtod (void)
-{
-    struct timeval tv1, tv2;
-    gettimeofday (&tv1, NULL);
-    do {
-	gettimeofday (&tv2, NULL);
-    } while (tv1.tv_sec == tv2.tv_sec
-	     && tv1.tv_usec == tv2.tv_usec);
-
-    gtod_resolution = (tv2.tv_usec - tv1.tv_usec + 1000000 * (tv2.tv_sec - tv1.tv_sec));
-}
-
 void discard_prefs (struct uae_prefs *p)
 {
     struct strlist **ps = &p->unknown_lines;
@@ -112,7 +98,6 @@ void default_prefs (struct uae_prefs *p)
     /* Note to porters: please don't change any of these options! UAE is supposed
      * to behave identically on all platforms if possible. */
     p->illegal_mem = 0;
-    p->no_xhair = 0;
     p->use_serial = 0;
     p->serial_demand = 0;
     p->parallel_demand = 0;
@@ -124,11 +109,11 @@ void default_prefs (struct uae_prefs *p)
     p->emul_accuracy = 2;
     p->test_drawing_speed = 0;
 
-    p->produce_sound = 0;
+    p->produce_sound = 3;
     p->sound_stereo = 0;
-    p->sound_bits = DEFAULT_SOUND_BITS;
+    p->sound_stereo_separation = 7;
+    p->sound_mixed_stereo_delay = 0;
     p->sound_freq = DEFAULT_SOUND_FREQ;
-    p->sound_minbsiz = DEFAULT_SOUND_MINB;
     p->sound_maxbsiz = DEFAULT_SOUND_MAXB;
     p->sound_interpol = 0;
 
@@ -179,8 +164,8 @@ void default_prefs (struct uae_prefs *p)
     strcpy (p->sername, "");
 
     p->m68k_speed = 0;
-    p->cpu_level = 2;
-    p->cpu_compatible = 0;
+    p->cpu_model = 68020;
+    p->fpu_model = 0;
     p->address_space_24 = 0;
 
     p->fastmem_size = 0x00000000;
@@ -211,100 +196,114 @@ void fixup_prefs_dimensions (struct gfx_params *p)
     p->width &= ~7;
 }
 
-static void fix_options (void)
+void fixup_cpu (struct uae_prefs *p)
+{
+}
+
+void fixup_sound (struct uae_prefs *p)
+{
+    if (p->sound_stereo_separation < 0)
+	p->sound_stereo_separation = 0;
+    if (p->sound_stereo_separation > MIXED_STEREO_MAX)
+	p->sound_stereo_separation = MIXED_STEREO_MAX;
+}
+
+static void fixup_prefs (struct uae_prefs *p)
 {
     int err = 0;
 
-    if ((currprefs.chipmem_size & (currprefs.chipmem_size - 1)) != 0
-	|| currprefs.chipmem_size < 0x80000
-	|| currprefs.chipmem_size > 0x800000)
+    if ((p->chipmem_size & (p->chipmem_size - 1)) != 0
+	|| p->chipmem_size < 0x80000
+	|| p->chipmem_size > 0x800000)
     {
-	currprefs.chipmem_size = 0x200000;
+	p->chipmem_size = 0x200000;
 	write_log ("Unsupported chipmem size!\n");
 	err = 1;
     }
-    if ((currprefs.fastmem_size & (currprefs.fastmem_size - 1)) != 0
-	|| (currprefs.fastmem_size != 0 && (currprefs.fastmem_size < 0x100000 || currprefs.fastmem_size > 0x800000)))
+    if ((p->fastmem_size & (p->fastmem_size - 1)) != 0
+	|| (p->fastmem_size != 0 && (p->fastmem_size < 0x100000 || p->fastmem_size > 0x800000)))
     {
-	currprefs.fastmem_size = 0;
+	p->fastmem_size = 0;
 	write_log ("Unsupported fastmem size!\n");
 	err = 1;
     }
-    if ((currprefs.gfxmem_size & (currprefs.gfxmem_size - 1)) != 0
-	|| (currprefs.gfxmem_size != 0 && (currprefs.gfxmem_size < 0x100000 || currprefs.gfxmem_size > 0x2000000)))
+    if ((p->gfxmem_size & (p->gfxmem_size - 1)) != 0
+	|| (p->gfxmem_size != 0 && (p->gfxmem_size < 0x100000 || p->gfxmem_size > 0x2000000)))
     {
-	write_log ("Unsupported graphics card memory size %lx!\n", currprefs.gfxmem_size);
-	currprefs.gfxmem_size = 0;
+	write_log ("Unsupported graphics card memory size %lx!\n", p->gfxmem_size);
+	p->gfxmem_size = 0;
 	err = 1;
     }
-    if ((currprefs.z3fastmem_size & (currprefs.z3fastmem_size - 1)) != 0
-	|| (currprefs.z3fastmem_size != 0 && (currprefs.z3fastmem_size < 0x100000 || currprefs.z3fastmem_size > 0x4000000)))
+    if ((p->z3fastmem_size & (p->z3fastmem_size - 1)) != 0
+	|| (p->z3fastmem_size != 0 && (p->z3fastmem_size < 0x100000 || p->z3fastmem_size > 0x4000000)))
     {
-	currprefs.z3fastmem_size = 0;
+	p->z3fastmem_size = 0;
 	write_log ("Unsupported Zorro III fastmem size!\n");
 	err = 1;
     }
-    if (currprefs.address_space_24 && (currprefs.gfxmem_size != 0 || currprefs.z3fastmem_size != 0)) {
-	currprefs.z3fastmem_size = currprefs.gfxmem_size = 0;
+    if (p->address_space_24 && (p->gfxmem_size != 0 || p->z3fastmem_size != 0)) {
+	p->z3fastmem_size = p->gfxmem_size = 0;
 	write_log ("Can't use a graphics card or Zorro III fastmem when using a 24 bit\n"
 		 "address space - sorry.\n");
     }
-    if ((currprefs.bogomem_size & (currprefs.bogomem_size - 1)) != 0
-	|| (currprefs.bogomem_size != 0 && (currprefs.bogomem_size < 0x80000 || currprefs.bogomem_size > 0x100000)))
+    if ((p->bogomem_size & (p->bogomem_size - 1)) != 0
+	|| (p->bogomem_size != 0 && (p->bogomem_size < 0x80000 || p->bogomem_size > 0x100000)))
     {
-	currprefs.bogomem_size = 0;
+	p->bogomem_size = 0;
 	write_log ("Unsupported bogomem size!\n");
 	err = 1;
     }
 
-    if (currprefs.chipmem_size > 0x200000 && currprefs.fastmem_size != 0) {
+    if (p->chipmem_size > 0x200000 && p->fastmem_size != 0) {
 	write_log ("You can't use fastmem and more than 2MB chip at the same time!\n");
-	currprefs.fastmem_size = 0;
+	p->fastmem_size = 0;
 	err = 1;
     }
 #if 0
-    if (currprefs.m68k_speed < -1 || currprefs.m68k_speed > 20) {
+    if (p->m68k_speed < -1 || p->m68k_speed > 20) {
 	write_log ("Bad value for -w parameter: must be -1, 0, or within 1..20.\n");
-	currprefs.m68k_speed = 4;
+	p->m68k_speed = 4;
 	err = 1;
     }
 #endif
 
-    if (currprefs.produce_sound < 0 || currprefs.produce_sound > 3) {
+    if (p->produce_sound < 0 || p->produce_sound > 3) {
 	write_log ("Bad value for -S parameter: enable value must be within 0..3\n");
-	currprefs.produce_sound = 0;
+	p->produce_sound = 0;
 	err = 1;
     }
-    if (currprefs.cpu_level < 2 && currprefs.z3fastmem_size > 0) {
+    if (p->cpu_model < 68020 && p->z3fastmem_size > 0) {
 	write_log ("Z3 fast memory can't be used with a 68000/68010 emulation. It\n"
 		 "requires a 68020 emulation. Turning off Z3 fast memory.\n");
-	currprefs.z3fastmem_size = 0;
+	p->z3fastmem_size = 0;
 	err = 1;
     }
-    if (currprefs.gfxmem_size > 0 && (currprefs.cpu_level < 2 || currprefs.address_space_24)) {
+    if (p->gfxmem_size > 0 && (p->cpu_model < 68020 || p->address_space_24)) {
 	write_log ("Picasso96 can't be used with a 68000/68010 or 68EC020 emulation. It\n"
 		 "requires a 68020 emulation. Turning off Picasso96.\n");
-	currprefs.gfxmem_size = 0;
+	p->gfxmem_size = 0;
 	err = 1;
     }
-#ifndef BSDSOCKET_SUPPORTED
-    if (currprefs.socket_emu) {
+#ifndef BSDSOCKET
+    if (p->socket_emu) {
 	write_log ("Compile-time option of BSDSOCKET_SUPPORTED was not enabled.  You can't use bsd-socket emulation.\n");
-	currprefs.socket_emu = 0;
+	p->socket_emu = 0;
 	err = 1;
     }
 #endif
 
-    if (currprefs.nr_floppies < 1 || currprefs.nr_floppies > 4) {
+    if (p->nr_floppies < 1 || p->nr_floppies > 4) {
 	write_log ("Invalid number of floppies.  Using 4.\n");
-	currprefs.nr_floppies = 4;
+	p->nr_floppies = 4;
 	err = 1;
     }
-    if (currprefs.collision_level < 0 || currprefs.collision_level > 3) {
+    if (p->collision_level < 0 || p->collision_level > 3) {
 	write_log ("Invalid collision support level.  Using 1.\n");
-	currprefs.collision_level = 1;
+	p->collision_level = 1;
 	err = 1;
     }
+
+    fixup_sound (p);
 
     if (err)
 	write_log ("Please use \"uae -h\" to get usage information.\n");
@@ -359,7 +358,7 @@ void parse_cmdline (int argc, char **argv)
 		int extra_arg = *arg == '\0';
 		if (extra_arg)
 		    arg = i + 1 < argc ? argv[i + 1] : 0;
-		if (parse_cmdline_option (argv[i][1], arg) && extra_arg)
+		if (parse_cmdline_option (&currprefs, argv[i][1], arg) && extra_arg)
 		    i++;
 	    }
 	}
@@ -386,7 +385,10 @@ static void parse_cmdline_and_init_file (int argc, char **argv)
 
     if (! cfgfile_load (&currprefs, optionsfile)) {
 #ifdef OPTIONS_IN_HOME
-	/* sam: if not found in $HOME then look in current directory */
+	/* If not found in $HOME then look in current directory.  However,
+	 * don't use the optionsfile variable, so that we will save changes
+	 * to the home directory.  */
+	char pwd_optionsfile[256];
 	strcpy (optionsfile, OPTIONSFILENAME);
 	cfgfile_load (&currprefs, optionsfile);
 #endif
@@ -478,10 +480,6 @@ void real_main (int argc, char **argv)
 
     machdep_init ();
     init_gtod ();
-    if (gtod_resolution < 1000) {
-	use_gtod = 1;
-	syncbase = 1000000;
-    }
 
     if (! setup_sound ()) {
 	write_log ("Sound driver unavailable: Sound output disabled\n");
@@ -492,7 +490,7 @@ void real_main (int argc, char **argv)
     changed_prefs = currprefs;
     no_gui = ! currprefs.start_gui;
     if (! no_gui) {
-	int err = gui_init ();
+	int err = gui_init (1);
 	currprefs = changed_prefs;
 	if (err == -1) {
 	    write_log ("Failed to initialize the GUI\n");
@@ -505,7 +503,7 @@ void real_main (int argc, char **argv)
 	currprefs.produce_sound = 0;
     }
 
-    fix_options ();
+    fixup_prefs (&currprefs);
     changed_prefs = currprefs;
 
     /* Install resident module to get 8MB chipmem, if requested */
@@ -517,7 +515,7 @@ void real_main (int argc, char **argv)
     memory_init ();
 
     filesys_install ();
-    gfxlib_install ();
+    bsdlib_install ();
     emulib_install ();
     uaeexe_install ();
     native2amiga_install ();

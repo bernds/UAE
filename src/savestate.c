@@ -47,13 +47,13 @@
 
 #include "options.h"
 #include "memory.h"
-
+#include "zfile.h"
 #include "savestate.h"
 
 int savestate_state;
 
 char *savestate_filename;
-FILE *savestate_file;
+struct zfile *savestate_file;
 
 /* functions for reading/writing bytes, shorts and longs in big-endian
  * format independent of host machine's endianess */
@@ -83,7 +83,7 @@ void save_u8_func (uae_u8 **dstp, uae_u8 v)
 void save_string_func (uae_u8 **dstp, const char *from)
 {
     uae_u8 *dst = *dstp;
-    while(*from)
+    while (*from)
 	*dst++ = *from++;
     *dst++ = 0;
     *dstp = dst;
@@ -124,14 +124,14 @@ char *restore_string_func (const uae_u8 **dstp)
     do {
 	v = *dst++;
 	*top++ = v;
-    } while(v);
+    } while (v);
     *dstp = dst;
     return to;
 }
 
 /* read and write IFF-style hunks */
 
-static void save_chunk (FILE *f, uae_u8 *chunk, long len, const char *name)
+static void save_chunk (struct zfile *f, uae_u8 *chunk, long len, const char *name)
 {
     uae_u8 tmp[4], *dst;
     uae_u8 zero[4]= { 0, 0, 0, 0 };
@@ -140,24 +140,24 @@ static void save_chunk (FILE *f, uae_u8 *chunk, long len, const char *name)
 	return;
 
     /* chunk name */
-    fwrite (name, 1, 4, f);
+    zfile_fwrite (name, 1, 4, f);
     /* chunk size */
     dst = &tmp[0];
     save_u32 (len + 4 + 4 + 4);
-    fwrite (&tmp[0], 1, 4, f);
+    zfile_fwrite (&tmp[0], 1, 4, f);
     /* chunk flags */
     dst = &tmp[0];
     save_u32 (0);
-    fwrite (&tmp[0], 1, 4, f);
+    zfile_fwrite (&tmp[0], 1, 4, f);
     /* chunk data */
-    fwrite (chunk, 1, len, f);
+    zfile_fwrite (chunk, 1, len, f);
     /* alignment */
     len = 4 - (len & 3);
     if (len)
-	fwrite (zero, 1, len, f);
+	zfile_fwrite (zero, 1, len, f);
 }
 
-static uae_u8 *restore_chunk (FILE *f, char *name, long *len, long *filepos)
+static uae_u8 *restore_chunk (struct zfile *f, char *name, long *len, long *filepos)
 {
     uae_u8 tmp[4], dummy[4], *mem;
     const uae_u8 *src;
@@ -165,10 +165,10 @@ static uae_u8 *restore_chunk (FILE *f, char *name, long *len, long *filepos)
     long len2;
 
     /* chunk name */
-    fread (name, 1, 4, f);
+    zfile_fread (name, 1, 4, f);
     name[4] = 0;
     /* chunk size */
-    fread (tmp, 1, 4, f);
+    zfile_fread (tmp, 1, 4, f);
     src = tmp;
     len2 = restore_u32 () - 4 - 4 - 4;
     if (len2 < 0)
@@ -178,11 +178,11 @@ static uae_u8 *restore_chunk (FILE *f, char *name, long *len, long *filepos)
 	return 0;
 
     /* chunk flags */
-    fread (tmp, 1, 4, f);
+    zfile_fread (tmp, 1, 4, f);
     src = tmp;
     flags = restore_u32 ();
 
-    *filepos = ftell (f);
+    *filepos = zfile_ftell (f);
     /* chunk data.  RAM contents will be loaded during the reset phase,
        no need to malloc multiple megabytes here.  */
     if (strcmp (name, "CRAM") != 0
@@ -191,16 +191,16 @@ static uae_u8 *restore_chunk (FILE *f, char *name, long *len, long *filepos)
 	&& strcmp (name, "ZRAM") != 0)
     {
 	mem = malloc (len2);
-	fread (mem, 1, len2, f);
+	zfile_fread (mem, 1, len2, f);
     } else {
 	mem = 0;
-	fseek (f, len2, SEEK_CUR);
+	zfile_fseek (f, len2, SEEK_CUR);
     }
 
     /* alignment */
     len2 = 4 - (len2 & 3);
     if (len2)
-	fread (dummy, 1, len2, f);
+	zfile_fread (dummy, 1, len2, f);
     return mem;
 }
 
@@ -213,14 +213,14 @@ void restore_ram (size_t filepos, uae_u8 *memory)
     uae_u32 flags;
 
     zfile_fseek (savestate_file, filepos, SEEK_SET);
-    zfile_fread (tmp, 1, sizeof(tmp), savestate_file);
-    size = restore_u32();
-    flags = restore_u32();
+    zfile_fread (tmp, 1, sizeof (tmp), savestate_file);
+    size = restore_u32 ();
+    flags = restore_u32 ();
     size -= 4 + 4 + 4;
     if (flags & 1) {
 	zfile_fread (tmp, 1, 4, savestate_file);
 	src = tmp;
-	fullsize = restore_u32();
+	fullsize = restore_u32 ();
 	size -= 4;
 	zfile_zuncompress (memory, fullsize, savestate_file, size);
     } else {
@@ -233,7 +233,7 @@ static void restore_header (const uae_u8 *src)
 {
     char *emuname, *emuversion, *description;
 
-    restore_u32();
+    restore_u32 ();
     emuname = restore_string ();
     emuversion = restore_string ();
     description = restore_string ();
@@ -248,14 +248,14 @@ static void restore_header (const uae_u8 *src)
 
 void restore_state (const char *filename)
 {
-    FILE *f;
-    uae_u8 *chunk,*end;
+    struct zfile *f;
+    const uae_u8 *chunk, *end;
     char name[5];
     long len;
     long filepos;
 
     chunk = 0;
-    f = fopen (filename, "rb");
+    f = zfile_open (filename, "rb");
     if (!f)
 	goto error;
 
@@ -358,14 +358,14 @@ void restore_state (const char *filename)
     if (chunk)
 	free (chunk);
     if (f)
-	fclose (f);
+	zfile_fclose (f);
 }
 
 void savestate_restore_finish (void)
 {
     if (savestate_state != STATE_RESTORE)
 	return;
-    fclose (savestate_file);
+    zfile_fclose (savestate_file);
     savestate_file = 0;
     savestate_state = 0;
 }
@@ -377,11 +377,11 @@ void save_state (const char *filename, const char *description)
     uae_u8 header[1000];
     char tmp[100];
     uae_u8 *dst;
-    FILE *f;
+    struct zfile *f;
     int len,i;
     char name[5];
 
-    f = fopen (filename, "wb");
+    f = zfile_open (filename, "wb");
     if (!f)
 	return;
 
@@ -396,7 +396,7 @@ void save_state (const char *filename, const char *description)
     save_chunk (f, dst, len, "CPU ");
     free (dst);
 
-    strcpy(name, "DSKx");
+    strcpy (name, "DSKx");
     for (i = 0; i < 4; i++) {
 	dst = save_disk (i, &len, 0);
 	if (dst) {
@@ -466,10 +466,10 @@ void save_state (const char *filename, const char *description)
 	free (dst);
     } while ((dst = save_rom (0, &len, 0)));
 
-    fwrite ("END ", 1, 4, f);
-    fwrite ("\0\0\0\08", 1, 4, f);
+    zfile_fwrite ("END ", 1, 4, f);
+    zfile_fwrite ("\0\0\0\08", 1, 4, f);
     write_log ("Save of '%s' complete\n", filename);
-    fclose (f);
+    zfile_fclose (f);
 }
 
 /*

@@ -137,13 +137,15 @@ struct mnemolookup lookuptab[] = {
     { i_CPUSHA, "CPUSHA" },
     { i_MOVE16, "MOVE16" },
 
+    { i_MMUOP30A, "MMUOP30A" },
+    { i_MMUOP30B, "MMUOP30B" },
     { i_MMUOP, "MMUOP" },
     { i_ILLG, "" },
 };
 
 struct instr *table68k;
 
-STATIC_INLINE amodes mode_from_str (const char *str)
+static amodes mode_from_str (const char *str)
 {
     if (strncmp (str, "Dreg", 4) == 0) return Dreg;
     if (strncmp (str, "Areg", 4) == 0) return Areg;
@@ -692,7 +694,10 @@ static void build_insn (int insn)
 		    table68k[opc].mnemo = lookuptab[find].mnemo;
 		    break;
 		}
-		if (strlen(lookuptab[find].name) == 0) abort();
+		if (strlen(lookuptab[find].name) == 0) {
+		    write_log ("Can't find mnemonic \"%s\"\n", mnemonic);
+		    abort();
+		}
 	    }
 	}
 	else {

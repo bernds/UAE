@@ -18,6 +18,7 @@
 #include "custom.h"
 #include "newcpu.h"
 #include "disk.h"
+#include "traps.h"
 #include "autoconf.h"
 #include "filesys.h"
 #include "execlib.h"
@@ -42,7 +43,7 @@ void native2amiga_startup (void)
 }
 
 #ifdef SUPPORT_THREADS
-void uae_ReplyMsg(uaecptr msg)
+void uae_ReplyMsg (uaecptr msg)
 {
     write_comm_pipe_int (&native2amiga_pending, 2, 0);
     write_comm_pipe_u32 (&native2amiga_pending, msg, 1);
@@ -50,7 +51,7 @@ void uae_ReplyMsg(uaecptr msg)
     uae_int_requested = 1;
 }
 
-void uae_PutMsg(uaecptr port, uaecptr msg)
+void uae_PutMsg (uaecptr port, uaecptr msg)
 {
     uae_pt data;
     data.i = 1;
@@ -61,7 +62,7 @@ void uae_PutMsg(uaecptr port, uaecptr msg)
     uae_int_requested = 1;
 }
 
-void uae_Signal(uaecptr task, uae_u32 mask)
+void uae_Signal (uaecptr task, uae_u32 mask)
 {
     write_comm_pipe_int (&native2amiga_pending, 0, 0);
     write_comm_pipe_u32 (&native2amiga_pending, task, 0);
@@ -71,23 +72,23 @@ void uae_Signal(uaecptr task, uae_u32 mask)
 }
 #endif
 
-void uae_NewList(uaecptr list)
+void uae_NewList (uaecptr list)
 {
     put_long (list, list + 4);
     put_long (list + 4, 0);
     put_long (list + 8, list);
 }
 
-uaecptr uae_AllocMem (uae_u32 size, uae_u32 flags)
+uaecptr uae_AllocMem (TrapContext *ctx, uae_u32 size, uae_u32 flags)
 {
     m68k_dreg (regs, 0) = size;
     m68k_dreg (regs, 1) = flags;
-    return CallLib (get_long (4), -198); /* AllocMem */
+    return CallLib (ctx, get_long (4), -198); /* AllocMem */
 }
 
-void uae_FreeMem (uaecptr memory, uae_u32 size)
+void uae_FreeMem (TrapContext *ctx, uaecptr memory, uae_u32 size)
 {
     m68k_dreg (regs, 0) = size;
     m68k_areg (regs, 1) = memory;
-    CallLib (get_long (4), -0xD2); /* FreeMem */
+    CallLib (ctx, get_long (4), -0xD2); /* FreeMem */
 }

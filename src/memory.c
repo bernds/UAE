@@ -12,6 +12,7 @@
 #include "options.h"
 #include "uae.h"
 #include "memory.h"
+#include "romlist.h"
 #include "ersatz.h"
 #include "zfile.h"
 #include "custom.h"
@@ -25,9 +26,6 @@
 #include <sys/mman.h>
 #endif
 
-/* Set by each memory handler that does not simply access real memory.  */
-int special_mem;
-
 int ersatzkickfile = 0;
 
 uae_u32 allocated_chipmem;
@@ -40,221 +38,6 @@ uae_u32 allocated_a3000mem;
 static long chip_filepos;
 static long bogo_filepos;
 static long rom_filepos;
-
-/* ROM management.  */
-struct romlist {
-    char *path;
-    struct romdata *rd;
-};
-
-static struct romlist *rl;
-static int romlist_cnt;
-
-void romlist_add (char *path, struct romdata *rd)
-{
-    struct romlist *rl2;
-
-    romlist_cnt++;
-    rl = realloc (rl, sizeof (struct romlist) * romlist_cnt);
-    rl2 = rl + romlist_cnt - 1;
-    rl2->path = my_strdup (path);
-    rl2->rd = rd;
-}
-
-char *romlist_get (struct romdata *rd)
-{
-    int i;
-
-    if (!rd)
-	return 0;
-    for (i = 0; i < romlist_cnt; i++) {
-	if (rl[i].rd == rd)
-	    return rl[i].path;
-    }
-    return 0;
-}
-
-void romlist_clear (void)
-{
-    free (rl);
-    rl = 0;
-    romlist_cnt = 0;
-}
-
-static struct romdata roms[] = {
-    { "Cloanto Amiga Forever ROM key", 0, 0, 0x869ae1b1, 2069, 0, 0, 1, ROMTYPE_KEY },
-
-    { "Kickstart v1.0 (A1000)(NTSC)", 0, 0, 0x299790ff, 262144, 1, 0, 0, ROMTYPE_KICK },
-    { "Kickstart v1.1 (A1000)(NTSC)", 31, 34, 0xd060572a, 262144, 2, 0, 0, ROMTYPE_KICK },
-    { "Kickstart v1.1 (A1000)(PAL)", 31, 34, 0xec86dae2, 262144, 3, 0, 0, ROMTYPE_KICK },
-    { "Kickstart v1.2 (A1000)", 33, 166, 0x9ed783d0, 262144, 4, 0, 0, ROMTYPE_KICK },
-    { "Kickstart v1.2 (A500,A1000,A2000)", 33, 180, 0xa6ce1636, 262144, 5, 0, 0, ROMTYPE_KICK },
-    { "Kickstart v1.3 (A500,A1000,A2000)", 34, 5, 0xc4f0f55f, 262144, 6, 60, 0, ROMTYPE_KICK },
-    { "Kickstart v1.3 (A3000)", 34, 5, 0xe0f37258, 262144, 32, 0, 0, ROMTYPE_KICK },
-
-    { "Kickstart v2.04 (A500+)", 37, 175, 0xc3bdb240, 524288, 7, 0, 0, ROMTYPE_KICK },
-    { "Kickstart v2.05 (A600)", 37, 299, 0x83028fb5, 524288, 8, 0, 0, ROMTYPE_KICK },
-    { "Kickstart v2.05 (A600HD)", 37, 300, 0x64466c2a, 524288, 9, 0, 0, ROMTYPE_KICK },
-    { "Kickstart v2.05 (A600HD)", 37, 350, 0x43b0df7b, 524288, 10, 0, 0, ROMTYPE_KICK },
-
-    { "Kickstart v3.0 (A1200)", 39, 106, 0x6c9b07d2, 524288, 11, 0, 0, ROMTYPE_KICK },
-    { "Kickstart v3.0 (A4000)", 39, 106, 0x9e6ac152, 524288, 12, 2, 0, ROMTYPE_KICK },
-    { "Kickstart v3.1 (A4000)", 40, 70, 0x2b4566f1, 524288, 13, 2, 0, ROMTYPE_KICK },
-    { "Kickstart v3.1 (A500,A600,A2000)", 40, 63, 0xfc24ae0d, 524288, 14, 0, 0, ROMTYPE_KICK },
-    { "Kickstart v3.1 (A1200)", 40, 68, 0x1483a091, 524288, 15, 1, 0, ROMTYPE_KICK },
-    { "Kickstart v3.1 (A4000)(Cloanto)", 40, 68, 0x43b6dd22, 524288, 31, 2, 1, ROMTYPE_KICK },
-    { "Kickstart v3.1 (A4000)", 40, 68, 0xd6bae334, 524288, 16, 2, 0, ROMTYPE_KICK },
-    { "Kickstart v3.1 (A4000T)", 40, 70, 0x75932c3a, 524288, 17, 2, 0, ROMTYPE_KICK },
-
-    { "CD32 Kickstart v3.1", 40, 60, 0x1e62d4a5, 524288, 18, 1, 0, ROMTYPE_KICKCD32 },
-    { "CD32 Extended", 40, 60, 0x87746be2, 524288, 19, 1, 0, ROMTYPE_EXTCD32 },
-
-    { "CDTV Extended v1.00", 0, 0, 0x42baa124, 262144, 20, 0, 0, ROMTYPE_EXTCDTV },
-    { "CDTV Extended v2.30", 0, 0, 0x30b54232, 262144, 21, 0, 0, ROMTYPE_EXTCDTV },
-    { "CDTV Extended v2.07", 0, 0, 0xceae68d2, 262144, 22, 0, 0, ROMTYPE_EXTCDTV },
-
-    { "A1000 Bootstrap", 0, 0, 0x62f11c04, 8192, 23, 0, 0, ROMTYPE_KICK },
-    { "A1000 Bootstrap", 0, 0, 0x0b1ad2d0, 65536, 24, 0, 0, ROMTYPE_KICK },
-
-    { "Action Replay Mk I v1.50", 0, 0, 0xd4ce0675, 65536, 25, 0, 0, ROMTYPE_AR },
-    { "Action Replay Mk II v2.05", 0, 0, 0x1287301f , 131072, 26, 0, 0, ROMTYPE_AR },
-    { "Action Replay Mk II v2.12", 0, 0, 0x804d0361 , 131072, 27, 0, 0, ROMTYPE_AR },
-    { "Action Replay Mk II v2.14", 0, 0, 0x49650e4f, 131072, 28, 0, 0, ROMTYPE_AR },
-    { "Action Replay Mk III v3.09", 0, 0, 0x0ed9b5aa, 262144, 29, 0, 0, ROMTYPE_AR },
-    { "Action Replay Mk III v3.17", 0, 0, 0xc8a16406, 262144, 30, 0, 0, ROMTYPE_AR },
-
-    { "SportTime Table Hockey\0ar_airh", 0, 0, 0, 0, 33, 0, 0, ROMTYPE_ARCADIA },
-    { "SportTime Bowling\0ar_bowl", 0, 0, 0, 0, 34, 0, 0, ROMTYPE_ARCADIA },
-    { "World Darts\0ar_dart", 0, 0, 0, 0, 35, 0, 0, ROMTYPE_ARCADIA },
-    { "Magic Johnson's Fast Break\0ar_fast", 0, 0, 0, 0, 36, 0, 0, ROMTYPE_ARCADIA },
-    { "Leader Board Golf\0ar_ldrb", 0, 0, 0, 0, 37, 0, 0, ROMTYPE_ARCADIA },
-    { "Leader Board Golf (alt)\0ar_ldrba", 0, 0, 0, 0, 38, 0, 0, ROMTYPE_ARCADIA },
-    { "Ninja Mission\0ar_ninj", 0, 0, 0, 0, 39, 0, 0, ROMTYPE_ARCADIA },
-    { "Road Wars\0ar_rdwr", 0, 0, 0, 0, 40, 0, 0, ROMTYPE_ARCADIA },
-    { "Sidewinder\0ar_sdwr", 0, 0, 0, 0, 41, 0, 0, ROMTYPE_ARCADIA },
-    { "Cool Spot\0ar_spot", 0, 0, 0, 0, 42, 0, 0, ROMTYPE_ARCADIA },
-    { "Space Ranger\0ar_sprg", 0, 0, 0, 0, 43, 0, 0, ROMTYPE_ARCADIA },
-    { "Xenon\0ar_xeon", 0, 0, 0, 0, 44, 0, 0, ROMTYPE_ARCADIA },
-
-    { NULL, 0, 0, 0, 0, 0, 0, 0, 0 }
-};
-
-static void decode_cloanto_rom_do (uae_u8 *mem, int size, int real_size, uae_u8 *key, int keysize)
-{
-    long cnt, t;
-    for (t = cnt = 0; cnt < size; cnt++, t = (t + 1) % keysize)  {
-	mem[cnt] ^= key[t];
-	if (real_size == cnt + 1)
-	    t = keysize - 1;
-    }
-}
-
-static int decode_cloanto_rom (uae_u8 *mem, int size, int real_size)
-{
-    FILE *keyf;
-    uae_u8 *p;
-    int keysize;
-
-    if (strlen (currprefs.keyfile) == 0) {
-	write_log ("No filename given for ROM key file and ROM image is an encrypted \"Amiga Forever\" ROM file.\n");
-	return 0;
-    }
-    keyf = zfile_open (currprefs.keyfile, "rb");
-    if (keyf == 0) {
-	write_log ("Could not find specified ROM key-file.\n");
-	return 0;
-    }
-
-    p = (uae_u8 *) xmalloc (524288);
-    keysize = fread (p, 1, 524288, keyf);
-    decode_cloanto_rom_do (mem, size, real_size, p, keysize);
-    fclose (keyf);
-    free (p);
-    return 1;
-}
-
-struct romdata *getromdatabyname (char *name)
-{
-    char tmp[1024];
-    int i = 0;
-    while (roms[i].name) {
-	getromname (&roms[i], tmp);
-	if (!strcmp (tmp, name) || !strcmp (roms[i].name, name))
-	    return &roms[i];
-	i++;
-    }
-    return 0;
-}
-
-struct romdata *getromdatabyid (int id)
-{
-    int i = 0;
-    while (roms[i].name) {
-	if (id == roms[i].id)
-	    return &roms[i];
-	i++;
-    }
-    return 0;
-}
-
-struct romdata *getromdatabycrc (uae_u32 crc32)
-{
-    int i = 0;
-    while (roms[i].name) {
-	if (crc32 == roms[i].crc32)
-	    return &roms[i];
-	i++;
-    }
-    return 0;
-}
-
-struct romdata *getromdatabydata (uae_u8 *rom, int size)
-{
-    int i;
-    uae_u32 crc32a, crc32b, crc32c;
-    uae_u8 tmp[4];
-    uae_u8 *tmpbuf = NULL;
-
-    if (size > 11 && !memcmp (rom, "AMIROMTYPE1", 11)) {
-	uae_u8 *tmpbuf = xmalloc (size);
-	int tmpsize = size - 11;
-	memcpy (tmpbuf, rom + 11, tmpsize);
-	decode_cloanto_rom (tmpbuf, tmpsize, tmpsize);
-	rom = tmpbuf;
-	size = tmpsize;
-    }
-    crc32a = get_crc32 (rom, size);
-    crc32b = get_crc32 (rom, size / 2);
-     /* ignore AR IO-port range until we have full dump */
-    memcpy (tmp, rom, 4);
-    memset (rom, 0, 4);
-    crc32c = get_crc32 (rom, size);
-    memcpy (rom, tmp, 4);
-    i = 0;
-    while (roms[i].name) {
-	if (roms[i].crc32) {
-	    if (crc32a == roms[i].crc32 || crc32b == roms[i].crc32)
-		return &roms[i];
-	    if (crc32c == roms[i].crc32 && roms[i].type == ROMTYPE_AR)
-		return &roms[i];
-	}
-	i++;
-    }
-    free (tmpbuf);
-    return 0;
-}
-
-void getromname (struct romdata *rd, char *name)
-{
-    name[0] = 0;
-    if (rd->type == ROMTYPE_ARCADIA)
-	strcat (name, "Arcadia ");
-    strcat (name, rd->name);
-    if (rd->revision)
-	sprintf (name + strlen (name), " rev %d.%d", rd->version, rd->revision);
-    if (rd->size > 0)
-	sprintf (name + strlen (name), " (%dk)", (rd->size + 1023) / 1024);
-}
 
 addrbank *mem_banks[65536];
 
@@ -308,7 +91,6 @@ static int dummy_check (uaecptr addr, uae_u32 size) REGPARAM;
 
 uae_u32 REGPARAM2 dummy_lget (uaecptr addr)
 {
-    special_mem |= S_READ;
     if (currprefs.illegal_mem) {
 	if (illegal_count < 20) {
 	    illegal_count++;
@@ -321,7 +103,6 @@ uae_u32 REGPARAM2 dummy_lget (uaecptr addr)
 
 uae_u32 REGPARAM2 dummy_wget (uaecptr addr)
 {
-    special_mem |= S_READ;
     if (currprefs.illegal_mem) {
 	if (illegal_count < 20) {
 	    illegal_count++;
@@ -334,7 +115,6 @@ uae_u32 REGPARAM2 dummy_wget (uaecptr addr)
 
 uae_u32 REGPARAM2 dummy_bget (uaecptr addr)
 {
-    special_mem |= S_READ;
     if (currprefs.illegal_mem) {
 	if (illegal_count < 20) {
 	    illegal_count++;
@@ -347,7 +127,6 @@ uae_u32 REGPARAM2 dummy_bget (uaecptr addr)
 
 void REGPARAM2 dummy_lput (uaecptr addr, uae_u32 l)
 {
-    special_mem |= S_WRITE;
     if (currprefs.illegal_mem) {
 	if (illegal_count < 20) {
 	    illegal_count++;
@@ -357,7 +136,6 @@ void REGPARAM2 dummy_lput (uaecptr addr, uae_u32 l)
 }
 void REGPARAM2 dummy_wput (uaecptr addr, uae_u32 w)
 {
-    special_mem |= S_WRITE;
     if (currprefs.illegal_mem) {
 	if (illegal_count < 20) {
 	    illegal_count++;
@@ -367,7 +145,6 @@ void REGPARAM2 dummy_wput (uaecptr addr, uae_u32 w)
 }
 void REGPARAM2 dummy_bput (uaecptr addr, uae_u32 b)
 {
-    special_mem |= S_WRITE;
     if (currprefs.illegal_mem) {
 	if (illegal_count < 20) {
 	    illegal_count++;
@@ -378,7 +155,6 @@ void REGPARAM2 dummy_bput (uaecptr addr, uae_u32 b)
 
 int REGPARAM2 dummy_check (uaecptr addr, uae_u32 size)
 {
-    special_mem |= S_READ;
     if (currprefs.illegal_mem) {
 	if (illegal_count < 20) {
 	    illegal_count++;
@@ -402,7 +178,6 @@ static int mbres_val = 0;
 
 uae_u32 REGPARAM2 mbres_lget (uaecptr addr)
 {
-    special_mem |= S_READ;
     if (currprefs.illegal_mem)
 	write_log ("Illegal lget at %08lx\n", addr);
 
@@ -411,7 +186,6 @@ uae_u32 REGPARAM2 mbres_lget (uaecptr addr)
 
 uae_u32 REGPARAM2 mbres_wget (uaecptr addr)
 {
-    special_mem |= S_READ;
     if (currprefs.illegal_mem)
 	write_log ("Illegal wget at %08lx\n", addr);
 
@@ -420,7 +194,6 @@ uae_u32 REGPARAM2 mbres_wget (uaecptr addr)
 
 uae_u32 REGPARAM2 mbres_bget (uaecptr addr)
 {
-    special_mem |= S_READ;
     if (currprefs.illegal_mem)
 	write_log ("Illegal bget at %08lx\n", addr);
 
@@ -429,19 +202,16 @@ uae_u32 REGPARAM2 mbres_bget (uaecptr addr)
 
 void REGPARAM2 mbres_lput (uaecptr addr, uae_u32 l)
 {
-    special_mem |= S_WRITE;
     if (currprefs.illegal_mem)
 	write_log ("Illegal lput at %08lx\n", addr);
 }
 void REGPARAM2 mbres_wput (uaecptr addr, uae_u32 w)
 {
-    special_mem |= S_WRITE;
     if (currprefs.illegal_mem)
 	write_log ("Illegal wput at %08lx\n", addr);
 }
 void REGPARAM2 mbres_bput (uaecptr addr, uae_u32 b)
 {
-    special_mem |= S_WRITE;
     if (currprefs.illegal_mem)
 	write_log ("Illegal bput at %08lx\n", addr);
 
@@ -967,21 +737,21 @@ static int kickstart_checksum (uae_u8 *mem, int size)
     return 0;
 }
 
-static int read_kickstart (FILE *f, uae_u8 *mem, int size, int dochecksum, int *cloanto_rom)
+static int read_kickstart (struct zfile *f, uae_u8 *mem, int size, int dochecksum, int *cloanto_rom)
 {
     unsigned char buffer[20];
     int i, cr = 0;
 
     if (cloanto_rom)
 	*cloanto_rom = 0;
-    i = fread (buffer, 1, 11, f);
+    i = zfile_fread (buffer, 1, 11, f);
     if (strncmp ((char *) buffer, "AMIROMTYPE1", 11) != 0) {
-	fseek (f, 0, SEEK_SET);
+	zfile_fseek (f, 0, SEEK_SET);
     } else {
 	cr = 1;
     }
 
-    i = fread (mem, 1, size, f);
+    i = zfile_fread (mem, 1, size, f);
     if (i == 8192) {
 	a1000_bootrom = malloc (8192);
 	memcpy (a1000_bootrom, kickmemory, 8192);
@@ -990,13 +760,14 @@ static int read_kickstart (FILE *f, uae_u8 *mem, int size, int dochecksum, int *
 	memcpy (mem + size / 2, mem, i);
     } else if (i != size) {
 	write_log ("Error while reading Kickstart.\n");
-	zfile_close (f);
+	zfile_fclose (f);
 	return 0;
     }
-    zfile_close (f);
+    zfile_fclose (f);
 
     if (cr)
-	decode_cloanto_rom (mem, size, i);
+	if (!decode_cloanto_rom (mem, size, i))
+	    return 0;
     if (dochecksum && i >= 262144)
 	kickstart_checksum (mem, size);
     if (cloanto_rom)
@@ -1006,7 +777,7 @@ static int read_kickstart (FILE *f, uae_u8 *mem, int size, int dochecksum, int *
 
 static int load_extendedkickstart (void)
 {
-    FILE *f;
+    struct zfile *f;
     int size;
 
     if (strlen (currprefs.romextfile) == 0)
@@ -1017,13 +788,13 @@ static int load_extendedkickstart (void)
 	return 0;
     }
 
-    fseek (f, 0, SEEK_END);
-    size = ftell (f);
+    zfile_fseek (f, 0, SEEK_END);
+    size = zfile_ftell (f);
     if (size > 300000)
 	extendedkickmem_size = 524288;
     else
 	extendedkickmem_size = 262144;
-    fseek (f, 0, SEEK_SET);
+    zfile_fseek (f, 0, SEEK_SET);
 
     switch (extromtype ()) {
     case EXTENDED_ROM_CDTV:
@@ -1036,17 +807,16 @@ static int load_extendedkickstart (void)
 	break;
     }
     read_kickstart (f, extendedkickmemory, 524288, 0, 0);
-    fclose (f);
     return 1;
 }
 
 
 static int load_kickstart (void)
 {
-    FILE *f = zfile_open (currprefs.romfile, "rb");
+    struct zfile *f = zfile_open (currprefs.romfile, "rb");
 
     if (f == NULL) {
-#if defined(AMIGA)||defined(__POS__)
+#if defined (AMIGA)||defined (__POS__)
 #define USE_UAE_ERSATZ "USE_UAE_ERSATZ"
 	if (!getenv (USE_UAE_ERSATZ)) {
 	    write_log ("Using current ROM. (create ENV:%s to " "use uae's ROM replacement)\n", USE_UAE_ERSATZ);
@@ -1061,7 +831,7 @@ static int load_kickstart (void)
     if (!read_kickstart (f, kickmemory, kickmem_size, 1, &cloanto_rom))
 	return 0;
 
-#if defined(AMIGA)
+#if defined (AMIGA)
   chk_sum:
 #endif
 
@@ -1155,7 +925,7 @@ static void delete_shmmaps (uae_u32 start, uae_u32 size)
 		return;
 
 	    if (x->size > size) {
-		printf ("NATMEM: Failure to delete mapping at %08x(size %08x, delsize %08x)\n", start, x->size, size);
+		printf ("NATMEM: Failure to delete mapping at %08x (size %08x, delsize %08x)\n", start, x->size, size);
 		dumplist ();
 		canbang = 0;
 		return;
@@ -1196,7 +966,7 @@ static void add_shmmaps (uae_u32 start, addrbank *what)
     base = ((uae_u8 *) NATMEM_OFFSET) + start;
     y->native_address = shmat (y->id, base, 0);
     if (y->native_address == (void *) -1) {
-	printf ("NATMEM: Failure to map existing at %08x(%p)\n", start, base);
+	printf ("NATMEM: Failure to map existing at %08x (%p)\n", start, base);
 	perror ("shmat");
 	dumplist ();
 	canbang = 0;
@@ -1311,11 +1081,11 @@ static void allocate_memory (void)
     }
 
     if (savestate_state == STATE_RESTORE) {
-	fseek (savestate_file, chip_filepos, SEEK_SET);
-	fread (chipmemory, 1, allocated_chipmem, savestate_file);
+	zfile_fseek (savestate_file, chip_filepos, SEEK_SET);
+	zfile_fread (chipmemory, 1, allocated_chipmem, savestate_file);
 	if (allocated_bogomem > 0) {
-	    fseek (savestate_file, bogo_filepos, SEEK_SET);
-	    fread (bogomemory, 1, allocated_bogomem, savestate_file);
+	    zfile_fseek (savestate_file, bogo_filepos, SEEK_SET);
+	    zfile_fread (bogomemory, 1, allocated_bogomem, savestate_file);
 	}
     }
     chipmem_bank.baseaddr = chipmemory;
@@ -1527,6 +1297,7 @@ void restore_bram (int len, long filepos)
 
 const uae_u8 *restore_rom (const uae_u8 *src)
 {
+    struct romdata *rom;
     uae_u32 crc32;
     int i;
 
@@ -1536,12 +1307,8 @@ const uae_u8 *restore_rom (const uae_u8 *src)
     restore_u32 ();
     crc32 = restore_u32 ();
 
-    for (i = 0; i < romlist_cnt; i++) {
-	if (rl[i].rd->crc32 == crc32 && crc32) {
-	    strncpy (changed_prefs.romfile, rl[i].path, 255);
-	    break;
-	}
-    }
+    rom = getromdatabycrc (crc32);
+    /* @@@ */
 
     return src;
 }
@@ -1598,4 +1365,95 @@ uae_u8 *save_rom (int first, int *len, uae_u8 *dstptr)
     }
     *len = dst - dstbak;
     return dstbak;
+}
+
+/* memory helpers */
+
+static int addr_valid (char *txt, uaecptr addr, uae_u32 len)
+{
+    addrbank *ab = &get_mem_bank (addr);
+    if (ab == 0 || addr < 0x100
+	|| len < 0 || len > 16777215 || !valid_address (addr, len)) {
+	write_log ("corrupt %s pointer %x (%d) detected!\n", txt, addr, len);
+	return 0;
+    }
+    return 1;
+}
+
+void memcpyha_safe (uaecptr dst, const uae_u8 *src, int size)
+{
+    if (!addr_valid ("memcpyha", dst, size))
+	return;
+    while (size--)
+	put_byte (dst++, *src++);
+}
+
+void memcpyha (uaecptr dst, const uae_u8 *src, int size)
+{
+    while (size--)
+	put_byte (dst++, *src++);
+}
+
+void memcpyah_safe (uae_u8 *dst, uaecptr src, int size)
+{
+    if (!addr_valid ("memcpyah", src, size))
+	return;
+    while (size--)
+	*dst++ = get_byte (src++);
+}
+
+void memcpyah (uae_u8 *dst, uaecptr src, int size)
+{
+    while (size--)
+	*dst++ = get_byte (src++);
+}
+
+char *strcpyah_safe (char *dst, uaecptr src)
+{
+    char *res = dst;
+    uae_u8 b;
+    do {
+	if (!addr_valid ("strcpyah", src, 1))
+	    return res;
+	b = get_byte (src++);
+	*dst++ = b;
+    } while (b);
+    return res;
+}
+
+uaecptr strcpyha_safe (uaecptr dst, const char *src)
+{
+    uaecptr res = dst;
+    uae_u8 b;
+    do {
+	if (!addr_valid ("strcpyha", dst, 1))
+	    return res;
+	b = *src++;
+	put_byte (dst++, b);
+    } while (b);
+    return res;
+}
+
+uae_u32 strncpyha (uae_u32 dst, const char *src, int size)
+{
+    uae_u32 res = dst;
+    while (size--) {
+	put_byte (dst++, *src);
+	if (!*src++)
+	    return res;
+    }
+    return res;
+}
+
+uae_u32 strncpyha_safe (uae_u32 dst, const char *src, int size)
+{
+    uae_u32 res = dst;
+    while (size--) {
+	if (!addr_valid ("strcpyha", dst, 1))
+	    return res;
+	put_byte (dst++, *src);
+	if (!*src++)
+	    return res;
+    }
+    return res;
 }
