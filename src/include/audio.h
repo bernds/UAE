@@ -6,17 +6,20 @@
   * Copyright 1995, 1996, 1997 Bernd Schmidt
   */
 
+#define PERIOD_MAX ULONG_MAX
+
 extern struct audio_channel_data {
     unsigned long adk_mask;
     unsigned long evtime;
+    unsigned long per;
     unsigned char dmaen, intreq2, data_written;
     uaecptr lc, pt;
     int state, wper, wlen;
     int current_sample, last_sample;
     int vol;
     int *voltbl;
-    uae_u16 dat, nextdat, per, len;    
-} audio_channel[4];
+    uae_u16 dat, nextdat, len;
+} audio_channel[];
 
 extern void aud0_handler (void);
 extern void aud1_handler (void);
@@ -30,6 +33,9 @@ extern void AUDxLCH (int nr, uae_u16 value);
 extern void AUDxLCL (int nr, uae_u16 value);
 extern void AUDxLEN (int nr, uae_u16 value);
 
+extern int init_audio (void);
+extern void ahi_install (void);
 extern void audio_reset (void);
-extern void dump_audio_bench (void);
 extern void update_audio (void);
+extern void schedule_audio (void);
+extern void audio_evhandler (void);

@@ -64,7 +64,7 @@
 
 #define DO_PUTIMAGE(IMG, SRCX, SRCY, DSTX, DSTY, WIDTH, HEIGHT) \
     do { \
-	if (currprefs.x11_use_mitshm) \
+	if (currprefs.x11_use_mitshm && shmavail) \
 	     XShmPutImage (display, mywin, mygc, (IMG), (SRCX), (SRCY), (DSTX), (DSTY), (WIDTH), (HEIGHT), 0); \
 	else \
 	    XPutImage (display, mywin, mygc, (IMG), (SRCX), (SRCY), (DSTX), (DSTY), (WIDTH), (HEIGHT)); \
@@ -443,7 +443,7 @@ void flush_screen (int ystart, int ystop)
 	return;
 
 #if SHM_SUPPORT_LINKS == 1
-    if (currprefs.x11_use_mitshm)
+    if (currprefs.x11_use_mitshm && shmavail)
 	XSync (display, 0);
 #endif
 }
@@ -1436,7 +1436,7 @@ void handle_events (void)
 		lastmy += ((XMotionEvent *)&event)->y_root;
 	    } else if (grabbed) {
 		int realmove = 0;
-		int tx, ty;
+		int tx, ty,ttx,tty;
 		
 		tx = ((XMotionEvent *)&event)->x;
 		ty = ((XMotionEvent *)&event)->y;
@@ -1453,17 +1453,20 @@ void handle_events (void)
 		    {
 #undef ABS
 			XEvent event;
-			tx = current_width / 2;
-			ty = current_height / 2;
+			ttx = current_width / 2;
+			tty = current_height / 2;
 			event.type = MotionNotify;
 			event.xmotion.display = display;
 			event.xmotion.window = mywin;
-			event.xmotion.x = tx;
-			event.xmotion.y = ty;
+			event.xmotion.x = ttx;
+			event.xmotion.y = tty;
 			XSendEvent (display, mywin, False,
 				    PointerMotionMask, &event);
-			XWarpPointer (display, None, mywin, 0, 0, 0, 0, tx, ty);
+			XWarpPointer (display, None, mywin, 0, 0, 0, 0, ttx, tty);
 		    }
+		} else {
+		  tx=event.xmotion.x;
+		  ty=event.xmotion.y;
 		}
 		oldx = tx;
 		oldy = ty;

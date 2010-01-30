@@ -2,6 +2,15 @@ Note! This file only contains user-visible changes. There may be others. For a
 more detailed description of changes between releases, read src/ChangeLog, and
 for the full picture, make a diff between releases.
 
+User-visible changes in 0.8.16:
+  - AGA playfield support (again) (Toni Wilen)
+  - In addition to plain mono and stereo, there's a new sound setting "mixed".
+  - There's a new option to set CPU speeds more accurately, it's called
+    "finegrain_cpu_speed".
+  - Numerous bug fixes
+  - Graphics should be faster; optimized code was accidentally commented out
+    in the previous release.
+  
 User-visible changes in 0.8.15:
   - A few changes in the core of the custom chip emulation; this should mean
     more accuracy in general, but likely also a few new bugs in this version.

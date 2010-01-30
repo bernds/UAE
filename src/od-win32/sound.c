@@ -27,6 +27,7 @@
 #include "events.h"
 #include "uae.h"
 #include "include/memory.h"
+#include "events.h"
 #include "custom.h"
 #include "osdep/win32gui.h"
 #include "osdep/resource.h"
@@ -442,7 +443,8 @@ int init_sound (void)
     if ((rate = init_sound_win32 ()) < 2)
 	return rate;
 
-    sample_evtime = (long) maxhpos * maxvpos * 50 / rate;
+    scaled_sample_evtime = (unsigned long) maxhpos * maxvpos * vblank_hz * CYCLE_UNIT / rate;
+    scaled_sample_evtime_ok = 1;
 
     if (currprefs.sound_bits == 16) {
 	init_sound_table16 ();

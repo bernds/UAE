@@ -74,6 +74,13 @@ static FILE *get_fsdb (a_inode *dir, const char *mode)
     return f;
 }
 
+static void kill_fsdb (a_inode *dir)
+{
+    char *n = build_nname (dir->nname, FSDB_FILE);
+    unlink (n);
+    free (n);
+}
+
 /* Prune the db file the first time this directory is opened in a session.  */
 void fsdb_clean_dir (a_inode *dir)
 {
@@ -101,7 +108,7 @@ void fsdb_clean_dir (a_inode *dir)
     free (n);
 }
 
-static a_inode *aino_from_buf (a_inode *base, char *buf)
+static a_inode *aino_from_buf (a_inode *base, char *buf, long off)
 {
     uae_u32 mode;
     a_inode *aino = (a_inode *) xmalloc (sizeof (a_inode));
@@ -117,24 +124,27 @@ static a_inode *aino_from_buf (a_inode *base, char *buf)
     aino->amigaos_mode = mode;
     aino->has_dbentry = 1;
     aino->dirty = 0;
+    aino->db_offset = off;
     return aino;
 }
 
 a_inode *fsdb_lookup_aino_aname (a_inode *base, const char *aname)
 {
     FILE *f = get_fsdb (base, "rb");
+    long off = 0;
+
     if (f == 0)
 	return 0;
+
     for (;;) {
 	char buf[1 + 4 + 257 + 257 + 81];
 	if (fread (buf, 1, sizeof buf, f) < sizeof buf)
 	    break;
-	if (buf[0] == 0)
-	    continue;
-	if (same_aname (buf + 5, aname)) {
+	if (buf[0] != 0 && same_aname (buf + 5, aname)) {
 	    fclose (f);
-	    return aino_from_buf (base, buf);
+	    return aino_from_buf (base, buf, off);
 	}
+	off += sizeof buf;
     }
     fclose (f);
     return 0;
@@ -142,19 +152,21 @@ a_inode *fsdb_lookup_aino_aname (a_inode *base, const char *aname)
 
 a_inode *fsdb_lookup_aino_nname (a_inode *base, const char *nname)
 {
-    char buf[1 + 4 + 257 + 257 + 81];
     FILE *f = get_fsdb (base, "rb");
+    long off = 0;
+
     if (f == 0)
 	return 0;
+
     for (;;) {
+	char buf[1 + 4 + 257 + 257 + 81];
 	if (fread (buf, 1, sizeof buf, f) < sizeof buf)
 	    break;
-	if (buf[0] == 0)
-	    continue;
-	if (strcmp (buf + 5 + 257, nname) == 0) {
+	if (buf[0] != 0 && strcmp (buf + 5 + 257, nname) == 0) {
 	    fclose (f);
-	    return aino_from_buf (base, buf);
+	    return aino_from_buf (base, buf, off);
 	}
+	off += sizeof buf;
     }
     fclose (f);
     return 0;
@@ -162,11 +174,11 @@ a_inode *fsdb_lookup_aino_nname (a_inode *base, const char *nname)
 
 int fsdb_used_as_nname (a_inode *base, const char *nname)
 {
-    char buf[1 + 4 + 257 + 257 + 81];
     FILE *f = get_fsdb (base, "rb");
     if (f == 0)
 	return 0;
     for (;;) {
+	char buf[1 + 4 + 257 + 257 + 81];
 	if (fread (buf, 1, sizeof buf, f) < sizeof buf)
 	    break;
 	if (buf[0] == 0)
@@ -209,23 +221,34 @@ static void write_aino (FILE *f, a_inode *aino)
     aino->has_dbentry = aino->needs_dbentry;
 }
 
+/* Write back the db file for a directory.  */
+
 void fsdb_dir_writeback (a_inode *dir)
 {
     FILE *f;
     int changes_needed = 0;
+    int entries_needed = 0;
     a_inode *aino;
 
     /* First pass: clear dirty bits where unnecessary, and see if any work
      * needs to be done.  */
     for (aino = dir->child; aino; aino = aino->sibling) {
+	int old_needs_dbentry = aino->needs_dbentry;
+	aino->needs_dbentry = old_needs_dbentry;
 	if (! aino->dirty)
 	    continue;
 	aino->needs_dbentry = needs_dbentry (aino);
-	if (! aino->needs_dbentry)
+	entries_needed |= aino->needs_dbentry;
+	if (! aino->needs_dbentry && ! old_needs_dbentry)
 	    aino->dirty = 0;
 	else
 	    changes_needed = 1;
     }
+    if (! entries_needed) {
+	kill_fsdb (dir);
+	return;
+    }
+
     if (! changes_needed)
 	return;
 
@@ -243,26 +266,14 @@ void fsdb_dir_writeback (a_inode *dir)
 	if (! aino->dirty)
 	    continue;
 	aino->dirty = 0;
-	if (! aino->has_dbentry) {
-	    fseek (f, 0, SEEK_END);
-	    write_aino (f, aino);
-	    continue;
-	}
 
-	fseek (f, 0, SEEK_SET);
-	pos = 0;
-	for (;;) {
-	    char buf[1 + 4 + 257 + 257 + 81];
-	    if (fread (buf, 1, sizeof buf, f) < sizeof buf)
-		/* Can't happen... */
-		break;
-	    if (strcmp (buf + 5, aino->aname) == 0) {
-		fseek (f, pos, SEEK_SET);
-		write_aino (f, aino);
-		break;
-	    }
-	    pos += sizeof buf;
-	}
+	if (! aino->has_dbentry) {
+	    aino->db_offset = fseek (f, 0, SEEK_END);
+	    aino->has_dbentry = 1;
+	} else
+	    fseek (f, aino->db_offset, SEEK_SET);
+
+	write_aino (f, aino);
     }
     fclose (f);
 }

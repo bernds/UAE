@@ -46,10 +46,12 @@ void getjoystate(int nr, unsigned int *st, int *button)
 
     if (fake) {
 	int top = fake[0];
-	int bot = fake[3];
-	if (fake[1]) top = !top;
-	if (fake[2]) bot = !bot;
-	*st = bot | (fake[2] << 1) | (top << 8) | (fake[1] << 9);
+	int bot = top ? 0 : fake[3];
+	int left = fake[1];
+	int right = left ? 0 : fake[2];
+	if (left) top = !top;
+	if (right) bot = !bot;
+	*st = bot | (right << 1) | (top << 8) | (left << 9);
 	*button = fake[4];
 	if (! fake[4] && fake[5] && (n_frames & 1))
 	    *button = 1;

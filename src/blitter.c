@@ -424,8 +424,8 @@ void blitter_handler(void)
 {
     if (!dmaen(DMA_BLITTER)) {
 	eventtab[ev_blitter].active = 1;
-	eventtab[ev_blitter].oldcycles = cycles;
-	eventtab[ev_blitter].evtime = 10 + cycles; /* wait a little */
+	eventtab[ev_blitter].oldcycles = get_cycles ();
+	eventtab[ev_blitter].evtime = 10 * CYCLE_UNIT + get_cycles (); /* wait a little */
 	return; /* gotta come back later. */
     }
     actually_do_blit();
@@ -455,8 +455,8 @@ void do_blitter(void)
     blit_init();
 
     eventtab[ev_blitter].active = 1;
-    eventtab[ev_blitter].oldcycles = cycles;
-    eventtab[ev_blitter].evtime = blit_cycles + cycles;
+    eventtab[ev_blitter].oldcycles = get_cycles ();
+    eventtab[ev_blitter].evtime = blit_cycles * CYCLE_UNIT + get_cycles ();
     events_schedule();
 
     unset_special (SPCFLAG_BLTNASTY);

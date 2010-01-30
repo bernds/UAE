@@ -2285,7 +2285,7 @@ static void generate_one_opcode (int rp)
     gen_opcode (opcode);
     if (need_endlabel)
 	printf ("%s: ;\n", endlabelstr);
-    printf ("return %d;\n", insn_n_cycles / 2);
+    printf ("return %d;\n", insn_n_cycles * CYCLE_UNIT / 2);
     printf ("}\n");
     opcode_next_clev[rp] = next_cpu_level;
     opcode_last_postfix[rp] = postfix;

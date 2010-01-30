@@ -16,6 +16,7 @@
 #include "threaddep/penguin.h"
 #include "uae.h"
 #include "gensound.h"
+#include "audio.h"
 #include "sounddep/sound.h"
 #include "events.h"
 #include "memory.h"
@@ -148,7 +149,7 @@ void default_prefs (struct uae_prefs *p)
 
     p->immediate_blits = 0;
     p->blits_32bit_enabled = 0;
-    p->collision_level = 1;
+    p->collision_level = 0;
 
     strcpy (p->df[0], "df0.adf");
     strcpy (p->df[1], "df1.adf");
@@ -246,11 +247,14 @@ static void fix_options (void)
 	currprefs.fastmem_size = 0;
 	err = 1;
     }
+#if 0
     if (currprefs.m68k_speed < -1 || currprefs.m68k_speed > 20) {
 	fprintf (stderr, "Bad value for -w parameter: must be -1, 0, or within 1..20.\n");
 	currprefs.m68k_speed = 4;
 	err = 1;
     }
+#endif
+  
     if (currprefs.produce_sound < 0 || currprefs.produce_sound > 3) {
 	fprintf (stderr, "Bad value for -S parameter: enable value must be within 0..3\n");
 	currprefs.produce_sound = 0;
@@ -470,6 +474,7 @@ void real_main (int argc, char **argv)
     rtarea_init ();
     hardfile_install ();
     scsidev_install ();
+    ahi_install ();
 
     parse_cmdline_and_init_file (argc, argv);
 
@@ -490,7 +495,7 @@ void real_main (int argc, char **argv)
 	    exit (0);
 	}
     }
-    if (sound_available && currprefs.produce_sound > 1 && ! init_sound ()) {
+    if (sound_available && currprefs.produce_sound > 1 && ! init_audio ()) {
 	fprintf (stderr, "Sound driver unavailable: Sound output disabled\n");
 	currprefs.produce_sound = 0;
     }

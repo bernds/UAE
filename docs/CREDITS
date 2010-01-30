@@ -51,6 +51,7 @@ Miscellaneous code contributions:
     for a fully working copper emulation
   - Christian Bauer: 68040 support (I think this is due to him; I've taken
     it from Basilisk.  Correct me if I'm wrong).
+  - Ralf Hoffmann: small X11 mouse emulation fix
 
 System specific fixes/ports (some of the fixes for various Unices are no
 longer present, though, since we now use autoconf):

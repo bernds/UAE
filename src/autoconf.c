@@ -216,23 +216,6 @@ uaecptr EXPANSION_explibname, EXPANSION_doslibname, EXPANSION_uaeversion;
 uaecptr EXPANSION_uaedevname, EXPANSION_explibbase = 0, EXPANSION_haveV36;
 uaecptr EXPANSION_bootcode, EXPANSION_nullfunc;
 
-static int current_deviceno = 0;
-
-void reset_uaedevices (void)
-{
-    current_deviceno = 0;
-}
-
-int get_new_device (char **devname, uaecptr *devname_amiga)
-{
-    char buffer[80];
-
-    sprintf (buffer, "DH%d", current_deviceno);
-
-    *devname_amiga = ds (*devname = my_strdup (buffer));
-    return current_deviceno++;
-}
-
 /* ROM tag area memory access */
 
 static uae_u8 rtarea[65536];
@@ -455,6 +438,12 @@ static uae_u32 getchipmemsize (void)
     return allocated_chipmem;
 }
 
+static uae_u32 uae_puts (void)
+{
+    puts (get_real_address (m68k_areg (regs, 0)));
+    return 0;
+}
+
 void rtarea_init (void)
 {
     uae_u32 a;
@@ -480,6 +469,11 @@ void rtarea_init (void)
 
     org (0xF0FF80);
     calltrap (deftrap2 (getchipmemsize, TRAPFLAG_DORET, ""));
+
+    org (0xF0FF10);
+    calltrap (deftrap2 (uae_puts, TRAPFLAG_NO_RETVAL, ""));
+    dw (RTS);
+
     org (a);
 
     filesys_install_code ();

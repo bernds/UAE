@@ -1,4 +1,4 @@
-This is version 0.8.15 of UAE, the Un*x Amiga Emulator.
+This is version 0.8.16 of UAE, the Un*x Amiga Emulator.
 
 Versions numbered 0.8.x are beta versions, to be used for development only.
 If you are only a user of UAE, you are better off using the latest 0.7.x
@@ -14,9 +14,6 @@ modify it, under certain conditions. It also means that there is no warranty
 for UAE.
 See the file COPYING that is included in the top level directory of this
 archive for details.
-
-The SCSI code distributed with UAE is also available under the terms of the
-GPL and was written by J. Schilling.
 
 
 Overview
@@ -190,6 +187,10 @@ use_gui=bool [default=yes]
 immediate_blits=bool [default=no]
   If enabled, all blits will finish immediately, which can be nice for speed,
   but may cause incompatibilities.
+collision_level=level [default=sprites]
+  This can have a value of "sprites" or "full".  If set to "full", the emulator
+  will compute collisions between sprites and the background.  This is slow, and
+  used only rarely, so it's turned off by default.
 cpu_speed=speed [default=4]
   This can have a value of "real", "max", or an integer between 1 and 20.
   "real" will try to give the CPU emulation exactly as many cycles, relative
@@ -198,6 +199,12 @@ cpu_speed=speed [default=4]
   specify a fixed relation between CPU and custom chip emulation, where lower
   values prioritize CPU emulation, while higher values prioritize custom chip
   emulation.
+finegrain_cpu_speed=speed
+  Like cpu_speed, but only accepts numeric values.  These numeric values are
+  equivalent to the ones given to cpu_speed multiplied by 512.  This means
+  that "cpu_speed=2" and "finegrain_cpu_speed=1024" have the same effect.
+  Using this option you can give the CPU emulation a much higher priority by
+  using small values.
 cpu_type=type [default=68000]
   Controls which CPU is emulated. This can be "68000", "68010", "68020" or
   "68020/68881".  In some cases, you may need to use "68ec020" or
@@ -238,7 +245,14 @@ sound_output=type [default=none]
   slightly more accurate emulation that may be necessary in some cases, but
   can also be slower).
 sound_channels=type [default=mono]
-  Can be "mono" or "stereo".
+  Can be "mono", "stereo", or "mixed".  If set to "stereo", the left and right
+  channels produce the same output as on a real Amiga - two of the four audio
+  channels are audible on the left, and the other two on the right.  This is
+  exactly what you want, except if you're using headphones - having the sound
+  split so strictly can lead to a strange listening experience at times.  This
+  is what "mixed" is trying to solve: it mixes the left channel with a low
+  volume into the right channel and vice versa.  (This mixing operation loses
+  a bit of precision in the output).
 sound_bits=n [default varies across UAE versions on different OS types]
   Common values are 8 (low quality) or 16 (high quality)
 sound_frequency=n [default varies across UAE versions on different OS types]
@@ -507,7 +521,7 @@ If you don't have much RAM and can't fit all of a disk image in the RAM disk,
 you can split up the transfer into multiple parts with the "-s" and "-e"
 parameters. To transfer the disk in four parts, you'd use the following 
 commands:
-  
+
   transdisk >ram:df0_1.adf -s 0 -e 19
   transdisk >ram:df0_2.adf -s 20 -e 39
   transdisk >ram:df0_3.adf -s 40 -e 59
@@ -556,7 +570,7 @@ Picasso 96 graphics card emulation
 ==================================
 
 To use this feature, you must select 68020 emulation with a 32 bit address
-space. You also need a Kickstart 3.x ROM.
+space (i.e. _not_ 68ec020). You also need a Kickstart 3.x ROM.
 
 To specify how much graphic memory you want to emulate, use the "-U" option,
 e.g. "-U 4" for 4 megabytes. Then, you need the Picasso 96 software which
@@ -728,7 +742,7 @@ Special thanks to:
   - Michael C. Battilana and Cloanto Software, for all their support.
   - Julian Eggebrecht of Factor 5, for providing several F5 games and a lot
     of valuable input.
-    Factor 5 has made Katakis, one of their classic Amiga games, freely
+    Factor 5 has made several of their classic Amiga games freely
     available for download. There are still some good people left in the
     world...
   - Jens Schönfeld, inventor of the Catweasel controller, donated one
@@ -751,9 +765,9 @@ crux@pool.informatik.rwth-aachen.de
 or, via snailmail
 
 Bernd Schmidt
-Schlossweiherstrasse 14
-52072 Aachen
-Germany
+21 St Stephen's Place
+Cambridge CB3 0JE
+UK
 
 Email is more likely to be answered, and will definitely be answered much
 faster. Please avoid phonecalls if you can.

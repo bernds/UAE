@@ -59,7 +59,7 @@ static long dos_errno(void)
      case ENOMEM:	return ERROR_NO_FREE_STORE;
      case EEXIST:	return ERROR_OBJECT_EXISTS;
      case EACCES:	return ERROR_WRITE_PROTECTED;
-     case ENOENT:	return ERROR_OBJECT_NOT_FOUND;
+     case ENOENT:	return ERROR_OBJECT_NOT_AROUND;
      case ENOTDIR:	return ERROR_OBJECT_WRONG_TYPE;
      case ENOSPC:	return ERROR_DISK_IS_FULL;
      case EBUSY:       	return ERROR_OBJECT_IN_USE;
@@ -911,7 +911,7 @@ static a_inode *new_child_aino (Unit *unit, a_inode *base, char *rel)
 	if (nn == 0)
 	    return 0;
 
-	aino = (a_inode *) xmalloc (sizeof (a_inode));
+	aino = (a_inode *) xcalloc (sizeof (a_inode), 1);
 	if (aino == 0)
 	    return 0;
 	aino->aname = modified_rel ? modified_rel : my_strdup (rel);
@@ -933,7 +933,7 @@ static a_inode *new_child_aino (Unit *unit, a_inode *base, char *rel)
 
 static a_inode *create_child_aino (Unit *unit, a_inode *base, char *rel, int isdir)
 {
-    a_inode *aino = (a_inode *) xmalloc (sizeof (a_inode));
+    a_inode *aino = (a_inode *) xcalloc (sizeof (a_inode), 1);
     if (aino == 0)
 	return 0;
 
@@ -974,7 +974,7 @@ static a_inode *lookup_child_aino (Unit *unit, a_inode *base, char *rel, uae_u32
 	return c;
     c = new_child_aino (unit, base, rel);
     if (c == 0)
-	*err = ERROR_OBJECT_NOT_FOUND;
+	*err = ERROR_OBJECT_NOT_AROUND;
     return c;
 }
 
@@ -1055,7 +1055,7 @@ static a_inode *get_aino (Unit *unit, a_inode *base, const char *rel, uae_u32 *e
 	    next = lookup_child_aino (unit, curr, p, err);
 	    if (next == 0) {
 		/* if only last component not found, return parent dir. */
-		if (*err != ERROR_OBJECT_NOT_FOUND || component_end != 0)
+		if (*err != ERROR_OBJECT_NOT_AROUND || component_end != 0)
 		    curr = 0;
 		/* ? what error is appropriate? */
 		break;
@@ -1111,7 +1111,7 @@ static uae_u32 startup_handler (void)
     }
     uinfo = current_mountinfo->ui + i;
 
-    unit = (Unit *) xmalloc (sizeof (Unit));
+    unit = (Unit *) xcalloc (sizeof (Unit), 1);
     unit->next = units;
     units = unit;
     uinfo->self = unit;
@@ -1149,6 +1149,8 @@ static uae_u32 startup_handler (void)
     unit->rootnode.amigaos_mode = 0;
     unit->rootnode.shlock = 0;
     unit->rootnode.elock = 0;
+    unit->rootnode.comment = 0;
+    unit->rootnode.has_dbentry = 0;
     unit->aino_cache_size = 0;
     for (i = 0; i < MAX_AINO_HASH; i++)
 	unit->aino_hash[i] = 0;
@@ -1425,7 +1427,7 @@ static void action_free_lock (Unit *unit, dpacket packet)
     a = lookup_aino (unit, get_long (lock + 4));
     if (a == 0) {
 	PUT_PCK_RES1 (packet, DOS_FALSE);
-	PUT_PCK_RES2 (packet, ERROR_OBJECT_NOT_FOUND);
+	PUT_PCK_RES2 (packet, ERROR_OBJECT_NOT_AROUND);
 	return;
     }
     if (a->elock)
@@ -1453,7 +1455,7 @@ action_dup_lock (Unit *unit, dpacket packet)
     a = lookup_aino (unit, get_long (lock + 4));
     if (a == 0) {
 	PUT_PCK_RES1 (packet, DOS_FALSE);
-	PUT_PCK_RES2 (packet, ERROR_OBJECT_NOT_FOUND);
+	PUT_PCK_RES2 (packet, ERROR_OBJECT_NOT_AROUND);
 	return;
     }
     /* DupLock()ing exclusive locks isn't possible, says the Autodoc, but
@@ -1740,7 +1742,7 @@ static void do_find (Unit *unit, dpacket packet, int mode, int create, int fallb
 
     aino = find_aino (unit, lock, bstr (unit, name), &err);
 
-    if (aino == 0 || (err != 0 && err != ERROR_OBJECT_NOT_FOUND)) {
+    if (aino == 0 || (err != 0 && err != ERROR_OBJECT_NOT_AROUND)) {
 	/* Whatever it is, we can't handle it. */
 	PUT_PCK_RES1 (packet, DOS_FALSE);
 	PUT_PCK_RES2 (packet, err);
@@ -2207,7 +2209,7 @@ action_change_mode (Unit *unit, dpacket packet)
 	Key *k = lookup_key (unit, object);
 	if (!k) {
 	    PUT_PCK_RES1 (packet, DOS_FALSE);
-	    PUT_PCK_RES2 (packet, ERROR_OBJECT_NOT_FOUND);
+	    PUT_PCK_RES2 (packet, ERROR_OBJECT_NOT_AROUND);
 	    return;
 	}
         uniq = k->aino->uniq;
@@ -2271,7 +2273,7 @@ action_parent_fh (Unit *unit, dpacket packet)
     Key *k = lookup_key (unit, GET_PCK_ARG1 (packet));
     if (!k) {
 	PUT_PCK_RES1 (packet, DOS_FALSE);
-	PUT_PCK_RES2 (packet, ERROR_OBJECT_NOT_FOUND);
+	PUT_PCK_RES2 (packet, ERROR_OBJECT_NOT_AROUND);
 	return;
     }
     action_parent_common (unit, packet, k->aino->uniq);
@@ -2309,7 +2311,7 @@ action_create_dir (Unit *unit, dpacket packet)
     }
 
     aino = find_aino (unit, lock, bstr (unit, name), &err);
-    if (aino == 0 || (err != 0 && err != ERROR_OBJECT_NOT_FOUND)) {
+    if (aino == 0 || (err != 0 && err != ERROR_OBJECT_NOT_AROUND)) {
 	PUT_PCK_RES1 (packet, DOS_FALSE);
 	PUT_PCK_RES2 (packet, err);
 	return;
@@ -2381,7 +2383,7 @@ action_set_file_size (Unit *unit, dpacket packet)
     k = lookup_key (unit, GET_PCK_ARG1 (packet));
     if (k == 0) {
 	PUT_PCK_RES1 (packet, DOS_TRUE);
-	PUT_PCK_RES2 (packet, ERROR_OBJECT_NOT_FOUND);
+	PUT_PCK_RES2 (packet, ERROR_OBJECT_NOT_AROUND);
 	return;
     }
 
@@ -2449,6 +2451,8 @@ action_delete_object (Unit *unit, dpacket packet)
 	return;
     }
     if (a->dir) {
+	/* This should take care of removing the fsdb if no files remain.  */
+	fsdb_dir_writeback (a);
 	if (rmdir (a->nname) == -1) {
 	    PUT_PCK_RES1 (packet, DOS_FALSE);
 	    PUT_PCK_RES2 (packet, dos_errno());
@@ -2534,7 +2538,7 @@ action_rename_object (Unit *unit, dpacket packet)
 	    return;
 	}
 	a2 = a2->parent;
-    } else if (a2 == 0 || err2 != ERROR_OBJECT_NOT_FOUND) {
+    } else if (a2 == 0 || err2 != ERROR_OBJECT_NOT_AROUND) {
 	PUT_PCK_RES1 (packet, DOS_FALSE);
 	PUT_PCK_RES2 (packet, err2 == 0 ? ERROR_OBJECT_EXISTS : err2);
 	return;
@@ -2886,6 +2890,23 @@ static uae_u32 filesys_handler (void)
     return 0;
 }
 
+static int current_deviceno = 0;
+
+static void reset_uaedevices (void)
+{
+    current_deviceno = 0;
+}
+
+static int get_new_device (char **devname, uaecptr *devname_amiga, int cdrom)
+{
+    char buffer[80];
+
+    sprintf (buffer, cdrom ? "CD%d" : "DH%d", current_deviceno);
+
+    *devname_amiga = ds (*devname = my_strdup (buffer));
+    return current_deviceno++;
+}
+
 void filesys_start_threads (void)
 {
     UnitInfo *uip;
@@ -2898,7 +2919,7 @@ void filesys_start_threads (void)
     uip = current_mountinfo->ui;
     for (i = 0; i < current_mountinfo->num_units; i++) {
 	uip[i].unit_pipe = 0;
-	uip[i].devno = get_new_device (&uip[i].devname, &uip[i].devname_amiga);
+	uip[i].devno = get_new_device (&uip[i].devname, &uip[i].devname_amiga, 0);
 
 #ifdef UAE_FILESYS_THREADS
 	if (! is_hardfile (current_mountinfo, i)) {

@@ -48,7 +48,7 @@ NEED_THREAD_SUPPORT=no
 ADDITIONAL_CFLAGS=
 OPTIMIZE_CFLAGS=
 WARNING_CFLAGS=
-DEBUG_CFLAGS=
+DEBUG_CFLAGS=-g
 NO_SCHED_CFLAGS=
 LDFLAGS="$LDFLAGS -L."
 
@@ -781,9 +781,6 @@ if [[ "x$TARGET" = "xwin32" ]]; then
   fi
 else if [[ "x$HAVELINUX" = "xyes" ]]; then
   OSDEP=od-linux
-  if [[ "x$HAVEGLIBC2" = "xyes" -a "x$HAVEI386" = "xyes" ]]; then
-    CFLAGS="$CFLAGS -DHAVE_GLIBC_2_LINUX"
-  fi
 fi
 fi
 

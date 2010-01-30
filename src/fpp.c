@@ -748,7 +748,7 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 		if (extra & 0x0400)
 		    regs.fpiar = m68k_dreg (regs, opcode & 7);
 	    }
-	} else if ((opcode & 0x38) == 1) {
+	} else if ((opcode & 0x38) == 0x08) {
 	    if (extra & 0x2000) {
 		if (extra & 0x1000)
 		    m68k_areg (regs, opcode & 7) = regs.fpcr;
@@ -839,112 +839,112 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 	return;
     case 6:
     case 7:
-	{
-	    uae_u32 ad, list = 0;
-	    int incr = 0;
-	    if (extra & 0x2000) {
-		/* FMOVEM FPP->memory */
-		if (get_fp_ad (opcode, &ad) == 0) {
-		    m68k_setpc (m68k_getpc () - 4);
-		    op_illg (opcode);
-		    return;
-		}
-		switch ((extra >> 11) & 3) {
-		case 0:	/* static pred */
-		    list = extra & 0xff;
-		    incr = -1;
-		    break;
-		case 1:	/* dynamic pred */
-		    list = m68k_dreg (regs, (extra >> 4) & 3) & 0xff;
-		    incr = -1;
-		    break;
-		case 2:	/* static postinc */
-		    list = extra & 0xff;
-		    incr = 1;
-		    break;
-		case 3:	/* dynamic postinc */
-		    list = m68k_dreg (regs, (extra >> 4) & 3) & 0xff;
-		    incr = 1;
-		    break;
-		}
-		while (list) {
-		    uae_u32 wrd1, wrd2, wrd3;
-		    if (incr < 0) {
-			from_exten (regs.fp[fpp_movem_index2[list]], &wrd1, &wrd2, &wrd3);
-			ad -= 4;
-			put_long (ad, wrd3);
-			ad -= 4;
-			put_long (ad, wrd2);
-			ad -= 4;
-			put_long (ad, wrd1);
-		    } else {
-			from_exten (regs.fp[fpp_movem_index1[list]], &wrd1, &wrd2, &wrd3);
-			put_long (ad, wrd1);
-			ad += 4;
-			put_long (ad, wrd2);
-			ad += 4;
-			put_long (ad, wrd3);
-			ad += 4;
-		    }
-		    list = fpp_movem_next[list];
-		}
-		if ((opcode & 0x38) == 0x18)
-		    m68k_areg (regs, opcode & 7) = ad;
-		if ((opcode & 0x38) == 0x20)
-		    m68k_areg (regs, opcode & 7) = ad;
-	    } else {
-		/* FMOVEM memory->FPP */
-		if (get_fp_ad (opcode, &ad) == 0) {
-		    m68k_setpc (m68k_getpc () - 4);
-		    op_illg (opcode);
-		    return;
-		}
-		switch ((extra >> 11) & 3) {
-		case 0:	/* static pred */
-		    list = extra & 0xff;
-		    incr = -1;
-		    break;
-		case 1:	/* dynamic pred */
-		    list = m68k_dreg (regs, (extra >> 4) & 3) & 0xff;
-		    incr = -1;
-		    break;
-		case 2:	/* static postinc */
-		    list = extra & 0xff;
-		    incr = 1;
-		    break;
-		case 3:	/* dynamic postinc */
-		    list = m68k_dreg (regs, (extra >> 4) & 3) & 0xff;
-		    incr = 1;
-		    break;
-		}
-		while (list) {
-		    uae_u32 wrd1, wrd2, wrd3;
-		    if (incr < 0) {
-			ad -= 4;
-			wrd3 = get_long (ad);
-			ad -= 4;
-			wrd2 = get_long (ad);
-			ad -= 4;
-			wrd1 = get_long (ad);
-			regs.fp[fpp_movem_index2[list]] = to_exten (wrd1, wrd2, wrd3);
-		    } else {
-			wrd1 = get_long (ad);
-			ad += 4;
-			wrd2 = get_long (ad);
-			ad += 4;
-			wrd3 = get_long (ad);
-			ad += 4;
-			regs.fp[fpp_movem_index1[list]] = to_exten (wrd1, wrd2, wrd3);
-		    }
-		    list = fpp_movem_next[list];
-		}
-		if ((opcode & 0x38) == 0x18)
-		    m68k_areg (regs, opcode & 7) = ad;
-		if ((opcode & 0x38) == 0x20)
-		    m68k_areg (regs, opcode & 7) = ad;
+    {
+	uae_u32 ad, list = 0;
+	int incr = 0;
+	if (extra & 0x2000) {
+	    /* FMOVEM FPP->memory */
+	    if (get_fp_ad (opcode, &ad) == 0) {
+		m68k_setpc (m68k_getpc () - 4);
+		op_illg (opcode);
+		return;
 	    }
+	    switch ((extra >> 11) & 3) {
+	    case 0:	/* static pred */
+		list = extra & 0xff;
+		incr = -1;
+		break;
+	    case 1:	/* dynamic pred */
+		list = m68k_dreg (regs, (extra >> 4) & 3) & 0xff;
+		incr = -1;
+		break;
+	    case 2:	/* static postinc */
+		list = extra & 0xff;
+		incr = 1;
+		break;
+	    case 3:	/* dynamic postinc */
+		list = m68k_dreg (regs, (extra >> 4) & 3) & 0xff;
+		incr = 1;
+		break;
+	    }
+	    while (list) {
+		uae_u32 wrd1, wrd2, wrd3;
+		if (incr < 0) {
+		    from_exten (regs.fp[fpp_movem_index2[list]], &wrd1, &wrd2, &wrd3);
+		    ad -= 4;
+		    put_long (ad, wrd3);
+		    ad -= 4;
+		    put_long (ad, wrd2);
+		    ad -= 4;
+		    put_long (ad, wrd1);
+		} else {
+		    from_exten (regs.fp[fpp_movem_index1[list]], &wrd1, &wrd2, &wrd3);
+		    put_long (ad, wrd1);
+		    ad += 4;
+		    put_long (ad, wrd2);
+		    ad += 4;
+		    put_long (ad, wrd3);
+		    ad += 4;
+		}
+		list = fpp_movem_next[list];
+	    }
+	    if ((opcode & 0x38) == 0x18)
+		m68k_areg (regs, opcode & 7) = ad;
+	    if ((opcode & 0x38) == 0x20)
+		m68k_areg (regs, opcode & 7) = ad;
+	} else {
+	    /* FMOVEM memory->FPP */
+	    if (get_fp_ad (opcode, &ad) == 0) {
+		m68k_setpc (m68k_getpc () - 4);
+		op_illg (opcode);
+		return;
+	    }
+	    switch ((extra >> 11) & 3) {
+	    case 0:	/* static pred */
+		list = extra & 0xff;
+		incr = -1;
+		break;
+	    case 1:	/* dynamic pred */
+		list = m68k_dreg (regs, (extra >> 4) & 3) & 0xff;
+		incr = -1;
+		break;
+	    case 2:	/* static postinc */
+		list = extra & 0xff;
+		incr = 1;
+		break;
+	    case 3:	/* dynamic postinc */
+		list = m68k_dreg (regs, (extra >> 4) & 3) & 0xff;
+		incr = 1;
+		break;
+	    }
+	    while (list) {
+		uae_u32 wrd1, wrd2, wrd3;
+		if (incr < 0) {
+		    ad -= 4;
+		    wrd3 = get_long (ad);
+		    ad -= 4;
+		    wrd2 = get_long (ad);
+		    ad -= 4;
+		    wrd1 = get_long (ad);
+		    regs.fp[fpp_movem_index2[list]] = to_exten (wrd1, wrd2, wrd3);
+		} else {
+		    wrd1 = get_long (ad);
+		    ad += 4;
+		    wrd2 = get_long (ad);
+		    ad += 4;
+		    wrd3 = get_long (ad);
+		    ad += 4;
+		    regs.fp[fpp_movem_index1[list]] = to_exten (wrd1, wrd2, wrd3);
+		}
+		list = fpp_movem_next[list];
+	    }
+	    if ((opcode & 0x38) == 0x18)
+		m68k_areg (regs, opcode & 7) = ad;
+	    if ((opcode & 0x38) == 0x20)
+		m68k_areg (regs, opcode & 7) = ad;
 	}
-	return;
+    }
+    return;
     case 0:
     case 2:
 	reg = (extra >> 7) & 7;
@@ -1032,10 +1032,15 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 	}
 	switch (extra & 0x7f) {
 	case 0x00:		/* FMOVE */
+	case 0x40:  /* Explicit rounding. This is just a quick fix. Same
+		     * for all other cases that have three choices */
+	case 0x44:   
 	    regs.fp[reg] = src;
 	    /* Brian King was here.  <ea> to register needs FPSR updated.
 	     * See page 3-73 in Motorola 68K programmers reference manual.
 	     * %%%FPU */
+	    if ((extra & 0x44) == 0x40)
+		regs.fp[reg] = (float)regs.fp[reg];
 	    MAKE_FPSR (regs.fpsr, regs.fp[reg]);
 	    break;
 	case 0x01:		/* FINT */
@@ -1064,7 +1069,11 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 	    MAKE_FPSR (regs.fpsr, regs.fp[reg]);
 	    break;
 	case 0x04:		/* FSQRT */
+	case 0x41:
+	case 0x45:
 	    regs.fp[reg] = sqrt (src);
+	    if ((extra & 0x44) == 0x40)
+		regs.fp[reg] = (float)regs.fp[reg];
 	    MAKE_FPSR (regs.fpsr, regs.fp[reg]);
 	    break;
 	case 0x06:		/* FLOGNP1 */
@@ -1128,7 +1137,11 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 	    MAKE_FPSR (regs.fpsr, regs.fp[reg]);
 	    break;
 	case 0x18:		/* FABS */
+	case 0x58:
+	case 0x5c:
 	    regs.fp[reg] = src < 0 ? -src : src;
+	    if ((extra & 0x44) == 0x40)
+		regs.fp[reg] = (float)regs.fp[reg];
 	    MAKE_FPSR (regs.fpsr, regs.fp[reg]);
 	    break;
 	case 0x19:		/* FCOSH */
@@ -1136,7 +1149,11 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 	    MAKE_FPSR (regs.fpsr, regs.fp[reg]);
 	    break;
 	case 0x1a:		/* FNEG */
+	case 0x5a:
+	case 0x5e:
 	    regs.fp[reg] = -src;
+	    if ((extra & 0x44) == 0x40)
+		regs.fp[reg] = (float)regs.fp[reg];
 	    MAKE_FPSR (regs.fpsr, regs.fp[reg]);
 	    break;
 	case 0x1c:		/* FACOS */
@@ -1148,22 +1165,26 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 	    MAKE_FPSR (regs.fpsr, regs.fp[reg]);
 	    break;
 	case 0x1e:		/* FGETEXP */
-	    {
-		int expon;
-		frexp (src, &expon);
-		regs.fp[reg] = (double) (expon - 1);
-		MAKE_FPSR (regs.fpsr, regs.fp[reg]);
-	    }
-	    break;
+	{
+	    int expon;
+	    frexp (src, &expon);
+	    regs.fp[reg] = (double) (expon - 1);
+	    MAKE_FPSR (regs.fpsr, regs.fp[reg]);
+	}
+	break;
 	case 0x1f:		/* FGETMAN */
-	    {
-		int expon;
-		regs.fp[reg] = frexp (src, &expon) * 2.0;
-		MAKE_FPSR (regs.fpsr, regs.fp[reg]);
-	    }
-	    break;
+	{
+	    int expon;
+	    regs.fp[reg] = frexp (src, &expon) * 2.0;
+	    MAKE_FPSR (regs.fpsr, regs.fp[reg]);
+	}
+	break;
 	case 0x20:		/* FDIV */
+	case 0x60:
+	case 0x64:
 	    regs.fp[reg] /= src;
+	    if ((extra & 0x44) == 0x40)
+		regs.fp[reg] = (float)regs.fp[reg];
 	    MAKE_FPSR (regs.fpsr, regs.fp[reg]);
 	    break;
 	case 0x21:		/* FMOD */
@@ -1171,11 +1192,19 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 	    MAKE_FPSR (regs.fpsr, regs.fp[reg]);
 	    break;
 	case 0x22:		/* FADD */
+	case 0x62:
+	case 0x66:
 	    regs.fp[reg] += src;
+	    if ((extra & 0x44) == 0x40)
+		regs.fp[reg] = (float)regs.fp[reg];
 	    MAKE_FPSR (regs.fpsr, regs.fp[reg]);
 	    break;
 	case 0x23:		/* FMUL */
+	case 0x63:
+	case 0x67:
 	    regs.fp[reg] *= src;
+	    if ((extra & 0x44) == 0x40)
+		regs.fp[reg] = (float)regs.fp[reg];
 	    MAKE_FPSR (regs.fpsr, regs.fp[reg]);
 	    break;
 	case 0x24:		/* FSGLDIV */
@@ -1195,7 +1224,11 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 	    MAKE_FPSR (regs.fpsr, regs.fp[reg]);
 	    break;
 	case 0x28:		/* FSUB */
+	case 0x68:
+	case 0x6c:
 	    regs.fp[reg] -= src;
+	    if ((extra & 0x44) == 0x40)
+		regs.fp[reg] = (float)regs.fp[reg];
 	    MAKE_FPSR (regs.fpsr, regs.fp[reg]);
 	    break;
 	case 0x30:		/* FSINCOS */
@@ -1211,11 +1244,11 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 	    MAKE_FPSR (regs.fpsr, regs.fp[reg]);
 	    break;
 	case 0x38:		/* FCMP */
-	    {
-		double tmp = regs.fp[reg] - src;
-		regs.fpsr = (tmp == 0 ? 0x4000000 : 0) | (tmp < 0 ? 0x8000000 : 0);
-	    }
-	    break;
+	{
+	    double tmp = regs.fp[reg] - src;
+	    regs.fpsr = (tmp == 0 ? 0x4000000 : 0) | (tmp < 0 ? 0x8000000 : 0);
+	}
+	break;
 	case 0x3a:		/* FTST */
 	    regs.fpsr = (src == 0 ? 0x4000000 : 0) | (src < 0 ? 0x8000000 : 0);
 	    break;

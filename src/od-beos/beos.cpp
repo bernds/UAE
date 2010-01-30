@@ -899,7 +899,8 @@ int init_sound(void)
 
 	init_sound_table16();
 	eventtab[ev_sample].handler = sample16_handler;
-	sample_evtime = (long)maxhpos * maxvpos * 50 / 44100;
+	scaled_sample_evtime = (unsigned long)maxhpos * maxvpos * vblank_hz * CYCLE_UNIT / 44100;
+	scaled_sample_evtime_ok = 1;
 
 	sound_available = 1;
 	the_stream->SetSamplingRate(44100);

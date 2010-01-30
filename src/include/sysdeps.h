@@ -202,7 +202,7 @@ typedef uae_u32 uaecptr;
 
 #if SIZEOF_LONG_LONG == 8
 #define uae_s64 long long
-#define uae_u64 long long
+#define uae_u64 unsigned long long
 #define VAL64(a) (a ## LL)
 #define UVAL64(a) (a ## uLL)
 #elif SIZEOF___INT64 == 8
@@ -224,6 +224,7 @@ extern char *my_strdup (const char*s);
 #endif
 
 extern void *xmalloc(size_t);
+extern void *xcalloc(size_t, size_t);
 
 /* We can only rely on GNU C getting enums right. Mickeysoft VSC++ is known
  * to have problems, and it's likely that other compilers choke too. */

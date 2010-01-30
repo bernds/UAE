@@ -122,7 +122,10 @@ struct color_change {
 };
 
 /* 440 rather than 880, since sprites are always lores.  */
-#define MAX_SPR_PIXELS (((MAXVPOS + 1)*2 + 1) * 440)
+#define MAX_PIXELS_PER_LINE 1760
+
+/* ((MAX_PIXELS_PER_LINE/2)/2 since sprites are always lores.  */
+#define MAX_SPR_PIXELS (((MAXVPOS + 1)*2 + 1) * (MAX_PIXELS_PER_LINE / 4))
 
 struct sprite_entry
 {
@@ -165,13 +168,10 @@ struct decision {
     int ctable;
 
     uae_u16 bplcon0, bplcon2;
-    uae_u16 fmode, bplcon4;
+    uae_u16 bplcon3, bplcon4;
     uae_u8 nr_planes;
     uae_u8 bplres;
 };
-
-extern int fetchmode, prefetch, fetchsize, fetchstart, fetchstart_shift;
-extern void expand_fetchmodes (int, int);
 
 /* Anything related to changes in hw registers during the DDF for one
  * line. */
@@ -222,8 +222,6 @@ extern void notice_interlace_seen (void);
 /* Finally, stuff that shouldn't really be shared.  */
 
 extern int thisframe_first_drawn_line, thisframe_last_drawn_line;
-extern uae_u16 clxdat, clxcon;
-extern int clx_sprmask;
 extern int diwfirstword,diwlastword;
 
 #define IHF_SCROLLLOCK 0

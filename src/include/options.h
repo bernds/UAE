@@ -9,7 +9,7 @@
 
 #define UAEMAJOR 0
 #define UAEMINOR 8
-#define UAESUBREV 15
+#define UAESUBREV 16
 
 typedef enum { KBD_LANG_US, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -48,6 +48,7 @@ struct uae_prefs {
 
     int produce_sound;
     int stereo;
+    int mixed_stereo;
     int sound_bits;
     int sound_freq;
     int sound_minbsiz;
@@ -269,3 +270,14 @@ STATIC_INLINE void fuzzy_memset_le32_1 (void *p, uae_u32 c, int offset, int len)
 #if defined(AMIGA) && defined(__GNUC__)
 #include "od-amiga/amiga-kludges.h"
 #endif
+
+/* Every Amiga hardware clock cycle takes this many "virtual" cycles.  This
+   used to be hardcoded as 1, but using higher values allows us to time some
+   stuff more precisely.
+   512 is the official value from now on - it can't change, unless we want
+   _another_ config option "finegrain2_m68k_speed".
+
+   We define this value here rather than in events.h so that gencpu.c sees
+   it.  */
+#define CYCLE_UNIT 512
+

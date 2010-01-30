@@ -12,6 +12,7 @@
 #include "config.h"
 #include "options.h"
 #include "memory.h"
+#include "events.h"
 #include "custom.h"
 #include "audio.h"
 #include "gensound.h"
@@ -124,7 +125,9 @@ int init_sound (void)
     AudioMap.bam_Length                  = sndbufsize;
     AudioMap.bam_Sample                  = (void*)sndbuffer;
 
-    sample_evtime = (long)maxhpos * maxvpos * 50 / rate;
+    scaled_sample_evtime = (unsigned long)maxhpos * maxvpos * vblank_hz * CYCLE_UNIT / rate;
+    scaled_sample_evtime_ok = 1;
+
     init_sound_table8 ();
     sample_handler = sample8_handler;
 

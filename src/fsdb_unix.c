@@ -45,7 +45,7 @@ int fsdb_set_file_attrs (a_inode *aino, int mask)
     int mode;
 
     if (stat (aino->nname, &statbuf) == -1)
-	return ERROR_OBJECT_NOT_FOUND;
+	return ERROR_OBJECT_NOT_AROUND;
 
     mode = statbuf.st_mode;
     /* Unix dirs behave differently than AmigaOS ones.  */

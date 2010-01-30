@@ -51,7 +51,7 @@ static char *new_disk_string[4];
 static GtkAdjustment *cpuspeed_adj;
 static GtkWidget *cpuspeed_widgets[4], *cpuspeed_scale;
 static GtkWidget *cpu_widget[5], *a24m_widget, *ccpu_widget;
-static GtkWidget *sound_widget[4], *sound_bits_widget[2], *sound_freq_widget[3], *sound_ch_widget[2];
+static GtkWidget *sound_widget[4], *sound_bits_widget[2], *sound_freq_widget[3], *sound_ch_widget[3];
 
 static GtkAdjustment *framerate_adj;
 static GtkWidget *bimm_widget, *b32_widget, *afscr_widget, *pfscr_widget;
@@ -131,8 +131,9 @@ static void set_gfx_state (void)
 
 static void set_sound_state (void)
 {
+    int stereo = currprefs.stereo + currprefs.mixed_stereo;
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_widget[currprefs.produce_sound]), 1);
-    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_ch_widget[currprefs.stereo]), 1);
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_ch_widget[stereo]), 1);
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_bits_widget[currprefs.sound_bits == 16]), 1);
 }
 
@@ -283,7 +284,10 @@ static void cputype_changed (void)
 static void sound_changed (void)
 {
     changed_prefs.produce_sound = find_current_toggle (sound_widget, 4);
-    changed_prefs.stereo = find_current_toggle (sound_ch_widget, 2);
+    changed_prefs.stereo = find_current_toggle (sound_ch_widget, 3);
+    changed_prefs.mixed_stereo = 0;
+    if (changed_prefs.stereo == 2)
+	changed_prefs.mixed_stereo = changed_prefs.stereo = 1;
     changed_prefs.sound_bits = (find_current_toggle (sound_bits_widget, 2) + 1) * 8;
 }
 
@@ -592,7 +596,7 @@ static GtkWidget *make_cpu_speed_sel (void)
     gtk_container_add (GTK_CONTAINER (frame), newbox);
     make_radio_group (labels, newbox, cpuspeed_widgets, 0, 1, cpuspeed_changed);
 
-    cpuspeed_adj = GTK_ADJUSTMENT (gtk_adjustment_new (currprefs.m68k_speed, 1.0, 10.0, 1.0, 1.0, 1.0));
+    cpuspeed_adj = GTK_ADJUSTMENT (gtk_adjustment_new (currprefs.m68k_speed, 1.0, 5120.0, 1.0, 1.0, 1.0));
     gtk_signal_connect (GTK_OBJECT (cpuspeed_adj), "value_changed",
 			GTK_SIGNAL_FUNC (cpuspeed_changed), NULL);
 
@@ -714,7 +718,7 @@ static void make_sound_widgets (GtkWidget *vbox)
 	"8 bit", "16 bit",
 	NULL
     }, *soundlabels3[] = {
-	"Mono", "Stereo",
+	"Mono", "Stereo", "Mixed",
 	NULL
     };
 

@@ -14,79 +14,94 @@
 
 #include "fsdb.h"
 
+/* these are deadly (but I think allowed on the Amiga): */
+#define NUM_EVILCHARS 7
+char evilchars[NUM_EVILCHARS] = { '\\', '*', '?', '\"', '<', '>', '|' };
+
 /* Return nonzero for any name we can't create on the native filesystem.  */
 int fsdb_name_invalid (const char *n)
 {
+    int i;
     char a = n[0];
     char b = (a == '\0' ? a : n[1]);
     char c = (b == '\0' ? b : n[2]);
+    char d = (c == '\0' ? c : n[3]);
 
     if (a >= 'a' && a <= 'z')
-	a -= 32;
+        a -= 32;
     if (b >= 'a' && b <= 'z')
-	b -= 32;
+        b -= 32;
     if (c >= 'a' && c <= 'z')
-	c -= 32;
+        c -= 32;
 
-    if ((a == 'A' && b == 'U' && c == 'X')
-	|| (a == 'C' && b == 'O' && c == 'N')
-	|| (a == 'P' && b == 'R' && c == 'N')
-	|| (a == 'N' && b == 'U' && c == 'L'))
+    /* reserved dos devices */
+    if ((a == 'A' && b == 'U' && c == 'X')                                  /* AUX  */
+        || (a == 'C' && b == 'O' && c == 'N')                               /* CON  */
+        || (a == 'P' && b == 'R' && c == 'N')                               /* PRN  */
+        || (a == 'N' && b == 'U' && c == 'L')                               /* NUL  */
+        || (a == 'L' && b == 'P' && c == 'T'  && (d >= '0' && d <= '9'))    /* LPT# */
+        || (a == 'C' && b == 'O' && c == 'M'  && (d >= '0' && d <= '9')))   /* COM# */
 	return 1;
 
-    if (strchr (n, '\\') != 0)
+    /* spaces and periods at the beginning or the end are a no-no */
+    if (n[0] == '.' || n[0] == ' ')
 	return 1;
 
+    i = strlen(n) - 1;
+    if (n[i] == '.' || n[i] == ' ')
+	return 1;
+
+    /* these characters are *never* allowed */
+    for (i = 0; i < NUM_EVILCHARS; i++) {
+        if (strchr (n, evilchars[i]) != 0)
+            return 1;
+    }
+
+    /* the reserved fsdb filename */
     if (strcmp (n, FSDB_FILE) == 0)
 	return 1;
-    if (n[0] != '.')
-	return 0;
-    if (n[1] == '\0')
-	return 1;
-    return n[1] == '.' && n[2] == '\0';
+    return 0; /* the filename passed all checks, now it should be ok */
+}
+
+uae_u32 filesys_parse_mask(uae_u32 mask)
+{
+    return(mask ^ 0xf);
 }
 
 /* For an a_inode we have newly created based on a filename we found on the
  * native fs, fill in information about this file/directory.  */
 void fsdb_fill_file_attrs (a_inode *aino)
 {
-    struct stat statbuf;
-    /* This really shouldn't happen...  */
-    if (stat (aino->nname, &statbuf) == -1)
-	return;
-    aino->dir = S_ISDIR (statbuf.st_mode) ? 1 : 0;
-    aino->amigaos_mode = ((S_IXUSR & statbuf.st_mode ? 0 : A_FIBF_EXECUTE)
-			  | (S_IWUSR & statbuf.st_mode ? 0 : A_FIBF_WRITE)
-			  | (S_IRUSR & statbuf.st_mode ? 0 : A_FIBF_READ));
-}
-
-int fsdb_set_file_attrs (a_inode *aino, int mask)
-{
-    struct stat statbuf;
     int mode;
 
+    if((mode = GetFileAttributes(aino->nname)) == 0xFFFFFFFF) return;
+	
+    aino->dir = (mode & FILE_ATTRIBUTE_DIRECTORY) ? 1 : 0;
+    aino->amigaos_mode = (FILE_ATTRIBUTE_ARCHIVE & mode) ? 0 : A_FIBF_ARCHIVE;
+    aino->amigaos_mode |= 0xf; /* set rwed by default */
+    aino->amigaos_mode = filesys_parse_mask(aino->amigaos_mode);
+}
+
+int fsdb_set_file_attrs (a_inode *aino, uae_u32 mask)
+{
+    struct stat statbuf;
+    uae_u32 mode=0, tmpmask;
+
+    tmpmask = filesys_parse_mask(mask);
+	
     if (stat (aino->nname, &statbuf) == -1)
-	return ERROR_OBJECT_NOT_FOUND;
-
-    mode = statbuf.st_mode;
+	return ERROR_OBJECT_NOT_AROUND;
+	
     /* Unix dirs behave differently than AmigaOS ones.  */
+    /* windows dirs go where no dir has gone before...  */
     if (! aino->dir) {
-	if (mask & A_FIBF_READ)
-	    mode &= ~S_IRUSR;
+	
+	if (tmpmask & A_FIBF_ARCHIVE)
+	    mode |= FILE_ATTRIBUTE_ARCHIVE;
 	else
-	    mode |= S_IRUSR;
+	    mode &= ~FILE_ATTRIBUTE_ARCHIVE;
 
-	if (mask & A_FIBF_WRITE)
-	    mode &= ~S_IWUSR;
-	else
-	    mode |= S_IWUSR;
-
-	if (mask & A_FIBF_EXECUTE)
-	    mode &= ~S_IXUSR;
-	else
-	    mode |= S_IXUSR;
-
-	chmod (aino->nname, mode);
+	SetFileAttributes(aino->nname, mode);
     }
 
     aino->amigaos_mode = mask;
@@ -100,26 +115,36 @@ int fsdb_mode_representable_p (const a_inode *aino)
 {
     if (aino->dir)
 	return aino->amigaos_mode == 0;
-    return (aino->amigaos_mode & (A_FIBF_DELETE | A_FIBF_SCRIPT | A_FIBF_PURE)) == 0;
+    return (aino->amigaos_mode & (A_FIBF_DELETE
+				  | A_FIBF_SCRIPT
+				  | A_FIBF_PURE
+				  | A_FIBF_EXECUTE
+				  | A_FIBF_READ
+				  | A_FIBF_WRITE)) == 0;
 }
 
 char *fsdb_create_unique_nname (a_inode *base, const char *suggestion)
 {
     char *c;
     char tmp[256] = "__uae___";
-    strncat (tmp, suggestion, 240);
+    int i;
 
-    /* @@@ Brian... this may or may not need fixing.  */
-    while ((c = strchr (tmp, '\\')) != 0)
-	*c = '_';
+    strncat (tmp, suggestion, 240);
+	
+    /* replace the evil ones... */
+    for (i=0; i < NUM_EVILCHARS; i++)
+        while ((c = strchr (tmp, evilchars[i])) != 0)
+            *c = '_';
+
     while ((c = strchr (tmp, '.')) != 0)
-	*c = '_';
+        *c = '_';
+    while ((c = strchr (tmp, ' ')) != 0)
+        *c = '_';
 
     for (;;) {
-	int i;
 	char *p = build_nname (base->nname, tmp);
 	if (access (p, R_OK) < 0 && errno == ENOENT) {
-	    printf ("unique name: %s\n", p);
+	    write_log ("unique name: %s\n", p);
 	    return p;
 	}
 	free (p);
@@ -127,7 +152,7 @@ char *fsdb_create_unique_nname (a_inode *base, const char *suggestion)
 	/* tmpnam isn't reentrant and I don't really want to hack configure
 	 * right now to see whether tmpnam_r is available...  */
 	for (i = 0; i < 8; i++) {
-	    tmp[i] = "_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"[random () % 63];
+	    tmp[i+8] = "_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"[random () % 63];
 	}
     }
 }

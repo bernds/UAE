@@ -16,6 +16,7 @@
 #include "config.h"
 #include "options.h"
 #include "memory.h"
+#include "events.h"
 #include "custom.h"
 #include "audio.h"
 #include "gensound.h"
@@ -317,8 +318,10 @@ int init_sound (void)
     oldledstate = cia->ciapra & (1<<CIAB_LED);
     cia->ciapra |= (1<<CIAB_LED);
 
-    sample_evtime = (long)maxhpos * maxvpos * 50 / rate;
-    if (ahiopen) { 
+    scaled_sample_evtime = (unsigned long)maxhpos * maxvpos * vblank_hz * CYCLE_UNIT / rate;
+    scaled_sample_evtime_ok = 1;
+
+    if (ahiopen) {
     	if(currprefs.sound_bits == 16) {
 	   init_sound_table16 ();
 	   sample_handler = currprefs.stereo ? sample16s_handler

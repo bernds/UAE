@@ -12,6 +12,7 @@
 #include "config.h"
 #include "options.h"
 #include "memory.h"
+#include "events.h"
 #include "custom.h"
 #include "gensound.h"
 #include "sounddep/sound.h"
@@ -126,7 +127,8 @@ int init_sound (void)
 	return 0;
     }
 
-    sample_evtime = (long)maxhpos * maxvpos * 50 / rate;
+    scaled_sample_evtime = (unsigned long)maxhpos * maxvpos * vblank_hz * CYCLE_UNIT / rate;
+    scaled_sample_evtime_ok = 1;
 
     if (dspbits == 16) {
 	/* Will this break horribly on bigendian machines? Possible... */

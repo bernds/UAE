@@ -45,7 +45,7 @@ A: I found out that on my SuSE installation, there's a file called ".Xmodmap"
    they're shipping a different .Xmodmap file).
 
 Q: On my Linux system, all the key combinations that involve F12 don't work.
-A: Known problem - don't use the window manager that comes with KDE2 beta.
+A: Known problem - don't use the window manager that comes with KDE2.
 
 
 ** INCOMPATIBILITIES
@@ -105,7 +105,7 @@ A: Run DMS under UAE and use it just like you would on a real Amiga.
 
 Q: How can I transfer non-DOS disks that are used by many demos?
 A: With transdisk. The fact that they are unreadable by AmigaDOS does not
-   mean they are unreadble by transdisk. 
+   mean they are unreadable by transdisk. 
    Long explanation: There are two things to consider when talking about the
    "format" of a disk. First, the low-level format which divides each track
    into sectors in a special way. Most Amiga disks are in the standard Amiga
@@ -228,14 +228,10 @@ A: Short answer: I disagree.
    superiority of the hardware that made the Amiga a success.
    I see UAE as a program that is similar to C64 emulators: it allows you to
    run some old games and other programs that you can't replace with better
-   equivalents on the PC. As such, it can already be used to run non-action
-   games (like Monkey Island or Bard's Tale) at a satisfactory speed. Faster
-   CPUs will eventually make it possible to run action games, just like faster
-   CPUs have made it possible to emulate a C64 at full speed on a PC. UAE is 
-   not (primarily) meant for the Amiga PowerUser who is running high quality
-   applications on his A4000 with a 68060 board, but for people like me who
-   switched from an A500 to the PC a few years ago because they wanted to make
-   money by developing software.
+   equivalents on the PC. UAE is not (primarily) meant for the Amiga PowerUser
+   who is running high quality applications on his A4000 with a 68060 board,
+   but for people like me who switched from an A500 to the PC a few years ago
+   for whatever reason.
    Besides, emulating an OS is far more difficult IMHO. Especially if the
    platform you are emulating it on is completely different than the platform
    that is being emulated. You'd have to mess with endianness conversions and

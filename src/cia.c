@@ -24,7 +24,7 @@
 #include "keybuf.h"
 #include "gui.h"
 
-#define DIV10 5 /* Yes, a bad identifier. */
+#define DIV10 (5*CYCLE_UNIT) /* Yes, a bad identifier. */
 
 /* battclock stuff */
 #define RTC_D_ADJ      8
@@ -46,7 +46,12 @@ static unsigned int clock_control_f = RTC_F_24_12;
 
 unsigned int ciaaicr,ciaaimask,ciabicr,ciabimask;
 unsigned int ciaacra,ciaacrb,ciabcra,ciabcrb;
+
+/* Values of the CIA timers.  */
 unsigned long ciaata,ciaatb,ciabta,ciabtb;
+/* Computed by compute_passed_time.  */
+unsigned long ciaata_passed, ciaatb_passed, ciabta_passed, ciabtb_passed;
+
 unsigned long ciaatod,ciabtod,ciaatol,ciabtol,ciaaalarm,ciabalarm;
 int ciaatlatch,ciabtlatch;
 
@@ -64,7 +69,7 @@ static int kbstate, kback, ciaasdr_unread = 0;
 static int prtopen;
 static FILE *prttmp;
 
-static void setclr(unsigned int *p, unsigned int val)
+static void setclr (unsigned int *p, unsigned int val)
 {
     if (val & 0x80) {
 	*p |= val & 0x7F;
@@ -73,7 +78,7 @@ static void setclr(unsigned int *p, unsigned int val)
     }
 }
 
-static void RethinkICRA(void)
+static void RethinkICRA (void)
 {
     if (ciaaimask & ciaaicr) {
 	ciaaicr |= 0x80;
@@ -84,7 +89,7 @@ static void RethinkICRA(void)
     }
 }
 
-static void RethinkICRB(void)
+static void RethinkICRB (void)
 {
 #if 0 /* ??? What's this then? */
     if (ciabicr & 0x10) {
@@ -100,21 +105,53 @@ static void RethinkICRB(void)
     }
 }
 
-static int lastdiv10;
+/* Figure out how many CIA timer cycles have passed for each timer since the
+   last call of CIA_calctimers.  */
 
-static void CIA_update(void)
+static void compute_passed_time (void)
 {
-    unsigned long int ccount = cycles - eventtab[ev_cia].oldcycles + lastdiv10;
+    unsigned long int ccount = (get_cycles () - eventtab[ev_cia].oldcycles + div10);
+    unsigned long int ciaclocks = ccount / DIV10;
+
+    ciaata_passed = ciaatb_passed = ciabta_passed = ciabtb_passed = 0;
+
+    /* CIA A timers */
+    if ((ciaacra & 0x21) == 0x01) {
+	assert ((ciaata+1) >= ciaclocks);
+	ciaata_passed = ciaclocks;
+    }
+    if ((ciaacrb & 0x61) == 0x01) {
+	assert ((ciaatb+1) >= ciaclocks);
+	ciaatb_passed = ciaclocks;
+    }
+
+    /* CIA B timers */
+    if ((ciabcra & 0x21) == 0x01) {
+	assert ((ciabta+1) >= ciaclocks);
+	ciabta_passed = ciaclocks;
+    }
+    if ((ciabcrb & 0x61) == 0x01) {
+	assert ((ciabtb+1) >= ciaclocks);
+	ciabtb_passed = ciaclocks;
+    }
+}
+
+/* Called to advance all CIA timers to the current time.  This expects that
+   one of the timer values will be modified, and CIA_calctimers will be called
+   in the same cycle.  */
+
+static void CIA_update (void)
+{
+    unsigned long int ccount = (get_cycles () - eventtab[ev_cia].oldcycles + div10);
     unsigned long int ciaclocks = ccount / DIV10;
 
     int aovfla = 0, aovflb = 0, bovfla = 0, bovflb = 0;
 
-    lastdiv10 = div10;
     div10 = ccount % DIV10;
 
     /* CIA A timers */
     if ((ciaacra & 0x21) == 0x01) {
-	assert((ciaata+1) >= ciaclocks);
+	assert ((ciaata+1) >= ciaclocks);
 	if ((ciaata+1) == ciaclocks) {
 	    aovfla = 1;
 	    if ((ciaacrb & 0x61) == 0x41) {
@@ -124,14 +161,14 @@ static void CIA_update(void)
 	ciaata -= ciaclocks;
     }
     if ((ciaacrb & 0x61) == 0x01) {
-	assert((ciaatb+1) >= ciaclocks);
+	assert ((ciaatb+1) >= ciaclocks);
 	if ((ciaatb+1) == ciaclocks) aovflb = 1;
 	ciaatb -= ciaclocks;
     }
 
     /* CIA B timers */
     if ((ciabcra & 0x21) == 0x01) {
-	assert((ciabta+1) >= ciaclocks);
+	assert ((ciabta+1) >= ciaclocks);
 	if ((ciabta+1) == ciaclocks) {
 	    bovfla = 1;
 	    if ((ciabcrb & 0x61) == 0x41) {
@@ -167,14 +204,16 @@ static void CIA_update(void)
     }
 }
 
-static void CIA_calctimers(void)
-{
-    int ciaatimea = -1, ciaatimeb = -1, ciabtimea = -1, ciabtimeb = -1;
+/* Call this only after CIA_update has been called in the same cycle.  */
 
-    eventtab[ev_cia].oldcycles = cycles;
+static void CIA_calctimers (void)
+{
+    long ciaatimea = -1, ciaatimeb = -1, ciabtimea = -1, ciabtimeb = -1;
+
+    eventtab[ev_cia].oldcycles = get_cycles ();
 
     if ((ciaacra & 0x21) == 0x01) {
-	ciaatimea = (DIV10-div10) + DIV10*ciaata;
+	ciaatimea = (DIV10 - div10) + DIV10 * ciaata;
     }
     if ((ciaacrb & 0x61) == 0x41) {
 	/* Timer B will not get any pulses if Timer A is off. */
@@ -188,11 +227,11 @@ static void CIA_calctimers(void)
 	}
     }
     if ((ciaacrb & 0x61) == 0x01) {
-	ciaatimeb = (DIV10-div10) + DIV10*ciaatb;
+	ciaatimeb = (DIV10 - div10) + DIV10 * ciaatb;
     }
 
     if ((ciabcra & 0x21) == 0x01) {
-	ciabtimea = (DIV10-div10) + DIV10*ciabta;
+	ciabtimea = (DIV10 - div10) + DIV10 * ciabta;
     }
     if ((ciabcrb & 0x61) == 0x41) {
 	/* Timer B will not get any pulses if Timer A is off. */
@@ -206,7 +245,7 @@ static void CIA_calctimers(void)
 	}
     }
     if ((ciabcrb & 0x61) == 0x01) {
-	ciabtimeb = (DIV10-div10) + DIV10*ciabtb;
+	ciabtimeb = (DIV10 - div10) + DIV10 * ciabtb;
     }
     eventtab[ev_cia].active = (ciaatimea != -1 || ciaatimeb != -1
 			       || ciabtimea != -1 || ciabtimeb != -1);
@@ -216,24 +255,24 @@ static void CIA_calctimers(void)
 	if (ciaatimeb != -1 && ciaatimeb < ciatime) ciatime = ciaatimeb;
 	if (ciabtimea != -1 && ciabtimea < ciatime) ciatime = ciabtimea;
 	if (ciabtimeb != -1 && ciabtimeb < ciatime) ciatime = ciabtimeb;
-	eventtab[ev_cia].evtime = ciatime + cycles;
+	eventtab[ev_cia].evtime = ciatime + get_cycles ();
     }
     events_schedule();
 }
 
-void CIA_handler(void)
+void CIA_handler (void)
 {
-    CIA_update();
-    CIA_calctimers();
+    CIA_update ();
+    CIA_calctimers ();
 }
 
-void cia_diskindex(void)
+void cia_diskindex (void)
 {
     ciabicr |= 0x10;
     RethinkICRB();
 }
 
-void CIA_hsync_handler(void)
+void CIA_hsync_handler (void)
 {
     static unsigned int keytime = 0, sleepyhead = 0;
 
@@ -287,7 +326,7 @@ void CIA_hsync_handler(void)
     }
 }
 
-void CIA_vsync_handler()
+void CIA_vsync_handler ()
 {
     if (ciaatodon)
 	ciaatod++;
@@ -301,11 +340,13 @@ void CIA_vsync_handler()
     serial_flush_buffer();
 }
 
-static uae_u8 ReadCIAA(unsigned int addr)
+static uae_u8 ReadCIAA (unsigned int addr)
 {
     unsigned int tmp;
 
-    switch(addr & 0xf) {
+    compute_passed_time ();
+    
+    switch (addr & 0xf) {
     case 0:
 	if (currprefs.use_serial && (serstat < 0)) /* Only read status when needed */
 	    serstat=serial_readstatus();		/* and only once per frame */
@@ -326,13 +367,13 @@ static uae_u8 ReadCIAA(unsigned int addr)
     case 3:
 	return ciaadrb;
     case 4:
-	return ciaata & 0xff;
+	return (ciaata - ciaata_passed) & 0xff;
     case 5:
-	return ciaata >> 8;
+	return (ciaata - ciaata_passed) >> 8;
     case 6:
-	return ciaatb & 0xff;
+	return (ciaatb - ciaatb_passed) & 0xff;
     case 7:
-	return ciaatb >> 8;
+	return (ciaatb - ciaatb_passed) >> 8;
     case 8:
 	if (ciaatlatch) {
 	    ciaatlatch = 0;
@@ -361,11 +402,13 @@ static uae_u8 ReadCIAA(unsigned int addr)
     return 0;
 }
 
-static uae_u8 ReadCIAB(unsigned int addr)
+static uae_u8 ReadCIAB (unsigned int addr)
 {
     unsigned int tmp;
 
-    switch(addr & 0xf) {
+    compute_passed_time ();
+
+    switch (addr & 0xf) {
     case 0:
 	if (currprefs.use_serial && serstat < 0) /* Only read status when needed */
 	    serstat=serial_readstatus();	 /* and only once per frame      */
@@ -379,13 +422,13 @@ static uae_u8 ReadCIAB(unsigned int addr)
     case 3:
 	return ciabdrb;
     case 4:
-	return ciabta & 0xff;
+	return (ciabta - ciabta_passed) & 0xff;
     case 5:
-	return ciabta >> 8;
+	return (ciabta - ciabta_passed) >> 8;
     case 6:
-	return ciabtb & 0xff;
+	return (ciabtb - ciabtb_passed) & 0xff;
     case 7:
-	return ciabtb >> 8;
+	return (ciabtb - ciabtb_passed) >> 8;
     case 8:
 	if (ciabtlatch) {
 	    ciabtlatch = 0;
@@ -414,10 +457,10 @@ static uae_u8 ReadCIAB(unsigned int addr)
     return 0;
 }
 
-static void WriteCIAA(uae_u16 addr,uae_u8 val)
+static void WriteCIAA (uae_u16 addr,uae_u8 val)
 {
     int oldled, oldovl;
-    switch(addr & 0xf) {
+    switch (addr & 0xf) {
     case 0:
 	oldovl = ciaapra & 1;
 	oldled = ciaapra & 2;
@@ -470,12 +513,12 @@ static void WriteCIAA(uae_u16 addr,uae_u8 val)
     case 3:
 	ciaadrb = val; break;
     case 4:
-	CIA_update();
+	CIA_update ();
 	ciaala = (ciaala & 0xff00) | val;
-	CIA_calctimers();
+	CIA_calctimers ();
 	break;
     case 5:
-	CIA_update();
+	CIA_update ();
 	ciaala = (ciaala & 0xff) | (val << 8);
 	if ((ciaacra & 1) == 0)
 	    ciaata = ciaala;
@@ -483,15 +526,15 @@ static void WriteCIAA(uae_u16 addr,uae_u8 val)
 	    ciaata = ciaala;
 	    ciaacra |= 1;
 	}
-	CIA_calctimers();
+	CIA_calctimers ();
 	break;
     case 6:
-	CIA_update();
+	CIA_update ();
 	ciaalb = (ciaalb & 0xff00) | val;
-	CIA_calctimers();
+	CIA_calctimers ();
 	break;
     case 7:
-	CIA_update();
+	CIA_update ();
 	ciaalb = (ciaalb & 0xff) | (val << 8);
 	if ((ciaacrb & 1) == 0)
 	    ciaatb = ciaalb;
@@ -499,7 +542,7 @@ static void WriteCIAA(uae_u16 addr,uae_u8 val)
 	    ciaatb = ciaalb;
 	    ciaacrb |= 1;
 	}
-	CIA_calctimers();
+	CIA_calctimers ();
 	break;
     case 8:
 	if (ciaacrb & 0x80) {
@@ -530,7 +573,7 @@ static void WriteCIAA(uae_u16 addr,uae_u8 val)
     case 13:
 	setclr(&ciaaimask,val); break; /* ??? call RethinkICR() ? */
     case 14:
-	CIA_update();
+	CIA_update ();
 	ciaacra = val;
 	if (ciaacra & 0x10) {
 	    ciaacra &= ~0x10;
@@ -539,24 +582,24 @@ static void WriteCIAA(uae_u16 addr,uae_u8 val)
 	if (ciaacra & 0x40) {
 	    kback = 1;
 	}
-	CIA_calctimers();
+	CIA_calctimers ();
 	break;
     case 15:
-	CIA_update();
+	CIA_update ();
 	ciaacrb = val;
 	if (ciaacrb & 0x10) {
 	    ciaacrb &= ~0x10;
 	    ciaatb = ciaalb;
 	}
-	CIA_calctimers();
+	CIA_calctimers ();
 	break;
     }
 }
 
-static void WriteCIAB(uae_u16 addr,uae_u8 val)
+static void WriteCIAB (uae_u16 addr,uae_u8 val)
 {
     int oldval;
-    switch(addr & 0xf) {
+    switch (addr & 0xf) {
     case 0:
 	if (currprefs.use_serial) {
 	    oldval = ciabpra;
@@ -571,12 +614,12 @@ static void WriteCIAB(uae_u16 addr,uae_u8 val)
     case 3:
 	ciabdrb = val; break;
     case 4:
-	CIA_update();
+	CIA_update ();
 	ciabla = (ciabla & 0xff00) | val;
-	CIA_calctimers();
+	CIA_calctimers ();
 	break;
     case 5:
-	CIA_update();
+	CIA_update ();
 	ciabla = (ciabla & 0xff) | (val << 8);
 	if ((ciabcra & 1) == 0)
 	    ciabta = ciabla;
@@ -584,15 +627,15 @@ static void WriteCIAB(uae_u16 addr,uae_u8 val)
 	    ciabta = ciabla;
 	    ciabcra |= 1;
 	}
-	CIA_calctimers();
+	CIA_calctimers ();
 	break;
     case 6:
-	CIA_update();
+	CIA_update ();
 	ciablb = (ciablb & 0xff00) | val;
-	CIA_calctimers();
+	CIA_calctimers ();
 	break;
     case 7:
-	CIA_update();
+	CIA_update ();
 	ciablb = (ciablb & 0xff) | (val << 8);
 	if ((ciabcrb & 1) == 0)
 	    ciabtb = ciablb;
@@ -600,7 +643,7 @@ static void WriteCIAB(uae_u16 addr,uae_u8 val)
 	    ciabtb = ciablb;
 	    ciabcrb |= 1;
 	}
-	CIA_calctimers();
+	CIA_calctimers ();
 	break;
     case 8:
 	if (ciabcrb & 0x80) {
@@ -633,27 +676,27 @@ static void WriteCIAB(uae_u16 addr,uae_u8 val)
 	setclr(&ciabimask,val);
 	break;
     case 14:
-	CIA_update();
+	CIA_update ();
 	ciabcra = val;
 	if (ciabcra & 0x10) {
 	    ciabcra &= ~0x10;
 	    ciabta = ciabla;
 	}
-	CIA_calctimers();
+	CIA_calctimers ();
 	break;
     case 15:
-	CIA_update();
+	CIA_update ();
 	ciabcrb = val;
 	if (ciabcrb & 0x10) {
 	    ciabcrb &= ~0x10;
 	    ciabtb = ciablb;
 	}
-	CIA_calctimers();
+	CIA_calctimers ();
 	break;
     }
 }
 
-void CIA_reset(void)
+void CIA_reset (void)
 {
     kback = 1;
     kbstate = 0;
@@ -665,16 +708,16 @@ void CIA_reset(void)
     ciaacra = ciaacrb = ciabcra = ciabcrb = 0x4; /* outmode = toggle; */
     ciaala = ciaalb = ciabla = ciablb = ciaata = ciaatb = ciabta = ciabtb = 0xFFFF;
     div10 = 0;
-    lastdiv10 = 0;
-    CIA_calctimers();
+    CIA_calctimers ();
     ciabpra = 0x8C;
     if (! ersatzkickfile)
-	map_banks(&kickmem_bank, 0, 32);
+	map_banks (&kickmem_bank, 0, 32);
 
-    if (currprefs.use_serial) serial_dtr_off(); /* Drop DTR at reset */
+    if (currprefs.use_serial)
+      serial_dtr_off(); /* Drop DTR at reset */
 }
 
-void dumpcia(void)
+void dumpcia (void)
 {
     printf("A: CRA: %02x, CRB: %02x, IMASK: %02x, TOD: %08lx %7s TA: %04lx, TB: %04lx\n",
 	   (int)ciaacra, (int)ciaacrb, (int)ciaaimask, ciaatod,

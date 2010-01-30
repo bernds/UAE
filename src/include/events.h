@@ -10,12 +10,13 @@
   */
 
 #include "machdep/rpt.h"
+
 extern frame_time_t vsynctime, vsyncmintime;
 extern void reset_frame_rate_hack (void);
 extern int rpt_available;
 
-extern unsigned long int cycles, nextevent, is_lastline;
-extern unsigned long int sample_evtime;
+extern unsigned long currcycle, nextevent, is_lastline;
+extern unsigned long sample_evtime;
 typedef void (*evfunc)(void);
 
 struct ev
@@ -26,7 +27,7 @@ struct ev
 };
 
 enum {
-    ev_hsync, ev_copper, ev_cia, ev_blitter, ev_disk,
+    ev_hsync, ev_copper, ev_audio, ev_cia, ev_blitter, ev_disk,
     ev_max
 };
 
@@ -37,57 +38,60 @@ STATIC_INLINE void events_schedule (void)
     int i;
 
     unsigned long int mintime = ~0L;
-    for(i = 0; i < ev_max; i++) {
+    for (i = 0; i < ev_max; i++) {
 	if (eventtab[i].active) {
-	    unsigned long int eventtime = eventtab[i].evtime - cycles;
+	    unsigned long int eventtime = eventtab[i].evtime - currcycle;
 	    if (eventtime < mintime)
 		mintime = eventtime;
 	}
     }
-    nextevent = cycles + mintime;
+    nextevent = currcycle + mintime;
 }
 
 STATIC_INLINE void do_cycles_slow (unsigned long cycles_to_add)
 {
-    if (is_lastline && eventtab[ev_hsync].evtime-cycles <= cycles_to_add
+    if (is_lastline && eventtab[ev_hsync].evtime - currcycle <= cycles_to_add
 	&& (long int)(read_processor_time () - vsyncmintime) < 0)
 	return;
 
-    if ((nextevent - cycles) <= cycles_to_add) {
-	for (; cycles_to_add != 0; cycles_to_add--) {
-	    if (++cycles == nextevent) {
-		int i;
+    while ((nextevent - currcycle) <= cycles_to_add) {
+        int i;
+        cycles_to_add -= (nextevent - currcycle);
+        currcycle = nextevent;
 
-		for (i = 0; i < ev_max; i++) {
-		    if (eventtab[i].active && eventtab[i].evtime == cycles) {
-			(*eventtab[i].handler)();
-		    }
-		}
-		events_schedule();
+        for (i = 0; i < ev_max; i++) {
+	    if (eventtab[i].active && eventtab[i].evtime == currcycle) {
+		(*eventtab[i].handler)();
 	    }
 	}
+        events_schedule();
     }
-    cycles += cycles_to_add;
+    currcycle += cycles_to_add;
 }
 
 STATIC_INLINE void do_cycles_fast (void)
 {
-    if (is_lastline && eventtab[ev_hsync].evtime-cycles <= 1
+    if (is_lastline && eventtab[ev_hsync].evtime - currcycle <= 1
 	&& (long int)(read_processor_time () - vsyncmintime) < 0)
 	return;
 
-    cycles++;
-    if (nextevent == cycles) {
+    currcycle++;
+    if (nextevent == currcycle) {
 	int i;
 
 	for (i = 0; i < ev_max; i++) {
-	    if (eventtab[i].active && eventtab[i].evtime == cycles) {
+	    if (eventtab[i].active && eventtab[i].evtime == currcycle) {
 		(*eventtab[i].handler) ();
 	    }
 	}
 	events_schedule();
     }
 
+}
+
+STATIC_INLINE unsigned long get_cycles (void)
+{
+    return currcycle;
 }
 
 #if /* M68K_SPEED == 1 */  0

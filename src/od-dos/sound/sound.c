@@ -6,6 +6,8 @@
   * Copyright 1997, 1998 Gustavo Goedert
   */
 
+/****** This file is broken.  The sample handlers have to go.  ******/
+
 #include "sysconfig.h"
 #include "sysdeps.h"
 

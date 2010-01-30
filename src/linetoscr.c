@@ -15,15 +15,38 @@ static int LNAME (int spix, int dpix, int stoppos)
 		buf[dpix++] = d;
 	}
     } else if (bpldualpf) {
-	/* Dual playfield (AGA broken) */
-	int *lookup = bpldualpfpri ? dblpf_ind2 : dblpf_ind1;
-	while (dpix < stoppos) {
-	    int pixcol = pixdata.apixels[spix];
-	    TYPE d = colors_for_drawing.acolors[lookup[pixcol]];
-	    spix += SRC_INC;
-	    buf[dpix++] = d;
-	    if (HDOUBLE)
+	if (AGA) {
+	    /* AGA Dual playfield */
+	    int *lookup = bpldualpfpri ? dblpf_ind2_aga : dblpf_ind1_aga;
+	    int *lookup_no = bpldualpfpri ? dblpf_2nd2 : dblpf_2nd1;
+	    while (dpix < stoppos) {
+		int pixcol = pixdata.apixels[spix];
+		TYPE d;
+		if (spriteagadpfpixels[spix]) {
+		    d = colors_for_drawing.acolors[spriteagadpfpixels[spix]];
+		    spriteagadpfpixels[spix]=0;
+		} else {
+		    int val = lookup[pixcol];
+		    if (lookup_no[pixcol] == 2)  val += dblpfofs[bpldualpf2of];
+		    /* val ^= xor; ??? */
+		    d = colors_for_drawing.acolors[val];
+		}
+		spix += SRC_INC;
 		buf[dpix++] = d;
+		if (HDOUBLE)
+		    buf[dpix++] = d;
+	    }
+	} else {
+	    /* OCS/ECS Dual playfield  */
+	    int *lookup = bpldualpfpri ? dblpf_ind2 : dblpf_ind1;
+	    while (dpix < stoppos) {
+		int pixcol = pixdata.apixels[spix];
+		TYPE d = colors_for_drawing.acolors[lookup[pixcol]];
+		spix += SRC_INC;
+		buf[dpix++] = d;
+		if (HDOUBLE)
+		    buf[dpix++] = d;
+	    }
 	}
     } else if (bplehb) {
 	while (dpix < stoppos) {
@@ -32,10 +55,8 @@ static int LNAME (int spix, int dpix, int stoppos)
 	    spix += SRC_INC;
 	    if (AGA) {
 		/* AGA EHB playfield */
-		int ehbtmp = (p >= 32
-			      ? (colors_for_drawing.color_regs_aga[(p-32)^xor_val] >> 1) & 0x7F7F7F
-			      : colors_for_drawing.color_regs_aga[p]);
-		d = CONVERT_RGB (ehbtmp);
+		if (p>= 32 && p < 64) /* FIXME: what about sprite colors between 32 and 64? */
+		    d = (colors_for_drawing.color_regs_aga[(p-32)^xor_val] >> 1) & 0x7F7F7F;
 	    } else {
 		/* OCS/ECS EHB playfield */
 		if (p >= 32)

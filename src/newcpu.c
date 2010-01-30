@@ -1222,7 +1222,7 @@ static int do_specialties (void)
 
     /*n_spcinsns++;*/
     while (regs.spcflags & SPCFLAG_BLTNASTY) {
-	do_cycles (4);
+	do_cycles (4 * CYCLE_UNIT);
 	if (regs.spcflags & SPCFLAG_COPPER)
 	    do_copper ();
     }
@@ -1232,7 +1232,7 @@ static int do_specialties (void)
 	Exception (9,last_trace_ad);
     }
     while (regs.spcflags & SPCFLAG_STOP) {
-	do_cycles (4);
+	do_cycles (4 * CYCLE_UNIT);
 	if (regs.spcflags & SPCFLAG_COPPER)
 	    do_copper ();
 	if (regs.spcflags & (SPCFLAG_INT | SPCFLAG_DOINT)){
@@ -1366,7 +1366,7 @@ STATIC_INLINE void m68k_run1 (void (*func)(void))
 			  : : "r" (func) : "%eax", "%edx", "%ecx", "memory", "cc");
 }
 #else
-#define m68k_run1(F) F()
+#define m68k_run1(F) (F) ()
 #endif
 
 int in_m68k_go = 0;

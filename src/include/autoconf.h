@@ -69,9 +69,6 @@ extern void filesys_reset (void);
 extern void filesys_prepare_reset (void);
 extern void filesys_start_threads (void);
 
-extern void reset_uaedevices (void);
-extern int get_new_device (char **devname, uaecptr *devname_amiga);
-
 extern void filesys_install (void);
 extern void filesys_install_code (void);
 extern void filesys_store_devinfo (uae_u8 *);

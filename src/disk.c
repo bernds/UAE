@@ -49,7 +49,6 @@ static int floppy_speed = NORMAL_FLOPPY_SPEED;
 
 static int side, direction, step, writing;
 static uae_u8 selected = 15;
-static int dskready;
 
 static uae_u8 *writebuffer[544 * 11];
 
@@ -91,6 +90,8 @@ typedef struct {
      */
     int dskchange;
     int dskchange_time;
+    int dskready;
+    int dskready_time;
 } drive;
 
 drive floppy[4];
@@ -160,7 +161,7 @@ static int drive_insert (drive * drv, int dnum, const char *fname)
 	drv->num_tracks = buffer[2] * 256 + buffer[3];
 	drv->filetype = ADF_EXT2;
 	drv->num_secs = 11;
-	offs = 8 + drv->num_tracks * (2 + 2 + 4 + 4);
+	offs = 8 + 2 + 2 + drv->num_tracks * (2 + 2 + 4 + 4);
 
 	for (i = 0; i < drv->num_tracks; i++) {
 	    tid = &drv->trackdata[i];
@@ -272,7 +273,19 @@ static int drive_running (drive * drv)
 
 static void drive_motor (drive * drv, int off)
 {
+    if (drv->disabled)
+	off = 1;
+    /* A value of 2 works out to a guaranteed delay of 1/10 of a second
+       (which is the frequency with which DISK_check_change is called).
+       Higher values are dangerous, e.g. a value of 8 breaks the RSI
+       demo.  */
+    if (drv->motoroff && !off)
+	drv->dskready_time = 2;
     drv->motoroff = off;
+    if (drv->motoroff) {
+	drv->dskready = 0;
+	drv->dskready_time = 0;
+    }
 }
 
 static void read_floppy_data (drive * drv, int track, int offset, unsigned char *dst, int len)
@@ -395,9 +408,9 @@ static void drive_fill_bigbuf (drive * drv)
 	int i;
 	int base_offset = ti->type == TRACK_RAW ? 0 : 1;
 	drv->tracklen = ti->bitlen + 16 * base_offset;
-	read_floppy_data (drv, tr, 0, (char *) (drv->bigmfmbuf + base_offset), (ti->bitlen + 7) / 8);
 	drv->bigmfmbuf[0] = ti->sync;
-	for (i = base_offset; i < drv->tracklen / 16; i++) {
+	read_floppy_data (drv, tr, 0, (char *) (drv->bigmfmbuf + base_offset), (ti->bitlen + 7) / 8);
+	for (i = base_offset; i < (drv->tracklen + 15) / 16; i++) {
 	    uae_u16 *mfm = drv->bigmfmbuf + i;
 	    uae_u8 *data = (uae_u8 *) mfm;
 	    *mfm = 256 * *data + *(data + 1);
@@ -640,6 +653,13 @@ void DISK_check_change (void)
     count++;
 
     for (i = 0; i < 4; i++) {
+        /* emulate drive motor turn on time */
+        if (floppy[i].dskready_time) {
+	    floppy[i].dskready_time--;
+	    if (floppy[i].dskready_time == 0) {
+	        floppy[i].dskready = 1;
+	    }
+	}
 	if (strcmp (currprefs.df[i], changed_prefs.df[i]) != 0) {
 	    if (currprefs.df[i][0] != '\0') {
 		drive_eject (floppy + i);
@@ -664,14 +684,18 @@ int disk_empty (int num)
     return drive_empty (floppy + num);
 }
 
+static int not_ready = 0;
+
 void DISK_select (uae_u8 data)
 {
+    static int lastselected;
     int step_pulse;
     int dr;
 
-    if (selected != ((data >> 3) & 15))
-	dskready = 0;
+    lastselected = selected;
     selected = (data >> 3) & 15;
+    if (selected != lastselected)
+	not_ready = 1;
     side = 1 - ((data >> 2) & 1);
 
     direction = (data >> 1) & 1;
@@ -687,7 +711,7 @@ void DISK_select (uae_u8 data)
 	}
     }
     for (dr = 0; dr < 4; dr++) {
-	if (!(selected & (1 << dr))) {
+	if (!(selected & (1 << dr)) && (lastselected & (1 << dr))) {
 	    drive_motor (floppy + dr, data >> 7);
 	}
     }
@@ -706,9 +730,9 @@ uae_u8 DISK_status (void)
 	drive *drv = floppy + dr;
 	if (!(selected & (1 << dr))) {
 	    if (drive_running (drv)) {
-		if (dskready)
+		if (drv->dskready && ! not_ready)
 		    st &= ~0x20;
-		dskready = 1;
+		not_ready = 0;
 	    } else if (!drv->disabled) {
 		st &= ~0x20;	/* report drive ID */
 	    }
@@ -758,8 +782,8 @@ static void disk_events (int last)
     eventtab[ev_disk].active = 0;
     for (disk_sync_cycle = last; disk_sync_cycle < MAXHPOS; disk_sync_cycle++) {
 	if (disk_sync[disk_sync_cycle]) {
-	    eventtab[ev_disk].oldcycles = cycles;
-	    eventtab[ev_disk].evtime = cycles + (disk_sync_cycle - last);
+	    eventtab[ev_disk].oldcycles = get_cycles ();
+	    eventtab[ev_disk].evtime = get_cycles () + (disk_sync_cycle - last) * CYCLE_UNIT;
 	    eventtab[ev_disk].active = 1;
 	    events_schedule ();
 	    return;

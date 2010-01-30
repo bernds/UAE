@@ -20,7 +20,7 @@
 #define ERROR_OBJECT_IN_USE		202
 #define ERROR_OBJECT_EXISTS		203
 #define ERROR_DIR_NOT_FOUND		204
-#define ERROR_OBJECT_NOT_FOUND		205
+#define ERROR_OBJECT_NOT_AROUND		205
 #define ERROR_ACTION_NOT_KNOWN		209
 #define ERROR_INVALID_LOCK		211
 #define ERROR_OBJECT_WRONG_TYPE		212
@@ -62,6 +62,7 @@ typedef struct a_inode_struct {
     uae_u32 uniq;
     /* AmigaOS locking bits.  */
     int shlock;
+    long db_offset;
     unsigned int dir:1;
     unsigned int elock:1;
     /* Nonzero if this came from an entry in our database.  */

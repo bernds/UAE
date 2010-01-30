@@ -303,6 +303,7 @@ F0FF70: used by the task that gets set up for the mouse emulation.
 F0FF80: getchipmemsize()
 F0FF90: uaeexe
 F0FFA0: timehack
+F0FFB0: AHI
 
 * How the compiler works
 

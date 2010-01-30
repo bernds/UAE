@@ -1,3 +1,54 @@
+9B0311 Repair "emulated but no output" sound setting.
+9B0310 Fix massive bug introduced in do_cycles_slow with the rescaling
+       changes.
+       CLXCON logic updated for AGA (Toni).  Change meaning of collision_level
+       and add support for it in cfgfile.c.
+9B0309 Fix problem where a fsdb file could prevent deletion of otherwise
+       empty directory discovered by Torsten Enderling.
+       Rescale return values of CPU emulator functions.
+9B0225 Undo parts of the audio changes that made the "accurate" setting the
+       default.
+9B0221 Make fsdb_unix compile again.
+9B0219 Fix ddf for cases where start isn't aligned to fetchunit.
+       Fix some problems with the sound code going into infinite loops or
+       crashing.
+       Try to re-add Toni's ddf delay fixes properly.
+       Added a fix from Krister Walfridsson for X11 SHM code.
+       Rename OBJECT_NOT_FOUND to OBJECT_NOT_AROUND (not sure why, but the
+       win32 port does this; Fellow picked it up as well...)
+       Give in and allocate ainos with xcalloc.
+       Import fsdb_win32 code from Fellow.
+       Some tidyup and fixes in fsdb code.
+       Lose the lastdiv10 variable, and update CIA timers when reading them
+       (mostly by Bernie [2] Meyer)
+       Move reset_uaedevices and get_new_device to filesys.c.  Add extra
+       parameter to get_new_device.
+9B0213 Fix mouse pointer jumping bug in X11 code (Ralf Hoffmann)
+       Scaled event handling by a factor of 512.  This allows more accurate
+       sound output frequencies, as well as more fine grained CPU speed
+       settings.
+       Implemented totally untested emulator side AHI support.
+9B0211 Partially reverted changes made to the audio event code in 0.8.0.
+       Implemented "mixed" stereo.
+9B0210 Fixed invisible sprite bug - sprite_width got a new meaning, and not
+       everything had been updated.
+9B0121 cycles => get_cycles () (from Bernie [2] Meyer's JIT patchkit)
+9B0120 Final bugfix in speedup code (plfleft got set too early).
+9B0118 Fixed SPEEDUP code for AGA.  Speedup now starts when fetch_state is
+       fetched_plane0.
+9B0115 First batch of AGA playfield changes (Toni & myself).
+9B0110 Small fix for the m68k_run macro (Bernie [2] Meyer)
+9B0109 Use ntscmode from prefs structure (Dwayne C. Litzenberger)
+       Some 040 FPU fixes (Bernie [2] Meyer)
+       Delay DSKREADY a while; fix other small disk bugs (Toni Wilen)
+9A0902 F0FF10 is now a puts () calltrap.
+9A0830 Add some missing initializations in filesys.c, thanks to debugging by
+       Harald Frank.
+9A0827 Fix a crash with framerate != 1.
+       Don't allow programs to see left & right or top & bottom simultaneously
+       with the keyboard joystick replacements.  (Gee, games on the CPC and on
+       the Amiga actually have something in common - some of them crash when
+       the joystick is pushed in too many directions at the same time...)
 9A0825 Put in the new sprite code.  This has existed for many months but
        I've only now found the final bugs.
        New version of Bernd Meyer's special_mem code.  Also add his

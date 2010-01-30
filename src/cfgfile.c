@@ -17,6 +17,7 @@
 #include "threaddep/penguin.h"
 #include "uae.h"
 #include "autoconf.h"
+#include "events.h"
 #include "custom.h"
 
 /* @@@ need to get rid of this... just cut part of the manual and print that
@@ -94,10 +95,11 @@ static const char *colormode2[] = { "8", "15", "16", "8d", "4d", "32", 0 };
 static const char *soundmode[] = { "none", "interrupts", "normal", "exact", 0 };
 static const char *centermode1[] = { "none", "simple", "smart", 0 };
 static const char *centermode2[] = { "false", "true", "smart", 0 };
-static const char *stereomode1[] = { "mono", "stereo", 0 };
-static const char *stereomode2[] = { "m", "s", 0 };
-static const char *stereomode3[] = { "1", "2", 0 };
+static const char *stereomode1[] = { "mono", "stereo", "mixed", 0 };
+static const char *stereomode2[] = { "m", "s", "x", 0 };
+static const char *stereomode3[] = { "1", "2", "3", 0 };
 static const char *interpolmode[] = { "none", "rh", "crux", 0 };
+static const char *collmode[] = { "sprites", "full", 0 };
 
 #define UNEXPANDED "$(FILE_PATH)"
 
@@ -205,6 +207,7 @@ void save_options (FILE *f, struct uae_prefs *p)
 	fprintf (f, "chipset=ecs_denise\n");
     else
 	fprintf (f, "chipset=ocs\n");
+    fprintf (f, "collision_level=%s\n", collmode[p->collision_level]);
 
     fprintf (f, "fastmem_size=%d\n", p->fastmem_size / 0x100000);
     fprintf (f, "a3000mem_size=%d\n", p->a3000mem_size / 0x100000);
@@ -214,9 +217,9 @@ void save_options (FILE *f, struct uae_prefs *p)
     fprintf (f, "chipmem_size=%d\n", p->chipmem_size / 0x80000);
 
     if (p->m68k_speed > 0)
-	fprintf (f, "cpu_speed=%d\n", p->m68k_speed);
+	fprintf (f, "finegrain_cpu_speed=%d\n", p->m68k_speed);
     else
-	fprintf (f, "cpu_speed=%s\n", p->m68k_speed == -1 ? "max" : "real");
+	fprintf (f, "finegrain_cpu_speed=%s\n", p->m68k_speed == -1 ? "max" : "real");
 
     fprintf (f, "cpu_type=%s\n", cpumode[p->cpu_level * 2 + !p->address_space_24]);
     fprintf (f, "cpu_compatible=%s\n", p->cpu_compatible ? "true" : "false");
@@ -318,7 +321,7 @@ static int getintval (char **p, int *result, int delim)
     return 1;
 }
 
-static int set_chipset_mask (struct uae_prefs *p, int val)
+static void set_chipset_mask (struct uae_prefs *p, int val)
 {
     p->chipset_mask = (val == 0 ? 0
 		       : val == 1 ? CSMASK_ECS_AGNUS
@@ -387,12 +390,10 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	|| cfgfile_intval (option, value, "nr_floppies", &p->nr_floppies, 1))
 	return 1;
     if (cfgfile_strval (option, value, "sound_output", &p->produce_sound, soundmode, 0)
-	|| cfgfile_strval (option, value, "sound_channels", &p->stereo, stereomode1, 1)
-	|| cfgfile_strval (option, value, "sound_channels", &p->stereo, stereomode2, 1)
-	|| cfgfile_strval (option, value, "sound_channels", &p->stereo, stereomode3, 0)
 	|| cfgfile_strval (option, value, "sound_interpol", &p->sound_interpol, interpolmode, 0)
 	|| cfgfile_strval (option, value, "joyport0", &p->jport0, portmode, 0)
 	|| cfgfile_strval (option, value, "joyport1", &p->jport1, portmode, 0)
+	|| cfgfile_strval (option, value, "collision_level", &p->collision_level, collmode, 0)
 	|| cfgfile_strval (option, value, "gfx_linemode", &p->gfx_linedbl, linemode1, 1)
 	|| cfgfile_strval (option, value, "gfx_linemode", &p->gfx_linedbl, linemode2, 0)
 	|| cfgfile_strval (option, value, "gfx_center_horizontal", &p->gfx_xcenter, centermode1, 1)
@@ -419,6 +420,17 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	return 1;
     }
 
+    if (cfgfile_strval (option, value, "sound_channels", &p->stereo, stereomode1, 1)
+	|| cfgfile_strval (option, value, "sound_channels", &p->stereo, stereomode2, 1)
+	|| cfgfile_strval (option, value, "sound_channels", &p->stereo, stereomode3, 0))
+    {
+	p->mixed_stereo = 0;
+	if (p->stereo == 2) {
+	    p->stereo = 1;
+	    p->mixed_stereo = 1;
+	}
+    }
+
     if (cfgfile_strval (option, value, "cpu_type", &p->cpu_level, cpumode, 0)) {
 	p->address_space_24 = p->cpu_level < 8 && !(p->cpu_level & 1);
 	p->cpu_level >>= 1;
@@ -428,7 +440,11 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	p->m68k_speed--;
 	return 1;
     }
-    if (cfgfile_intval (option, value, "cpu_speed", &p->m68k_speed, 1))
+    if (cfgfile_intval (option, value, "cpu_speed", &p->m68k_speed, 1)) {
+        p->m68k_speed *= CYCLE_UNIT;
+	return 1;
+    }
+    if (cfgfile_intval (option, value, "finegrain_cpu_speed", &p->m68k_speed, 1))
 	return 1;
 
     if (strcmp (option, "kbd_lang") == 0) {
@@ -672,7 +688,10 @@ static void parse_sound_spec (char *spec)
     }
     currprefs.produce_sound = atoi (x0);
     if (x1) {
-	if (*x1 == 's')
+	currprefs.mixed_stereo = 0;
+	if (*x1 == 'S')
+	    currprefs.stereo = currprefs.mixed_stereo = 1;
+	else if (*x1 == 's')
 	    currprefs.stereo = 1;
 	else
 	    currprefs.stereo = 0;

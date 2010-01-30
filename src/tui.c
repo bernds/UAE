@@ -614,7 +614,7 @@ static void SoundOptions (void)
 		currprefs.sound_freq = atoi (tmp);
 	    break;
 	 case 5:
-	    currprefs.stereo = !currprefs.stereo;
+	    currprefs.stereo = (currprefs.stereo + 1) % 3;
 	    break;
 	}
     }
