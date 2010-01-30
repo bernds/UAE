@@ -435,20 +435,45 @@ void blitter_handler(void)
     unset_special (SPCFLAG_BLTNASTY);
 }
 
+static uae_u8 blit_cycle_diagram_start[][10] =
+{
+    { 0, 1, 0 },
+    { 0, 2, 4,0 },
+    { 0, 2, 3,0 },
+    { 0, 3, 2,0,0 },
+    { 2, 3, 2,0, 0,2,4 },
+    { 0, 3, 2,3,0 },
+    { 3, 4, 2,3,0, 0,2,3,4 },
+    { 0, 2, 1,0 },
+    { 2, 2, 1,0, 1,2 },
+    { 0, 2, 1,3 },
+    { 3, 3, 1,3,0, 1,3,4 },
+    { 2, 3, 1,2, 0,1,2 },
+    { 3, 3, 1,2,0, 1,2,4 },
+    { 0, 3, 1,2,3 },
+    { 4, 4, 1,2,3,0, 1,2,3,4 }
+};
+
+static long int blit_cycles;
+static long blit_firstline_cycles;
+static long blit_first_cycle;
+static int blit_last_cycle;
+static uae_u8 *blit_diag;
+
 void do_blitter(void)
 {
-    long int blit_cycles;
+    int ch = (bltcon0 & 0x0f00) >> 8;
+    blit_diag = blit_cycle_diagram_start[ch];
+
+    blit_firstline_cycles = blit_first_cycle = get_cycles ();
+    blit_last_cycle = 0;
     if (!currprefs.immediate_blits) {
-
-	blit_cycles = 2;
-
 	if (!blitline) {
-	    if (bltcon0 & 0x400)
-		blit_cycles++;
-	    if ((bltcon0 & 0x300) == 0x300)
-		blit_cycles++;
+	    blit_cycles = blit_diag[1];
+	    blit_firstline_cycles += blit_cycles * blt_info.hblitsize * CYCLE_UNIT;
 	    blit_cycles *= blt_info.vblitsize * blt_info.hblitsize;
-	}
+	} else
+	     blit_cycles = 10; /* Desert Dream demo freezes if line draw is too fast */
     } else
 	blit_cycles = 1;
 
@@ -462,9 +487,10 @@ void do_blitter(void)
     unset_special (SPCFLAG_BLTNASTY);
     if (dmaen(DMA_BLITPRI))
 	set_special (SPCFLAG_BLTNASTY);
+
 }
 
-void maybe_blit (void)
+void maybe_blit (int modulo)
 {
     static int warned = 0;
     if (bltstate == BLT_done)
@@ -475,6 +501,34 @@ void maybe_blit (void)
 	write_log ("warning: Program does not wait for blitter\n");
     }
     if (!eventtab[ev_blitter].active)
-	printf("FOO!!?\n");
+	write_log ("FOO!!?\n");
+
+    if (modulo && get_cycles() < blit_firstline_cycles)
+	return;
     blitter_handler ();
+}
+
+int blitnasty (void)
+{
+    int cycles, ccnt;
+    if (!(regs.spcflags & SPCFLAG_BLTNASTY))
+	return 0;
+    if (bltstate == BLT_done)
+	return 0;
+    if (!dmaen(DMA_BLITTER))
+	return 0;
+    cycles = (get_cycles () - blit_first_cycle) / CYCLE_UNIT;
+    ccnt = 0;
+    while (blit_last_cycle < cycles) {
+	int c;
+	if (blit_last_cycle < blit_diag[0])
+	    c = blit_diag[blit_last_cycle + 2];
+	else
+	    c = blit_diag[((blit_last_cycle - blit_diag[0]) % blit_diag[1]) + 2];
+	blit_last_cycle ++;
+	if (!c)
+	    return 0;
+	ccnt++;
+    }
+    return ccnt;
 }

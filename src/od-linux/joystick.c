@@ -17,12 +17,12 @@
 #include "custom.h"
 #include "joystick.h"
 
-#ifdef HAVE_MACHINE_SOUNDCARD_H
+#ifdef HAVE_MACHINE_JOYSTICK_H
 
 /* The BSD way.  */
 
-# include <machine/soundcard.h>
-typedef struct joystick uae_joystick_t
+# include <machine/joystick.h>
+typedef struct joystick uae_joystick_t;
 
 #define JS_DEVNAME_PREFIX "joy"
 
@@ -90,7 +90,11 @@ void read_joystick(int nr, unsigned int *dir, int *button)
     if (left) top = !top;
     if (right) bot = !bot;
     *dir = bot | (right << 1) | (top << 8) | (left << 9);
+#ifdef HAVE_MACHINE_JOYSTICK_H
+    *button = buffer.b1 || buffer.b2;
+#else
     *button = buffer.buttons & 3;
+#endif
 }
 
 void init_joystick(void)

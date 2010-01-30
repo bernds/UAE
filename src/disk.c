@@ -866,7 +866,7 @@ static uae_u32 dskpt;
 static void disk_dmafinished (void)
 {
     INTREQ (0x8002);
-    dskdmaen = 1; /* surprise, it isn't set to zero! */
+    dskdmaen = 0; /* ??? */
 #ifdef DISK_DEBUG
     write_log("disk dma finished %08.8X\n", dskpt);
 #endif

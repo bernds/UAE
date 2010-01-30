@@ -34,7 +34,8 @@ extern uae_u16 bltcon0,bltcon1;
 extern int blinea_shift;
 extern uae_u32 bltapt,bltbpt,bltcpt,bltdpt;
 
-extern void maybe_blit (void);
+extern void maybe_blit (int);
+extern int blitnasty (void);
 extern void blitter_handler (void);
 extern void build_blitfilltable (void);
 extern void do_blitter (void);

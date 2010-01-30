@@ -1,3 +1,19 @@
+9C0216 Fix the clockspeed detection - we were getting lots of alarm signals
+       even after it had finished.
+       Some tweaks for the GUI - and also fix the problem with waiting on the
+       GUI semaphore even if no GUI is present...
+       More accurate blitter timing (Toni).
+       Support for A1000 bootrom and CDTV/CD32 extended ROMs (Toni).
+       Fix filesystem lockup with "copy dh0: ram: all".
+       Fix for JIT and more than 2MB chipmem from Toni
+       Make fsdb_win32 accept more valid Windows filenames (Toni).
+9C0215 Fix filesystem reset code that used to access freed memory.
+9C0213 gtk UI fixes from Maik Qualmann.
+9C0113 Configury & bsd compilation fixes from Krister Walfridsson.
+       Match up lock/unlock calls in wgfx_do_flushline (found by Axel
+       Doerfler).
+       Fix potential crash taking strlen of NULL in filesys.c (Axel Doerfler).
+       Set diskdmaen to 0 in dsk_dmafinished (Toni).
 9B1230 lockscr/unlockscr fixes in drawing.c.
        Add sdlgfx from Bernd [4] Lachner.
        Filesystem asm code improvements from Toni (make it pic, call

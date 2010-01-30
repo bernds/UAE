@@ -1,4 +1,4 @@
-This is version 0.8.20 of UAE, the UAE Amiga Emulator.
+This is version 0.8.21 of UAE, the UAE Amiga Emulator.
 
 Versions numbered 0.8.x are considered beta versions, but they generally
 tend to work better than the last "stable" release 0.7.
@@ -162,6 +162,8 @@ floppy0=file [default=df0.adf]
   The options floppy1, floppy2, and floppy3 also exist.
 kickstart_rom_file=file [default=kick.rom]
   Use the specified file instead of kick.rom as Kickstart image.
+  You can also use an 8k sized A1000 boot ROM.  The emulator will detect it
+  by its small size and behave like an A1000.
 kickstart_key_file=file [default=none]
   For some strange licensing reasons, Cloanto had to encrypt the ROM images
   they ship with the Amiga Forever package.  This option lets you select the

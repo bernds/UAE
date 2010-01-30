@@ -2632,7 +2632,7 @@ static void FMODE (uae_u16 v)
 
 static void BLTADAT (uae_u16 v)
 {
-    maybe_blit ();
+    maybe_blit (0);
 
     blt_info.bltadat = v;
 }
@@ -2643,7 +2643,7 @@ static void BLTADAT (uae_u16 v)
  */
 static void BLTBDAT (uae_u16 v)
 {
-    maybe_blit ();
+    maybe_blit (0);
 
     if (bltcon1 & 2)
 	blt_info.bltbhold = v << (bltcon1 >> 12);
@@ -2651,39 +2651,39 @@ static void BLTBDAT (uae_u16 v)
 	blt_info.bltbhold = v >> (bltcon1 >> 12);
     blt_info.bltbdat = v;
 }
-static void BLTCDAT (uae_u16 v) { maybe_blit (); blt_info.bltcdat = v; }
+static void BLTCDAT (uae_u16 v) { maybe_blit (0); blt_info.bltcdat = v; }
 
-static void BLTAMOD (uae_u16 v) { maybe_blit (); blt_info.bltamod = (uae_s16)(v & 0xFFFE); }
-static void BLTBMOD (uae_u16 v) { maybe_blit (); blt_info.bltbmod = (uae_s16)(v & 0xFFFE); }
-static void BLTCMOD (uae_u16 v) { maybe_blit (); blt_info.bltcmod = (uae_s16)(v & 0xFFFE); }
-static void BLTDMOD (uae_u16 v) { maybe_blit (); blt_info.bltdmod = (uae_s16)(v & 0xFFFE); }
+static void BLTAMOD (uae_u16 v) { maybe_blit (1); blt_info.bltamod = (uae_s16)(v & 0xFFFE); }
+static void BLTBMOD (uae_u16 v) { maybe_blit (1); blt_info.bltbmod = (uae_s16)(v & 0xFFFE); }
+static void BLTCMOD (uae_u16 v) { maybe_blit (1); blt_info.bltcmod = (uae_s16)(v & 0xFFFE); }
+static void BLTDMOD (uae_u16 v) { maybe_blit (1); blt_info.bltdmod = (uae_s16)(v & 0xFFFE); }
 
-static void BLTCON0 (uae_u16 v) { maybe_blit (); bltcon0 = v; blinea_shift = v >> 12; }
+static void BLTCON0 (uae_u16 v) { maybe_blit (0); bltcon0 = v; blinea_shift = v >> 12; }
 /* The next category is "Most useless hardware register".
  * And the winner is... */
 static void BLTCON0L (uae_u16 v)
 {
     if (! (currprefs.chipset_mask & CSMASK_ECS_AGNUS))
 	return;
-    maybe_blit (); bltcon0 = (bltcon0 & 0xFF00) | (v & 0xFF);
+    maybe_blit (0); bltcon0 = (bltcon0 & 0xFF00) | (v & 0xFF);
 }
-static void BLTCON1 (uae_u16 v) { maybe_blit (); bltcon1 = v; }
+static void BLTCON1 (uae_u16 v) { maybe_blit (0); bltcon1 = v; }
 
-static void BLTAFWM (uae_u16 v) { maybe_blit (); blt_info.bltafwm = v; }
-static void BLTALWM (uae_u16 v) { maybe_blit (); blt_info.bltalwm = v; }
+static void BLTAFWM (uae_u16 v) { maybe_blit (0); blt_info.bltafwm = v; }
+static void BLTALWM (uae_u16 v) { maybe_blit (0); blt_info.bltalwm = v; }
 
-static void BLTAPTH (uae_u16 v) { maybe_blit (); bltapt = (bltapt & 0xffff) | ((uae_u32)v << 16); }
-static void BLTAPTL (uae_u16 v) { maybe_blit (); bltapt = (bltapt & ~0xffff) | (v & 0xFFFE); }
-static void BLTBPTH (uae_u16 v) { maybe_blit (); bltbpt = (bltbpt & 0xffff) | ((uae_u32)v << 16); }
-static void BLTBPTL (uae_u16 v) { maybe_blit (); bltbpt = (bltbpt & ~0xffff) | (v & 0xFFFE); }
-static void BLTCPTH (uae_u16 v) { maybe_blit (); bltcpt = (bltcpt & 0xffff) | ((uae_u32)v << 16); }
-static void BLTCPTL (uae_u16 v) { maybe_blit (); bltcpt = (bltcpt & ~0xffff) | (v & 0xFFFE); }
-static void BLTDPTH (uae_u16 v) { maybe_blit (); bltdpt = (bltdpt & 0xffff) | ((uae_u32)v << 16); }
-static void BLTDPTL (uae_u16 v) { maybe_blit (); bltdpt = (bltdpt & ~0xffff) | (v & 0xFFFE); }
+static void BLTAPTH (uae_u16 v) { maybe_blit (0); bltapt = (bltapt & 0xffff) | ((uae_u32)v << 16); }
+static void BLTAPTL (uae_u16 v) { maybe_blit (0); bltapt = (bltapt & ~0xffff) | (v & 0xFFFE); }
+static void BLTBPTH (uae_u16 v) { maybe_blit (0); bltbpt = (bltbpt & 0xffff) | ((uae_u32)v << 16); }
+static void BLTBPTL (uae_u16 v) { maybe_blit (0); bltbpt = (bltbpt & ~0xffff) | (v & 0xFFFE); }
+static void BLTCPTH (uae_u16 v) { maybe_blit (0); bltcpt = (bltcpt & 0xffff) | ((uae_u32)v << 16); }
+static void BLTCPTL (uae_u16 v) { maybe_blit (0); bltcpt = (bltcpt & ~0xffff) | (v & 0xFFFE); }
+static void BLTDPTH (uae_u16 v) { maybe_blit (0); bltdpt = (bltdpt & 0xffff) | ((uae_u32)v << 16); }
+static void BLTDPTL (uae_u16 v) { maybe_blit (0); bltdpt = (bltdpt & ~0xffff) | (v & 0xFFFE); }
 
 static void BLTSIZE (uae_u16 v)
 {
-    maybe_blit ();
+    maybe_blit (0);
 
     blt_info.vblitsize = v >> 6;
     blt_info.hblitsize = v & 0x3F;
@@ -2698,7 +2698,7 @@ static void BLTSIZV (uae_u16 v)
 {
     if (! (currprefs.chipset_mask & CSMASK_ECS_AGNUS))
 	return;
-    maybe_blit ();
+    maybe_blit (0);
     oldvblts = v & 0x7FFF;
 }
 
@@ -2706,7 +2706,7 @@ static void BLTSIZH (uae_u16 v)
 {
     if (! (currprefs.chipset_mask & CSMASK_ECS_AGNUS))
 	return;
-    maybe_blit ();
+    maybe_blit (0);
     blt_info.hblitsize = v & 0x7FF;
     blt_info.vblitsize = oldvblts;
     if (!blt_info.vblitsize) blt_info.vblitsize = 32768;

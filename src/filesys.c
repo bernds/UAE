@@ -659,27 +659,40 @@ static void recycle_aino (Unit *unit, a_inode *new_aino)
 	/* Reap a few. */
 	int i = 0;
 	while (i < 50) {
+	    a_inode *parent = unit->rootnode.prev->parent;
 	    a_inode **aip;
-	    aip = &unit->rootnode.prev->parent->child;
-	    for (;;) {
-		a_inode *aino = *aip;
-		if (aino == 0)
-		    break;
+	    aip = &parent->child;
 
-		/* Not recyclable if next == 0 (i.e., not chained into
-		   recyclable list), or if parent directory is being
-		   ExNext()ed.  */
-		if (aino->next == 0 || aino->parent->locked_children)
-		    aip = &aino->sibling;
-		else {
-		    if (aino->shlock > 0 || aino->elock)
-			write_log ("panic: freeing locked a_inode!\n");
+	    if (! parent->locked_children)
+		for (;;) {
+		    a_inode *aino = *aip;
+		    if (aino == 0)
+			break;
 
-		    de_recycle_aino (unit, aino);
-		    dispose_aino (unit, aip, aino);
-		    i++;
+		    /* Not recyclable if next == 0 (i.e., not chained into
+		       recyclable list), or if parent directory is being
+		       ExNext()ed.  */
+		    if (aino->next == 0)
+			aip = &aino->sibling;
+		    else {
+			if (aino->shlock > 0 || aino->elock)
+			    write_log ("panic: freeing locked a_inode!\n");
+
+			de_recycle_aino (unit, aino);
+			dispose_aino (unit, aip, aino);
+			i++;
+		    }
 		}
-	    }
+	    /* In the previous loop, we went through all children of one
+	       parent.  Re-arrange the recycled list so that we'll find a
+	       different parent the next time around.  */
+	    do {
+		unit->rootnode.next->prev = unit->rootnode.prev;
+		unit->rootnode.prev->next = unit->rootnode.next;
+		unit->rootnode.next = unit->rootnode.prev;
+		unit->rootnode.prev = unit->rootnode.prev->prev;
+		unit->rootnode.prev->next = unit->rootnode.next->prev = &unit->rootnode;
+	    } while (unit->rootnode.prev->parent == parent);
 	}
 #if 0
 	{
@@ -1681,7 +1694,10 @@ get_fileinfo (Unit *unit, dpacket packet, uaecptr info, a_inode *aino)
     else {
 	TRACE(("comment=\"%s\"\n", aino->comment));
 	i = 144;
-	n = strlen (x = aino->comment);
+	x = aino->comment;
+	if (! x)
+	    x = "";
+	n = strlen (x);
 	if (n > 78)
 	    n = 78;
 	put_byte (info + i, n); i++;
@@ -3050,6 +3066,17 @@ void filesys_reset (void)
     current_mountinfo = 0;
 }
 
+static void free_all_ainos (Unit *u, a_inode *parent)
+{
+  a_inode *a;
+  while (a = parent->child)
+    {
+      free_all_ainos (u, a);
+      dispose_aino (u, &parent->child, a);
+    }
+}
+
+
 void filesys_prepare_reset (void)
 {
     UnitInfo *uip = current_mountinfo->ui;
@@ -3071,13 +3098,9 @@ void filesys_prepare_reset (void)
 #endif
     u = units;
     while (u != 0) {
-	while (u->rootnode.next != &u->rootnode) {
-	    a_inode *b;
-	    a_inode *a = u->rootnode.next;
-	    u->rootnode.next = a->next;
-	    de_recycle_aino (u, a);
-	    dispose_aino (u, &b, a);
-	}
+	free_all_ainos (u, &u->rootnode);
+	u->rootnode.next = u->rootnode.prev = &u->rootnode;
+	u->aino_cache_size = 0;
 	u = u->next;
     }
 }

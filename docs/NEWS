@@ -2,6 +2,13 @@ Note! This file only contains user-visible changes. There may be others. For a
 more detailed description of changes between releases, read src/ChangeLog, and
 for the full picture, make a diff between releases.
 
+User-visible changes in 0.8.21:
+  - Several bug fixes, including some serious filesystem emulation bugs.
+  - Support for A1000 boot ROMs.
+
+User-visible changes in 0.8.20:
+  - Bug fixes only
+
 User-visible changes in 0.8.19:
   - A few bug fixes, especially in state-saving.
   - Picasso screens now support panning.

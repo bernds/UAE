@@ -27,6 +27,7 @@
 #include "threaddep/thread.h"
 #include "sounddep/sound.h"
 #include "savestate.h"
+#include "debug.h"
 
 #include <gtk/gtk.h>
 #include <gdk/gdk.h>
@@ -84,6 +85,8 @@ static GtkWidget *hdchange_button, *hddel_button;
 static GtkWidget *volname_entry, *path_entry;
 static GtkWidget *dirdlg;
 static char dirdlg_volname[256], dirdlg_path[256];
+
+static GtkWidget *lab_info;
 
 static smp_comm_pipe to_gui_pipe, from_gui_pipe;
 static uae_sem_t gui_sem, gui_init_sem, gui_quit_sem; /* gui_sem protects the DFx fields */
@@ -342,6 +345,14 @@ static int my_idle (void)
 	    uae_sem_post (&gui_init_sem);
 	    gui_active = 1;
 	    break;
+	 case 2:
+	    /* Set Pause-Button active */
+	    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (pause_uae_widget), TRUE);
+	    break;
+	 case 3:
+	    /* Set Pause-Button inactive */
+	    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (pause_uae_widget), FALSE);
+	    break;
 	}
     }
 
@@ -501,7 +512,7 @@ static void did_debug (void)
 {
     if (quit_gui)
 	return;
-    
+
     write_comm_pipe_int (&from_gui_pipe, 3, 1);
 }
 
@@ -509,7 +520,7 @@ static void did_quit (void)
 {
     if (quit_gui)
 	return;
-    
+
     write_comm_pipe_int (&from_gui_pipe, 4, 1);
 }
 
@@ -517,22 +528,25 @@ static void did_eject (GtkWidget *w, gpointer data)
 {
     if (quit_gui)
 	return;
-    
+
     write_comm_pipe_int (&from_gui_pipe, 0, 0);
     write_comm_pipe_int (&from_gui_pipe, (int)data, 1);
+    gtk_label_set_text (GTK_LABEL (disk_text_widget[(int)data]), "");
 }
 
-static void pause_uae (GtkWidget *widget, gpointer data)
+static void pause_uae (void)
 {
     if (quit_gui)
 	return;
 
-    write_comm_pipe_int (&from_gui_pipe, GTK_TOGGLE_BUTTON (widget)->active ? 5 : 6, 1);  
+    write_comm_pipe_int (&from_gui_pipe, GTK_TOGGLE_BUTTON (pause_uae_widget)->active ? 5 : 6, 1);
+    if (! GTK_TOGGLE_BUTTON (pause_uae_widget)->active)
+	gtk_widget_hide (lab_info);
 }
 
 static void end_pause_uae (void)
 {
-    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (pause_uae_widget), FALSE);
+    write_comm_pipe_int (&to_gui_pipe, 3, 1);
 }
     
 static int filesel_active = -1;
@@ -561,6 +575,7 @@ static void did_insert_select (GtkObject *o)
     uae_sem_post (&gui_sem);
     write_comm_pipe_int (&from_gui_pipe, 1, 0);
     write_comm_pipe_int (&from_gui_pipe, filesel_active, 1);
+    gtk_label_set_text (GTK_LABEL (disk_text_widget[filesel_active]), strdup (s));
     filesel_active = -1;
     enable_disk_buttons (1);
     gtk_widget_destroy (disk_selector);
@@ -1363,6 +1378,7 @@ static GtkWidget *create_dirdlg (const char *title)
 			       GTK_OBJECT (dirdlg));
     gtk_box_pack_start (GTK_BOX (hbox), button, TRUE, TRUE, 0);
     gtk_widget_show (button);
+    return 0;
 }
 
 static void did_newdir (void)
@@ -1439,8 +1455,10 @@ static void make_hd_widgets (GtkWidget *dvbox)
     gtk_clist_set_selection_mode (GTK_CLIST (thing), GTK_SELECTION_SINGLE);
     gtk_signal_connect (GTK_OBJECT (thing), "select_row", (GtkSignalFunc) hdselect, NULL);
     gtk_signal_connect (GTK_OBJECT (thing), "unselect_row", (GtkSignalFunc) hdunselect, NULL);
-    hdlist_widget = thing;
+    gtk_clist_set_column_auto_resize (GTK_CLIST (thing), 0, TRUE);
+    gtk_clist_set_column_auto_resize (GTK_CLIST (thing), 1, TRUE);
     gtk_widget_set_usize (thing, -1, 200);
+    hdlist_widget = thing;
 
     gtk_widget_show (thing);
     add_centered_to_vbox (dvbox, thing);
@@ -1467,7 +1485,7 @@ static void make_hd_widgets (GtkWidget *dvbox)
 
 static void make_about_widgets (GtkWidget *dvbox)
 {
-    GtkWidget *thing;
+    GtkWidget *lab_version;
     GtkStyle *style;
     GdkFont *font;
     char t[20];
@@ -1475,33 +1493,34 @@ static void make_about_widgets (GtkWidget *dvbox)
     add_empty_vbox (dvbox);
 
     sprintf (t, "UAE %d.%d.%d", UAEMAJOR, UAEMINOR, UAESUBREV);
-    thing = gtk_label_new (t);
-    gtk_widget_show (thing);
-    add_centered_to_vbox (dvbox, thing);
+    lab_version = gtk_label_new (t);
+    lab_info = gtk_label_new ("Choose your settings, then deselect the Pause button to start!");
 
     font = gdk_font_load ("-*-helvetica-medium-r-normal--*-240-*-*-*-*-*-*");
     if (font) {
-	style = gtk_style_copy (GTK_WIDGET (thing)->style);
+	style = gtk_style_new ();
 	gdk_font_unref (style->font);
 	style->font = font;
 	gdk_font_ref (style->font);
-	gtk_widget_push_style (style);
-	gtk_widget_set_style (thing, style);
+	gtk_widget_set_style (lab_version, style);
+	/*gtk_widget_set_style (lab_info, style); */
     }
-    thing = gtk_label_new ("Choose your settings, then deselect the Pause button to start!");
-    gtk_widget_show (thing);
-    add_centered_to_vbox (dvbox, thing);
+
+    add_centered_to_vbox (dvbox, lab_version);
+    add_centered_to_vbox (dvbox, lab_info);
+    gtk_widget_show (lab_version);
+    if (currprefs.start_gui == 1)
+	gtk_widget_show (lab_info);
 
     add_empty_vbox (dvbox);
 }
-
 
 static void create_guidlg (void)
 {
     GtkWidget *window, *notebook;
     GtkWidget *buttonbox, *vbox, *hbox;
     GtkWidget *thing;
-    int i;
+    unsigned int i;
     int argc = 1;
     char *a[] = {"UAE"};
     char **argv = a;
@@ -1601,7 +1620,6 @@ static void *gtk_gui_thread (void *dummy)
 
 void gui_changesettings(void)
 {
-    
 }
 
 void gui_fps (int x)
@@ -1726,7 +1744,7 @@ int gui_init (void)
     gui_update ();
 
     if (currprefs.start_gui == 1) {
-	gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (pause_uae_widget), TRUE);
+	write_comm_pipe_int (&to_gui_pipe, 2, 1);
 	write_comm_pipe_int (&from_gui_pipe, 5, 1);
 	/* Handle events until Pause is unchecked.  */
 	gui_handle_events ();
@@ -1761,10 +1779,14 @@ void gui_exit (void)
 
 void gui_lock (void)
 {
+    if (no_gui)
+	return;
     uae_sem_wait (&gui_sem);
 }
 
 void gui_unlock (void)
 {
+    if (no_gui)
+	return;
     uae_sem_post (&gui_sem);
 }

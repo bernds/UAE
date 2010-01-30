@@ -512,7 +512,7 @@ if [[ "x$WANT_UI" != "xno" ]]; then
     if [[ "x$no_gtk" = "xyes" ]]; then
       echo "Did not find gtk+, disabling user interface"
       GTK_CFLAGS=
-      TK_LIBS=
+      GUIOBJS=nogui.o
       if [[ "x$WANT_UI" = "xyes" ]]; then
         NR_ERRORS=`expr $NR_ERRORS + 1`
       fi
@@ -977,7 +977,7 @@ dnl Special case hack for BSD: try to use the Linux joystick.c.
 
 if [[ "x$WANT_SDL" = "xyes" ]]; then
     OD_JOYSTICK=sdl-joystick.c
-else if [[ "x$HAVE_MACHINE_JOYSTICK_H" = "xyes" ]]; then
+else if [[ "x$ac_cv_header_machine_joystick_h" = "xyes" ]]; then
     AC_TRY_COMPILE([#include <machine/joystick.h>],[{ struct joystick a; }],
     OD_JOYSTICK=od-linux/joystick.c,)
 else

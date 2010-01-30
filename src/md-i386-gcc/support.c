@@ -69,6 +69,9 @@ static RETSIGTYPE alarmhandler(int foo)
 	signal (SIGALRM, alarmhandler);
 	last_time = read_processor_time();
 	set_alarm ();
+    } else {
+	alarm (0);
+	signal (SIGALRM, SIG_IGN);
     }
 }
 

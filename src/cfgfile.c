@@ -72,6 +72,7 @@ static struct cfg_lines opttable[] =
     {"joyport0", "" },
     {"joyport1", "" },
     {"kickstart_rom_file", "Kickstart ROM image, (C) Copyright Amiga, Inc." },
+    {"kickstart_ext_rom_file", "Extended Kickstart ROM image, (C) Copyright Amiga, Inc." },
     {"kickstart_key_file", "Key-file for encrypted ROM images (from Cloanto's Amiga Forever)" },
     {"floppy0", "Diskfile for drive 0" },
     {"floppy1", "Diskfile for drive 1" },
@@ -155,6 +156,9 @@ void save_options (FILE *f, struct uae_prefs *p)
     fprintf (f, "use_debugger=%s\n", p->start_debugger ? "true" : "false");
     str = cfgfile_subst_path (p->path_rom, UNEXPANDED, p->romfile);
     fprintf (f, "kickstart_rom_file=%s\n", str);
+    free (str);
+    str = cfgfile_subst_path (p->path_rom, UNEXPANDED, p->romextfile);
+    fprintf (f, "kickstart_ext_rom_file=%s\n", str);
     free (str);
     str = cfgfile_subst_path (p->path_rom, UNEXPANDED, p->keyfile);
     fprintf (f, "kickstart_key_file=%s\n", str);
@@ -417,6 +421,7 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	|| cfgfile_string (option, value, "floppy2", p->df[2], 256)
 	|| cfgfile_string (option, value, "floppy3", p->df[3], 256)
 	|| cfgfile_string (option, value, "kickstart_rom_file", p->romfile, 256)
+	|| cfgfile_string (option, value, "kickstart_ext_rom_file", p->romextfile, 256)
 	|| cfgfile_string (option, value, "kickstart_key_file", p->keyfile, 256)
 	|| cfgfile_string (option, value, "config_description", p->description, 256))
 	return 1;
@@ -579,7 +584,6 @@ static void subst (char *p, char *f, int n)
 
 int cfgfile_load (struct uae_prefs *p, const char *filename)
 {
-    char *str;
     int i;
 
     FILE *fh;
@@ -599,6 +603,7 @@ int cfgfile_load (struct uae_prefs *p, const char *filename)
     for (i = 0; i < 4; i++)
 	subst (p->path_floppy, p->df[i], sizeof p->df[i]);
     subst (p->path_rom, p->romfile, sizeof p->romfile);
+    subst (p->path_rom, p->romextfile, sizeof p->romextfile);
     subst (p->path_rom, p->keyfile, sizeof p->keyfile);
 
     return 1;
@@ -621,7 +626,7 @@ int cfgfile_get_description (const char *filename, char *description)
     struct uae_prefs p;
     default_prefs (&p);
     strcpy (p.description, "");
-    if (cfgfile_load (&p, filename) && strlen (p.description) != 0) {
+    if (cfgfile_load (&p, filename)) {
 	result = 1;
 	strcpy (description, p.description);
     }

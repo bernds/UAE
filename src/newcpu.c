@@ -22,6 +22,7 @@
 #include "compiler.h"
 #include "gui.h"
 #include "savestate.h"
+#include "blitter.h"
 
 /* Opcode of faulting instruction */
 uae_u16 last_op_for_exception_3;
@@ -1236,7 +1237,6 @@ static void do_trace (void)
     }
 }
 
-
 static int do_specialties (void)
 {
     if (regs.spcflags & SPCFLAG_COPPER)
@@ -1244,7 +1244,10 @@ static int do_specialties (void)
 
     /*n_spcinsns++;*/
     while (regs.spcflags & SPCFLAG_BLTNASTY) {
-	do_cycles (4 * CYCLE_UNIT);
+	int c = blitnasty();
+	if (!c)
+	    break;
+	do_cycles (c * CYCLE_UNIT);
 	if (regs.spcflags & SPCFLAG_COPPER)
 	    do_copper ();
     }
@@ -1409,12 +1412,20 @@ void m68k_go (int may_quit)
 	    if (quit_program == 1)
 		break;
 	    quit_program = 0;
+	    if (savestate_state == STATE_RESTORE) {
+		restore_state (savestate_filename);
+#if 0
+		activate_debugger ();
+#endif
+	    }
 	    m68k_reset ();
 	    reset_all_systems ();
 	    customreset ();
 	    /* We may have been restoring state, but we're done now.  */
 	    savestate_restore_finish ();
 	    handle_active_events ();
+	    if (regs.spcflags)
+		do_specialties ();
 	}
 
 	if (debugging)
@@ -1581,14 +1592,19 @@ uae_u8 *restore_cpu (uae_u8 *src)
     for (i = 0; i < 15; i++)
 	regs.regs[i] = restore_u32 ();
     regs.pc = restore_u32 ();
+    /* We don't actually use this - we deliberately set prefetch_pc to a
+       zero so that prefetch isn't used for the first insn after a state
+       restore.  */
     regs.prefetch = restore_u32 ();
+    regs.prefetch_pc = regs.pc + 128;
     regs.usp = restore_u32 ();
     regs.isp = restore_u32 ();
     regs.sr = restore_u16 ();
     l = restore_u32();
-    if (l & CPUMODE_HALT)
+    if (l & CPUMODE_HALT) {
 	regs.stopped = 1;
-    else
+	set_special (SPCFLAG_STOP);
+    } else
 	regs.stopped = 0;
     if (model >= 68010) {
 	regs.dfc = restore_u32 ();

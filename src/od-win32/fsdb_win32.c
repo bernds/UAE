@@ -27,6 +27,7 @@ int fsdb_name_invalid (const char *n)
     char b = (a == '\0' ? a : n[1]);
     char c = (b == '\0' ? b : n[2]);
     char d = (c == '\0' ? c : n[3]);
+    int l = strlen (n);
 
     if (a >= 'a' && a <= 'z')
         a -= 32;
@@ -35,19 +36,15 @@ int fsdb_name_invalid (const char *n)
     if (c >= 'a' && c <= 'z')
         c -= 32;
 
-    /* reserved dos devices */
-    if ((a == 'A' && b == 'U' && c == 'X')                                  /* AUX  */
-        || (a == 'C' && b == 'O' && c == 'N')                               /* CON  */
-        || (a == 'P' && b == 'R' && c == 'N')                               /* PRN  */
-        || (a == 'N' && b == 'U' && c == 'L')                               /* NUL  */
-        || (a == 'L' && b == 'P' && c == 'T'  && (d >= '0' && d <= '9'))    /* LPT# */
-        || (a == 'C' && b == 'O' && c == 'M'  && (d >= '0' && d <= '9')))   /* COM# */
+    if ((a == 'A' && b == 'U' && c == 'X' && l == 3) /* AUX  */
+	|| (a == 'C' && b == 'O' && c == 'N' && l == 3) /* CON  */
+	|| (a == 'P' && b == 'R' && c == 'N' && l == 3) /* PRN  */
+	|| (a == 'N' && b == 'U' && c == 'L' && l == 3) /* NUL  */
+	|| (a == 'L' && b == 'P' && c == 'T'  && (d >= '0' && d <= '9') && l == 4)  /* LPT# */
+	|| (a == 'C' && b == 'O' && c == 'M'  && (d >= '0' && d <= '9') && l == 4)) /* COM# */
 	return 1;
-
-    /* spaces and periods at the beginning or the end are a no-no */
-    if (n[0] == '.' || n[0] == ' ')
-	return 1;
-
+  
+    /* spaces and periods at the end are a no-no */
     i = strlen(n) - 1;
     if (n[i] == '.' || n[i] == ' ')
 	return 1;

@@ -612,11 +612,11 @@ static void wgfx_do_flushline (void)
 
     wgfx_y -= picasso96_state.YOffset;
     if (wgfx_y < 0 || wgfx_y >= picasso96_state.Height)
-	goto out;
+	goto out1;
 
     DX_Invalidate (wgfx_y, wgfx_y);
     if (!picasso_vidinfo.extra_mem)
-	goto out;
+	goto out1;
 
     x0 = wgfx_min - wgfx_linestart;
     width = wgfx_max - wgfx_min;
@@ -662,6 +662,7 @@ static void wgfx_do_flushline (void)
 
   out:
     gfx_unlock_picasso ();
+  out1:
     wgfx_linestart = 0xFFFFFFFF;
 }
 

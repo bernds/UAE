@@ -1711,10 +1711,6 @@ void vsync_handle_redraw (int long_frame, int lof_changed)
 	} else if (savestate_state == STATE_DORESTORE) {
 	    savestate_state = STATE_RESTORE;
 	    uae_reset ();
-	    restore_state (savestate_filename);
-#if 0
-	    activate_debugger ();
-#endif
 	}
 
 	if (quit_program < 0) {

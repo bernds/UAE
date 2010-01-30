@@ -9,7 +9,7 @@
 
 #define UAEMAJOR 0
 #define UAEMINOR 8
-#define UAESUBREV 20
+#define UAESUBREV 21
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -78,6 +78,7 @@ struct uae_prefs {
 
     char df[4][256];
     char romfile[256];
+    char romextfile[256];
     char keyfile[256];
     char prtname[256];
     char sername[256];

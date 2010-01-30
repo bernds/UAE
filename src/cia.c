@@ -727,8 +727,10 @@ void CIA_reset (void)
 	div10 = 0;
     }
     CIA_calctimers ();
-    if (! ersatzkickfile)
-	map_banks (&kickmem_bank, 0, 32, 0x80000);
+    if (! ersatzkickfile) {
+	int i = allocated_chipmem > 0x200000 ? allocated_chipmem >> 16 : 32;
+	map_banks (&kickmem_bank, 0, i, 0x80000);
+    }
 
     if (currprefs.use_serial && !savestate_state) 
 	serial_dtr_off (); /* Drop DTR at reset */
