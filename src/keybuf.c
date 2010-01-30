@@ -21,8 +21,9 @@
 #include "keybuf.h"
 #include "keyboard.h"
 #include "joystick.h"
+#include "custom.h"
 
-static int fakestate[3][5] = { { 0, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0 } };
+static int fakestate[3][6] = { { 0, 0, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0 } };
 
 static int *fs_np;
 static int *fs_ck;
@@ -50,6 +51,8 @@ void getjoystate(int nr, unsigned int *st, int *button)
 	if (fake[2]) bot = !bot;
 	*st = bot | (fake[2] << 1) | (top << 8) | (fake[1] << 9);
 	*button = fake[4];
+	if (! fake[4] && fake[5] && (n_frames & 1))
+	    *button = 1;
     } else
 	read_joystick (nr, st, button);
 }
@@ -89,29 +92,32 @@ void record_key (int kc)
     }
     if (fs_np != 0) {
 	switch (kc >> 1) {
-	 case AK_NP8: fs_np[0] = !(kc & 1); return;
-	 case AK_NP4: fs_np[1] = !(kc & 1); return;
-	 case AK_NP6: fs_np[2] = !(kc & 1); return;
-	 case AK_NP2: fs_np[3] = !(kc & 1); return;
-	 case AK_NP0: case AK_NP5: fs_np[4] = !(kc & 1); return;
+	case AK_NP8: fs_np[0] = !(kc & 1); return;
+	case AK_NP4: fs_np[1] = !(kc & 1); return;
+	case AK_NP6: fs_np[2] = !(kc & 1); return;
+	case AK_NP2: fs_np[3] = !(kc & 1); return;
+	case AK_NP0: case AK_NP5: fs_np[4] = !(kc & 1); return;
+	case AK_NPDEL: case AK_NPDIV: case AK_ENT: if (! (kc & 1)) fs_np[5] = ! fs_np[5]; return;
 	}
     }
     if (fs_ck != 0) {
 	switch (kc >> 1) {
-	 case AK_UP: fs_ck[0] = !(kc & 1); return;
-	 case AK_LF: fs_ck[1] = !(kc & 1); return;
-	 case AK_RT: fs_ck[2] = !(kc & 1); return;
-	 case AK_DN: fs_ck[3] = !(kc & 1); return;
-	 case AK_RCTRL: fs_ck[4] = !(kc & 1); return;
+	case AK_UP: fs_ck[0] = !(kc & 1); return;
+	case AK_LF: fs_ck[1] = !(kc & 1); return;
+	case AK_RT: fs_ck[2] = !(kc & 1); return;
+	case AK_DN: fs_ck[3] = !(kc & 1); return;
+	case AK_RCTRL: fs_ck[4] = !(kc & 1); return;
+	case AK_RSH: if (! (kc & 1)) fs_ck[5] = ! fs_ck[5]; return;
 	}
     }
     if (fs_se != 0) {
 	switch (kc >> 1) {
-	 case AK_T: fs_se[0] = !(kc & 1); return;
-	 case AK_F: fs_se[1] = !(kc & 1); return;
-	 case AK_H: fs_se[2] = !(kc & 1); return;
-	 case AK_B: fs_se[3] = !(kc & 1); return;
-	 case AK_LALT: fs_se[4] = !(kc & 1); return;
+	case AK_T: fs_se[0] = !(kc & 1); return;
+	case AK_F: fs_se[1] = !(kc & 1); return;
+	case AK_H: fs_se[2] = !(kc & 1); return;
+	case AK_B: fs_se[3] = !(kc & 1); return;
+	case AK_LALT: fs_se[4] = !(kc & 1); return;
+	case AK_LSH: if (! (kc & 1)) fs_se[5] = ! fs_se[5]; return;
 	}
     }
     if ((kc >> 1) == AK_RCTRL) {

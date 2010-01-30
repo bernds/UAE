@@ -97,11 +97,10 @@ typedef struct {
 drive floppy[4];
 
 /* code for track display */
-static void update_drive_gui (drive * drv)
+static void update_drive_gui (int num)
 {
-    int num;
-#if 0
-    num = drv - &floppy[0];
+    drive *drv = floppy + num;
+
     if (drv->state == gui_data.drive_motor[num]
 	&& drv->cyl == gui_data.drive_track[num]
 	&& ((writing && gui_data.drive_writing[num])
@@ -112,8 +111,10 @@ static void update_drive_gui (drive * drv)
     gui_data.drive_track[num] = drv->cyl;
     if (!gui_data.drive_writing[num])
 	gui_data.drive_writing[num] = writing;
+    gui_ledstate &= ~(2 << num);
+    if (drv->state)
+	gui_ledstate |= 2 << num;
     gui_led (num + 1, gui_data.drive_motor[num]);
-#endif
 }
 
 static void drive_fill_bigbuf (drive * drv);
@@ -287,18 +288,16 @@ static void read_floppy_data (drive * drv, int track, int offset, unsigned char 
 /* Megalomania does not like zero MFM words... */
 static void mfmcode (uae_u16 * mfm, int words)
 {
-    uae_u16 v;
-    uae_u32 lv;
-    int i;
+    uae_u32 lastword = 0;
 
     while (words--) {
-	lv = (mfm[0] << 16) | mfm[1];
-	v = mfm[0];
-	for (i = 30; i >= 16; i -= 2) {
-	    if (!(lv & (1 << i)) && !(lv & (1 << (i - 2))))
-		v |= 1 << (i + 1 - 16);
-	}
-	*mfm++ = v;
+	uae_u32 v = *mfm;
+	uae_u32 lv = (lastword << 16) | v;
+	uae_u32 nlv = 0x55555555 & ~lv;
+	uae_u32 mfmbits = (nlv << 1) & (nlv >> 1);
+
+	*mfm++ = v | mfmbits;
+	lastword = v;
     }
 }
 
@@ -695,7 +694,7 @@ void DISK_select (uae_u8 data)
     }
     for (dr = 0; dr < 4; dr++) {
 	floppy[dr].state = (!(selected & (1 << dr))) | !floppy[dr].motoroff;
-	update_drive_gui (floppy + dr);
+	update_drive_gui (dr);
     }
 }
 
@@ -1123,12 +1122,23 @@ void DISK_init (void)
     dskdatr_cycle[0] = 255;
     indexsync_last_cycle = -1;
 
-    for (i = 0; i < 4; i++)
+    for (i = 0; i < 4; i++) {
 	if (!drive_insert (floppy + i, i, currprefs.df[i]))
 	    disk_eject (i);
-
+    }
     if (disk_empty (0))
 	write_log ("No disk in drive 0.\n");
+}
+
+void DISK_reset (void)
+{
+    int i;
+    disk_hpos = 0;
+    for (i = 0; i < 4; i++) {
+	floppy[i].disabled = 0;
+	if (i >= currprefs.nr_floppies)
+	    floppy[i].disabled = 1;
+    }
 }
 
 void dumpdisk (void)

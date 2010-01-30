@@ -55,3 +55,7 @@ void gui_changesettings (void)
 {
 }
 
+void gui_update_gfx (void)
+{
+  
+}

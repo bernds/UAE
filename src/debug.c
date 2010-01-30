@@ -31,8 +31,13 @@ static uaecptr skipaddr;
 static int do_skip;
 int debugging = 0;
 
+static FILE *logfile;
+
 void activate_debugger (void)
 {
+    if (logfile)
+	fclose (logfile);
+    logfile = 0;
     do_skip = 0;
     if (debugger_active)
 	return;
@@ -272,13 +277,17 @@ static void writeintomem (char **c)
     } else
       printf("Invalid address %08x\n",addr);
 }
- 
+
 void debug (void)
 {
     char input[80];
     uaecptr nextpc,nxdis,nxmem;
 
     bogusframe = 1;
+
+    if (do_skip && skipaddr == 0xC0DEDBAD) {
+	m68k_dumpstate (logfile, &nextpc);
+    }
 
     if (do_skip && (m68k_getpc() != skipaddr/* || regs.a[0] != 0x1e558*/)) {
 	regs.spcflags |= SPCFLAG_BRK;
@@ -297,7 +306,7 @@ void debug (void)
 	if (++firsthist == MAX_HIST) firsthist = 0;
     }
 
-    m68k_dumpstate (&nextpc);
+    m68k_dumpstate (stdout, &nextpc);
     nxdis = nextpc; nxmem = 0;
 
     for (;;) {
@@ -311,7 +320,7 @@ void debug (void)
 	cmd = next_char (&inptr);
 	switch (cmd) {
 	 case 'c': dumpcia (); dumpdisk (); dumpcustom (); break;
-	 case 'r': m68k_dumpstate (&nextpc); break;
+	 case 'r': m68k_dumpstate (stdout, &nextpc); break;
 	 case 'M': modulesearch (); break;
 	 case 'C': cheatsearch (&inptr); break; 
 	 case 'W': writeintomem (&inptr); break;
@@ -372,7 +381,7 @@ void debug (void)
 		    count = readhex(&inptr);
 		else
 		    count = 10;
-		m68k_disasm(daddr, &nxdis, count);
+		m68k_disasm (stdout, daddr, &nxdis, count);
 	    }
 	    break;
 	 case 't': regs.spcflags |= SPCFLAG_BRK; return;
@@ -383,9 +392,11 @@ void debug (void)
 	    return;
 
 	 case 'f':
-	    skipaddr = readhex(&inptr);
+	    skipaddr = readhex (&inptr);
 	    do_skip = 1;
 	    regs.spcflags |= SPCFLAG_BRK;
+	    if (skipaddr == 0xC0DEDBAD)
+		logfile = fopen ("uae.trace", "w");
 	    return;
 
 	 case 'q': uae_quit();
@@ -424,9 +435,9 @@ void debug (void)
 #ifdef NEED_TO_DEBUG_BADLY
 		    regs = history[temp];
 		    regflags = historyf[temp];
-		    m68k_dumpstate(NULL);
+		    m68k_dumpstate (NULL);
 #else
-		    m68k_disasm(history[temp], NULL, 1);
+		    m68k_disasm (stdout, history[temp], NULL, 1);
 #endif
 		    if (++temp == MAX_HIST) temp = 0;
 		}

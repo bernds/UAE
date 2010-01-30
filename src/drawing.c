@@ -862,7 +862,7 @@ STATIC_INLINE void walk_sprites (struct sprite_draw *spd, int nr_spr)
 	    if (i + 1 < nr_spr && spd[i+1].num == spd[i].num - 1 && spd[i+1].linepos == spd[i].linepos)
 		i++;
 	} else {
-	    if (0 && bplham) {
+	    if (bplham) {
 		if (sprx_inc == 1) {
 		    render_sprite (spd[i].num, sprxp, datab, 1, 0, 1);
 		} else {
@@ -1412,7 +1412,8 @@ STATIC_INLINE void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 
     dh = dh_line;
     xlinebuffer = gfxvidinfo.linemem;
-    if (xlinebuffer == 0 && do_double && border != 2 && dip_for_drawing->nr_color_changes != 0)
+    if (xlinebuffer == 0 && do_double
+	&& (border == 0 || (border != 1 && dip_for_drawing->nr_color_changes > 0)))
 	xlinebuffer = gfxvidinfo.emergmem, dh = dh_emerg;
     if (xlinebuffer == 0)
 	xlinebuffer = row_map[gfx_ypos], dh = dh_buf;

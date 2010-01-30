@@ -24,6 +24,8 @@
 #include "native2amiga.h"
 #include "scsidev.h"
 
+#include <stdio.h>
+
 /* the new libscg should always have a scsi_close */
 #ifndef SCSI_CLOSE
 #define SCSI_CLOSE
@@ -104,6 +106,7 @@ static SCSI *openscsi (int scsibus, int target, int lun)
     scgp->debug = getenvint ("UAE_SCSI_DEBUG", 0);
     scgp->kdebug = getenvint ("UAE_SCSI_KDEBUG", 0);
     scgp->silent = getenvint ("UAE_SCSI_SILENT", 1);
+	 scgp->verbose = getenvint ("UAE_SCSI_VERBOSE", 0);
     scgp->scsibus = scsibus;
     scgp->target = target;
     scgp->lun = lun;
@@ -260,6 +263,48 @@ static uae_u32 scsidev_expunge (void)
 #define MODE_SENSE_10  0x5A
 #endif
 
+
+#ifdef DEBUG_CDR
+/* please ignore this code - it can be used to debug raw CD-R writing... */
+
+/*
+** convert time in (BCD) min:sec:frame to block address
+*/
+typedef signed char BYTE;
+typedef unsigned char UBYTE;
+typedef long LONG;
+typedef BYTE BCD;
+typedef BYTE WORD[2];
+#define BCD_DEC(x) (((x) >> 4) * 10 + ((x) & 0xF))
+static LONG TestNegativeTime(LONG block)
+{
+    /* block -151 == 99:59:74
+       -150 == 100:00:00 = 00:00:00 */
+    if (block > (97 * 60 * 75))
+    {
+        /* must be a negative block */
+        block -= 100 * 60 * 75;
+    }
+    return block;
+}
+static LONG BCDTime2Block(UBYTE min, UBYTE sec, UBYTE frame)
+{
+    return(TestNegativeTime((LONG)((BCD_DEC(min) * 60 + BCD_DEC(sec)) * 75 + BCD_DEC(frame) - 2 * 75)));
+}
+static LONG Time2Block(UBYTE min, UBYTE sec, UBYTE frame)
+{
+    return(TestNegativeTime((LONG)((min * 60 + sec) * 75 + frame - 2 * 75)));
+}
+static LONG BCDTime2Block_Pointer (UBYTE *p)
+{
+    return BCDTime2Block (p[0], p[1], p[2]);
+}
+static LONG Time2Block_Pointer (UBYTE *p)
+{
+    return Time2Block (p[0], p[1], p[2]);
+}
+#endif
+
 static void scsidev_do_scsi (struct scsidevdata *sdd, uaecptr request)
 {
     SCSI *scgp = sdd->scgp;
@@ -287,6 +332,7 @@ static void scsidev_do_scsi (struct scsidevdata *sdd, uaecptr request)
     uae_sem_wait (&scgp_sem);
 #endif
 
+	 scmd->timeout = 80 * 60; /* the Amiga does not tell us how long the timeout shall be, so make it _very_ long (specified in seconds) */
     scmd->addr = bank_data->xlateaddr (scsi_data);
     scmd->size = scsi_len;
     scmd->flags = ((scsi_flags & 1) ? SCG_RECV_DATA : 0) | SCG_DISRE_ENA;
@@ -299,15 +345,46 @@ static void scsidev_do_scsi (struct scsidevdata *sdd, uaecptr request)
     scmd->sense_count = 0;
     *(uae_u8 *)&scmd->scb = 0;
 
-    if (scsi_len > (unsigned int)sdd->max_dma) {
-        scgp->debug = 1;
-    } else {
-        scgp->debug = 0;
+    #ifdef DEBUG_CDR
+    /* please ignore this code - it can be used to debug raw CD-R writing... */
+    if (!(scsi_len % 2368)) {
+        /* Structure for generating bytes 2353...2368 if writing in ultra raw mode */
+        typedef struct QDATAtag {
+            BYTE ControlAdr;
+            BCD Tno;
+            BCD Point;
+            BCD Min;
+            BCD Sec;
+            BCD Frame;
+            BYTE Zero;
+            BCD PMin;
+            BCD PSec;
+            BCD PFrame;
+            WORD Crc;
+            BYTE Reserved[3];
+            BYTE PChannel;
+        } QDATA;
+
+        int i = scsi_len / 2368;
+        QDATA *data = (QDATA *)&((unsigned char *)scmd->addr)[2352];
+        for (; i > 0; i--, data = (QDATA *)&((unsigned char *)data)[2368]) {
+            printf ("$%02x: $%02x $%02x | $%02x:$%02x:$%02x = %6ld | $%02x | $%02x:$%02x:$%02x = %6ld\n",
+                    (int)data->ControlAdr, (int)*(UBYTE *)&data->Tno, (int)*(UBYTE *)&data->Point,
+                    (int)*(UBYTE *)&data->Min, (int)*(UBYTE *)&data->Sec, (int)*(UBYTE *)&data->Frame,
+                    BCDTime2Block_Pointer (&data->Min) + 150,
+                    *(UBYTE *)&data->Zero,
+                    *(UBYTE *)&data->PMin, *(UBYTE *)&data->PSec, *(UBYTE *)&data->PFrame,
+                    BCDTime2Block_Pointer (&data->PMin));
+        }
+        fflush (stdout);
     }
-    
+    #endif
+ 
     scgp->scsibus = sdd->bus;
     scgp->target  = sdd->target;
     scgp->lun     = sdd->lun;
+    scgp->cmdname = "???";
+    scgp->curcmdname = "???";
 
     /* replace MODE_SELECT/SENSE_6 if we access a ATAPI drive,
        otherwise send it now */

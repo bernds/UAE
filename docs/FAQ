@@ -35,6 +35,18 @@ A: Look at the keyboard of your Amiga. Use the same combination that you would
    Germany, make sure there's a "setmap de" command in the startup-sequence)
    You can probably create a @ sign by pressing Alt+2, or Shift+2.
 
+Q: On Linux, the Alt and right control keys aren't working.
+A: I found out that on my SuSE installation, there's a file called ".Xmodmap"
+   in my home directory which remaps these two keys so that UAE no longer
+   recognizes them.  That file has two lines; change those to read
+	keycode 64 = Alt_L
+	keycode 0x6D = Control_R
+   This doesn't seem to be a problem anymore with SuSE 6.4 (or at least
+   they're shipping a different .Xmodmap file).
+
+Q: On my Linux system, all the key combinations that involve F12 don't work.
+A: Known problem - don't use the window manager that comes with KDE2 beta.
+
 
 ** INCOMPATIBILITIES
 

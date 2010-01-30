@@ -16,6 +16,7 @@ extern void DISK_check_change (void);
 extern FILE *DISK_validate_filename (const char *, int, int *);
 extern void DISK_handler (void);
 extern void DISK_update (void);
+extern void DISK_reset (void);
 
 extern void DSKLEN (uae_u16 v, int hpos);
 extern uae_u16 DSKDATR (int hpos);
@@ -25,4 +26,3 @@ extern void DSKSYNC (uae_u16);
 extern void DSKPTL (uae_u16);
 extern void DSKPTH (uae_u16);
 
-extern struct gui_info gui_data;

@@ -29,7 +29,7 @@ VPATH = @top_srcdir@/src
 
 .SUFFIXES: .o .c .h .m .i .S .rc .res
 
-.SECONDARY: cpuemu.c cpustbl.c cputbl.h
+#.SECONDARY: cpuemu.c cpustbl.c cputbl.h
 
 INCLUDES=-I. -I@top_srcdir@/src/include/
 

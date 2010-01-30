@@ -1603,6 +1603,9 @@ int check_prefs_changed_gfx (void)
     currprefs.gfx_ycenter = changed_prefs.gfx_ycenter;
     currprefs.gfx_afullscreen = changed_prefs.gfx_afullscreen;
     currprefs.gfx_pfullscreen = changed_prefs.gfx_pfullscreen;
+
+    gui_update_gfx ();
+
     graphics_subinit ();
 
     if (! inwindow)

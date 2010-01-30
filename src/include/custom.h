@@ -37,6 +37,8 @@ extern uae_u16 intena,intreq;
 extern int current_hpos (void);
 extern int vpos;
 
+extern int n_frames;
+
 STATIC_INLINE int dmaen (unsigned int dmamask)
 {
     return (dmamask & dmacon) && (dmacon & 0x200);

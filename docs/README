@@ -1,4 +1,4 @@
-This is version 0.8.13 of UAE, the Un*x Amiga Emulator.
+This is version 0.8.14 of UAE, the Un*x Amiga Emulator.
 
 Versions numbered 0.8.x are beta versions, to be used for development only.
 If you are only a user of UAE, you are better off using the latest 0.7.x
@@ -169,9 +169,16 @@ kickstart_rom_file=file [default=kick.rom]
 joyport0=mode [default=mouse]
   Specify how to emulate joystick port 0. You can use "mouse", "joy0", or
   "joy1" to use the corresponding input devices of your machine, or you can
-  select several different keyboard replacements for a joystick: "kbd1" for
-  the numeric pad with '0' as fire button, "kbd2" for the cursor keys with
-  right control as fire button and c is T/F/H/B with Alt as fire button.
+  select several different keyboard replacements for a joystick:
+    "kbd1" for the numeric pad.  '0' is the fire button.  Three keys on the
+           numeric pad act as autofire toggle: '.' (or ',' depending on your
+           keyboard language), Enter and the division key.
+    "kbd2" for the cursor keys with right control key as fire button and the
+           right shift key as autofire toggle
+    "kbd3" for T/F/H/B with the left Alt key as fire button and the left Shift
+           key as autofire toggle.
+  The autofire toggle keys will turn on autofire (25 shots per second), it
+  will stay enabled until you hit the autofire toggle again.
 joyport1=mode [default=joy0]
   Like joyport0, but for the Amiga's joystick port 1.
 use_gui=bool [default=yes]
@@ -204,6 +211,10 @@ cpu_compatible=bool [default=no]
   If enabled, a slower but slightly more accurate variant of the CPU emulation
   will be used.  This is needed for some types of copy protection, among other
   things. This is only meaningful for a CPU type of "68000".
+nr_floppies=n [default=4]
+  The emulator will emulate this many external floppy drives.  Some very old
+  games apparently have problems if this is larger than 1, but for all normal
+  programs the default is good enough.
 
 Emulating external devices (harddisk, CD-ROM, printer, serial port):
 filesystem=access,volume:path [default=no filesystems mounted]

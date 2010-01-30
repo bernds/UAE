@@ -2,6 +2,18 @@ Note! This file only contains user-visible changes. There may be others. For a
 more detailed description of changes between releases, read src/ChangeLog, and
 for the full picture, make a diff between releases.
 
+User-visible changes in 0.8.14:
+  - More bug fixes:
+    * CPU emulation problem that could have caused copy protection schemes to
+      malfunction has been fixed.
+    * Some AGA problems fixed (one of them visible in ECS modes).
+    * UAE should work again on non-x86 systems.
+  - By default the emulator will try to approximate an A500 in CPU speed.
+    This setting existed before, but it's a bit more accurate now and on by
+    default.
+  - There is a new option to control the number of emulated disk drives.
+  - Software autofire for the keyboard joystick replacements
+
 User-visible changes in 0.8.13:
   - Bye bye GGI port
   - Several bugs fixed, mostly in the filesystem code

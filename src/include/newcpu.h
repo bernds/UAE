@@ -209,7 +209,7 @@ STATIC_INLINE void m68k_setstopped (int stop)
 extern uae_u32 get_disp_ea_020 (uae_u32 base, uae_u32 dp);
 extern uae_u32 get_disp_ea_000 (uae_u32 base, uae_u32 dp);
 
-extern uae_s32 ShowEA (int reg, amodes mode, wordsizes size, char *buf);
+extern uae_s32 ShowEA (FILE *, int reg, amodes mode, wordsizes size, char *buf);
 
 extern void MakeSR (void);
 extern void MakeFromSR (void);
@@ -221,8 +221,8 @@ extern void m68k_divl (uae_u32, uae_u32, uae_u16, uaecptr);
 extern void m68k_mull (uae_u32, uae_u32, uae_u16);
 extern void init_m68k (void);
 extern void m68k_go (int);
-extern void m68k_dumpstate (uaecptr *);
-extern void m68k_disasm (uaecptr, uaecptr *, int);
+extern void m68k_dumpstate (FILE *, uaecptr *);
+extern void m68k_disasm (FILE *, uaecptr, uaecptr *, int);
 extern void m68k_reset (void);
 
 extern void mmu_op (uae_u32, uae_u16);

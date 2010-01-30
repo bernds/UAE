@@ -1,3 +1,25 @@
+9A0815 Fix a really stupid bug in cfgfile_strval.
+       Nonfunctional support for switching between windowed/fullscreen modes
+       in gtkui.
+       Add (semi-broken) support in the debugger to create a trace logfile.
+       Take out most port-specific flags handling; x86 version kept with
+       slight name changes to indicate that this is code is suitable for
+       other ports as well.  Took out HAVE_GAS while I was in configure.
+9A0811 Fix the line doubling slowdown.
+9A0809 Software autofire.
+       Remove one line from Makefile.in in the hope it will fix the build
+       errors people are seeing.
+9A0807 Tighten up some minor aspects of spcflags handling.
+       Fix an AGA bug in customreset.
+       Set default CPU speed to approximate a A500.  Tweak gencpu so that the
+       timings for this are more accurate.
+       Ignore T0 bit if not emulating a 68020.
+       Add an option to set the number of emulated floppy drives.
+       Improve the mfmcode function a bit.  Faster and more accurate.
+       More SCSI patches from Patrick.
+       Add gui_data structure from WinUAE.  Turn on gui leds again.	    
+9A0725 Fix incorrect define of m68k_run for non-x86 systems (could have
+       sworn I already fixed that).
 9A0723 Some SCSI patches by Patrick Ohly (which I got two months ago... oops)
        Filesystem fixes from Brian.
        AGA updates from Toni.

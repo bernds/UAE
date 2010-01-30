@@ -9,7 +9,7 @@
 
 #define UAEMAJOR 0
 #define UAEMINOR 8
-#define UAESUBREV 13
+#define UAESUBREV 14
 
 typedef enum { KBD_LANG_US, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -95,6 +95,8 @@ struct uae_prefs {
     uae_u32 gfxmem_size;
 
     struct uaedev_mount_info *mountinfo;
+
+    int nr_floppies;
 
     /* Target specific options */
     int x11_use_low_bandwidth;

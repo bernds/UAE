@@ -158,6 +158,7 @@ void save_options (FILE *f, struct uae_prefs *p)
 	fprintf (f, "floppy%d=%s\n", i, str);
 	free (str);
     }
+    fprintf (f, "nr_floppies=%d\n", p->nr_floppies);
     fprintf (f, "parallel_on_demand=%s\n", p->parallel_demand ? "true" : "false");
     fprintf (f, "serial_on_demand=%s\n", p->serial_demand ? "true" : "false");
 
@@ -273,8 +274,10 @@ int cfgfile_strval (char *option, char *value, char *name, int *location, const 
 	return 0;
     val = match_string (table, value);
     if (val == -1) {
-	if (! more)
-	    write_log ("Unknown value for option `%s'.\n", option);
+	if (more)
+	    return 0;
+
+	write_log ("Unknown value for option `%s'.\n", option);
 	return 1;
     }
     *location = val;
@@ -378,7 +381,8 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	|| cfgfile_intval (option, value, "z3mem_size", &p->z3fastmem_size, 0x100000)
 	|| cfgfile_intval (option, value, "bogomem_size", &p->bogomem_size, 0x40000)
 	|| cfgfile_intval (option, value, "gfxcard_size", &p->gfxmem_size, 0x100000)
-	|| cfgfile_intval (option, value, "chipmem_size", &p->chipmem_size, 0x80000))
+	|| cfgfile_intval (option, value, "chipmem_size", &p->chipmem_size, 0x80000)
+	|| cfgfile_intval (option, value, "nr_floppies", &p->nr_floppies, 1))
 	return 1;
     if (cfgfile_strval (option, value, "sound_output", &p->produce_sound, soundmode, 0)
 	|| cfgfile_strval (option, value, "sound_channels", &p->stereo, stereomode1, 1)

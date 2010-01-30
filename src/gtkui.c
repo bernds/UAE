@@ -55,7 +55,7 @@ static GtkWidget *cpu_widget[4], *a24m_widget, *ccpu_widget;
 static GtkWidget *sound_widget[4], *sound_bits_widget[2], *sound_freq_widget[3], *sound_ch_widget[2];
 
 static GtkAdjustment *framerate_adj;
-static GtkWidget *bimm_widget, *b32_widget;
+static GtkWidget *bimm_widget, *b32_widget, *afscr_widget, *pfscr_widget;
 
 static GtkWidget *joy_widget[2][6];
 
@@ -126,6 +126,8 @@ static void set_gfx_state (void)
 {
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (bimm_widget), currprefs.immediate_blits != 0);
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (b32_widget), currprefs.blits_32bit_enabled != 0);
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (afscr_widget), currprefs.gfx_afullscreen != 0);
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (pfscr_widget), currprefs.gfx_pfullscreen != 0);
 }
 
 static void set_sound_state (void)
@@ -242,6 +244,8 @@ static void custom_changed (void)
     changed_prefs.gfx_framerate = framerate_adj->value;
     changed_prefs.blits_32bit_enabled = GTK_TOGGLE_BUTTON (b32_widget)->active;
     changed_prefs.immediate_blits = GTK_TOGGLE_BUTTON (bimm_widget)->active;
+    changed_prefs.gfx_afullscreen = GTK_TOGGLE_BUTTON (afscr_widget)->active;
+    changed_prefs.gfx_pfullscreen = GTK_TOGGLE_BUTTON (pfscr_widget)->active;
 }
 
 static void cpuspeed_changed (void)
@@ -670,17 +674,32 @@ static void make_gfx_widgets (GtkWidget *vbox)
 
     b32_widget = gtk_check_button_new_with_label ("32 bit blitter");
     add_centered_to_vbox (vbox, b32_widget);
+#if 0
     gtk_widget_show (b32_widget);
-
+#endif
     bimm_widget = gtk_check_button_new_with_label ("Immediate blits");
     add_centered_to_vbox (vbox, bimm_widget);
     gtk_widget_show (bimm_widget);
 
+    afscr_widget = gtk_check_button_new_with_label ("Amiga modes fullscreen");
+    add_centered_to_vbox (vbox, afscr_widget);
+#if 0
+    gtk_widget_show (afscr_widget);
+#endif
+    pfscr_widget = gtk_check_button_new_with_label ("Picasso modes fullscreen");
+    add_centered_to_vbox (vbox, pfscr_widget);
+#if 0
+    gtk_widget_show (pfscr_widget);
+#endif
     add_empty_vbox (vbox);
 
     gtk_signal_connect (GTK_OBJECT (bimm_widget), "clicked",
 			(GtkSignalFunc) custom_changed, NULL);
     gtk_signal_connect (GTK_OBJECT (b32_widget), "clicked",
+			(GtkSignalFunc) custom_changed, NULL);
+    gtk_signal_connect (GTK_OBJECT (afscr_widget), "clicked",
+			(GtkSignalFunc) custom_changed, NULL);
+    gtk_signal_connect (GTK_OBJECT (pfscr_widget), "clicked",
 			(GtkSignalFunc) custom_changed, NULL);
 }
 
@@ -964,4 +983,11 @@ void gui_handle_events(void)
             }
         }
     } while (pause_uae);
+}
+
+void gui_update_gfx (void)
+{
+#if 0 /* This doesn't work... */
+    set_gfx_state ();
+#endif
 }

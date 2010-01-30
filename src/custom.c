@@ -175,7 +175,7 @@ static int cop_min_waittime;
 unsigned long int msecs = 0, frametime = 0, lastframetime = 0, timeframes = 0;
 static unsigned long int seconds_base;
 int bogusframe;
-
+int n_frames;
 
 static int current_change_set;
 
@@ -1191,6 +1191,10 @@ static void calcdiw (void)
     fetch = fetchsize >> fetchstart_shift;
     plflinelen = ((((plfstop - plfstrt + fetchstart - 1) >> fetchstart_shift)
 		   + fetch + (fetch - 1)) & ~(fetch - 1) ) << fetchstart_shift;
+#if 0
+    if (plfstrt + plflinelen != plfstop + fetchsize)
+	printf ("%d + %d vs %d + %d\n", plfstrt, plflinelen, plfstop, fetchsize);
+#endif
 }
 
 /* Mousehack stuff */
@@ -2489,6 +2493,8 @@ void init_hardware_for_drawing_frame (void)
 
 static void vsync_handler (void)
 {
+    n_frames++;
+
     if (currprefs.m68k_speed == -1) {
 	frame_time_t curr_time = read_processor_time ();
 	vsyncmintime += vsynctime;
@@ -2697,7 +2703,7 @@ void customreset (void)
     struct timeval tv;
 #endif
 
-    if (currprefs.chipset_mask & CSMASK_AGA) {
+    if ((currprefs.chipset_mask & CSMASK_AGA) == 0) {
 	for (i = 0; i < 32; i++) {
 	    current_colors.color_regs_ecs[i] = 0;
 	    current_colors.acolors[i] = xcolors[0];
@@ -2709,11 +2715,14 @@ void customreset (void)
 	}
     }
 
+    n_frames = 0;
+
     expamem_reset ();
 
+    DISK_reset ();
     CIA_reset ();
     cycles = 0;
-    regs.spcflags &= SPCFLAG_BRK;
+    regs.spcflags &= SPCFLAG_BRK | SPCFLAG_MODE_CHANGE;
 
     vpos = 0;
     lof = 0;

@@ -48,6 +48,8 @@ int no_gui = 0;
 int joystickpresent = 0;
 int cloanto_rom = 0;
 
+struct gui_info gui_data;
+
 char warning_buffer[256];
 
 char optionsfile[256];
@@ -161,7 +163,7 @@ void default_prefs (struct uae_prefs *p)
     strcpy (p->path_floppy, "./");
     strcpy (p->path_hardfile, "./");
 
-    p->m68k_speed = 4;
+    p->m68k_speed = 0;
     p->cpu_level = 2;
     p->cpu_compatible = 0;
     p->address_space_24 = 0;
@@ -172,6 +174,8 @@ void default_prefs (struct uae_prefs *p)
     p->chipmem_size = 0x00200000;
     p->bogomem_size = 0x00000000;
     p->gfxmem_size = 0x00000000;
+
+    p->nr_floppies = 4;
 
     p->mountinfo = alloc_mountinfo ();
 }
@@ -271,6 +275,12 @@ static void fix_options (void)
 	err = 1;
     }
 #endif
+
+    if (currprefs.nr_floppies < 1 || currprefs.nr_floppies > 4) {
+	fprintf (stderr, "Invalid number of floppies.  Using 4.\n");
+	currprefs.nr_floppies = 4;
+	err = 1;
+    }
 
     if (err)
 	fprintf (stderr, "Please use \"uae -h\" to get usage information.\n");

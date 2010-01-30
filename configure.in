@@ -50,6 +50,7 @@ OPTIMIZE_CFLAGS=
 WARNING_CFLAGS=
 DEBUG_CFLAGS=
 NO_SCHED_CFLAGS=
+LDFLAGS="$LDFLAGS -L."
 
 dnl Checks for libraries.
 HAVE_BEOS=no
@@ -499,7 +500,6 @@ USE_UNDERSCORE=dunno
 HAVELINUX=no
 HAVEBSD=no
 HAVEGCC27=no
-HAVEGAS=no
 HAVEI386=no
 HAVE68K=no
 HAVEPPC=no
@@ -598,14 +598,6 @@ fi
 dnl X86.S needs to know whether it needs to add underscores to symbols.
 dnl This might break some obscure systems which don't have ELF but don't
 dnl add underscores either.
-
-AC_MSG_CHECKING(for GAS .p2align feature)
-cat >conftest.S << EOF
-	.text
-	.p2align 5
-EOF
-if $CC conftest.S -c -o conftest.o >/dev/null 2>&1 ; then HAVEGAS=yes; fi
-AC_MSG_RESULT($HAVEGAS)
 
 AC_MSG_CHECKING(whether assembler symbols need an underscore)
 cat >conftest1.S << EOF
@@ -707,12 +699,9 @@ if [[ "x$HAVEGCC27" = "xyes" -a "x$HAVEI386" = "xyes" -a "x$DO_PROFILING" = "xno
   dnl many registers, which all end up on the stack).
   CFLAGS="$CFLAGS -DUNALIGNED_PROFITABLE -fno-strength-reduce -DREGPARAM=\"__attribute__((regparm(3)))\""
 
-  if [[ "x$HAVEGAS" = "xyes" ]]; then
-    CFLAGS="$CFLAGS -DX86_ASSEMBLY"
-    ASMOBJS=md-X86.o
-
-    CPUOBJS=cpufast.o
-  fi
+  CFLAGS="$CFLAGS -DX86_ASSEMBLY -DOPTIMIZED_FLAGS"
+  ASMOBJS=md-X86.o
+  CPUOBJS=cpufast.o
 else if test $uae_cv_prog_cc_watcom = yes; then
   MACHDEP=md-i386-watcom
   echo CFLAGS before: $CFLAGS
@@ -892,21 +881,20 @@ fi
 fi
 
 SCSIOBJS=scsi-none.o
-SCSIDEP=scg-none
-AC_ARG_ENABLE(scsi-device,[  --enable-scsi-device   Disable the uaescsi.device],[USE_SCSI_DEVICE=$enableval],[])
-
-dnl @@@ Patrick - I hope no system other than Linux has "scsi/sg.h" !
+AC_ARG_ENABLE(scsi-device,[  --enable-scsi-device    Enable the uaescsi.device],[USE_SCSI_DEVICE=$enableval],[])
 if [[ "x$USE_SCSI_DEVICE" = "xyes" ]]; then
   AC_MSG_CHECKING("availability of libscg headers and lib")
   OLDLIBS="$LIBS"
-  LIBS="$LIBS -lscg -lschily -ldeflt"
-  AC_TRY_LINK([#include "scg/scgcmd.h"
+  OLDCFLAGS="$CFLAGS"
+  CFLAGS="$CFLAGS -Isrc/include"
+  LIBS="-Lsrc $LIBS -lscg -lschily"
+  AC_TRY_LINK([typedef int BOOL;
+#include "scg/scgcmd.h"
 #include "scg/scsitransp.h"
 #include "scg/scsireg.h"], [{SCSI *scgp = open_scsi ((void *)0, (void *)0, 0, 1, 1);}],
   [
     AC_MSG_RESULT(available)
     SCSIOBJS=scsidev.o
-    SCSIDEP=scg-linux-sg
   ],
   [
      AC_MSG_RESULT(not available)
@@ -914,6 +902,7 @@ if [[ "x$USE_SCSI_DEVICE" = "xyes" ]]; then
      echo "Please refer to the UAE SCSI device section in docs/README for installation instructions."
      LIBS="$OLDLIBS"
   ])
+  CFLAGS="$OLDCFLAGS"
 fi
 
 dnl Special case hack for BSD: try to use the Linux joystick.c.

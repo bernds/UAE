@@ -249,7 +249,7 @@ int lastint_no;
 #define get_iword_1(o) get_word(regs.pc + (regs.pc_p - regs.pc_oldp) + (o))
 #define get_ilong_1(o) get_long(regs.pc + (regs.pc_p - regs.pc_oldp) + (o))
 
-uae_s32 ShowEA (int reg, amodes mode, wordsizes size, char *buf)
+uae_s32 ShowEA (FILE *f, int reg, amodes mode, wordsizes size, char *buf)
 {
     uae_u16 dp;
     uae_s8 disp8;
@@ -417,7 +417,7 @@ uae_s32 ShowEA (int reg, amodes mode, wordsizes size, char *buf)
 	break;
     }
     if (buf == 0)
-	printf ("%s", buffer);
+	fprintf (f, "%s", buffer);
     else
 	strcat (buf, buffer);
     return offset;
@@ -1150,7 +1150,7 @@ static uaecptr last_trace_ad = 0;
 
 static void do_trace (void)
 {
-    if (regs.t0) {
+    if (regs.t0 && currprefs.cpu_level >= 2) {
 	uae_u16 opcode;
 	/* should also include TRAP, CHK, SR modification FPcc */
 	/* probably never used so why bother */
@@ -1323,7 +1323,7 @@ STATIC_INLINE void m68k_run1 (void (*func)(void))
 			  : : "r" (func) : "%eax", "%edx", "%ecx", "memory", "cc");
 }
 #else
-#define m68k_run1(F) F
+#define m68k_run1(F) F()
 #endif
 
 int in_m68k_go = 0;
@@ -1383,7 +1383,7 @@ static void m68k_verify (uaecptr addr, uaecptr *nextpc)
     }
 }
 
-void m68k_disasm (uaecptr addr, uaecptr *nextpc, int cnt)
+void m68k_disasm (FILE *f, uaecptr addr, uaecptr *nextpc, int cnt)
 {
     uaecptr newpc = 0;
     m68kpc_offset = addr - m68k_getpc ();
@@ -1393,9 +1393,9 @@ void m68k_disasm (uaecptr addr, uaecptr *nextpc, int cnt)
 	uae_u32 opcode;
 	struct mnemolookup *lookup;
 	struct instr *dp;
-	printf ("%08lx: ", m68k_getpc () + m68kpc_offset);
+	fprintf (f, "%08lx: ", m68k_getpc () + m68kpc_offset);
 	for (opwords = 0; opwords < 5; opwords++){
-	    printf ("%04x ", get_iword_1 (m68kpc_offset + opwords*2));
+	    fprintf (f, "%04x ", get_iword_1 (m68kpc_offset + opwords*2));
 	}
 	opcode = get_iword_1 (m68kpc_offset);
 	m68kpc_offset += 2;
@@ -1411,69 +1411,69 @@ void m68k_disasm (uaecptr addr, uaecptr *nextpc, int cnt)
 	if (ccpt != 0) {
 	    strncpy (ccpt, ccnames[dp->cc], 2);
 	}
-	printf ("%s", instrname);
+	fprintf (f, "%s", instrname);
 	switch (dp->size){
-	 case sz_byte: printf (".B "); break;
-	 case sz_word: printf (".W "); break;
-	 case sz_long: printf (".L "); break;
-	 default: printf ("   "); break;
+	 case sz_byte: fprintf (f, ".B "); break;
+	 case sz_word: fprintf (f, ".W "); break;
+	 case sz_long: fprintf (f, ".L "); break;
+	 default: fprintf (f, "   "); break;
 	}
 
 	if (dp->suse) {
 	    newpc = m68k_getpc () + m68kpc_offset;
-	    newpc += ShowEA (dp->sreg, dp->smode, dp->size, 0);
+	    newpc += ShowEA (f, dp->sreg, dp->smode, dp->size, 0);
 	}
 	if (dp->suse && dp->duse)
-	    printf (",");
+	    fprintf (f, ",");
 	if (dp->duse) {
 	    newpc = m68k_getpc () + m68kpc_offset;
-	    newpc += ShowEA (dp->dreg, dp->dmode, dp->size, 0);
+	    newpc += ShowEA (f, dp->dreg, dp->dmode, dp->size, 0);
 	}
 	if (ccpt != 0) {
 	    if (cctrue(dp->cc))
-		printf (" == %08lx (TRUE)", newpc);
+		fprintf (f, " == %08lx (TRUE)", newpc);
 	    else
-		printf (" == %08lx (FALSE)", newpc);
+		fprintf (f, " == %08lx (FALSE)", newpc);
 	} else if ((opcode & 0xff00) == 0x6100) /* BSR */
-	    printf (" == %08lx", newpc);
-	printf ("\n");
+	    fprintf (f, " == %08lx", newpc);
+	fprintf (f, "\n");
     }
     if (nextpc)
 	*nextpc = m68k_getpc () + m68kpc_offset;
 }
 
-void m68k_dumpstate (uaecptr *nextpc)
+void m68k_dumpstate (FILE *f, uaecptr *nextpc)
 {
     int i;
     for (i = 0; i < 8; i++){
-	printf ("D%d: %08lx ", i, m68k_dreg(regs, i));
-	if ((i & 3) == 3) printf ("\n");
+	fprintf (f, "D%d: %08lx ", i, m68k_dreg(regs, i));
+	if ((i & 3) == 3) fprintf (f, "\n");
     }
     for (i = 0; i < 8; i++){
-	printf ("A%d: %08lx ", i, m68k_areg(regs, i));
-	if ((i & 3) == 3) printf ("\n");
+	fprintf (f, "A%d: %08lx ", i, m68k_areg(regs, i));
+	if ((i & 3) == 3) fprintf (f, "\n");
     }
     if (regs.s == 0) regs.usp = m68k_areg(regs, 7);
     if (regs.s && regs.m) regs.msp = m68k_areg(regs, 7);
     if (regs.s && regs.m == 0) regs.isp = m68k_areg(regs, 7);
-    printf ("USP=%08lx ISP=%08lx MSP=%08lx VBR=%08lx\n",
-	    regs.usp,regs.isp,regs.msp,regs.vbr);
-    printf ("T=%d%d S=%d M=%d X=%d N=%d Z=%d V=%d C=%d IMASK=%d\n",
-	    regs.t1, regs.t0, regs.s, regs.m,
-	    GET_XFLG, GET_NFLG, GET_ZFLG, GET_VFLG, GET_CFLG, regs.intmask);
+    fprintf (f, "USP=%08lx ISP=%08lx MSP=%08lx VBR=%08lx\n",
+	     regs.usp,regs.isp,regs.msp,regs.vbr);
+    fprintf (f, "T=%d%d S=%d M=%d X=%d N=%d Z=%d V=%d C=%d IMASK=%d\n",
+	     regs.t1, regs.t0, regs.s, regs.m,
+	     GET_XFLG, GET_NFLG, GET_ZFLG, GET_VFLG, GET_CFLG, regs.intmask);
     for (i = 0; i < 8; i++){
-	printf ("FP%d: %g ", i, regs.fp[i]);
-	if ((i & 3) == 3) printf ("\n");
+	fprintf (f, "FP%d: %g ", i, regs.fp[i]);
+	if ((i & 3) == 3) fprintf (f, "\n");
     }
-    printf ("N=%d Z=%d I=%d NAN=%d\n",
-		(regs.fpsr & 0x8000000) != 0,
-		(regs.fpsr & 0x4000000) != 0,
-		(regs.fpsr & 0x2000000) != 0,
-		(regs.fpsr & 0x1000000) != 0);
+    fprintf (f, "N=%d Z=%d I=%d NAN=%d\n",
+	     (regs.fpsr & 0x8000000) != 0,
+	     (regs.fpsr & 0x4000000) != 0,
+	     (regs.fpsr & 0x2000000) != 0,
+	     (regs.fpsr & 0x1000000) != 0);
     if (currprefs.cpu_compatible)
-	printf ("prefetch %08lx\n", (unsigned long)do_get_mem_long(&regs.prefetch));
+	fprintf (f, "prefetch %08lx\n", (unsigned long)do_get_mem_long(&regs.prefetch));
 
-    m68k_disasm(m68k_getpc (), nextpc, 1);
+    m68k_disasm (f, m68k_getpc (), nextpc, 1);
     if (nextpc)
-	printf ("next PC: %08lx\n", *nextpc);
+	fprintf (f, "next PC: %08lx\n", *nextpc);
 }
