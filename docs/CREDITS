@@ -8,9 +8,9 @@ Miscellaneous code contributions:
   - Hannu Rummukainen: Floppy write emulation
   - Andre Beck: Made the X support much faster by using MIT-SHM extensions.
     (Not bad for a 10 minute hack, Andre!)
-  - Ed Hanway: Wrote the unixfs.device. Improvements to the X support (cursor 
-    blanking, etc.), run time options. He also sent me a copy of his own 
-    (unfinished) Amiga emulator...
+  - Ed Hanway: Wrote the original filesystem code. Improvements to the X
+    support (cursor blanking, etc.), run time options. He also sent me a copy
+    of his own (unfinished) Amiga emulator...
   - Denis Sablic: Misc. bugfixes, several runtime options
   - Marcus Sundberg: X11 and transdisk improvements, bugfixes, AF and MME
     sound system support
@@ -43,9 +43,13 @@ Miscellaneous code contributions:
   - Holger Jakob: debugger cheat search
   - Philippe Gerin: fixed a bug in the CPU emulator
   - Jake Hamby: bug fixes
-  - Toni Wilen: AGA patches
+  - Toni Wilen: AGA and miscellaneous other patches
   - Mathias Ortmann: BSD socket support.
   - Patrick Ohly: timehack; SCSI support
+  - Richard Hoffmann: sound interpolation
+  - Sam Jordan: responsible for miscellaneous bugfixes and most importantly
+    for a fully working copper emulation
+
 
 System specific fixes/ports (some of the fixes for various Unices are no
 longer present, though, since we now use autoconf):
@@ -74,6 +78,7 @@ longer present, though, since we now use autoconf):
   - Krister Walfridsson: BSD patches
   - Holger Jakob: Amiga/PPC code
   - Ari Heikkinen: SGI sound
+  - Sam Jordan: WarpUP port
 
 Miscellaneous other contributions:
   - Brett Eden: rewrote DOS port documentation, provides many bugreports

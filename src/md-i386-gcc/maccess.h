@@ -10,7 +10,7 @@ static __inline__ uae_u32 do_get_mem_long (uae_u32 *a)
 {
     uae_u32 retval;
 
-    __asm__ ("bswapl %0" : "=r" (retval) : "0" (*a) : "cc");
+    __asm__ ("bswap %0" : "=r" (retval) : "0" (*a) : "cc");
     return retval;
 }
 
@@ -19,7 +19,7 @@ static __inline__ uae_u32 do_get_mem_word (uae_u16 *a)
     uae_u32 retval;
 
 #ifdef X86_PPRO_OPT
-    __asm__ ("movzwl %w1,%k0\n\tshll $16,%k0\n\tbswapl %k0\n" : "=&r" (retval) : "m" (*a) : "cc");
+    __asm__ ("movzwl %w1,%k0\n\tshll $16,%k0\n\tbswap %k0\n" : "=&r" (retval) : "m" (*a) : "cc");
 #else
     __asm__ ("xorl %k0,%k0\n\tmovw %w1,%w0\n\trolw $8,%w0" : "=&r" (retval) : "m" (*a) : "cc");
 #endif
@@ -30,16 +30,16 @@ static __inline__ uae_u32 do_get_mem_word (uae_u16 *a)
 
 static __inline__ void do_put_mem_long (uae_u32 *a, uae_u32 v)
 {
-    __asm__ ("bswapl %0" : "=r" (v) : "0" (v) : "cc");
+    __asm__ ("bswap %0" : "=r" (v) : "0" (v) : "cc");
     *a = v;
 }
 
 static __inline__ void do_put_mem_word (uae_u16 *a, uae_u32 v)
 {
 #ifdef X86_PPRO_OPT
-    __asm__ ("bswapl %0" : "=&r" (v) : "0" (v << 16) : "cc");
+    __asm__ ("bswap %0" : "=&r" (v) : "0" (v << 16) : "cc");
 #else
-    __asm__ ("rolw $8,%0" : "=r" (v) : "0" (v) : "cc");
+    __asm__ ("rolw $8,%w0" : "=r" (v) : "0" (v) : "cc");
 #endif
     *a = v;
 }
@@ -81,7 +81,7 @@ static __inline__ uae_u32 longget_1 (uae_cptr addr)
 	     "\tje longget_stub\n"
 	     "\taddl address_space,%1\n"
 	     "\tmovl (%1),%0\n"
-	     "\tbswapl %0\n"
+	     "\tbswap %0\n"
 	     "\t1:"
 	     : "=c" (result), "=d" (addr) : "1" (addr), "r" (good_address_map) : "cc");
     return result;
@@ -122,7 +122,7 @@ static __inline__ void longput_1 (uae_cptr addr, uae_u32 l)
 	     "\tleal 1f,%%ecx\n"
 	     "\tje longput_stub\n"
 	     "\taddl address_space,%0\n"
-	     "\tbswapl %1\n"
+	     "\tbswap %1\n"
 	     "\tmovl %1,(%0)\n"
 	     "\t1:"
 	     : "=d" (addr), "=b" (l) : "0" (addr), "r" (good_address_map), "1" (l) : "cc", "memory", "ecx");

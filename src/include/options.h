@@ -108,6 +108,7 @@ struct uae_prefs {
     int win32_logfile;
     int win32_iconified_nospeed;
     int win32_iconified_nosound;
+    int curses_reverse_video;
 };
 
 /* Contains the filename of .uaerc */

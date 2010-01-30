@@ -1191,7 +1191,7 @@ static void gen_opcode (unsigned long int opcode)
 	else
 	    printf ("\tsrc &= 31;\n");
 	printf ("\tdst ^= (1 << src);\n");
-	printf ("\tSET_ZFLG ((dst & (1 << src)) >> src);\n");
+	printf ("\tSET_ZFLG (((uae_u32)dst & (1 << src)) >> src);\n");
 	genastore ("dst", curi->dmode, "dstreg", curi->size, "dst");
 	break;
      case i_BCLR:
@@ -1531,7 +1531,9 @@ static void gen_opcode (unsigned long int opcode)
 	printf ("\tuaecptr oldpc = m68k_getpc();\n");
 	genamode (curi->smode, "srcreg", sz_word, "src", 1, 0);
 	genamode (curi->dmode, "dstreg", sz_long, "dst", 1, 0);
-	printf ("\tif(src == 0) { Exception(5,oldpc); goto %s; } else {\n", endlabelstr);
+	/* Clear V flag when dividing by zero - Alcatraz Odyssey demo depends
+	 * on this (actually, it's doing a DIVS).  */
+	printf ("\tif (src == 0) { SET_VFLG (0); Exception (5, oldpc); goto %s; } else {\n", endlabelstr);
 	printf ("\tuae_u32 newv = (uae_u32)dst / (uae_u32)(uae_u16)src;\n");
 	printf ("\tuae_u32 rem = (uae_u32)dst %% (uae_u32)(uae_u16)src;\n");
 	/* The N flag appears to be set each time there is an overflow.
@@ -1549,7 +1551,7 @@ static void gen_opcode (unsigned long int opcode)
 	printf ("\tuaecptr oldpc = m68k_getpc();\n");
 	genamode (curi->smode, "srcreg", sz_word, "src", 1, 0);
 	genamode (curi->dmode, "dstreg", sz_long, "dst", 1, 0);
-	printf ("\tif(src == 0) { Exception(5,oldpc); goto %s; } else {\n", endlabelstr);
+	printf ("\tif (src == 0) { SET_VFLG (0); Exception(5,oldpc); goto %s; } else {\n", endlabelstr);
 	printf ("\tuae_s32 newv = (uae_s32)dst / (uae_s32)(uae_s16)src;\n");
 	printf ("\tuae_u16 rem = (uae_s32)dst %% (uae_s32)(uae_s16)src;\n");
 	printf ("\tif ((newv & 0xffff8000) != 0 && (newv & 0xffff8000) != 0xffff8000) { SET_VFLG (1); SET_NFLG (1); SET_CFLG (0); } else\n\t{\n");
@@ -2000,14 +2002,14 @@ static void gen_opcode (unsigned long int opcode)
 	start_brace ();
 	printf ("\tint regno = (src >> 12) & 15;\n");
 	printf ("\tuae_u32 *regp = regs.regs + regno;\n");
-	printf ("\tm68k_movec2(src & 0xFFF, regp);\n");
+	printf ("\tif (! m68k_movec2(src & 0xFFF, regp)) goto %s;\n", endlabelstr);
 	break;
      case i_MOVE2C:
 	genamode (curi->smode, "srcreg", curi->size, "src", 1, 0);
 	start_brace ();
 	printf ("\tint regno = (src >> 12) & 15;\n");
 	printf ("\tuae_u32 *regp = regs.regs + regno;\n");
-	printf ("\tm68k_move2c(src & 0xFFF, regp);\n");
+	printf ("\tif (! m68k_move2c(src & 0xFFF, regp)) goto %s;\n", endlabelstr);
 	break;
      case i_CAS:
 	{

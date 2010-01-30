@@ -122,15 +122,15 @@ pfield_linetoscr_dualpf_asm8:
 	BYTE_MOVE %ah,PARTIAL_REG(%edx,%dl)
 	BYTE_MOVE (%ebp,%edx,4),PARTIAL_REG(%edx,%dl)
 	movb SYM(colors_for_drawing)(,%edx,4),%ch
-	bswapl %eax
-	bswapl %ecx
+	bswap %eax
+	bswap %ecx
 	BYTE_MOVE %al,PARTIAL_REG(%edx,%dl)
 	BYTE_MOVE (%ebp,%edx,4),PARTIAL_REG(%edx,%dl)
 	movb SYM(colors_for_drawing)(,%edx,4),%cl
 	BYTE_MOVE %ah,PARTIAL_REG(%edx,%dl)
 	BYTE_MOVE (%ebp,%edx,4),PARTIAL_REG(%edx,%dl)
 	movb SYM(colors_for_drawing)(,%edx,4),%ch
-	bswapl %ecx
+	bswap %ecx
 	
 	movl SYM(xlinebuffer),%eax
 	movl %ecx,(%eax,%esi)
@@ -851,7 +851,7 @@ compiler_do_rts:
 	movl jsr_num,%ecx
 	movl (%esi),%esi
 	orl %ecx,%ecx
-	bswapl %esi
+	bswap %esi
 	jz cdrts_noway
 	decl %ecx
 	cmpl jsr_rets(,%ecx,4),%esi

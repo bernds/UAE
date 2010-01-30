@@ -43,7 +43,7 @@
 #define PIXEL_XPOS(HPOS) (((HPOS)*2 - DISPLAY_LEFT_SHIFT) << lores_shift)
 
 /* @@@ Is maxhpos + 4 - 1 correct? (4 less isn't enough) */
-#define max_diwlastword (PIXEL_XPOS(maxhpos + 4 -1))
+#define max_diwlastword (PIXEL_XPOS(maxhpos + 4 - 1))
 
 extern int lores_factor, lores_shift, sprite_width;
 

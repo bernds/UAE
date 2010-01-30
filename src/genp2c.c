@@ -82,7 +82,7 @@ static void orl (char *src, char *dst) { printf ("\torl %s,%s\n", src, dst); }
 static void imull (unsigned long val, char *dst) { printf ("\timull $0x%08lx,%s\n", val, dst); }
 static void decl (char *dst) { printf ("\tdecl %s\n", dst); }
 static void incl (char *dst) { printf ("\tincl %s\n", dst); }
-static void bswapl (char *dst) { printf ("\tbswapl %s\n", dst); }
+static void bswapl (char *dst) { printf ("\tbswap %s\n", dst); }
 static void shrl (int count, char *dst) { printf ("\tshrl $%d,%s\n", count, dst); }
 static void shll (int count, char *dst) { printf ("\tshll $%d,%s\n", count, dst); }
 static void pushl (char *src) { printf ("\tpushl %s\n", src); }

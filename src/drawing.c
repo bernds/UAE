@@ -1855,10 +1855,7 @@ STATIC_INLINE void adjust_color0_for_color_change (void)
     }
 }
 
-/* Fetched data spends 9 lores pixels somewhere in the chips before it appears
- * on-screen. We don't emulate this. Instead, we cheat with the copper to
- * compensate (much easier that way). */
-#define COPPER_MAGIC_FUDGE -9
+#define COPPER_MAGIC_FUDGE -1
 
 STATIC_INLINE void do_color_changes (line_draw_func worker)
 {

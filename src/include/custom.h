@@ -18,6 +18,7 @@ extern int intlev (void);
 extern void dumpcustom (void);
 
 extern void do_disk (void);
+extern void do_copper (void);
 
 extern void notice_new_xcolors (void);
 extern void notice_screen_contents_lost (void);
@@ -42,9 +43,9 @@ STATIC_INLINE int dmaen (unsigned int dmamask)
 }
 
 #define SPCFLAG_STOP 2
-#define SPCFLAG_DISK 4
-#define SPCFLAG_INT  8
-#define SPCFLAG_BRK  16
+#define SPCFLAG_COPPER 4
+#define SPCFLAG_INT 8
+#define SPCFLAG_BRK 16
 #define SPCFLAG_EXTRA_CYCLES 32
 #define SPCFLAG_TRACE 64
 #define SPCFLAG_DOTRACE 128

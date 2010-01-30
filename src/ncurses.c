@@ -352,7 +352,7 @@ static int getgraycol(int x, int y)
 	}
     if (cm)
 	c /= cm;
-    if (!currprefs.no_xhair)
+    if (! currprefs.curses_reverse_video)
 	c = maxc - c;
     return graychar[x2graymap[c]];
 }
@@ -387,7 +387,7 @@ static int getcol(int x, int y)
 	}
     if (cm)
 	c /= cm;
-    if (!currprefs.no_xhair)
+    if (! currprefs.curses_reverse_video)
 	c = maxc - c;
     return (graychar[x2graymap[c]] & ~A_COLOR) | COLOR_PAIR (mycolor2pair_map[bestcol]);
 }
@@ -637,6 +637,11 @@ void target_specific_usage(void)
 
 /***************************************************************************/
 
+int check_prefs_changed_gfx (void)
+{
+    return 0;
+}
+
 int debuggable(void)
 {
     return 1;
@@ -663,4 +668,14 @@ int lockscr (void)
 
 void unlockscr (void)
 {
+}
+
+void target_save_options (FILE *f, struct uae_prefs *p)
+{
+    fprintf (f, "curses.reverse_video=%s\n", p->curses_reverse_video ? "true" : "false");
+}
+
+int target_parse_option (struct uae_prefs *p, char *option, char *value)
+{
+    return (cfgfile_yesno (option, value, "reverse_video", &p->curses_reverse_video));
 }

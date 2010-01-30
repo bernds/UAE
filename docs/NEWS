@@ -2,6 +2,13 @@ Note! This file only contains user-visible changes. There may be others. For a
 more detailed description of changes between releases, read src/ChangeLog, and
 for the full picture, make a diff between releases.
 
+User-visible changes in 0.8.11:
+  - Finally, an accurate copper emulation, thanks to Sam Jordan.
+  - Sprite emulation fixes, also due to Sam Jordan.
+  - Some CPU emulation fixes (Keith Rollin, Toni Wilen, Lauri Pesonen)
+  - Old command line options actually work now.
+  - Some floppy related lockups removed.
+
 User-visible changes in 0.8.10:
   - Audio interpolation
   - Bugfixes for
@@ -21,6 +28,7 @@ User-visible changes in 0.8.9:
     you to (e.g.) use CD writers with the emulator.
 
 User-visible changes in 0.8.8:
+  - I'm sure there were some.
 
 User-visible changes in 0.8.7:
   - Commandline and configuration file handling has been redone. The old

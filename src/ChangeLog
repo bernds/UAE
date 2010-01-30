@@ -1,3 +1,17 @@
+991229 Always use NTSC vblank_lastline for sprite purposes.
+       Make sprite logic recognize vertical stop even if vertical start has
+       not been reached (found by Sam Jordan).
+       Prevent move2c/movec2 instructions from incrementing the PC if they
+       raise an illegal instruction exception (found by Toni Wilen).
+991212 ncurses port compiles again.
+       Disable serial interrupts in custom.c; they break things.
+991208 Add a missing decide_line call in update_copper_1.
+991206 Fix copper emulation to use state machine figured out by Sam Jordan.
+991205 Fix event table corruption in disksync_handler.
+991113 gencpu.c: Fix a problem with BTST.
+991110 fpp.c: Initial set of changes merging code from Lauri Pesonen.
+991024 Add missing type in m68k_run1.
+       Divisions by zero clear overflow bit.
 991023 Fix compilation problem for ! HAVE_STEREO_SUPPORT.
 991022 Rewrite disk read code to transfer some DMA words every raster line.
        fpp_movem_index1 and fpp_movem_index2 were reversed (Brian King, Sam

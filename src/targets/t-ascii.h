@@ -13,6 +13,3 @@
 
 #define DEFPRTNAME "lpr"
 #define DEFSERNAME "/dev/ttyS1"
-
-#define TARGET_SPECIAL_OPTIONS \
-    { "x",	  "  -x           : Reverse video (white on black)\n" },

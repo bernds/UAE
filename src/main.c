@@ -136,6 +136,8 @@ void default_prefs (struct uae_prefs *p)
 
     p->svga_no_linear = 0;
 
+    p->curses_reverse_video = 0;
+
     p->win32_middle_mouse = 0;
     p->win32_sound_style = 0;
     p->win32_sound_tweak = 0;
@@ -335,9 +337,11 @@ void parse_cmdline (int argc, char **argv)
 	} else {
 	    if (argv[i][0] == '-' && argv[i][1] != '\0') {
 		const char *arg = argv[i] + 2;
-		if (*arg == '\0')
+		int extra_arg = *arg == '\0';
+		if (extra_arg)
 		    arg = i + 1 < argc ? argv[i + 1] : 0;
-		i += parse_cmdline_option (argv[i][1], arg);
+		if (parse_cmdline_option (argv[i][1], arg) && extra_arg)
+		    i++;
 	    }
 	}
     }

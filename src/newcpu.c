@@ -753,11 +753,12 @@ static void Interrupt(int nr)
 
 static int caar, cacr;
 
-void m68k_move2c (int regno, uae_u32 *regp)
+int m68k_move2c (int regno, uae_u32 *regp)
 {
-    if (currprefs.cpu_level == 1 && (regno & 0x7FF) > 1)
+    if (currprefs.cpu_level == 1 && (regno & 0x7FF) > 1) {
 	op_illg (0x4E7B);
-    else
+	return 0;
+    } else
 	switch (regno) {
 	 case 0: regs.sfc = *regp & 7; break;
 	 case 1: regs.dfc = *regp & 7; break;
@@ -769,15 +770,17 @@ void m68k_move2c (int regno, uae_u32 *regp)
 	 case 0x804: regs.isp = *regp; if (regs.m == 0) m68k_areg(regs, 7) = regs.isp; break;
 	 default:
 	    op_illg (0x4E7B);
-	    break;
+	    return 0;
 	}
+    return 1;
 }
 
-void m68k_movec2 (int regno, uae_u32 *regp)
+int m68k_movec2 (int regno, uae_u32 *regp)
 {
-    if (currprefs.cpu_level == 1 && (regno & 0x7FF) > 1)
+    if (currprefs.cpu_level == 1 && (regno & 0x7FF) > 1) {
 	op_illg (0x4E7A);
-    else
+	return 0;
+    } else
 	switch (regno) {
 	 case 0: *regp = regs.sfc; break;
 	 case 1: *regp = regs.dfc; break;
@@ -789,8 +792,9 @@ void m68k_movec2 (int regno, uae_u32 *regp)
 	 case 0x804: *regp = regs.m == 0 ? m68k_areg(regs, 7) : regs.isp; break;
 	 default:
 	    op_illg (0x4E7A);
-	    break;
+	    return 0;
 	}
+    return 1;
 }
 
 STATIC_INLINE int
@@ -1180,20 +1184,24 @@ static void do_trace (void)
 
 static int do_specialties (void)
 {
+    if (regs.spcflags & SPCFLAG_COPPER)
+	do_copper ();
+
     /*n_spcinsns++;*/
     while (regs.spcflags & SPCFLAG_BLTNASTY) {
 	do_cycles (4);
-	if (regs.spcflags & SPCFLAG_DISK)
-	    do_disk ();
+	if (regs.spcflags & SPCFLAG_COPPER)
+	    do_copper ();
     }
+
     run_compiled_code();
     if (regs.spcflags & SPCFLAG_DOTRACE) {
 	Exception (9,last_trace_ad);
     }
     while (regs.spcflags & SPCFLAG_STOP) {
 	do_cycles (4);
-	if (regs.spcflags & SPCFLAG_DISK)
-	    do_disk ();
+	if (regs.spcflags & SPCFLAG_COPPER)
+	    do_copper ();
 	if (regs.spcflags & (SPCFLAG_INT | SPCFLAG_DOINT)){
 	    int intr = intlev ();
 	    regs.spcflags &= ~(SPCFLAG_INT | SPCFLAG_DOINT);
@@ -1206,9 +1214,6 @@ static int do_specialties (void)
     }
     if (regs.spcflags & SPCFLAG_TRACE)
 	do_trace ();
-
-    if (regs.spcflags & SPCFLAG_DISK)
-	do_disk ();
 
     if (regs.spcflags & SPCFLAG_DOINT) {
 	int intr = intlev ();
@@ -1309,7 +1314,7 @@ static void m68k_run_2 (void)
 }
 
 #ifdef X86_ASSEMBLY
-STATIC_INLINE void m68k_run1 (func)
+STATIC_INLINE void m68k_run1 (void (*func)(void))
 {
     /* Work around compiler bug: GCC doesn't push %ebp in m68k_run_1. */
     __asm__ __volatile__ ("pushl %%ebp\n\tcall *%0\n\tpopl %%ebp"

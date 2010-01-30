@@ -107,6 +107,7 @@ guidelines.
   This applies to _all_ OS/CPU/compiler specific details. Basically, nothing
   of that sort should appear in src/*.c (we're a bit away from that goal at
   the moment, but it's getting better).
+* Repeat after me: #ifdefs are evil (most of the time).
 * Make sure your code does not make assumption about type sizes other than
   the minimum widths allowed by C. If you need specific type sizes, use the
   uae_u32 type and its friends.

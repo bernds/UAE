@@ -1,4 +1,4 @@
-This is version 0.8.10 of UAE, the Un*x Amiga Emulator.
+This is version 0.8.11 of UAE, the Un*x Amiga Emulator.
 
 Versions numbered 0.8.x are beta versions, to be used for development only.
 If you are only a user of UAE, you are better off using the latest 0.7.x
@@ -88,8 +88,7 @@ Not emulated:
   or BSD.
 - The AGA chipset (A4000/A1200). This chipset has enhanced capabilites for
   up to 256 colors in all resolutions.
-- Serial port emulation exists but doesn't work too well (someone tell me when
-  that's no longer true, I don't use it).
+- Serial port emulation exists but doesn't work too well.
 
 Since the PC floppy controller can't read Amiga disks (yes, that's a fact), 
 floppy access has to be emulated differently: Floppies are emulated by means 
@@ -666,17 +665,14 @@ UAE.
 
 The new "official" UAE page is located at
 
-http://www.freiburg.linux.de/~uae
+  http://www.freiburg.linux.de/~uae
 
 thanks to Stefan Reinauer who is now maintaining it.
 
 There, you will find links to other UAE pages. One which is especially useful
 is the "UAE Discussion Board" set up by Gustavo Goedert, the address is
 
-http://www.netrunner.com.br/dosuae/uaeboard/index.html
-
-Not quite as good as a newsgroup due to braindamaged reader software
-(Ratscope), but still a blessing.
+  http://amiga.nvg.org/uaeboard
 
 There is supposedly a newsgroup named "alt.emulators.amiga", but I don't get
 it here.
@@ -689,7 +685,7 @@ Petter Schau has written another Amiga emulator named "Fellow".  It's mostly
 written in x86 assembly and only runs under DOS.  It's quite compatible and
 generally faster than UAE.  The Fellow homepage is at
 
-http://www.geocities.com/SiliconValley/Peaks/5244/
+  http://www.geocities.com/SiliconValley/Peaks/5244/
 
 
 Thanks & Acknowledgements
@@ -719,6 +715,12 @@ Special thanks to:
     world...
   - Jens Schönfeld, inventor of the Catweasel controller, donated one
     controller card.
+  - Jürgen Beck, maintainer of the Amiga emulation web site "Back to the
+    Roots" (http://back2roots.emuunlim.com) and everyone else who spends
+    time writing to software companies asking for permission to distribute
+    old Amiga games.
+  - all the software companies who allow distribution of their Amiga games on
+    sites like "Back to the Roots".
 
 
 Authors/Maintainers
