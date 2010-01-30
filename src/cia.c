@@ -11,7 +11,6 @@
 #include "sysdeps.h"
 #include <assert.h>
 
-#include "config.h"
 #include "options.h"
 #include "threaddep/thread.h"
 #include "events.h"
@@ -966,7 +965,7 @@ void REGPARAM2 clock_bput (uaecptr addr, uae_u32 value)
 
 /* CIA-A and CIA-B save/restore code */
 
-uae_u8 *restore_cia (int num, uae_u8 *src)
+const uae_u8 *restore_cia (int num, const uae_u8 *src)
 {
     uae_u8 b;
     uae_u16 w;

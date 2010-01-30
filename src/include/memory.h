@@ -72,7 +72,6 @@ typedef struct {
 } addrbank;
 
 extern uae_u8 *filesysory;
-extern uae_u8 *rtarea;
 
 extern addrbank chipmem_bank;
 extern addrbank kickmem_bank;

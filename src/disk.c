@@ -16,7 +16,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "threaddep/thread.h"
 #include "memory.h"
@@ -1322,7 +1321,7 @@ void DISK_restore_custom (uae_u32 pdskpt, uae_u16 pdsklength, uae_u16 pdskdatr, 
     dskbytr_tab[0] = pdskbytr;
 }
 
-uae_u8 *restore_disk(int num,uae_u8 *src)
+const uae_u8 *restore_disk (int num, const uae_u8 *src)
 {
     drive *drv;
     int state;
@@ -1347,7 +1346,7 @@ uae_u8 *restore_disk(int num,uae_u8 *src)
     return src;
 }
 
-uae_u8 *save_disk(int num, int *len, uae_u8 *dstptr)
+uae_u8 *save_disk (int num, int *len, uae_u8 *dstptr)
 {
     uae_u8 *dstbak,*dst;
     drive *drv;
@@ -1373,7 +1372,7 @@ uae_u8 *save_disk(int num, int *len, uae_u8 *dstptr)
 
 /* internal floppy controller variables */
 
-uae_u8 *restore_floppy(uae_u8 *src)
+const uae_u8 *restore_floppy (const uae_u8 *src)
 {
     word = restore_u16();
     bitoffset = restore_u8();
@@ -1385,7 +1384,7 @@ uae_u8 *restore_floppy(uae_u8 *src)
     return src;
 }
 
-uae_u8 *save_floppy(int *len, uae_u8 *dstptr)
+uae_u8 *save_floppy (int *len, uae_u8 *dstptr)
 {
     uae_u8 *dstbak, *dst;
 

@@ -9,7 +9,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "events.h"
 #include "uae.h"
@@ -332,7 +331,8 @@ static void blitter_line(void)
     uae_u16 blitchold = blt_info.bltcdat;
     blt_info.bltddat = 0;
 
-    if (blitsing && blitonedot) blitahold = 0;
+    if (blitsing && blitonedot)
+	blitahold = 0;
     blitonedot = 1;
     blt_info.bltddat = blit_func(blitahold, blitbhold, blitchold, bltcon0 & 0xFF);
     if (!blitsign){
@@ -435,9 +435,10 @@ static void actually_do_blit(void)
 	    blitter_nxline();
 	} while (bltstate != BLT_done);
     } else {
-	/*blitcount[bltcon0 & 0xff]++;  blitter debug */
-	if (blitdesc) blitter_dofast_desc();
-	else blitter_dofast();
+	if (blitdesc)
+	    blitter_dofast_desc();
+	else
+	    blitter_dofast();
     }
     blitter_done_notify ();
 }

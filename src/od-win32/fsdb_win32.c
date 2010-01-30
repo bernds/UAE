@@ -30,11 +30,11 @@ int fsdb_name_invalid (const char *n)
     int l = strlen (n);
 
     if (a >= 'a' && a <= 'z')
-        a -= 32;
+	a -= 32;
     if (b >= 'a' && b <= 'z')
-        b -= 32;
+	b -= 32;
     if (c >= 'a' && c <= 'z')
-        c -= 32;
+	c -= 32;
 
     if ((a == 'A' && b == 'U' && c == 'X' && l == 3) /* AUX  */
 	|| (a == 'C' && b == 'O' && c == 'N' && l == 3) /* CON  */
@@ -51,8 +51,8 @@ int fsdb_name_invalid (const char *n)
 
     /* these characters are *never* allowed */
     for (i = 0; i < NUM_EVILCHARS; i++) {
-        if (strchr (n, evilchars[i]) != 0)
-            return 1;
+	if (strchr (n, evilchars[i]) != 0)
+	    return 1;
     }
 
     /* the reserved fsdb filename */
@@ -145,13 +145,13 @@ char *fsdb_create_unique_nname (a_inode *base, const char *suggestion)
 	
     /* replace the evil ones... */
     for (i=0; i < NUM_EVILCHARS; i++)
-        while ((c = strchr (tmp, evilchars[i])) != 0)
-            *c = '_';
+	while ((c = strchr (tmp, evilchars[i])) != 0)
+	    *c = '_';
 
     while ((c = strchr (tmp, '.')) != 0)
-        *c = '_';
+	*c = '_';
     while ((c = strchr (tmp, ' ')) != 0)
-        *c = '_';
+	*c = '_';
 
     for (;;) {
 	char *p = build_nname (base->nname, tmp);

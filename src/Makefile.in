@@ -35,11 +35,12 @@ INCLUDES=-I. -I@top_srcdir@/src/include/
 
 OBJS = main.o newcpu.o memory.o @CPUOBJS@ custom.o cia.o serial.o blitter.o \
        autoconf.o ersatz.o filesys.o hardfile.o keybuf.o expansion.o zfile.o \
-       fpp.o readcpu.o cpudefs.o gfxutil.o gfxlib.o blitfunc.o blittable.o \
+       fpp.o readcpu.o cpudefs.o gfxutil.o traps.o gfxlib.o blitfunc.o blittable.o \
        disk.o audio.o uaelib.o drawing.o picasso96.o cpustbl.o inputdevice.o \
        uaeexe.o bsdsocket.o missing.o sd-sound.o od-joy.o md-support.o \
-       fsusage.o cfgfile.o native2amiga.o fsdb.o identify.o crc32.o \
-       savestate.o writelog.o hotkeys.o \
+       fsusage.o cfgfile.o native2amiga.o fsdb.o identify.o timemgr.o crc32.o \
+       savestate.o writelog.o hotkeys.o keymap/keymap.o keymap/x11pc_rawkeys.o \
+       sinctable.o \
        @ASMOBJS@ @GFXOBJS@ @DEBUGOBJS@ @SCSIOBJS@ @FSDBOBJS@
 
 
@@ -88,7 +89,7 @@ halfclean:
 streifenfrei: clean
 	-rm -f Makefile sysconfig.h
 	-rm -f od-joy.c md-X86.S sd-sound.c md-support.c
-	-rm -f machdep osdep threaddep sounddep target.h config.h
+	-rm -f machdep osdep threaddep sounddep target.h
 
 blit.h: tools/genblitter
 	./tools/genblitter i >blit.h
@@ -147,24 +148,12 @@ touch:
 build68k.o: include/readcpu.h
 readcpu.o: include/readcpu.h
 
-main.o: config.h
-cia.o: config.h include/events.h
-custom.o: config.h include/events.h blit.h
-newcpu.o: config.h include/events.h
-autoconf.o: config.h
-expansion.o: config.h
-xwin.o: config.h
-svga.o: config.h
-audio.o: config.h include/events.h
-memory.o: config.h
-debug.o: config.h
-identify.o: config.h
-fpp.o: config.h
-ersatz.o: config.h
-filesys.o: config.h
-execlib.o: config.h
-disk.o: config.h include/events.h
-blitter.o: config.h include/events.h blit.h
+cia.o: include/events.h
+custom.o: include/events.h blit.h
+newcpu.o: include/events.h
+audio.o: include/events.h
+disk.o: include/events.h
+blitter.o: include/events.h blit.h
 
 # sam: this is for people with low memory. (is there a way do do this with a single rule ?)
 cpuemu1.o: cpuemu.c

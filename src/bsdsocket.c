@@ -14,7 +14,6 @@
 #include <assert.h>
 #include <stddef.h>
 
-#include "config.h"
 #include "options.h"
 #include "memory.h"
 #include "custom.h"

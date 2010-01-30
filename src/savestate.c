@@ -45,7 +45,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "memory.h"
 
@@ -81,7 +80,7 @@ void save_u8_func (uae_u8 **dstp, uae_u8 v)
     *dst++ = v;
     *dstp = dst;
 }
-void save_string_func (uae_u8 **dstp, char *from)
+void save_string_func (uae_u8 **dstp, const char *from)
 {
     uae_u8 *dst = *dstp;
     while(*from)
@@ -90,37 +89,37 @@ void save_string_func (uae_u8 **dstp, char *from)
     *dstp = dst;
 }
 
-uae_u32 restore_u32_func (uae_u8 **dstp)
+uae_u32 restore_u32_func (const uae_u8 **dstp)
 {
     uae_u32 v;
-    uae_u8 *dst = *dstp;
+    const uae_u8 *dst = *dstp;
     v = (dst[0] << 24) | (dst[1] << 16) | (dst[2] << 8) | (dst[3]);
     *dstp = dst + 4;
     return v;
 }
-uae_u16 restore_u16_func (uae_u8 **dstp)
+uae_u16 restore_u16_func (const uae_u8 **dstp)
 {
     uae_u16 v;
-    uae_u8 *dst = *dstp;
+    const uae_u8 *dst = *dstp;
     v=(dst[0] << 8) | (dst[1]);
     *dstp = dst + 2;
     return v;
 }
-uae_u8 restore_u8_func (uae_u8 **dstp)
+uae_u8 restore_u8_func (const uae_u8 **dstp)
 {
     uae_u8 v;
-    uae_u8 *dst = *dstp;
+    const uae_u8 *dst = *dstp;
     v = dst[0];
     *dstp = dst + 1;
     return v;
 }
-char *restore_string_func (uae_u8 **dstp)
+char *restore_string_func (const uae_u8 **dstp)
 {
     int len;
     uae_u8 v;
-    uae_u8 *dst = *dstp;
+    const uae_u8 *dst = *dstp;
     char *top, *to;
-    len = strlen(dst) + 1;
+    len = strlen ((const char *)dst) + 1;
     top = to = malloc (len);
     do {
 	v = *dst++;
@@ -132,7 +131,7 @@ char *restore_string_func (uae_u8 **dstp)
 
 /* read and write IFF-style hunks */
 
-static void save_chunk (FILE *f, uae_u8 *chunk, long len, char *name)
+static void save_chunk (FILE *f, uae_u8 *chunk, long len, const char *name)
 {
     uae_u8 tmp[4], *dst;
     uae_u8 zero[4]= { 0, 0, 0, 0 };
@@ -160,7 +159,8 @@ static void save_chunk (FILE *f, uae_u8 *chunk, long len, char *name)
 
 static uae_u8 *restore_chunk (FILE *f, char *name, long *len, long *filepos)
 {
-    uae_u8 tmp[4], dummy[4], *mem, *src;
+    uae_u8 tmp[4], dummy[4], *mem;
+    const uae_u8 *src;
     uae_u32 flags;
     long len2;
 
@@ -205,7 +205,7 @@ static uae_u8 *restore_chunk (FILE *f, char *name, long *len, long *filepos)
 }
 
 #if 0
-void restore_ram (long filepos, uae_u8 *memory)
+void restore_ram (size_t filepos, uae_u8 *memory)
 {
     uae_u8 tmp[8];
     uae_u8 *src = tmp;
@@ -229,7 +229,7 @@ void restore_ram (long filepos, uae_u8 *memory)
 }
 #endif
 
-static void restore_header (uae_u8 *src)
+static void restore_header (const uae_u8 *src)
 {
     char *emuname, *emuversion, *description;
 
@@ -238,7 +238,7 @@ static void restore_header (uae_u8 *src)
     emuversion = restore_string ();
     description = restore_string ();
     write_log ("Saved with: '%s %s', description: '%s'\n",
-	emuname,emuversion,description);
+	emuname, emuversion, description);
     free (description);
     free (emuversion);
     free (emuname);
@@ -246,7 +246,7 @@ static void restore_header (uae_u8 *src)
 
 /* restore all subsystems */
 
-void restore_state (char *filename)
+void restore_state (const char *filename)
 {
     FILE *f;
     uae_u8 *chunk,*end;
@@ -372,7 +372,7 @@ void savestate_restore_finish (void)
 
 /* Save all subsystems  */
 
-void save_state (char *filename, char *description)
+void save_state (const char *filename, const char *description)
 {
     uae_u8 header[1000];
     char tmp[100];
@@ -387,9 +387,8 @@ void save_state (char *filename, char *description)
 
     dst = header;
     save_u32 (0);
-    save_string("UAE");
-    sprintf (tmp, "%d.%d.%d", UAEMAJOR, UAEMINOR, UAESUBREV);
-    save_string (tmp);
+    save_string ("UAE");
+    save_string (PACKAGE_VERSION);
     save_string (description);
     save_chunk (f, header, dst-header, "ASF ");
 

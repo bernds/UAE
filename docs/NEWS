@@ -2,6 +2,16 @@ Note! This file only contains user-visible changes. There may be others. For a
 more detailed description of changes between releases, read src/ChangeLog, and
 for the full picture, make a diff between releases.
 
+User-visible changes in 0.8.26:
+  - Compiles with modern gcc versions
+  - SDL graphics updated, this is now recommended over native X11 (since DGA
+    doesn't work with some graphics drivers these days).
+  - Random updates from WinUAE/E-UAE, including
+    * Sinc interpolation for audio output.
+  - Tries to use gettimeofday in preference to the CPU's rdtsc instruction, as
+    the latter isn't totally reliable on all machines.
+  - Fixed a bug when switching between Picasso and native modes.
+
 User-visible changes in 0.8.25:
   - More merging with WinUAE; a lot of the input device code has changed
   - GUI cleaned up.

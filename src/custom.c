@@ -14,7 +14,6 @@
 #include <ctype.h>
 #include <assert.h>
 
-#include "config.h"
 #include "options.h"
 #include "threaddep/thread.h"
 #include "uae.h"
@@ -39,20 +38,14 @@
 #include "drawing.h"
 #include "savestate.h"
 
+#define SPR0_HPOS 0x15
+
 #define SPRITE_COLLISIONS
 
 static uae_u16 last_custom_value;
 
 static unsigned int n_consecutive_skipped = 0;
 static unsigned int total_skipped = 0;
-
-/* Events */
-
-unsigned long int currcycle, nextevent, is_lastline;
-static int rpt_did_reset;
-struct ev eventtab[ev_max];
-
-frame_time_t vsynctime, vsyncmintime;
 
 int vpos;
 static uae_u16 lof;
@@ -270,7 +263,7 @@ enum fetchstate {
 
 STATIC_INLINE int nodraw (void)
 {
-    return framecnt != 0;
+    return framecnt != 0 || !curr_gfx;
 }
 
 uae_u32 get_copper_address (int copno)
@@ -308,24 +301,6 @@ int find_copper_record (uaecptr addr, int *phpos, int *pvpos)
 	}
     }
     return 0;
-}
-
-int rpt_available = 0;
-
-void reset_frame_rate_hack (void)
-{
-    if (currprefs.m68k_speed != -1)
-	return;
-
-    if (! rpt_available) {
-	currprefs.m68k_speed = 0;
-	return;
-    }
-
-    rpt_did_reset = 1;
-    is_lastline = 0;
-    vsyncmintime = read_processor_time() + vsynctime;
-    write_log ("Resetting frame rate hack\n");
 }
 
 STATIC_INLINE void setclr (uae_u16 *p, uae_u16 val)
@@ -1248,7 +1223,7 @@ STATIC_INLINE int one_fetch_cycle (int i, int ddfstop_to_test, int dma, int fm)
     case 0: return one_fetch_cycle_fm0 (i, ddfstop_to_test, dma);
     case 1: return one_fetch_cycle_fm1 (i, ddfstop_to_test, dma);
     case 2: return one_fetch_cycle_fm2 (i, ddfstop_to_test, dma);
-    default: abort ();
+    default: uae_abort ("fm corrupt");
     }
 }
 
@@ -1434,12 +1409,12 @@ static void record_color_change (int hpos, int regno, unsigned long value)
 {
     if (regno == -1 && value) {
 	thisline_decision.ham_seen = 1;
-	if (hpos < 0x18)
+	if (hpos < HARD_DDF_START)
 	    thisline_decision.ham_at_start = 1;
     }
 
     /* Early positions don't appear on-screen. */
-    if (nodraw () || vpos < minfirstline || hpos < 0x18
+    if (nodraw () || vpos < minfirstline || hpos < HARD_DDF_START
 	/*|| currprefs.emul_accuracy == 0*/)
 	return;
 
@@ -1653,7 +1628,7 @@ static void record_sprite (int line, int num, int sprxp, uae_u16 *data, uae_u16 
     }
 
     if (sprxp < e->pos)
-	abort ();
+	uae_abort ("sprxp < e->pos");
 
     e->max = sprxp + width;
     e[1].first_pixel = e->first_pixel + ((e->max - e->pos + 3) & ~3);
@@ -1918,14 +1893,6 @@ static void reset_decisions (void)
     last_fetch_hpos = -1;
 }
 
-void compute_vsynctime (void)
-{
-    vsynctime = syncbase / vblank_hz;
-    if (currprefs.produce_sound > 1) {
-	vsynctime = vsynctime * 9 / 10;
-    }
-}
-
 /* set PAL or NTSC timing variables */
 
 static void init_hz (void)
@@ -2075,9 +2042,10 @@ STATIC_INLINE void COP1LCL (uae_u16 v) { cop1lc = (cop1lc & ~0xffff) | (v & 0xff
 STATIC_INLINE void COP2LCH (uae_u16 v) { cop2lc = (cop2lc & 0xffff) | ((uae_u32)v << 16); }
 STATIC_INLINE void COP2LCL (uae_u16 v) { cop2lc = (cop2lc & ~0xffff) | (v & 0xfffe); }
 
-static void start_copper (void)
+static void COPJMP (int num)
 {
     int was_active = eventtab[ev_copper].active;
+    cop_state.ip = num == 1 ? cop1lc : cop2lc;
     eventtab[ev_copper].active = 0;
     if (was_active)
 	events_schedule ();
@@ -2093,24 +2061,12 @@ static void start_copper (void)
     }
 }
 
-static void COPJMP1 (uae_u16 a)
-{
-    cop_state.ip = cop1lc;
-    start_copper ();
-}
-
-static void COPJMP2 (uae_u16 a)
-{
-    cop_state.ip = cop2lc;
-    start_copper ();
-}
-
 STATIC_INLINE void COPCON (uae_u16 a)
 {
     copcon = a;
 }
 
-static void DMACON (int hpos, uae_u16 v)
+static void DMACON (unsigned int hpos, uae_u16 v)
 {
     int i;
 
@@ -2153,23 +2109,31 @@ static void DMACON (int hpos, uae_u16 v)
     if ((dmacon & (DMA_BLITPRI | DMA_BLITTER | DMA_MASTER)) != (DMA_BLITPRI | DMA_BLITTER | DMA_MASTER))
 	unset_special (SPCFLAG_BLTNASTY);
 
-    if (currprefs.produce_sound > 0) {
-	update_audio ();
+    if (currprefs.produce_sound > 0)
+	update_audio_dmacon ();
 
-	for (i = 0; i < 4; i++) {
-	    struct audio_channel_data *cdp = audio_channel + i;
-	    int chan_ena = (dmacon & 0x200) && (dmacon & (1<<i));
-	    if (cdp->dmaen == chan_ena)
-		continue;
-	    cdp->dmaen = chan_ena;
-	    if (cdp->dmaen)
-		audio_channel_enable_dma (cdp);
-	    else
-		audio_channel_disable_dma (cdp);
-	}
-	schedule_audio ();
-    }
     events_schedule();
+}
+
+/*
+ * Get level of interrupt request presented to CPU.
+ *
+ * If no IRQs are active and enabled, returns -1.
+ * If none of the active IRQs have yet reached the CPU, returns 0.
+ * Otherwise, returns the priority level of the highest priorty active IRQ.
+ */
+int intlev (void)
+{
+    uae_u16 imask = intreq & intena;
+    if (imask && (intena & 0x4000)){
+	if (imask & 0x2000) return 6;
+	if (imask & 0x1800) return 5;
+	if (imask & 0x0780) return 4;
+	if (imask & 0x0070) return 3;
+	if (imask & 0x0008) return 2;
+	if (imask & 0x0007) return 1;
+    }
+    return -1;
 }
 
 /*static int trace_intena = 0;*/
@@ -2782,15 +2746,22 @@ static void perform_copper_write (int old_hpos)
 }
 
 static int isagnus[]= {
-    1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,1,1,1,1,0,0,0,0,0,0,0,0,
-    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-    0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,
-    1,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,
-    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, /* BPLxPT */
-    0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,
-    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, /* SPRxPT */
+    1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,1,1,1,1,0,0,0,0,0,0,0,0, /* 32 0x00 - 0x3e */
+    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, /* 27 0x40 - 0x74 */
+
+    0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0, /* 21 */
+    1,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0, /* 32 0xa0 - 0xde */
+    /* BPLxPTH/BPLxPTL */
+    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, /* 16 */
+    /* BPLCON0-3,BPLMOD1-2 */
+    0,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0, /* 16 */
+    /* SPRxPTH/SPRxPTL */
+    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, /* 16 */
+    /* SPRxPOS/SPRxCTL/SPRxDATA/SPRxDATB */
     1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* colors */
+    /* COLORxx */
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    /* RESERVED */
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 };
 
@@ -3133,7 +3104,6 @@ STATIC_INLINE void do_sprites_1 (int num, int cycle, int hpos)
     }
 }
 
-#define SPR0_HPOS 0x15
 static void do_sprites (int hpos)
 {
     int maxspr, minspr;
@@ -3283,26 +3253,7 @@ static void vsync_handler (void)
 
     n_frames++;
 
-    if (currprefs.m68k_speed == -1) {
-	frame_time_t curr_time = read_processor_time ();
-	vsyncmintime += vsynctime;
-	/* @@@ Mathias? How do you think we should do this? */
-	/* If we are too far behind, or we just did a reset, adjust the
-	 * needed time. */
-	if ((long int)(curr_time - vsyncmintime) > 0 || rpt_did_reset)
-	    vsyncmintime = curr_time + vsynctime;
-	rpt_did_reset = 0;
-    } else {
-#ifdef RPT_WORKS_OK
-	if (RPT_WORKS_OK) {
-	    frame_time_t curr_time;
-	    do
-		curr_time = read_processor_time ();
-	    while ((long int)(read_processor_time () - vsyncmintime) < 0);
-	    vsyncmintime = curr_time + vsynctime;
-	}
-#endif
-    }
+    time_vsync ();
 
     handle_events ();
 
@@ -3409,17 +3360,19 @@ static void hsync_handler (void)
 
     DISK_update ();
 
-    is_lastline = vpos + 1 == maxvpos + (lof == 0 ? 0 : 1) && currprefs.m68k_speed == -1 && ! rpt_did_reset;
+    is_lastline = (vpos + 1 == maxvpos + (lof == 0 ? 0 : 1)
+		   && currprefs.m68k_speed == -1
+		   && vsyncmintime_valid);
 
-    if ((bplcon0 & 4) && currprefs.gfx_linedbl)
+    if ((bplcon0 & 4) && curr_gfx && curr_gfx->linedbl)
 	notice_interlace_seen ();
 
     if (!nodraw ()) {
 	int lineno = vpos;
 	nextline_how = nln_normal;
-	if (currprefs.gfx_linedbl) {
+	if (curr_gfx->linedbl) {
 	    lineno *= 2;
-	    nextline_how = currprefs.gfx_linedbl == 1 ? nln_doubled : nln_nblack;
+	    nextline_how = curr_gfx->linedbl == 1 ? nln_doubled : nln_nblack;
 	    if (bplcon0 & 4) {
 		if (!lof) {
 		    lineno++;
@@ -3554,6 +3507,13 @@ void customreset (void)
     init_hardware_frame ();
     reset_drawing ();
 
+#ifdef PICASSO96
+    InitPicasso96 ();
+    picasso_on = 0;
+    picasso_requested_on = 0;
+    gfx_set_picasso_state (0);
+#endif
+
     reset_decisions ();
 
 #ifdef HAVE_GETTIMEOFDAY
@@ -3573,9 +3533,9 @@ void customreset (void)
 #if 0
 	DMACON (0, 0);
 #endif
-	COPJMP1 (0);
 	if (diwhigh)
 	    diwhigh_written = 1;
+	COPJMP (1);
 	v = bplcon0;
 	BPLCON0 (0, 0);
 	BPLCON0 (0, v);
@@ -3606,6 +3566,10 @@ void customreset (void)
 	dumpcustom ();
 	for (i = 0; i < 8; i++)
 	    nr_armed += spr[i].armed != 0;
+	if (! currprefs.produce_sound) {
+	    eventtab[ev_audio].active = 0;
+	    events_schedule ();
+	}
     }
     expand_sprres ();
 }
@@ -3625,20 +3589,6 @@ void dumpcustom (void)
 	    write_log ("Skipped frames: %d\n", total_skipped);
     }
     /*for (i=0; i<256; i++) if (blitcount[i]) write_log ("minterm %x = %d\n",i,blitcount[i]);  blitter debug */
-}
-
-int intlev (void)
-{
-    uae_u16 imask = intreq & intena;
-    if (imask && (intena & 0x4000)){
-	if (imask & 0x2000) return 6;
-	if (imask & 0x1800) return 5;
-	if (imask & 0x0780) return 4;
-	if (imask & 0x0070) return 3;
-	if (imask & 0x0008) return 2;
-	if (imask & 0x0007) return 1;
-    }
-    return -1;
 }
 
 static void gen_custom_tables (void)
@@ -3828,8 +3778,8 @@ void REGPARAM2 custom_wput_1 (int hpos, uaecptr addr, uae_u32 value)
      case 0x084: COP2LCH (value); break;
      case 0x086: COP2LCL (value); break;
 
-     case 0x088: COPJMP1 (value); break;
-     case 0x08A: COPJMP2 (value); break;
+     case 0x088: COPJMP (1); break;
+     case 0x08A: COPJMP (2); break;
 
      case 0x08E: DIWSTRT (hpos, value); break;
      case 0x090: DIWSTOP (hpos, value); break;
@@ -3990,7 +3940,7 @@ void custom_prepare_savestate (void)
 #define RW restore_u16 ()
 #define RL restore_u32 ()
 
-uae_u8 *restore_custom (uae_u8 *src)
+const uae_u8 *restore_custom (const uae_u8 *src)
 {
     uae_u16 dsklen, dskbytr, dskdatr;
     int dskpt;
@@ -3998,7 +3948,7 @@ uae_u8 *restore_custom (uae_u8 *src)
 
     audio_reset ();
 
-    currprefs.chipset_mask = RL;
+    changed_prefs.chipset_mask = currprefs.chipset_mask = RL;
     RW;				/* 000 ? */
     RW;				/* 002 DMACONR */
     RW;				/* 004 VPOSR */
@@ -4270,7 +4220,7 @@ uae_u8 *save_custom (int *len, uae_u8 *dstptr, int full)
     return dstbak;
 }
 
-uae_u8 *restore_custom_agacolors (uae_u8 *src)
+const uae_u8 *restore_custom_agacolors (const uae_u8 *src)
 {
     int i;
 
@@ -4294,7 +4244,7 @@ uae_u8 *save_custom_agacolors (int *len, uae_u8 *dstptr)
     return dstbak;
 }
 
-uae_u8 *restore_custom_sprite (int num, uae_u8 *src)
+const uae_u8 *restore_custom_sprite (int num, const uae_u8 *src)
 {
     spr[num].pt = RL;		/* 120-13E SPRxPT */
     sprpos[num] = RW;		/* 1x0 SPRxPOS */

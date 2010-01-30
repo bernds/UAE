@@ -8,7 +8,6 @@
  * (c) 2000-2001 Bernd Roesch
  */
 
-#include "config.h"
 #include "sysconfig.h"
 
 #include <assert.h>
@@ -67,7 +66,7 @@ static char getascii( UINT vk, UINT scancode )
     GetKeyboardState (keyState);
     result = ToAscii( vk, scancode, keyState, (LPWORD)buffer, 0 );
     if( result == 1 )
-        result = buffer[0];
+	result = buffer[0];
 #endif
     return result;
 }
@@ -98,11 +97,11 @@ static int scancode2amiga (int keycode, int scancode)
 	    case 0x51:          //@	     
 		record_key ((AK_CTRL << 1)+1);
 		return 0x10;
-            case 0xbb:          //~
+	    case 0xbb:          //~
 		record_key ((AK_CTRL << 1)+1);
 		return 0x1b;
 		
-            }
+	    }
 	}
     }
 
@@ -128,14 +127,14 @@ static int scancode2amiga (int keycode, int scancode)
 #endif
      case VK_INSERT:
      case VK_LWIN:
-        return AK_LAMI;
+	return AK_LAMI;
      case VK_HOME:
      case VK_RWIN:
-        return AK_RAMI;
+	return AK_RAMI;
      case VK_MENU:
-         return scancode & KF_EXTENDED ? AK_RALT:AK_LALT;
+	 return scancode & KF_EXTENDED ? AK_RALT:AK_LALT;
      case VK_APPS: /* Map Windows "Menu" key to Right-Alt of Amiga, for Stefan Stuntz */
-         return AK_RALT;
+	 return AK_RALT;
      case VK_SCROLL:
 	return AK_inhibit;
      case VK_F11:
@@ -150,53 +149,53 @@ static int scancode2amiga (int keycode, int scancode)
      case VK_F12:
 	 if (GetAsyncKeyState (VK_CONTROL)&0x8000)
 	     return -6;
-         if( shiftpressed() )
-             return -5;
-         else
-             return -2;
-         break;
+	 if( shiftpressed() )
+	     return -5;
+	 else
+	     return -2;
+	 break;
      case VK_PAUSE:
 	return -3;
      case VK_DECIMAL:
-        return AK_NPDEL;
+	return AK_NPDEL;
      case VK_DIVIDE:
-        return AK_NPDIV;
+	return AK_NPDIV;
      case VK_MULTIPLY:
-        return AK_NPMUL;
+	return AK_NPMUL;
      case VK_SUBTRACT:
-        return AK_NPSUB;
+	return AK_NPSUB;
      case VK_ADD:
-        return AK_NPADD;
+	return AK_NPADD;
      case VK_NUMPAD0:
-        return AK_NP0;
+	return AK_NP0;
      case VK_NUMPAD1:
-        return AK_NP1;
+	return AK_NP1;
      case VK_NUMPAD2:
-        return AK_NP2;
+	return AK_NP2;
      case VK_NUMPAD3:
-        return AK_NP3;
+	return AK_NP3;
      case VK_NUMPAD4:
-        return AK_NP4;
+	return AK_NP4;
      case VK_NUMPAD5:
-        return AK_NP5;
+	return AK_NP5;
      case VK_NUMPAD6:
-        return AK_NP6;
+	return AK_NP6;
      case VK_NUMPAD7:
-        return AK_NP7;
+	return AK_NP7;
      case VK_NUMPAD8:
-        return AK_NP8;
+	return AK_NP8;
      case VK_NUMPAD9:
-        return AK_NP9;
+	return AK_NP9;
      case VK_UP:
-        return AK_UP;
+	return AK_UP;
      case VK_DOWN:
-        return AK_DN;
+	return AK_DN;
      case VK_LEFT:
-        return AK_LF;
+	return AK_LF;
      case VK_RIGHT:
-        return AK_RT;
+	return AK_RT;
      case VK_CONTROL:
-        return scancode & KF_EXTENDED ? AK_RCTRL : AK_CTRL;
+	return scancode & KF_EXTENDED ? AK_RCTRL : AK_CTRL;
      case VK_RETURN:
 	return scancode & KF_EXTENDED ? AK_ENT : AK_RET;
      case VK_CAPITAL:
@@ -314,15 +313,15 @@ static int scancode2amiga (int keycode, int scancode)
      case 0x26:
 	return 0x28;
      case 0x27:
-        return AK_SEMICOLON;
+	return AK_SEMICOLON;
      case 0x28:
-        return AK_QUOTE;
+	return AK_QUOTE;
      case 0x2b: /* This scancode is \ on US keyboards, but # on German ones - figure out which! */
-         if( getascii( keycode & 0xFF, scancode ) == '#' )
-             return AK_NUMBERSIGN;
-         else
-             return AK_BACKSLASH;
-         break;
+	 if( getascii( keycode & 0xFF, scancode ) == '#' )
+	     return AK_NUMBERSIGN;
+	 else
+	     return AK_BACKSLASH;
+	 break;
 #ifdef USE_OLD_SHIFT_CODE
      case 0x2a:
 	return AK_LSH;
@@ -415,7 +414,7 @@ int my_kbd_handler (int keycode, int scancode, int newstate)
 
 	 case -3:
 	    if (newstate)
-    		toggle_sound = 1;
+		toggle_sound = 1;
 	    return 0;
 	 case -4:
 	    if (newstate) {
@@ -424,10 +423,10 @@ int my_kbd_handler (int keycode, int scancode, int newstate)
 	    }
 	    break;
      case -5:
-         if( newstate )
-         {
-            // Bring up GUI-based debugger here
-          if(currprefs.illegal_mem)
+	 if( newstate )
+	 {
+	    // Bring up GUI-based debugger here
+	  if(currprefs.illegal_mem)
 		   {   
 	
 		   
@@ -435,14 +434,14 @@ int my_kbd_handler (int keycode, int scancode, int newstate)
 		 else changed_prefs.gfx_afullscreen=0;
 
 		 check_prefs_changed_gfx();
-         activate_debugger();
+	 activate_debugger();
 		 
-           
-         }
+	   
+	 }
 	    
 		 }
-         return 0;
-         break;
+	 return 0;
+	 break;
 	 case -6:
 		 if(newstate)
 		 {

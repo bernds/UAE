@@ -30,7 +30,9 @@ static __inline__ void check_sound_buffers (void)
 {
     if ((char *)sndbufpt - (char *)sndbuffer >= sndbufsize) {
 	flush_sound_buffer();
+	return 1;
     }
+    return 0;
 }
 
 #define PUT_SOUND_BYTE(b) do { *(uae_u8 *)sndbufpt = b; sndbufpt = (uae_u16 *)(((uae_u8 *)sndbufpt) + 1); } while (0)

@@ -14,8 +14,6 @@ extern xcolnr xcolors[4096];
 
 extern int buttonstate[3];
 extern int newmousecounters;
-extern int lastmx, lastmy;
-extern int ievent_alive;
 
 extern int graphics_setup (void);
 extern int graphics_init (void);

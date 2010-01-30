@@ -33,7 +33,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "threaddep/thread.h"
 #include "uae.h"
@@ -633,7 +632,7 @@ static void wgfx_do_flushline (void)
     if (dstp == 0)
 	goto out;
 
-    P96TRACE(("flushing %d\n", wgfx_y));
+    //    P96TRACE(("flushing %d\n", wgfx_y));
     src = gfxmemory + wgfx_min;
 
     if (picasso_vidinfo.rgbformat == picasso96_state.RGBFormat) {
@@ -920,7 +919,7 @@ uae_u32 picasso_SetSwitch (void)
      * desired state, and wait for custom.c to call picasso_enablescreen
      * whenever it is ready to change the screen state.  */
     picasso_requested_on = !!flag;
-#if 0
+#if 1
     write_log ("SetSwitch() - trying to show %s screen\n", flag ? "picasso96" : "amiga");
 #endif
     /* Put old switch-state in D0 */
@@ -931,7 +930,7 @@ void picasso_enablescreen (int on)
 {
     wgfx_linestart = 0xFFFFFFFF;
     picasso_refresh ();
-#if 0
+#if 1
     write_log ("SetSwitch() - showing %s screen\n", on ? "picasso96" : "amiga");
 #endif
 }

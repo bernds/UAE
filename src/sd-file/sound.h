@@ -19,7 +19,9 @@ static __inline__ void check_sound_buffers (void)
 	write (sound_fd, sndbuffer, sndbufsize);
 	sndbufpt = sndbuffer;
 	sndbuf_written += sndbufsize;
+	return 1;
     }
+    return 0;
 }
 
 #define PUT_SOUND_BYTE(b) do { *(uae_u8 *)sndbufpt = b; sndbufpt = (uae_u16 *)(((uae_u8 *)sndbufpt) + 1); } while (0)

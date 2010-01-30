@@ -9,7 +9,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "memory.h"
 #include "custom.h"
@@ -62,7 +61,7 @@ int init_sound (void)
 
     init_sound_table16 ();
     sample_handler = sample16_handler;
-    sample_evtime = (long)MAXHPOS_PAL * MAXVPOS_PAL * VBLANK_HZ_PAL / rate;
+    obtained_freq = rate;
 
     sndbufpt = sndbuffer;
     sound_available = 1;

@@ -12,7 +12,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "uae.h"
 #include "memory.h"
@@ -964,7 +963,7 @@ uae_u8 *save_expansion (int *len, uae_u8 *dstptr)
     return dst;
 }
 
-uae_u8 *restore_expansion (uae_u8 *src)
+const uae_u8 *restore_expansion (const uae_u8 *src)
 {
     fastmem_start = restore_u32 ();
     z3fastmem_start = restore_u32 ();

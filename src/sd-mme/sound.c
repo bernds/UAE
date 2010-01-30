@@ -9,7 +9,6 @@
 #define MME_SOUND_C
 #include "sysconfig.h"
 #include "sysdeps.h"
-#include "config.h"
 #include "options.h"
 #include "memory.h"
 #include "events.h"
@@ -142,8 +141,7 @@ int init_sound (void)
 	return 0;
     }
     sndbuffer = mme_audiobuf;
-    scaled_sample_evtime = (unsigned long)MAXHPOS_PAL * MAXVPOS_PAL * VBLANK_HZ_PAL * CYCLE_UNIT / rate;
-    scaled_sample_evtime_ok = 1;
+    obtained_freq = rate;
 
     if (dspbits == 16) {
 	init_sound_table16 ();
@@ -162,11 +160,11 @@ int init_sound (void)
 __inline__ void check_sound_buffers (void)
 {
     if (((char *)sndbufpt - (char *)mme_sndbufpt) < sndbufsize)
-	return;
+	return 0;
     if (mmeCheckForCallbacks())
 	mmeProcessCallbacks();
     if (mme_free_bufs >= SOUND_NUMBUF)
-	return;
+	return 0;
     WaveHeader->lpData = (LPSTR)mme_sndbufpt;
     WaveHeader->dwBufferLength = ((char *)sndbufpt - (char *)mme_sndbufpt);
     mme_nextbuf++;
@@ -179,4 +177,5 @@ __inline__ void check_sound_buffers (void)
     if (waveOutWrite(mme_handle, WaveHeader,
 		     sizeof(WAVEHDR)) == MMSYSERR_NOERROR)
 	mme_free_bufs++;
+    return 1;
 }

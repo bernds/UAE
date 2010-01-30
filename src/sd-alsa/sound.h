@@ -44,28 +44,30 @@ static int alsa_xrun_recovery(snd_pcm_t *handle, int err)
   return err;
 }
 
-static void check_sound_buffers (void)
+static int check_sound_buffers (void)
 {
-  if ((char *)sndbufpt - (char *)sndbuffer >= sndbufsize) {
-    int frames = sndbufsize / alsa_to_frames_divisor;
-    char *buf = (char *) sndbuffer;
-    int ret;
-    while (frames > 0) {
-      ret = snd_pcm_writei(alsa_playback_handle, buf, frames);
-      if (ret < 0) {
-	if (ret == -EAGAIN || ret == -EINTR)
-	  continue;
-	if (alsa_xrun_recovery(alsa_playback_handle, ret) < 0) {
-	  fprintf(stderr, "uae: write error with alsa: %s\n", snd_strerror(ret));
-	  exit(-1);
+    if ((char *)sndbufpt - (char *)sndbuffer >= sndbufsize) {
+	int frames = sndbufsize / alsa_to_frames_divisor;
+	char *buf = (char *) sndbuffer;
+	int ret;
+	while (frames > 0) {
+	    ret = snd_pcm_writei(alsa_playback_handle, buf, frames);
+	    if (ret < 0) {
+		if (ret == -EAGAIN || ret == -EINTR)
+		    continue;
+		if (alsa_xrun_recovery(alsa_playback_handle, ret) < 0) {
+		    fprintf(stderr, "uae: write error with alsa: %s\n", snd_strerror(ret));
+		    exit(-1);
+		}
+		continue;
+	    }
+	    frames -= ret;
+	    buf += ret * alsa_to_frames_divisor;
 	}
-	continue;
-      }
-      frames -= ret;
-      buf += ret * alsa_to_frames_divisor;
+	sndbufpt = sndbuffer;
+	return 1;
     }
-    sndbufpt = sndbuffer;
-  }
+    return 0;
 }
 
 #define PUT_SOUND_BYTE(b) do { *(uae_u8 *)sndbufpt = b; sndbufpt = (uae_u16 *)(((uae_u8 *)sndbufpt) + 1); } while (0)

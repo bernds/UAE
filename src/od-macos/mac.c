@@ -16,7 +16,6 @@
 #include <errno.h>
 
 #include "mackbd.h"
-#include "config.h"
 #include "threaddep/thread.h"
 #include "uae.h"
 #include "amiga.h"

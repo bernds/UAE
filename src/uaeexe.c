@@ -7,7 +7,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "uae.h"
 #include "memory.h"
@@ -19,12 +18,12 @@
 static struct uae_xcmd *first = NULL;
 static struct uae_xcmd *last  = NULL;
 static char running = 0;
-static uae_u32 uaeexe_server(void);
+static uae_u32 uaeexe_server (void);
 
 /*
  * Install the server
  */
-void uaeexe_install(void)
+void uaeexe_install (void)
 {
     uaecptr loop;
 
@@ -44,17 +43,17 @@ void uaeexe_install(void)
  * to launch the command asynchronously. Please note also that the
  * remote cli works better if you've got the fifo-handler installed.
  */
-int uaeexe(char *cmd)
+int uaeexe (char *cmd)
 {
     struct uae_xcmd *nw;
 
     if (!running)
 	goto NORUN;
 
-    nw = (struct uae_xcmd *)malloc (sizeof *nw);
+    nw = (struct uae_xcmd *) malloc (sizeof *nw);
     if (!nw)
 	goto NOMEM;
-    nw->cmd = (char *)malloc (strlen (cmd) + 1);
+    nw->cmd = (char *) malloc (strlen (cmd) + 1);
     if (!nw->cmd) {
 	free (nw);
 	goto NOMEM;
@@ -64,33 +63,38 @@ int uaeexe(char *cmd)
     nw->prev = last;
     nw->next = NULL;
 
-    if(!first) first  = nw;
-    if(last) {
-	   last->next = nw;
-	   last       = nw;
-    } else last       = nw;
+    if (!first)
+	first = nw;
+    if (last) {
+	last->next = nw;
+	last = nw;
+    } else
+	last = nw;
 
     return UAEEXE_OK;
   NOMEM:
     return UAEEXE_NOMEM;
   NORUN:
-    write_log("Remote cli is not running.\n");
+    write_log ("Remote cli is not running.\n");
     return UAEEXE_NOTRUNNING;
 }
 
 /*
  * returns next command to be executed
  */
-static char *get_cmd(void)
+static char *get_cmd (void)
 {
     struct uae_xcmd *cmd;
     char *s;
 
-    if(!first) return NULL;
+    if (!first)
+	return NULL;
     s = first->cmd;
-    cmd = first; first = first->next;
-    if(!first) last = NULL;
-    free(cmd);
+    cmd = first;
+    first = first->next;
+    if (!first)
+	last = NULL;
+    free (cmd);
     return s;
 }
 
@@ -104,20 +108,23 @@ static uae_u32 uaeexe_server(void)
     char *cmd;
     char *dst;
 
-    if(ARG(0) && !running) {
+    if (ARG(0) && !running) {
 	running = 1;
-	write_log("Remote CLI started.\n");
+	write_log ("Remote CLI started.\n");
     }
 
-    cmd = get_cmd(); if(!cmd) return 0;
-    if(!ARG(0)) {running = 0;return 0;}
+    cmd = get_cmd();
+    if (!cmd)
+	return 0;
+    if (!ARG(0)) {
+	running = 0;
+	return 0;
+    }
 
-    dst = (char *)get_real_address(ARG(0));
-    len = ARG(1);
-    strncpy(dst,cmd,len);
-    printf("Sending '%s' to remote cli\n",cmd); /**/
-    free(cmd);
-    return ARG(0);
+    dst = (char *) get_real_address (ARG(0));
+    len = ARG (1);
+    strncpy (dst,cmd,len);
+    printf ("Sending '%s' to remote cli\n",cmd); /**/
+    free (cmd);
+    return ARG (0);
 }
-
-

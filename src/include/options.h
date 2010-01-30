@@ -7,10 +7,6 @@
   * Copyright 1995-2001 Bernd Schmidt
   */
 
-#define UAEMAJOR 0
-#define UAEMINOR 8
-#define UAESUBREV 25
-
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
 extern long int version;
@@ -38,6 +34,16 @@ struct uae_input_device {
     uae_u16 flags[MAX_INPUT_DEVICE_EVENTS][MAX_INPUT_SUB_EVENT];
     uae_s16 extra[MAX_INPUT_DEVICE_EVENTS][MAX_INPUT_SIMULTANEOUS_KEYS];
     uae_u8 enabled;
+};
+
+struct gfx_params {
+    int width;
+    int height;
+    int lores;
+    int linedbl;
+    int correct_aspect;
+    int xcenter;
+    int ycenter;
 };
 
 struct uae_prefs {
@@ -74,15 +80,9 @@ struct uae_prefs {
     int sound_interpol;
 
     int gfx_framerate;
-    int gfx_width;
-    int gfx_height;
-    int gfx_lores;
-    int gfx_linedbl;
-    int gfx_correct_aspect;
+    struct gfx_params gfx_w, gfx_f;
     int gfx_afullscreen;
     int gfx_pfullscreen;
-    int gfx_xcenter;
-    int gfx_ycenter;
     int color_mode;
 
     int blits_32bit_enabled;
@@ -176,7 +176,7 @@ extern int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 extern int cfgfile_get_description (const char *filename, char *description);
 extern void cfgfile_show_usage (void);
 
-extern void fixup_prefs_dimensions (struct uae_prefs *prefs);
+extern void fixup_prefs_dimensions (struct gfx_params *);
 
 extern void check_prefs_changed_custom (void);
 extern void check_prefs_changed_cpu (void);
@@ -184,6 +184,8 @@ extern void check_prefs_changed_audio (void);
 extern int check_prefs_changed_gfx (void);
 
 extern struct uae_prefs currprefs, changed_prefs;
+
+extern struct gfx_params *curr_gfx;
 
 extern void machdep_init (void);
 

@@ -12,7 +12,6 @@
 
 #include <ctype.h>
 
-#include "config.h"
 #include "options.h"
 #include "threaddep/thread.h"
 #include "uae.h"
@@ -105,7 +104,7 @@ static const char *centermode2[] = { "false", "true", "smart", 0 };
 static const char *stereomode1[] = { "mono", "stereo", "mixed", 0 };
 static const char *stereomode2[] = { "m", "s", "x", 0 };
 static const char *stereomode3[] = { "1", "2", "3", 0 };
-static const char *interpolmode[] = { "none", "rh", "crux", 0 };
+static const char *interpolmode[] = { "none", "rh", "crux", "sinc", 0 };
 static const char *collmode[] = { "none", "sprites", "playfields", "full", 0 };
 
 #define UNEXPANDED "$(FILE_PATH)"
@@ -136,6 +135,17 @@ char *cfgfile_subst_path (const char *path, const char *subst, const char *file)
 	return p;
     }
     return my_strdup (file);
+}
+
+static void write_gfx_params (FILE *f, struct gfx_params *p, char *suffix)
+{
+    cfgfile_write (f, "gfx_width_%s=%d\n", suffix, p->width);
+    cfgfile_write (f, "gfx_height_%s=%d\n", suffix, p->height);
+    cfgfile_write (f, "gfx_lores_%s=%s\n", suffix, p->lores ? "true" : "false");
+    cfgfile_write (f, "gfx_linemode_%s=%s\n", suffix, linemode1[p->linedbl]);
+    cfgfile_write (f, "gfx_correct_aspect_%s=%s\n", suffix, p->correct_aspect ? "true" : "false");
+    cfgfile_write (f, "gfx_center_horizontal_%s=%s\n", suffix, centermode1[p->xcenter]);
+    cfgfile_write (f, "gfx_center_vertical_%s=%s\n", suffix, centermode1[p->ycenter]);
 }
 
 void save_options (FILE *f, struct uae_prefs *p)
@@ -207,15 +217,10 @@ void save_options (FILE *f, struct uae_prefs *p)
     cfgfile_write (f, "bsdsocket_emu=%s\n", p->socket_emu ? "true" : "false");
 
     cfgfile_write (f, "gfx_framerate=%d\n", p->gfx_framerate);
-    cfgfile_write (f, "gfx_width=%d\n", p->gfx_width);
-    cfgfile_write (f, "gfx_height=%d\n", p->gfx_height);
-    cfgfile_write (f, "gfx_lores=%s\n", p->gfx_lores ? "true" : "false");
-    cfgfile_write (f, "gfx_linemode=%s\n", linemode1[p->gfx_linedbl]);
-    cfgfile_write (f, "gfx_correct_aspect=%s\n", p->gfx_correct_aspect ? "true" : "false");
+    write_gfx_params (f, &p->gfx_w, "windowed");
+    write_gfx_params (f, &p->gfx_f, "fullscreen");
     cfgfile_write (f, "gfx_fullscreen_amiga=%s\n", p->gfx_afullscreen ? "true" : "false");
     cfgfile_write (f, "gfx_fullscreen_picasso=%s\n", p->gfx_pfullscreen ? "true" : "false");
-    cfgfile_write (f, "gfx_center_horizontal=%s\n", centermode1[p->gfx_xcenter]);
-    cfgfile_write (f, "gfx_center_vertical=%s\n", centermode1[p->gfx_ycenter]);
     cfgfile_write (f, "gfx_colour_mode=%s\n", colormode1[p->color_mode]);
 
     cfgfile_write (f, "immediate_blits=%s\n", p->immediate_blits ? "true" : "false");
@@ -361,6 +366,11 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
     char *section = 0;
     char *tmpp;
 
+    if (memcmp (option, "input.", 6) == 0) {
+	read_inputdevice_config (p, option, value);
+	return 1;
+    }
+
     for (tmpp = option; *tmpp != '\0'; tmpp++)
 	if (isupper (*tmpp))
 	    *tmpp = tolower (*tmpp);
@@ -383,8 +393,14 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	|| cfgfile_yesno (option, value, "bsdsocket_emu", &p->socket_emu)
 	|| cfgfile_yesno (option, value, "immediate_blits", &p->immediate_blits)
 	|| cfgfile_yesno (option, value, "kickshifter", &p->kickshifter)
-	|| cfgfile_yesno (option, value, "gfx_lores", &p->gfx_lores)
-	|| cfgfile_yesno (option, value, "gfx_correct_aspect", &p->gfx_correct_aspect)
+	|| (cfgfile_yesno (option, value, "gfx_lores", &p->gfx_w.lores)
+	    && cfgfile_yesno (option, value, "gfx_lores", &p->gfx_f.lores))
+	|| cfgfile_yesno (option, value, "gfx_lores_windowed", &p->gfx_w.lores)
+	|| cfgfile_yesno (option, value, "gfx_lores_fullscreen", &p->gfx_f.lores)
+	|| (cfgfile_yesno (option, value, "gfx_correct_aspect", &p->gfx_w.correct_aspect)
+	    && cfgfile_yesno (option, value, "gfx_correct_aspect", &p->gfx_f.correct_aspect))
+	|| cfgfile_yesno (option, value, "gfx_correct_aspect_windowed", &p->gfx_w.correct_aspect)
+	|| cfgfile_yesno (option, value, "gfx_correct_aspect_fullscreen", &p->gfx_f.correct_aspect)
 	|| cfgfile_yesno (option, value, "gfx_fullscreen_amiga", &p->gfx_afullscreen)
 	|| cfgfile_yesno (option, value, "gfx_fullscreen_picasso", &p->gfx_pfullscreen)
 	|| cfgfile_yesno (option, value, "ntsc", &p->ntscmode)
@@ -404,8 +420,14 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	|| cfgfile_intval (option, value, "sound_pri_cutoff", &p->sound_pri_cutoff, 1)
 	|| cfgfile_intval (option, value, "sound_pri_time", &p->sound_pri_time, 1)
 	|| cfgfile_intval (option, value, "gfx_framerate", &p->gfx_framerate, 1)
-	|| cfgfile_intval (option, value, "gfx_width", &p->gfx_width, 1)
-	|| cfgfile_intval (option, value, "gfx_height", &p->gfx_height, 1)
+	|| (cfgfile_intval (option, value, "gfx_width", &p->gfx_w.width, 1)
+	    && cfgfile_intval (option, value, "gfx_width", &p->gfx_f.width, 1))
+	|| cfgfile_intval (option, value, "gfx_width_windowed", &p->gfx_w.width, 1)
+	|| cfgfile_intval (option, value, "gfx_width_fullscreen", &p->gfx_f.width, 1)
+	|| (cfgfile_intval (option, value, "gfx_height", &p->gfx_w.height, 1)
+	    && cfgfile_intval (option, value, "gfx_height", &p->gfx_f.height, 1))
+	|| cfgfile_intval (option, value, "gfx_height_windowed", &p->gfx_w.height, 1)
+	|| cfgfile_intval (option, value, "gfx_height_fullscreen", &p->gfx_f.height, 1)
 	|| cfgfile_intval (option, value, "fastmem_size", &p->fastmem_size, 0x100000)
 	|| cfgfile_intval (option, value, "a3000mem_size", &p->a3000mem_size, 0x100000)
 	|| cfgfile_intval (option, value, "z3mem_size", &p->z3fastmem_size, 0x100000)
@@ -420,12 +442,30 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	|| cfgfile_strval (option, value, "use_gui", &p->start_gui, guimode2, 1)
 	|| cfgfile_strval (option, value, "use_gui", &p->start_gui, guimode3, 0)
 	|| cfgfile_strval (option, value, "collision_level", &p->collision_level, collmode, 0)
-	|| cfgfile_strval (option, value, "gfx_linemode", &p->gfx_linedbl, linemode1, 1)
-	|| cfgfile_strval (option, value, "gfx_linemode", &p->gfx_linedbl, linemode2, 0)
-	|| cfgfile_strval (option, value, "gfx_center_horizontal", &p->gfx_xcenter, centermode1, 1)
-	|| cfgfile_strval (option, value, "gfx_center_vertical", &p->gfx_ycenter, centermode1, 1)
-	|| cfgfile_strval (option, value, "gfx_center_horizontal", &p->gfx_xcenter, centermode2, 0)
-	|| cfgfile_strval (option, value, "gfx_center_vertical", &p->gfx_ycenter, centermode2, 0)
+	|| (cfgfile_strval (option, value, "gfx_linemode", &p->gfx_w.linedbl, linemode1, 1)
+	    && cfgfile_strval (option, value, "gfx_linemode", &p->gfx_f.linedbl, linemode1, 1))
+	|| (cfgfile_strval (option, value, "gfx_linemode", &p->gfx_w.linedbl, linemode2, 0)
+	    && cfgfile_strval (option, value, "gfx_linemode", &p->gfx_f.linedbl, linemode2, 0))
+	|| cfgfile_strval (option, value, "gfx_linemode_windowed", &p->gfx_w.linedbl, linemode1, 1)
+	|| cfgfile_strval (option, value, "gfx_linemode_windowed", &p->gfx_w.linedbl, linemode2, 0)
+	|| cfgfile_strval (option, value, "gfx_linemode_fullscreen", &p->gfx_f.linedbl, linemode1, 1)
+	|| cfgfile_strval (option, value, "gfx_linemode_fullscreen", &p->gfx_f.linedbl, linemode2, 0)
+	|| (cfgfile_strval (option, value, "gfx_center_horizontal", &p->gfx_w.xcenter, centermode1, 1)
+	    && cfgfile_strval (option, value, "gfx_center_horizontal", &p->gfx_f.xcenter, centermode1, 1))
+	|| (cfgfile_strval (option, value, "gfx_center_horizontal", &p->gfx_w.xcenter, centermode2, 0)
+	    && cfgfile_strval (option, value, "gfx_center_horizontal", &p->gfx_f.xcenter, centermode2, 0))
+	|| cfgfile_strval (option, value, "gfx_center_horizontal_windowed", &p->gfx_w.xcenter, centermode1, 1)
+	|| cfgfile_strval (option, value, "gfx_center_horizontal_windowed", &p->gfx_w.xcenter, centermode2, 0)
+	|| cfgfile_strval (option, value, "gfx_center_horizontal_fullscreen", &p->gfx_f.xcenter, centermode1, 1)
+	|| cfgfile_strval (option, value, "gfx_center_horizontal_fullscreen", &p->gfx_f.xcenter, centermode2, 0)
+	|| (cfgfile_strval (option, value, "gfx_center_vertical", &p->gfx_w.ycenter, centermode1, 1)
+	    && cfgfile_strval (option, value, "gfx_center_vertical", &p->gfx_f.ycenter, centermode1, 1))
+	|| (cfgfile_strval (option, value, "gfx_center_vertical", &p->gfx_w.ycenter, centermode2, 0)
+	    && cfgfile_strval (option, value, "gfx_center_vertical", &p->gfx_f.ycenter, centermode2, 0))
+	|| cfgfile_strval (option, value, "gfx_center_vertical_windowed", &p->gfx_w.ycenter, centermode1, 1)
+	|| cfgfile_strval (option, value, "gfx_center_vertical_windowed", &p->gfx_w.ycenter, centermode2, 0)
+	|| cfgfile_strval (option, value, "gfx_center_vertical_fullscreen", &p->gfx_f.ycenter, centermode1, 1)
+	|| cfgfile_strval (option, value, "gfx_center_vertical_fullscreen", &p->gfx_f.ycenter, centermode2, 0)
 	|| cfgfile_strval (option, value, "gfx_colour_mode", &p->color_mode, colormode1, 1)
 	|| cfgfile_strval (option, value, "gfx_colour_mode", &p->color_mode, colormode2, 0)
 	|| cfgfile_strval (option, value, "gfx_color_mode", &p->color_mode, colormode1, 1)
@@ -712,18 +752,21 @@ static void parse_gfx_specs (struct uae_prefs *p, char *spec)
 	goto argh;
     *x1++ = 0; *x2++ = 0;
 
-    p->gfx_width = atoi (x0);
-    p->gfx_height = atoi (x1);
-    p->gfx_lores = strchr (x2, 'l') != 0;
-    p->gfx_xcenter = strchr (x2, 'x') != 0 ? 1 : strchr (x2, 'X') != 0 ? 2 : 0;
-    p->gfx_ycenter = strchr (x2, 'y') != 0 ? 1 : strchr (x2, 'Y') != 0 ? 2 : 0;
-    p->gfx_linedbl = strchr (x2, 'd') != 0;
-    p->gfx_linedbl += 2 * (strchr (x2, 'D') != 0);
+    p->gfx_w.width = atoi (x0);
+    p->gfx_w.height = atoi (x1);
+    p->gfx_w.lores = strchr (x2, 'l') != 0;
+    p->gfx_w.xcenter = strchr (x2, 'x') != 0 ? 1 : strchr (x2, 'X') != 0 ? 2 : 0;
+    p->gfx_w.ycenter = strchr (x2, 'y') != 0 ? 1 : strchr (x2, 'Y') != 0 ? 2 : 0;
+    p->gfx_w.linedbl = strchr (x2, 'd') != 0;
+    p->gfx_w.linedbl += 2 * (strchr (x2, 'D') != 0);
+    p->gfx_w.correct_aspect = strchr (x2, 'c') != 0;
+
+    p->gfx_f = p->gfx_w;
+
     p->gfx_afullscreen = strchr (x2, 'a') != 0;
     p->gfx_pfullscreen = strchr (x2, 'p') != 0;
-    p->gfx_correct_aspect = strchr (x2, 'c') != 0;
 
-    if (p->gfx_linedbl == 3) {
+    if (p->gfx_w.linedbl == 3) {
 	fprintf (stderr, "You can't use both 'd' and 'D' modifiers in the display mode specification.\n");
     }
 

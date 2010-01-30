@@ -293,7 +293,7 @@ struct RenderInfo {
 #define PSSO_Pattern_DrawMode 17
 #define PSSO_Pattern_sizeof 18
 struct Pattern {
-    char *Memory;
+    uae_u8 *Memory;
     uae_u16 XOffset, YOffset;
     uae_u32 FgPen, BgPen;
     uae_u8 Size;					/* Width: 16, Height: (1<<pat_Size) */
@@ -309,7 +309,7 @@ struct Pattern {
 #define PSSO_Template_sizeof 16
 
 struct Template {
-    char *Memory;
+    uae_u8 *Memory;
     uae_s16 BytesPerRow;
     uae_u8 XOffset;
     uae_u8 DrawMode;

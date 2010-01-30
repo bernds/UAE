@@ -21,7 +21,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "keyboard.h"
 #include "inputdevice.h"
@@ -79,6 +78,7 @@ struct inputevent {
 #define AM_AF 32 /* supports autofire */
 #define AM_INFO 64 /* information data for gui */
 #define AM_DUMMY 128 /* placeholder */
+#define AM_AUTO 256 /* forces autofire */
 #define AM_K (AM_KEY|AM_JOY_BUT|AM_MOUSE_BUT|AM_AF) /* generic button/switch */
 
 /* event flags */
@@ -86,7 +86,7 @@ struct inputevent {
 
 #define DEFEVENT(A, B, C, D, E, F) {#A, B, C, D, E, F },
 struct inputevent events[] = {
-{0, 0, AM_K,0,0,0},
+{0, 0, AM_K, 0, 0, 0},
 #include "inputevents.def"
 {0, 0, 0, 0, 0, 0}
 };
@@ -104,6 +104,8 @@ static struct uae_input_device2 mice2[MAX_INPUT_DEVICES];
 
 static uae_u8 mouse_settings_reset[MAX_INPUT_SETTINGS][MAX_INPUT_DEVICES];
 static uae_u8 joystick_settings_reset[MAX_INPUT_SETTINGS][MAX_INPUT_DEVICES];
+
+static struct inputdevice_functions idev[3];
 
 static int isdevice (struct uae_input_device *id)
 {
@@ -320,8 +322,10 @@ static int getnum (char **pp)
     char *p = *pp;
     int v = atol (p);
 
-    while (*p != 0 && *p !='.' && *p != ',') p++;
-    if (*p == '.' || *p == ',') p++;
+    while (*p != 0 && *p !='.' && *p != ',')
+	p++;
+    if (*p == '.' || *p == ',')
+	p++;
     *pp = p;
     return v;
 }
@@ -334,8 +338,10 @@ static char *getstring (char **pp)
     if (*p == 0)
 	return 0;
     i = 0;
-    while (*p != 0 && *p !='.' && *p != ',') str[i++] = *p++;
-    if (*p == '.' || *p == ',') p++;
+    while (*p != 0 && *p !='.' && *p != ',')
+	str[i++] = *p++;
+    if (*p == '.' || *p == ',')
+	p++;
     str[i] = 0;
     *pp = p;
     return str;
@@ -1184,6 +1190,9 @@ void inputdevice_handle_inputcode (void)
     }
     break;
 #endif
+    case AKS_SWITCHINTERPOL:
+       switch_audio_interpol ();
+       break;
     }
 }
 
@@ -1348,11 +1357,16 @@ static void setbuttonstateall (struct uae_input_device *id, struct uae_input_dev
     if (button >= ID_BUTTON_TOTAL)
 	return;
     for (i = 0; i < MAX_INPUT_SUB_EVENT; i++) {
+	struct inputevent *ie;
+
 	event = id->eventid[ID_BUTTON_OFFSET + button][sublevdir[state <= 0 ? 1 : 0][i]];
 	custom = id->custom[ID_BUTTON_OFFSET + button][sublevdir[state <= 0 ? 1 : 0][i]];
 	if (event <= 0 && custom == NULL)
 	    continue;
 	autofire = (id->flags[ID_BUTTON_OFFSET + button][sublevdir[state <= 0 ? 1 : 0][i]] & ID_FLAG_AUTOFIRE) ? 1 : 0;
+	ie = events + event;
+	if (ie->allow_mask & AM_AUTO)
+	    autofire = 1;
 	if (state < 0) {
 	    handle_input_event (event, 1, 1, 0);
 	    queue_input_event (event, 0, 1, 1, 0); /* send release event next frame */
@@ -1548,7 +1562,7 @@ static void compatibility_mode (struct uae_prefs *prefs)
 	used[joy] = 1;
 	joysticks[joy].eventid[ID_BUTTON_OFFSET + 0][0] = INPUTEVENT_JOY2_FIRE_BUTTON;
 	joysticks[joy].eventid[ID_BUTTON_OFFSET + 1][0] = INPUTEVENT_JOY2_2ND_BUTTON;
-	joysticks[joy].eventid[ID_BUTTON_OFFSET + 2][0] = INPUTEVENT_JOY2_3RD_BUTTON;
+	joysticks[joy].eventid[ID_BUTTON_OFFSET + 2][0] = INPUTEVENT_JOY2_FIRE_BUTTON_AF;
 #ifdef CD32
 	if (cd32_enabled)
 	    setcd32 (joy, 1);
@@ -1563,7 +1577,7 @@ static void compatibility_mode (struct uae_prefs *prefs)
 	joysticks[joy].eventid[ID_AXIS_OFFSET + 1][0] = INPUTEVENT_JOY1_VERT;
 	joysticks[joy].eventid[ID_BUTTON_OFFSET + 0][0] = INPUTEVENT_JOY1_FIRE_BUTTON;
 	joysticks[joy].eventid[ID_BUTTON_OFFSET + 1][0] = INPUTEVENT_JOY1_2ND_BUTTON;
-	joysticks[joy].eventid[ID_BUTTON_OFFSET + 2][0] = INPUTEVENT_JOY1_3RD_BUTTON;
+	joysticks[joy].eventid[ID_BUTTON_OFFSET + 2][0] = INPUTEVENT_JOY1_FIRE_BUTTON_AF;
 	joysticks[joy].enabled = 1;
     }
 
@@ -1738,8 +1752,6 @@ int inputdevice_translatekeycode (int keyboard, int scancode, int state)
     }
     return 0;
 }
-
-static struct inputdevice_functions idev[3];
 
 void inputdevice_init (void)
 {
@@ -2258,7 +2270,7 @@ void setmousestate (int mouse, int axis, int data, int isabs)
 	*oldm_p = *mouse_p;
 	*mouse_p += data;
 	d = (*mouse_p - *oldm_p) * currprefs.input_mouse_speed / 100.0;
-	printf (" offs %f\n", d);
+	/*	printf (" offs %f\n", d); */
     } else {
 	d = data - (int)(*oldm_p);
 	*oldm_p = data;

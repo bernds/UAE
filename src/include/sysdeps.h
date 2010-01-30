@@ -390,9 +390,11 @@ extern int console_get (char *, int);
 #if __GNUC__ - 1 > 1 && __GNUC_MINOR__ - 1 >= 0
 #define STATIC_INLINE static __inline__ __attribute__ ((always_inline))
 #define NOINLINE __attribute__ ((noinline))
+#define NORETURN __attribute__ ((noreturn))
 #else
 #define STATIC_INLINE static __inline__
 #define NOINLINE
+#define NORETURN
 #endif
 #endif
 

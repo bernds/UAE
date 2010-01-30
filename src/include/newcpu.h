@@ -33,8 +33,8 @@
 #define COPY_CARRY (SET_XFLG (GET_CFLG))
 #endif
 
-extern int areg_byteinc[];
-extern int imm8_table[];
+extern const int areg_byteinc[];
+extern const int imm8_table[];
 
 extern int movem_index1[256];
 extern int movem_index2[256];

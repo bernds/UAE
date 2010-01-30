@@ -7,7 +7,7 @@ dnl this into the public domain.
 dnl There are still many uncaught errors (e.g. --enable-dga on an Amiga)
 dnl I didn't have the nerve to track them all down.
 
-AC_INIT
+AC_INIT(UAE, 0.8.26, , uae)
 AC_CONFIG_SRCDIR([amiga/source/transdisk.c])
 AC_PREREQ(2.59)
 
@@ -398,7 +398,7 @@ if [[ "x$WANT_SDLGFX" = "xyes" ]]; then
   AC_MSG_RESULT(SDL)
   MATHLIB=
   TARGET=x11
-  GFXOBJS="sdlgfx.o"
+  GFXOBJS="sdlgfx.o sdlkeys.o rawkeys.o"
   # @@@ Kludge.  This may get changed later.
   TARGETDEP=t-x11.h
 else if [[ "x$HAVE_DIRECTX" = "xyes" ]]; then
@@ -557,7 +557,17 @@ else
 fi
 
 GFXOBJS="$GFXOBJS $GUIOBJS"
- 
+
+dnl
+dnl  MULTIPLICATION_PROFITABLE?
+dnl
+dnl  We always set this for now. It's only used in the audio emulation,
+dnl  where the option is to do multiplication or table look-up. On just
+dnl  about any CPU it's worthwhile running E-UAE on, multiplication will be
+dnl  better.
+
+AC_DEFINE(MULTIPLICATION_PROFITABLE, 1, [Define to 1 if your CPU has a fast multiply instruction.])
+
 dnl Find out some things about the system 
 dnl  - whether we have GCC 2.7 or better.
 dnl  - what CPU we have (to use some assembly hacks on the x86)
@@ -1012,7 +1022,6 @@ rm -f src/threaddep
 rm -f src/sounddep
 rm -f src/scsidep
 rm -f src/target.h
-rm -f src/config.h
 rm -f src/sd-sound.c
 rm -f src/od-joy.c
 rm -f src/md-support.c
@@ -1058,7 +1067,7 @@ AC_SUBST(SHM_SUPPORT_LINKS)
 AC_SUBST(top_srcdir)
 
 AC_CONFIG_FILES([src/Makefile Makefile])
-AC_OUTPUT
+
 if [[ "x$DO_PROFILING" = "xyes" ]]; then
   echo "Building a profiling version of UAE (select this option only if you know"
   echo "what you are doing)"
@@ -1083,13 +1092,15 @@ then
   exit 1
 fi
 
-ln -s $abssrcdir/src/$MACHDEP src/machdep
-ln -s $abssrcdir/src/$OSDEP src/osdep
-ln -s $abssrcdir/src/$THREADDEP src/threaddep
-ln -s $abssrcdir/src/$SOUNDDEP src/sounddep
+AC_CONFIG_LINKS(src/osdep:src/$OSDEP)
+AC_CONFIG_LINKS(src/sounddep:src/$SOUNDDEP)
+AC_CONFIG_LINKS(src/threaddep:src/$THREADDEP)
+AC_CONFIG_LINKS(src/machdep:src/$MACHDEP)
+dnl AC_CONFIG_LINKS(src/gfxdep:src/$GFX_DEP)
+
+AC_OUTPUT
 
 echo "#include \"$abssrcdir/src/targets/$TARGETDEP\"" > src/target.h
-echo "#include \"$abssrcdir/config.h\"" > src/config.h
 
 echo "#include \"$abssrcdir/src/$SOUNDDEP/sound.c\"" >src/sd-sound.c
 echo "#include \"$abssrcdir/src/$OD_JOYSTICK\"" >src/od-joy.c
@@ -1101,6 +1112,7 @@ fi
 echo "#include \"$abssrcdir/src/include/$FPP_H\"" >src/md-fpp.h
 
 mkdir -p src/tools
+mkdir -p src/keymap
 progname=$0
 changequote(,)dnl
 srcd=`echo ${progname} | sed -e 's,[^/]*$,,;s,/$,,;s,^$,.,'`

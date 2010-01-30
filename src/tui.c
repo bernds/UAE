@@ -13,7 +13,6 @@
 #include <stdio.h>
 #include <ctype.h>
 
-#include "config.h"
 #include "options.h"
 #include "threaddep/thread.h"
 #include "uae.h"

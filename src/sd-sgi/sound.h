@@ -14,13 +14,15 @@ extern int sndblocksize;
 extern ALport al_port;
 extern int to_frames_divisor;
 
-static __inline__ void check_sound_buffers(void)
+STATIC_INLINE int check_sound_buffers(void)
 {
 	int bytes = (char *)sndbufpt - (char *)sndbuffer;
 	if (bytes >= sndblocksize) {
 		alWriteFrames(al_port, sndbuffer, bytes / to_frames_divisor);
 		sndbufpt = sndbuffer;
+		return 1;
 	}
+	return 0;
 }
 
 #define PUT_SOUND_BYTE(b) ( *(uae_u8 *)sndbufpt++ = (b) )

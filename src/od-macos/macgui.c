@@ -19,7 +19,6 @@
 #include <signal.h>
 #include <SIOUX.h>
 
-#include "config.h"
 #include "amiga.h"
 #include "options.h"
 #include "memory.h"

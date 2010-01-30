@@ -27,7 +27,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "threaddep/thread.h"
 #include "options.h"
 #include "uae.h"

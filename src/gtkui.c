@@ -16,7 +16,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "uae.h"
 #include "memory.h"
@@ -69,7 +68,7 @@ static GtkWidget *cpu_widget[7];
 #if 0
 static GtkWidget *a24m_widget, *ccpu_widget;
 #endif
-static GtkWidget *sound_widget[4], *sound_bits_widget[2], *sound_freq_widget[3], *sound_ch_widget[3];
+static GtkWidget *sound_widget[4], *sound_ch_widget[3], *sound_interpol_widget[4];
 
 static GtkWidget *coll_widget[4], *cslevel_widget[4];
 static GtkWidget *fcop_widget;
@@ -369,7 +368,7 @@ static void set_sound_state (void)
     int stereo = currprefs.sound_stereo + currprefs.mixed_stereo;
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_widget[currprefs.produce_sound]), 1);
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_ch_widget[stereo]), 1);
-    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_bits_widget[currprefs.sound_bits == 16]), 1);
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sound_interpol_widget[currprefs.sound_interpol]), 1);
 }
 
 static void set_mem_state (void)
@@ -717,10 +716,10 @@ static void sound_changed (void)
 {
     changed_prefs.produce_sound = find_current_toggle (sound_widget, 4);
     changed_prefs.sound_stereo = find_current_toggle (sound_ch_widget, 3);
+    changed_prefs.sound_interpol = find_current_toggle (sound_interpol_widget, 4);
     changed_prefs.mixed_stereo = 0;
     if (changed_prefs.sound_stereo == 2)
 	changed_prefs.mixed_stereo = changed_prefs.sound_stereo = 1;
-    changed_prefs.sound_bits = (find_current_toggle (sound_bits_widget, 2) + 1) * 8;
 }
 
 static void did_reset (void)
@@ -1396,7 +1395,7 @@ static void make_sound_widgets (GtkWidget *vbox)
 	"None", "No output", "Normal", "Accurate",
 	NULL
     }, *soundlabels2[] = {
-	"8 bit", "16 bit",
+	"None", "RH", "BS", "Sinc",
 	NULL
     }, *soundlabels3[] = {
 	"Mono", "Stereo", "Mixed",
@@ -1415,7 +1414,7 @@ static void make_sound_widgets (GtkWidget *vbox)
     newbox = make_radio_group_box ("Channels", soundlabels3, sound_ch_widget, 1, sound_changed);
     gtk_widget_show (newbox);
     gtk_box_pack_start (GTK_BOX (hbox), newbox, FALSE, TRUE, 0);
-    newbox = make_radio_group_box ("Resolution", soundlabels2, sound_bits_widget, 1, sound_changed);
+    newbox = make_radio_group_box ("Interpolation", soundlabels2, sound_interpol_widget, 1, sound_changed);
     gtk_widget_show (newbox);
     gtk_box_pack_start (GTK_BOX (hbox), newbox, FALSE, TRUE, 0);
 
@@ -1730,7 +1729,7 @@ static void make_about_widgets (GtkWidget *dvbox)
 
     add_empty_vbox (dvbox);
 
-    sprintf (t, "UAE %d.%d.%d", UAEMAJOR, UAEMINOR, UAESUBREV);
+    sprintf (t, "%s %s", PACKAGE_NAME, PACKAGE_VERSION);
     lab_version = gtk_label_new (t);
     lab_info = gtk_label_new ("Choose your settings, then deselect the Pause button to start!");
 

@@ -19,7 +19,6 @@
 
 #include "threaddep/thread.h"
 #include "uae.h"
-#include "config.h"
 #include "options.h"
 #include "../include/memory.h"
 #include "custom.h"

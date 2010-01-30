@@ -14,7 +14,7 @@ extern void real_main (int, char **);
 extern void usage (void);
 extern void parse_cmdline (int argc, char **argv);
 
-
+extern void uae_abort (const char *) NORETURN;
 extern void uae_reset (int);
 extern void uae_quit (void);
 extern void reset_all_systems (void);

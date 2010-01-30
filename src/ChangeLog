@@ -1,3 +1,22 @@
+A10805 Implement a way not to block on sound output, using the time for m68k
+       cycles instead.
+       Remove "config.h" and all of its #includes.
+       Merge various audio bits from E-UAE, including sinc interpolation.  Add
+       GUI support for it.
+       Merge random other changes from E-UAE.
+       Revert previous playfield delay changes which broke the RSI demo.
+       When setting picasso mode in xwin and sdlgfx, check whether we keep the
+       same dimensions, and skip the shutdown/init cycle if so.
+       Kill 8 bit audio support.
+A10804 Make fullscreen and windowed graphics configurations independent.
+       Fix some issues with SDL and fullscreen.
+       Move call to InitPicasso out of reset_drawing.
+       Use gettimeofday for the max CPU setting, rather than rdtsc - at least
+       if it is accurate enough.
+A01111 Fixes to compile with gcc-4.1.
+A00707 Imported keymap stuff from euae.
+9F0704 Playfield delay code imported from WinUAE.
+       If produce_sound is 0, kill audio event on state restore.
 9F0702 Deleted really old mousehack (sprite follow) code, since there are a
        number of better alternatives today and it didn't work so well with
        the inputdevice stuff.

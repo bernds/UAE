@@ -14,7 +14,6 @@
 #include <assert.h>
 #include <string.h>
 
-#include "config.h"
 #include "options.h"
 #include "threaddep/thread.h"
 #include "uae.h"
@@ -28,12 +27,16 @@
 #include "gensound.h"
 #include "picasso96.h"
 
+/* We don't get a numerical version from autoconf, but this is the only place
+   that wants it, and it doesn't matter - so cheat.  */
+#define UAEVERSION 0x0826
+
 /*
  * Returns UAE Version
  */
 static uae_u32 emulib_GetVersion (void)
 {
-    return version;
+    return UAEVERSION;
 }
 
 /*
@@ -137,7 +140,7 @@ static uae_u32 emulib_ChgCMemSize (uae_u32 memsize)
 	memsize = 0x200000;
 	write_log ("Unsupported chipmem size!\n");
     }
-    m68k_dreg(regs, 0) = 0;
+    m68k_dreg (regs, 0) = 0;
 
     currprefs.chipmem_size = memsize;
     uae_reset(0);
@@ -156,7 +159,7 @@ static uae_u32 emulib_ChgSMemSize (uae_u32 memsize)
 	write_log ("Unsupported bogomem size!\n");
     }
 
-    m68k_dreg(regs, 0) = 0;
+    m68k_dreg (regs, 0) = 0;
     currprefs.bogomem_size = memsize;
     uae_reset (0);
     return 1;
@@ -217,7 +220,7 @@ static uae_u32 emulib_GetUaeConfig (uaecptr place)
 {
     int i,j;
 
-    put_long (place, version);
+    put_long (place, UAEVERSION);
     put_long (place + 4, allocated_chipmem);
     put_long (place + 8, allocated_bogomem);
     put_long (place + 12, allocated_fastmem);
@@ -318,20 +321,20 @@ static uae_u32 FindFunctionInObject (uae_u8 *objectptr)
 static uae_u32 emulib_ExecuteNativeCode (void)
 {
 #if 0
-    uaecptr object_AAM = m68k_areg( regs, 0 );
-    uae_u32 d1 = m68k_dreg( regs, 1 );
-    uae_u32 d2 = m68k_dreg( regs, 2 );
-    uae_u32 d3 = m68k_dreg( regs, 3 );
-    uae_u32 d4 = m68k_dreg( regs, 4 );
-    uae_u32 d5 = m68k_dreg( regs, 5 );
-    uae_u32 d6 = m68k_dreg( regs, 6 );
-    uae_u32 d7 = m68k_dreg( regs, 7 );
-    uae_u32 a1 = m68k_areg( regs, 1 );
-    uae_u32 a2 = m68k_areg( regs, 2 );
-    uae_u32 a3 = m68k_areg( regs, 3 );
-    uae_u32 a4 = m68k_areg( regs, 4 );
-    uae_u32 a5 = m68k_areg( regs, 5 );
-    uae_u32 a6 = m68k_areg( regs, 6 );
+    uaecptr object_AAM = m68k_areg (regs, 0);
+    uae_u32 d1 = m68k_dreg (regs, 1);
+    uae_u32 d2 = m68k_dreg (regs, 2);
+    uae_u32 d3 = m68k_dreg (regs, 3);
+    uae_u32 d4 = m68k_dreg (regs, 4);
+    uae_u32 d5 = m68k_dreg (regs, 5);
+    uae_u32 d6 = m68k_dreg (regs, 6);
+    uae_u32 d7 = m68k_dreg (regs, 7);
+    uae_u32 a1 = m68k_areg (regs, 1);
+    uae_u32 a2 = m68k_areg (regs, 2);
+    uae_u32 a3 = m68k_areg (regs, 3);
+    uae_u32 a4 = m68k_areg (regs, 4);
+    uae_u32 a5 = m68k_areg (regs, 5);
+    uae_u32 a6 = m68k_areg (regs, 6);
 
     uae_u8* object_UAM = NULL;
     CREATE_NATIVE_FUNC_PTR;

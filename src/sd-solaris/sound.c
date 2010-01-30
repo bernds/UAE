@@ -9,7 +9,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "memory.h"
 #include "events.h"
@@ -81,8 +80,7 @@ int init_sound (void)
 	fprintf(stderr, "Can't use sample rate %d with %d bits, %s!\n", rate, dspbits, (dspbits ==8) ? "ulaw" : "linear");
 	return 0;
     }
-    scaled_sample_evtime = (unsigned long)MAXHPOS_PAL * MAXVPOS_PAL * VBLANK_HZ_PAL * CYCLE_UNIT / rate;
-    scaled_sample_evtime_ok = 1;
+    obtained_freq = rate;
 
     init_sound_table16 ();
 

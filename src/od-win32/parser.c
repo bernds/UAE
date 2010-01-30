@@ -7,7 +7,6 @@
  * Copyright 1998-1999 Brian King - added MIDI output support
  */
 
-#include "config.h"
 #include "sysconfig.h"
 #include <windows.h>
 #include <winspool.h>
@@ -223,39 +222,39 @@ void doserout( void )
 
     if (hCom != INVALID_HANDLE_VALUE) 
     {
-        if (outlast) 
-        {
-            ResetEvent (ol.hEvent = writeevent);
-            actual = 0;
-			            
-            if (!WriteFile (hCom, outbuf, outlast, &actual, &ol)) 
-            {
+	if (outlast) 
+	{
+	    ResetEvent (ol.hEvent = writeevent);
+	    actual = 0;
+				    
+	    if (!WriteFile (hCom, outbuf, outlast, &actual, &ol)) 
+	    {
 			 //GetOverlappedResult (hCom, &ol, &actual, FALSE);
 
-             /*   while (outlast -= actual) 
-                {
-                    if ((dwErrorFlags = GetLastError ()) == ERROR_IO_INCOMPLETE || dwErrorFlags == ERROR_IO_PENDING) 
-                    {
+	     /*   while (outlast -= actual) 
+		{
+		    if ((dwErrorFlags = GetLastError ()) == ERROR_IO_INCOMPLETE || dwErrorFlags == ERROR_IO_PENDING) 
+		    {
 			actual = 0;
 			GetOverlappedResult (hCom, &ol, &actual, FALSE);
 
 			if ((dwErrorFlags = GetLastError ()) != ERROR_IO_INCOMPLETE && dwErrorFlags != ERROR_IO_PENDING) 
-                        {
+			{
 			    write_log ("writeser: error %d, lost %d chars!\n", GetLastError (), outlast - actual);
 			    outlast = 0;
 			    break;
 			}
 			if (WaitForSingleObject (writeevent, 100) == WAIT_TIMEOUT) 
-                        {
+			{
 			    write_log ("writeser: timeout, lost %d chars!\n", outlast - actual);
 			    outlast = 0;
 			    break;
 			}
-    		    }
-                    else
-                    {
+		    }
+		    else
+		    {
 			if (dwErrorFlags) 
-                        {
+			{
 			    write_log ("writeser: error %d while writing, lost %d chars!\n", dwErrorFlags, outlast - actual);
 			    ClearCommError (hCom, &dwErrorFlags, NULL);
 			}
@@ -266,7 +265,7 @@ void doserout( void )
 			
 		}
 		*/
-        outlast=0;
+	outlast=0;
 	    }
 	}
     }
@@ -288,7 +287,7 @@ void writeser (char c)
 	if (outlast == 100/*sizeof outbuf*/)
 	{
 	    doserout();
-        wantwrite=2000;
+	wantwrite=2000;
 		return;
 	}
     }
@@ -362,7 +361,7 @@ int readser (char *buffer)
 		//if(intreq&&1);
 		//else
 	/*if (WaitForSingleObject (writeevent,0) != WAIT_TIMEOUT) 
-                        {
+			{
 			 serdat|=0x2000;
 		intreq|=0x1;
 		INTREQ(0x8000 | (0x01));
@@ -449,19 +448,19 @@ int setbaud (long baud)
 {
     write_log( "Baud-rate is %d\n", baud );
     {
-        if (hCom != INVALID_HANDLE_VALUE) 
-        {
-	        if (GetCommState (hCom, &dcb)) 
-            {
-	            dcb.BaudRate = baud;
-	            if (!SetCommState (hCom, &dcb))
-		        write_log ("SERIAL: Error setting baud rate %d!\n", baud);
-	        } 
-            else
-            {
-	            write_log ("SERIAL: setbaud internal error!\n");
-            }
-        }
+	if (hCom != INVALID_HANDLE_VALUE) 
+	{
+		if (GetCommState (hCom, &dcb)) 
+	    {
+		    dcb.BaudRate = baud;
+		    if (!SetCommState (hCom, &dcb))
+			write_log ("SERIAL: Error setting baud rate %d!\n", baud);
+		} 
+	    else
+	    {
+		    write_log ("SERIAL: setbaud internal error!\n");
+	    }
+	}
     }
     return 0;
 }

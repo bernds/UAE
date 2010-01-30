@@ -11,14 +11,28 @@
 
 #include "machdep/rpt.h"
 
+extern int use_gtod;
+
 extern frame_time_t vsynctime, vsyncmintime;
-extern void reset_frame_rate_hack (void);
+extern frame_time_t gtod_resolution;
+extern int vsyncmintime_valid;
+
+extern frame_time_t first_measured_gtod;
+extern unsigned long gtod_secs;
+extern unsigned long nr_gtod_to_skip;
+extern unsigned long nr_gtod_done, gtod_counter;
+
 extern int rpt_available;
 
+extern void reset_frame_rate_hack (void);
 extern void compute_vsynctime (void);
+extern void time_vsync (void);
 
-extern unsigned long currcycle, nextevent, is_lastline;
-extern unsigned long sample_evtime;
+extern unsigned long currcycle, nextevent;
+
+extern int is_lastline;
+extern volatile int blocking_on_sound;
+
 typedef void (*evfunc)(void);
 
 struct ev
@@ -34,6 +48,18 @@ enum {
 };
 
 extern struct ev eventtab[ev_max];
+
+STATIC_INLINE frame_time_t get_current_time (int redo_secs)
+{
+    if (use_gtod) {
+	struct timeval tv;
+	gettimeofday (&tv, NULL);
+	if (redo_secs)
+	    gtod_secs = tv.tv_sec;
+	return tv.tv_usec + (tv.tv_sec - gtod_secs) * 1000000;
+    }
+    return read_processor_time ();
+}
 
 STATIC_INLINE void events_schedule (void)
 {
@@ -52,9 +78,32 @@ STATIC_INLINE void events_schedule (void)
 
 STATIC_INLINE void do_cycles_slow (unsigned long cycles_to_add)
 {
-    if (is_lastline && eventtab[ev_hsync].evtime - currcycle <= cycles_to_add
-	&& (long int)(read_processor_time () - vsyncmintime) < 0)
+    if (blocking_on_sound)
 	return;
+
+    if (is_lastline
+	&& eventtab[ev_hsync].evtime - currcycle <= cycles_to_add)
+    {
+	static int n_skipped = 0;
+	frame_time_t curr;
+
+	if (gtod_counter++ < nr_gtod_to_skip)
+	    return;
+	gtod_counter = 0;
+	curr = get_current_time (0);
+	if (is_lastline == 1) {
+	    is_lastline = 2;
+	    first_measured_gtod = curr;
+	}
+		
+	if ((long int)(curr - vsyncmintime) < 0) {
+	    nr_gtod_done++;
+	    return;
+	}
+#if 0
+	printf ("skipped %d times\n", nr_gtod_done);
+#endif
+    }
 
     while ((nextevent - currcycle) <= cycles_to_add) {
 	int i;

@@ -12,7 +12,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "memory.h"
 #include "custom.h"

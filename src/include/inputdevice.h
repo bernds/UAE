@@ -15,16 +15,15 @@
 struct inputdevice_functions {
     int (*init)(void);
     void (*close)(void);
-    int (*acquire)(int,int);
-    void (*unacquire)(int);
+    int (*acquire)(unsigned int,int);
+    void (*unacquire)(unsigned int);
     void (*read)(void);
-    int (*get_num)(void);
-    char* (*get_name)(int);
-    int (*get_widget_num)(int);
-    int (*get_widget_type)(int,int,char*,uae_u32*);
-    int (*get_widget_first)(int,int);
+    unsigned int (*get_num)(void);
+    const char* (*get_name)(unsigned int);
+    unsigned int (*get_widget_num)(unsigned int);
+    int (*get_widget_type)(unsigned int,unsigned int,char*,uae_u32*);
+    int (*get_widget_first)(unsigned int,int);
 };
-extern struct inputdevice_functions idev[3];
 extern struct inputdevice_functions inputdevicefunc_joystick;
 extern struct inputdevice_functions inputdevicefunc_mouse;
 extern struct inputdevice_functions inputdevicefunc_keyboard;
@@ -85,6 +84,8 @@ extern uae_u32 mousehack_helper (void);
 extern int needmousehack (void);
 extern int mousehack_alive (void);
 extern int mousehack_allowed (void);
+
+extern void toggle_fullscreen (void);
 
 extern void setmousebuttonstateall (int mouse, uae_u32 buttonbits, uae_u32 buttonmask);
 extern void setjoybuttonstateall (int joy, uae_u32 buttonbits, uae_u32 buttonmask);

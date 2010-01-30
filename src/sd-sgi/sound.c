@@ -9,7 +9,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "memory.h"
 #include "events.h"
@@ -113,8 +112,7 @@ int init_sound(void)
 		return 0;
 	}
 
-	scaled_sample_evtime = (unsigned long)MAXHPOS_PAL * MAXVPOS_PAL * VBLANK_HZ_PAL * CYCLE_UNIT / rate;
-	scaled_sample_evtime_ok = 1;
+	obtained_freq = rate;
 
 	sndbufpt = sndbuffer;
 	if (width == AL_SAMPLE_16) {

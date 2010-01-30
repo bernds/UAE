@@ -22,7 +22,6 @@
 #include <ctype.h>
 #include <signal.h>
 
-#include "config.h"
 #include "options.h"
 #include "threaddep/thread.h"
 #include "uae.h"
@@ -397,7 +396,7 @@ void flush_line (int y)
 	memcpy (dst, src, len * gfxvidinfo.pixbytes);
     } else if (need_dither) {
 	uae_u8 *target = (uae_u8 *)ami_dinfo.image_mem + ami_dinfo.ximg->bytes_per_line * y;
-	len = currprefs.gfx_width;
+	len = gfxvidinfo.width;
 	DitherLine (target, (uae_u16 *)linebuf, 0, y, gfxvidinfo.width, bit_unit);
     } else {
 	write_log ("Bug!\n");
@@ -716,8 +715,28 @@ static void graphics_subinit (void)
     XWMHints *hints;
     unsigned long valuemask;
 
-    dgamode = screen_is_picasso ? currprefs.gfx_pfullscreen : currprefs.gfx_afullscreen;
-    dgamode = dgamode && dgaavail;
+
+    if (screen_is_picasso) {
+	// Set height, width for Picasso gfx
+	current_width  = picasso_vidinfo.width;
+	current_height = picasso_vidinfo.height;
+	dgamode = currprefs.gfx_pfullscreen && dgaavail;
+	curr_gfx = 0;
+    } else {
+	// Set height, width for Amiga gfx
+	dgamode = currprefs.gfx_afullscreen && dgaavail;
+	if (dgamode)
+	    curr_gfx = &currprefs.gfx_f;
+	else
+	    curr_gfx = &currprefs.gfx_w;
+	    
+	current_width  = curr_gfx->width;
+	current_height = curr_gfx->height;
+    }
+    if (!screen_is_picasso) {
+	gfxvidinfo.width  = current_width;
+	gfxvidinfo.height = current_height;
+    }
 
     wattr.background_pixel = /*black.pixel*/0;
     wattr.backing_store = Always;
@@ -781,7 +800,7 @@ static void graphics_subinit (void)
 
     if (need_dither) {
 	gfxvidinfo.maxblocklines = 0;
-	gfxvidinfo.rowbytes = gfxvidinfo.pixbytes * currprefs.gfx_width;
+	gfxvidinfo.rowbytes = gfxvidinfo.pixbytes * current_width;
 	gfxvidinfo.linemem = (char *)malloc (gfxvidinfo.rowbytes);
     } else if (! dgamode) {
 	gfxvidinfo.emergmem = 0;
@@ -902,12 +921,8 @@ int graphics_init (void)
 
     write_log ("Using %d bit visual, %d bits per pixel\n", bitdepth, bit_unit);
 
-    fixup_prefs_dimensions (&currprefs);
-
-    gfxvidinfo.width = currprefs.gfx_width;
-    gfxvidinfo.height = currprefs.gfx_height;
-    current_width = currprefs.gfx_width;
-    current_height = currprefs.gfx_height;
+    fixup_prefs_dimensions (&currprefs.gfx_w);
+    fixup_prefs_dimensions (&currprefs.gfx_f);
 
     cmap = XCreateColormap (display, rootwin, vis, AllocNone);
     cmap2 = XCreateColormap (display, rootwin, vis, AllocNone);
@@ -1175,7 +1190,7 @@ void handle_events (void)
 
     if (! dgamode) {
 	if (! screen_is_picasso && refresh_necessary) {
-	    DO_PUTIMAGE (ami_dinfo.ximg, 0, 0, 0, 0, currprefs.gfx_width, currprefs.gfx_height);
+	    DO_PUTIMAGE (ami_dinfo.ximg, 0, 0, 0, 0, current_width, current_height);
 	    refresh_necessary = 0;
 	}
 	if (cursorOn && !currprefs.x11_hide_cursor) {
@@ -1194,31 +1209,34 @@ void handle_events (void)
 
 int check_prefs_changed_gfx (void)
 {
-    if (changed_prefs.gfx_width != currprefs.gfx_width
-	|| changed_prefs.gfx_height != currprefs.gfx_height)
-	fixup_prefs_dimensions (&changed_prefs);
+    int a_changed = 0, p_changed = 0;
 
-    if (changed_prefs.gfx_width == currprefs.gfx_width
-	&& changed_prefs.gfx_height == currprefs.gfx_height
-	&& changed_prefs.gfx_lores == currprefs.gfx_lores
-	&& changed_prefs.gfx_linedbl == currprefs.gfx_linedbl
-	&& changed_prefs.gfx_correct_aspect == currprefs.gfx_correct_aspect
-	&& changed_prefs.gfx_xcenter == currprefs.gfx_xcenter
-	&& changed_prefs.gfx_ycenter == currprefs.gfx_ycenter
-	&& changed_prefs.gfx_afullscreen == currprefs.gfx_afullscreen
-	&& changed_prefs.gfx_pfullscreen == currprefs.gfx_pfullscreen)
-	return 0;
+    if (!screen_is_picasso) {
+	if (!dgamode
+	    && memcmp (&changed_prefs.gfx_w, &currprefs.gfx_w, sizeof (struct gfx_params)) != 0)
+	{
+	    a_changed = 1;
+	    fixup_prefs_dimensions (&changed_prefs.gfx_w);
+	    currprefs.gfx_w = changed_prefs.gfx_w;
+    } else if (dgamode
+	       && memcmp (&changed_prefs.gfx_f, &currprefs.gfx_f, sizeof (struct gfx_params)) != 0)
+	{
+	    a_changed = 1;
+	    fixup_prefs_dimensions (&changed_prefs.gfx_f);
+	currprefs.gfx_f = changed_prefs.gfx_f;
+	}
+	if (changed_prefs.gfx_afullscreen != currprefs.gfx_afullscreen) {
+	    a_changed = 1;
+	}
+    } else if (changed_prefs.gfx_pfullscreen != currprefs.gfx_pfullscreen) {
+	p_changed = 1;
+    }
 
-    graphics_subshutdown ();
-    currprefs.gfx_width = changed_prefs.gfx_width;
-    currprefs.gfx_height = changed_prefs.gfx_height;
-    currprefs.gfx_lores = changed_prefs.gfx_lores;
-    currprefs.gfx_linedbl = changed_prefs.gfx_linedbl;
-    currprefs.gfx_correct_aspect = changed_prefs.gfx_correct_aspect;
-    currprefs.gfx_xcenter = changed_prefs.gfx_xcenter;
-    currprefs.gfx_ycenter = changed_prefs.gfx_ycenter;
     currprefs.gfx_afullscreen = changed_prefs.gfx_afullscreen;
     currprefs.gfx_pfullscreen = changed_prefs.gfx_pfullscreen;
+
+    if (!a_changed && !p_changed)
+	return 0;
 
     gui_update_gfx ();
 
@@ -1463,6 +1481,11 @@ static void set_window_for_picasso (void)
 
 void gfx_set_picasso_modeinfo (int w, int h, int depth, int rgbfmt)
 {
+    if (screen_is_picasso
+	&& picasso_vidinfo.width == w
+	&& picasso_vidinfo.height == h)
+	return;
+
     picasso_vidinfo.width = w;
     picasso_vidinfo.height = h;
     picasso_vidinfo.depth = depth;
@@ -1593,32 +1616,32 @@ static void close_mouse (void)
    return;
 }
 
-static int acquire_mouse (int num, int flags)
+static int acquire_mouse (unsigned int num, int flags)
 {
    return 1;
 }
 
-static void unacquire_mouse (int num)
+static void unacquire_mouse (unsigned int num)
 {
    return;
 }
 
-static int get_mouse_num (void)
+static unsigned int get_mouse_num (void)
 {
     return 1;
 }
 
-static char *get_mouse_name (int mouse)
+static const char *get_mouse_name (unsigned int mouse)
 {
     return 0;
 }
 
-static int get_mouse_widget_num (int mouse)
+static unsigned int get_mouse_widget_num (unsigned int mouse)
 {
     return MAX_AXES + MAX_BUTTONS;
 }
 
-static int get_mouse_widget_first (int mouse, int type)
+static int get_mouse_widget_first (unsigned int mouse, int type)
 {
     switch (type) {
 	case IDEV_WIDGET_BUTTON:
@@ -1629,7 +1652,7 @@ static int get_mouse_widget_first (int mouse, int type)
     return -1;
 }
 
-static int get_mouse_widget_type (int mouse, int num, char *name, uae_u32 *code)
+static int get_mouse_widget_type (unsigned int mouse, unsigned int num, char *name, uae_u32 *code)
 {
     if (num >= MAX_AXES && num < MAX_AXES + MAX_BUTTONS) {
 	if (name)
@@ -1658,27 +1681,27 @@ struct inputdevice_functions inputdevicefunc_mouse = {
 /*
  * Keyboard inputdevice functions
  */
-static int get_kb_num (void)
+static unsigned int get_kb_num (void)
 {
     return 1;
 }
 
-static char *get_kb_name (int kb)
+static const char *get_kb_name (unsigned int kb)
 {
-    return 0;
+    return "Default keyboard";
 }
 
-static int get_kb_widget_num (int kb)
+static unsigned int get_kb_widget_num (unsigned int kb)
 {
     return 255; // fix me
 }
 
-static int get_kb_widget_first (int kb, int type)
+static int get_kb_widget_first (unsigned int kb, int type)
 {
     return 0;
 }
 
-static int get_kb_widget_type (int kb, int num, char *name, uae_u32 *code)
+static int get_kb_widget_type (unsigned int kb, unsigned int num, char *name, uae_u32 *code)
 {
     // fix me
     *code = num;
@@ -1695,7 +1718,7 @@ static void read_kb (void)
 }
 static int init_kb (void)
 {
-    set_default_hotkeys ( get_x11_default_hotkeys());
+    set_default_hotkeys (get_x11_default_hotkeys());
     return 1;
 }
 
@@ -1703,12 +1726,12 @@ static void close_kb (void)
 {
 }
 
-static int acquire_kb (int num, int flags)
+static int acquire_kb (unsigned int num, int flags)
 {
     return 1;
 }
 
-static void unacquire_kb (int num)
+static void unacquire_kb (unsigned int num)
 {
 }
 

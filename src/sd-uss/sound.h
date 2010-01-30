@@ -6,17 +6,18 @@
   * Copyright 1997 Bernd Schmidt
   */
 
-extern int sound_fd;
-extern uae_u16 sndbuffer[];
-extern uae_u16 *sndbufpt;
+extern uae_u16 *sndbufpt, *sndbuf_base;
 extern int sndbufsize;
 
-static __inline__ void check_sound_buffers (void)
+extern void finish_sound_buffers (void);
+
+STATIC_INLINE int check_sound_buffers (void)
 {
-    if ((char *)sndbufpt - (char *)sndbuffer >= sndbufsize) {
-	write (sound_fd, sndbuffer, sndbufsize);
-	sndbufpt = sndbuffer;
+    if ((char *)sndbufpt - (char *)sndbuf_base >= sndbufsize) {
+	finish_sound_buffers ();
+	return 1;
     }
+    return 0;
 }
 
 #define PUT_SOUND_BYTE(b) do { *(uae_u8 *)sndbufpt = b; sndbufpt = (uae_u16 *)(((uae_u8 *)sndbufpt) + 1); } while (0)

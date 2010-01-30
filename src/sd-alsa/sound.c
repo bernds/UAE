@@ -15,7 +15,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "memory.h"
 #include "events.h"
@@ -78,7 +77,7 @@ int init_sound (void)
   snd_pcm_hw_params_t *hw_params;
   snd_pcm_uframes_t buffer_frames;
 
-  dspbits = currprefs.sound_bits;
+  dspbits = 16;
   channels = currprefs.sound_stereo ? 2 : 1;
   rate    = currprefs.sound_freq;
 
@@ -113,17 +112,7 @@ int init_sound (void)
     goto nosound;
   }
 
-  switch (dspbits) {
-  case 8:
-    alsamode = SND_PCM_FORMAT_U8;
-    break;
-  case 16:
-    alsamode = SND_PCM_FORMAT_S16;
-    break;
-  default:
-    fprintf(stderr, "%d bit samples not supported with uae's alsa\n", dspbits);
-    goto nosound;
-  }
+  alsamode = SND_PCM_FORMAT_S16;
 
   if ((err = snd_pcm_hw_params_set_format (alsa_playback_handle, hw_params, alsamode)) < 0) {
     fprintf (stderr, "cannot set sample format (%s)\n",
@@ -143,7 +132,7 @@ int init_sound (void)
     goto nosound;
   }
 
-  alsa_to_frames_divisor = channels * dspbits / 8;
+  alsa_to_frames_divisor = channels * 2;
   buffer_frames = sndbufsize / alsa_to_frames_divisor;
   if ((err = snd_pcm_hw_params_set_period_size_near(alsa_playback_handle, hw_params, &buffer_frames, 0)) < 0) {
     fprintf (stderr, "cannot set period size near (%s)\n", snd_strerror (err));
@@ -164,19 +153,14 @@ int init_sound (void)
     goto nosound;
   }
 
-  scaled_sample_evtime = (unsigned long) MAXHPOS_PAL * MAXVPOS_PAL * VBLANK_HZ_PAL * CYCLE_UNIT / rate;
-  scaled_sample_evtime_ok = 1;
+  obtainedfreq = rate;
 
-  if (dspbits == 16) {
-    init_sound_table16 ();
-    sample_handler = currprefs.sound_stereo ? sample16s_handler : sample16_handler;
-  } else {
-    init_sound_table8 ();
-    sample_handler = currprefs.sound_stereo ? sample8s_handler : sample8_handler;
-  }
+  init_sound_table16 ();
+  sample_handler = currprefs.sound_stereo ? sample16s_handler : sample16_handler;
+
   have_sound = 1;
   sound_available = 1;
-  printf ("Sound driver found and configured for %d bits at %d Hz, buffer is %d bytes\n", dspbits, rate, sndbufsize);
+  printf ("Sound driver found and configured at %d Hz, buffer is %d bytes\n", rate, sndbufsize);
 
   sndbufpt = sndbuffer;
   return 1;

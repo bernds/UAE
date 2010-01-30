@@ -6,7 +6,6 @@
  * Copyright 1997 Mathias Ortmann
  */
 
-#include "config.h"
 #include "sysconfig.h"
 #include "sysdeps.h"
 
@@ -72,9 +71,9 @@ static int isillegal (unsigned char *str)
 	c &= ~' ';
 
     result = ( (a == 'A' && b == 'U' && c == 'X') ||
-	        (a == 'C' && b == 'O' && c == 'N') ||
-	        (a == 'P' && b == 'R' && c == 'N') ||
-	        (a == 'N' && b == 'U' && c == 'L') );
+		(a == 'C' && b == 'O' && c == 'N') ||
+		(a == 'P' && b == 'R' && c == 'N') ||
+		(a == 'N' && b == 'U' && c == 'L') );
 
     return result;
 }
@@ -144,16 +143,16 @@ void fname_atow (const char *src, char *dst, int size)
     /* Major kludge, because I can't find the problem... */
     if( ( posn = strstr( strt, "..\xA0\\" ) ) == strt && temp)
     {
-        strcpy( temp, "..\\" );
-        strcat( temp, strt + 4 );
-        strcpy( strt, temp );
+	strcpy( temp, "..\\" );
+	strcat( temp, strt + 4 );
+	strcpy( strt, temp );
     }
 
     /* Another major kludge, for the MUI installation... */
     if( *strt == ' ' ) /* first char as a space is illegal in Windoze */
     {
-        sprintf( temp, "~%02x%s", ' ', strt+1 );
-        strcpy( strt, temp );
+	sprintf( temp, "~%02x%s", ' ', strt+1 );
+	strcpy( strt, temp );
     }
 }
 
@@ -205,45 +204,45 @@ int truncate (const char *name, long int len)
     fname_atow(name,buf,sizeof buf);
 
     if( ( hFile = CreateFile( buf, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
-                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL ) ) != INVALID_HANDLE_VALUE )
+			      OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL ) ) != INVALID_HANDLE_VALUE )
     {
-        if( SetFilePointer( hFile, len, NULL, FILE_BEGIN ) == (DWORD)len )
-        {
-            if( SetEndOfFile( hFile ) == TRUE )
-                result = 0;
-        }
-        else
-        {
-            write_log( "SetFilePointer() failure for %s to posn %d\n", buf, len );
-        }
-        CloseHandle( hFile );
+	if( SetFilePointer( hFile, len, NULL, FILE_BEGIN ) == (DWORD)len )
+	{
+	    if( SetEndOfFile( hFile ) == TRUE )
+		result = 0;
+	}
+	else
+	{
+	    write_log( "SetFilePointer() failure for %s to posn %d\n", buf, len );
+	}
+	CloseHandle( hFile );
     }
     else
     {
-        write_log( "CreateFile() failed to open %s\n", buf );
+	write_log( "CreateFile() failed to open %s\n", buf );
     }
 #else
     if( ( hFile = CreateFile( name, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
-                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL ) ) != INVALID_HANDLE_VALUE )
+			      OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL ) ) != INVALID_HANDLE_VALUE )
     {
-        if( SetFilePointer( hFile, len, NULL, FILE_BEGIN ) == (DWORD)len )
-        {
-            if( SetEndOfFile( hFile ) == TRUE )
-                result = 0;
-        }
-        else
-        {
-            write_log( "SetFilePointer() failure for %s to posn %d\n", name, len );
-        }
-        CloseHandle( hFile );
+	if( SetFilePointer( hFile, len, NULL, FILE_BEGIN ) == (DWORD)len )
+	{
+	    if( SetEndOfFile( hFile ) == TRUE )
+		result = 0;
+	}
+	else
+	{
+	    write_log( "SetFilePointer() failure for %s to posn %d\n", name, len );
+	}
+	CloseHandle( hFile );
     }
     else
     {
-        write_log( "CreateFile() failed to open %s\n", name );
+	write_log( "CreateFile() failed to open %s\n", name );
     }
 #endif
     if( result == -1 )
-        lasterror = GetLastError();
+	lasterror = GetLastError();
     return result;
 }
 #endif
@@ -386,18 +385,18 @@ void tmToSystemTime( struct tm *tmtime, LPSYSTEMTIME systime )
 {
     if( tmtime == NULL )
     {
-        GetSystemTime( systime );
+	GetSystemTime( systime );
     }
     else
     {
-        systime->wDay       = tmtime->tm_mday;
-        systime->wDayOfWeek = tmtime->tm_wday;
-        systime->wMonth     = tmtime->tm_mon + 1;
-        systime->wYear      = tmtime->tm_year + 1900;
-        systime->wHour      = tmtime->tm_hour;
-        systime->wMinute    = tmtime->tm_min;
-        systime->wSecond    = tmtime->tm_sec;
-        systime->wMilliseconds = 0;
+	systime->wDay       = tmtime->tm_mday;
+	systime->wDayOfWeek = tmtime->tm_wday;
+	systime->wMonth     = tmtime->tm_mon + 1;
+	systime->wYear      = tmtime->tm_year + 1900;
+	systime->wHour      = tmtime->tm_hour;
+	systime->wMinute    = tmtime->tm_min;
+	systime->wSecond    = tmtime->tm_sec;
+	systime->wMilliseconds = 0;
     }
 }
 
@@ -430,7 +429,7 @@ int posixemu_utime( const char *name, struct utimbuf *time )
     get_time( time->actime, &days, &mins, &ticks );
 
     if( setfiletime( name, days, mins, ticks ) )
-        result = 0;
+	result = 0;
 
 	return result;
 }

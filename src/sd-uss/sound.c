@@ -9,13 +9,13 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "memory.h"
 #include "events.h"
 #include "custom.h"
 #include "gensound.h"
 #include "sounddep/sound.h"
+#include "threaddep/thread.h"
 
 #include <sys/ioctl.h>
 
@@ -27,12 +27,17 @@
 #error "Something went wrong during configuration."
 #endif
 
-int sound_fd;
+static smp_comm_pipe to_sound_pipe;
+static uae_sem_t sound_comm_sem;
+
+static int sound_fd;
 static int have_sound = 0;
+static int dont_block;
 static unsigned long formats;
 
-uae_u16 sndbuffer[44100];
-uae_u16 *sndbufpt;
+static int which_buffer;
+static uae_u16 sndbuffer[2][44100];
+uae_u16 *sndbufpt, *sndbuf_base;
 int sndbufsize;
 
 static int exact_log2 (int v)
@@ -43,10 +48,22 @@ static int exact_log2 (int v)
     return l;
 }
 
+void finish_sound_buffers (void)
+{
+    dont_block = currprefs.m68k_speed == -1;
+    write_comm_pipe_int (&to_sound_pipe, 2, 1);
+    uae_sem_wait (&sound_comm_sem);
+    sndbufpt = sndbuf_base = sndbuffer[which_buffer ^= 1];
+}
+
 void close_sound (void)
 {
     if (have_sound)
 	close (sound_fd);
+
+    write_comm_pipe_int (&to_sound_pipe, 1, 1);
+    uae_sem_wait (&sound_comm_sem);
+    uae_sem_destroy (&sound_comm_sem);
 }
 
 /* Try to determine whether sound is available.  This is only for GUI purposes.  */
@@ -77,7 +94,7 @@ int setup_sound (void)
     return 1;
 }
 
-int init_sound (void)
+static void open_sound (void)
 {
     int tmp;
     int rate;
@@ -89,13 +106,11 @@ int init_sound (void)
 	perror ("Can't open /dev/dsp");
 	if (errno != EBUSY)
 	    sound_available = 0;
-	return 0;
+	return;
     }
     if (ioctl (sound_fd, SNDCTL_DSP_GETFMTS, &formats) == -1) {
 	perror ("ioctl failed - can't use sound");
-	close (sound_fd);
-	have_sound = 0;
-	return 0;
+	goto out_err;
     }
 
     if (currprefs.sound_maxbsiz < 128 || currprefs.sound_maxbsiz > 16384) {
@@ -107,12 +122,12 @@ int init_sound (void)
     ioctl (sound_fd, SNDCTL_DSP_SETFRAGMENT, &tmp);
     ioctl (sound_fd, SNDCTL_DSP_GETBLKSIZE, &sndbufsize);
 
-    dspbits = currprefs.sound_bits;
+    dspbits = 16;
     ioctl (sound_fd, SNDCTL_DSP_SAMPLESIZE, &dspbits);
     ioctl (sound_fd, SOUND_PCM_READ_BITS, &dspbits);
-    if (dspbits != currprefs.sound_bits) {
-	fprintf (stderr, "Can't use sound with %d bits\n", currprefs.sound_bits);
-	return 0;
+    if (dspbits != 16) {
+	fprintf (stderr, "Can't use sound with 16 bits\n");
+	goto out_err;
     }
 
     tmp = currprefs.sound_stereo;
@@ -124,28 +139,78 @@ int init_sound (void)
     /* Some soundcards have a bit of tolerance here. */
     if (rate < currprefs.sound_freq * 90 / 100 || rate > currprefs.sound_freq * 110 / 100) {
 	fprintf (stderr, "Can't use sound with desired frequency %d\n", currprefs.sound_freq);
-	return 0;
+	goto out_err;
     }
 
-    scaled_sample_evtime = (unsigned long)MAXHPOS_PAL * MAXVPOS_PAL * VBLANK_HZ_PAL * CYCLE_UNIT / rate;
-    scaled_sample_evtime_ok = 1;
+    obtainedfreq = rate;
 
-    if (dspbits == 16) {
-	/* Will this break horribly on bigendian machines? Possible... */
-	if (!(formats & AFMT_S16_LE))
-	    return 0;
-	init_sound_table16 ();
-	sample_handler = currprefs.sound_stereo ? sample16s_handler : sample16_handler;
-    } else {
-	if (!(formats & AFMT_U8))
-	    return 0;
-	init_sound_table8 ();
-	sample_handler = currprefs.sound_stereo ? sample8s_handler : sample8_handler;
-    }
+    if (!(formats & AFMT_S16_NE))
+	goto out_err;
+    init_sound_table16 ();
+    sample_handler = currprefs.sound_stereo ? sample16s_handler : sample16_handler;
+
     sound_available = 1;
-    printf ("Sound driver found and configured for %d bits at %d Hz, buffer is %d bytes\n",
-	    dspbits, rate, sndbufsize);
-    sndbufpt = sndbuffer;
+    printf ("Sound driver found and configured at %d Hz, buffer is %d bytes (%d ms).\n",
+	    rate, sndbufsize, sndbufsize * 1000 / (rate * 2 * (currprefs.sound_stereo ? 2 : 1)));
+    sndbufpt = sndbuf_base = sndbuffer[which_buffer = 0];
 
-    return 1;
+    return;
+
+  out_err:
+    close (sound_fd);
+    have_sound = 0;
+    return;
+}
+
+static void *sound_thread (void *dummy)
+{
+    for (;;) {
+	int cmd = read_comm_pipe_int_blocking (&to_sound_pipe);
+	int n;
+
+	switch (cmd) {
+	case 0:
+	    open_sound ();
+	    uae_sem_post (&sound_comm_sem);
+	    break;
+	case 1:
+	    uae_sem_post (&sound_comm_sem);
+	    return 0;
+	case 2:
+	    /* If trying for maximum CPU speed, don't block the main
+	       thread, instead set the blocking_on_sound variable.  If
+	       not trying for maximum CPU speed, synchronize here by
+	       delaying the sem_post until after the write.  */
+	    blocking_on_sound = dont_block;
+	    if (dont_block)
+		uae_sem_post (&sound_comm_sem);
+
+	    write (sound_fd, sndbuffer[which_buffer], sndbufsize);
+	    if (!dont_block)
+		uae_sem_post (&sound_comm_sem);
+
+	    blocking_on_sound = 0;
+	    break;
+	}
+    }
+}
+
+/* We use a thread so that we can use the time spent waiting for the sound
+   driver for executing m68k instructions, rather than just blocking.  */
+static void init_sound_thread (void)
+{
+    uae_thread_id tid;
+
+    init_comm_pipe (&to_sound_pipe, 20, 1);
+    uae_sem_init (&sound_comm_sem, 0, 0);
+    uae_start_thread (sound_thread, NULL, &tid);
+}
+
+int init_sound (void)
+{
+    init_sound_thread ();
+    write_comm_pipe_int (&to_sound_pipe, 0, 1);
+    uae_sem_wait (&sound_comm_sem);
+
+    return have_sound;
 }

@@ -43,7 +43,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 #include "uae.h"
-#include "config.h"
 #include "options.h"
 #ifdef __GNUC__
 #include "../include/memory.h" /* or else gcc includes machdep/memory.h */

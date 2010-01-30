@@ -15,9 +15,3 @@ extern void diskindex_handler (void);
 
 extern void dumpcia (void);
 extern void rethink_cias (void);
-extern unsigned int ciaaicr,ciaaimask,ciabicr,ciabimask;
-extern unsigned int ciaacra,ciaacrb,ciabcra,ciabcrb;
-extern unsigned int ciabpra;
-extern unsigned long ciaata,ciaatb,ciabta,ciabtb;
-extern unsigned long ciaatod,ciabtod,ciaatol,ciabtol,ciaaalarm,ciabalarm;
-extern int ciaatlatch,ciabtlatch;

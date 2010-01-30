@@ -1,0 +1,63 @@
+Compiling UAE
+===============
+
+UAE should be able to compile on any platform with a POSIX-like shell
+environment, a C compiler and make. Version 2.95 or newer of the GNU C
+Compiler is recommended as is GNU make, but alternative compilers and
+versions of make may work. Some features may be GCC-specific, however.
+Currently, for example, the JIT - the compiler which dynamically
+translate 68k opcodes to x86 opcodes - does require GCC (and GAS, the
+GNU assembler).
+
+
+Configuring
+===========
+
+The first step to compiling E-UAE is to generate a makefile suitable
+for your intended target system. This is done by running the configure
+script.
+
+Run ./configure --help to see the list of options that the configure
+script supports. Most options will automatically default to
+appropriate values.
+
+Here are a selection of the the supported options:
+
+The config script for UAE supports a bunch of compile-time options for
+selecting what features are built into UAE. Here's a selection:
+
+--with-sdl-gfx
+  Use SDL library for graphics output.  This is recommended.
+
+--with-sdl-sound
+  Use SDL library for audio output.
+
+
+Note that the '--enable-xyz' options all have a '--disable-xyz'
+counterpart to disable that feature.
+
+
+Compiling on MacOS X
+--------------------
+
+At the moment, only building against the SDL framework is supported.
+Configure with
+
+./configure --with-sdl-gfx --with-sdl-sound
+
+and any other options you fancy.
+
+If you are building on an x86 OS X box, then the SDL test in the
+configure script currently fails. It should build okay if you disable
+the SDL test. That is, configure with:
+
+./configure --with-sdl-gfx --with-sdl-sound --disable-sdltest
+
+I've not tested this myself, however, since I don't have a MacIntel
+box.
+
+
+Building
+--------
+
+Just type 'make' after configuring.

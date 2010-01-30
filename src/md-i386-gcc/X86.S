@@ -5,8 +5,6 @@
  * a PPro]
  */
 
-#include "config.h"
-
 /*#define X86_PPRO_OPT*/
 #ifdef X86_PPRO_OPT
 #define PARTIAL_REG(a,b) a

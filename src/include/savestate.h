@@ -14,12 +14,12 @@ extern void save_u16_func (uae_u8 **, uae_u16);
 extern void save_u32_func (uae_u8 **, uae_u32);
 extern void save_u8_func (uae_u8 **, uae_u8);
 
-extern uae_u16 restore_u16_func (uae_u8 **);
-extern uae_u32 restore_u32_func (uae_u8 **);
-extern uae_u8 restore_u8_func (uae_u8 **);
+extern uae_u16 restore_u16_func (const uae_u8 **);
+extern uae_u32 restore_u32_func (const uae_u8 **);
+extern uae_u8 restore_u8_func (const uae_u8 **);
 
-extern void save_string_func (uae_u8 **, char*);
-extern char *restore_string_func (uae_u8 **);
+extern void save_string_func (uae_u8 **, const char*);
+extern char *restore_string_func (const uae_u8 **);
 
 #define save_u32(x) save_u32_func (&dst, (x))
 #define save_u16(x) save_u16_func (&dst, (x))
@@ -34,38 +34,38 @@ extern char *restore_string_func (uae_u8 **);
 
 /* save, restore and initialize routines for Amiga's subsystems */
 
-extern uae_u8 *restore_cpu (uae_u8 *);
+extern const uae_u8 *restore_cpu (const uae_u8 *);
 extern uae_u8 *save_cpu (int *, uae_u8 *);
 
 extern uae_u8 *restore_fpu (uae_u8 *);
 extern uae_u8 *save_fpu (int *, uae_u8 *);
 
-extern uae_u8 *restore_disk (int, uae_u8 *);
+extern const uae_u8 *restore_disk (int, const uae_u8 *);
 extern uae_u8 *save_disk (int, int *, uae_u8 *);
-extern uae_u8 *restore_floppy (uae_u8 *src);
+extern const uae_u8 *restore_floppy (const uae_u8 *src);
 extern uae_u8 *save_floppy (int *len, uae_u8 *);
 extern void DISK_save_custom  (uae_u32 *pdskpt, uae_u16 *pdsklen, uae_u16 *pdsksync, uae_u16 *pdskdatr, uae_u16 *pdskbytr);
 extern void DISK_restore_custom  (uae_u32 pdskpt, uae_u16 pdsklength, uae_u16 pdskdatr, uae_u16 pdskbytr);
 
-extern uae_u8 *restore_custom (uae_u8 *);
+extern const uae_u8 *restore_custom (const uae_u8 *);
 extern uae_u8 *save_custom (int *, uae_u8 *, int);
 
-extern uae_u8 *restore_custom_sprite (int num, uae_u8 *src);
+extern const uae_u8 *restore_custom_sprite (int num, const uae_u8 *src);
 extern uae_u8 *save_custom_sprite (int num, int *len);
 
-extern uae_u8 *restore_custom_agacolors (uae_u8 *src);
+extern const uae_u8 *restore_custom_agacolors (const uae_u8 *src);
 extern uae_u8 *save_custom_agacolors (int *len, uae_u8 *);
 
-extern uae_u8 *restore_custom_blitter (uae_u8 *src);
+extern const uae_u8 *restore_custom_blitter (const uae_u8 *src);
 extern uae_u8 *save_custom_blitter (int *len);
 
-extern uae_u8 *restore_audio (int, uae_u8 *);
+extern const uae_u8 *restore_audio (int, const uae_u8 *);
 extern uae_u8 *save_audio (int, int *);
 
-extern uae_u8 *restore_cia (int, uae_u8 *);
+extern const uae_u8 *restore_cia (int, const uae_u8 *);
 extern uae_u8 *save_cia (int, int *, uae_u8 *);
 
-extern uae_u8 *restore_expansion (uae_u8 *);
+extern const uae_u8 *restore_expansion (const uae_u8 *);
 extern uae_u8 *save_expansion (int *, uae_u8 *);
 
 extern void restore_cram (int, long);
@@ -77,11 +77,11 @@ extern uae_u8 *save_bram (int *);
 extern uae_u8 *save_fram (int *);
 extern uae_u8 *save_zram (int *);
 
-extern uae_u8 *restore_rom (uae_u8 *);
+extern const uae_u8 *restore_rom (const uae_u8 *);
 extern uae_u8 *save_rom (int, int *, uae_u8 *);
 
-extern void save_state (char *filename, char *description);
-extern void restore_state (char *filename);
+extern void save_state (const char *filename, const char *description);
+extern void restore_state (const char *filename);
 
 extern void custom_save_state (void);
 

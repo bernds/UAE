@@ -16,7 +16,6 @@
 #include "sysdeps.h"
 #include <assert.h>
 
-#include "config.h"
 #include "options.h"
 #include "keybuf.h"
 #include "keyboard.h"
@@ -223,7 +222,7 @@ uae_u8 *save_keyboard (int *len)
     return t;
 }
 
-uae_u8 *restore_keyboard (uae_u8 *src)
+const uae_u8 *restore_keyboard (const uae_u8 *src)
 {
     setcapslockstate (restore_u32 ());
     restore_u32 ();

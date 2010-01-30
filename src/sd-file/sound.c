@@ -9,7 +9,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "memory.h"
 #include "custom.h"
@@ -119,7 +118,7 @@ int init_sound (void)
     buf[t+3] = (v>>24) & 255;
     write (sound_fd, buf, 44);
 
-    sample_evtime = (long)maxhpos * maxvpos * 50 / currprefs.sound_freq;
+    obtained_freq = currprefs.sound_freq;
 
     if (currprefs.sound_bits == 16) {
 	init_sound_table16 ();

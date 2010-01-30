@@ -10,7 +10,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "machdep/m68k.h"
 #include "events.h"

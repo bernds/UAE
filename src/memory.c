@@ -9,7 +9,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "uae.h"
 #include "memory.h"
@@ -1526,7 +1525,7 @@ void restore_bram (int len, long filepos)
     changed_prefs.bogomem_size = len;
 }
 
-uae_u8 *restore_rom (uae_u8 *src)
+const uae_u8 *restore_rom (const uae_u8 *src)
 {
     uae_u32 crc32;
     int i;

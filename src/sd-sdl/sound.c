@@ -9,7 +9,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "memory.h"
 #include "events.h"
@@ -23,13 +22,16 @@ int sound_fd;
 static int have_sound = 0;
 static unsigned long formats;
 
-uae_u16 sndbuffer[44100];
-uae_u16 *sndbufpt;
+uae_u16 sndbuffer[2][44100];
+uae_u16 *sndbufpt, *sndbuf_base;
+int which_buffer;
 int sndbufsize;
 static SDL_AudioSpec spec;
 
 static smp_comm_pipe to_sound_pipe;
 static uae_sem_t data_available_sem, callback_done_sem, sound_init_sem;
+
+static int dont_block;
 
 static int in_callback, closing_sound;
 
@@ -42,16 +44,26 @@ static void sound_callback (void *userdata, Uint8 *stream, int len)
     uae_sem_wait (&data_available_sem);
     if (! closing_sound) {
 	memcpy (stream, sndbuffer, sndbufsize);
+
 	/* Notify writer that we're done.  */
-	uae_sem_post (&callback_done_sem);
+	if (!dont_block)
+	    uae_sem_post (&callback_done_sem);
+	else
+	    blocking_on_sound = 0;
     }
     in_callback = 0;
 }
 
 void finish_sound_buffer (void)
 {
+    dont_block = currprefs.m68k_speed == -1;
+
+    if (dont_block)
+	blocking_on_sound = 1;
     uae_sem_post (&data_available_sem);
-    uae_sem_wait (&callback_done_sem);
+    if (!dont_block)
+	uae_sem_wait (&callback_done_sem);
+    sndbufpt = sndbuffer[which_buffer ^= 1];
 }
 
 /* Try to determine whether sound is available.  This is only for GUI purposes.  */
@@ -86,15 +98,15 @@ static int open_sound (void)
     int size = currprefs.sound_maxbsiz;
 
     spec.freq = currprefs.sound_freq;
-    spec.format = currprefs.sound_bits == 8 ? AUDIO_U8 : AUDIO_S16;
+    spec.format = AUDIO_S16;
     spec.channels = currprefs.sound_stereo ? 2 : 1;
     /* Always interpret buffer size as number of samples, not as actual
        buffer size.  Of course, since 8192 is the default, we'll have to
        scale that to a sane value (assuming that otherwise 16 bits and
        stereo would have been enabled and we'd have done the shift by
        two anyway).  */
-    size >>= spec.channels - 1;
-    size >>= currprefs.sound_bits == 8 ? 0 : 1;
+    size >>= spec.channels;
+
     while (size & (size - 1))
 	size &= size - 1;
     if (size < 512)
@@ -109,8 +121,7 @@ static int open_sound (void)
     }
     have_sound = 1;
 
-    scaled_sample_evtime = (unsigned long)MAXHPOS_PAL * MAXVPOS_PAL * VBLANK_HZ_PAL * CYCLE_UNIT / spec.freq;
-    scaled_sample_evtime_ok = 1;
+    obtainedfreq = spec.freq;
 
     if (spec.format == AUDIO_S16) {
 	init_sound_table16 ();
@@ -120,10 +131,10 @@ static int open_sound (void)
 	sample_handler = currprefs.sound_stereo ? sample8s_handler : sample8_handler;
     }
     sound_available = 1;
-    write_log ("SDL sound driver found and configured for %d bits at %d Hz, buffer is %d samples\n",
-	       currprefs.sound_bits, spec.freq, spec.samples);
-    sndbufpt = sndbuffer;
-    sndbufsize = size * currprefs.sound_bits / 8 * spec.channels;
+    write_log ("SDL sound driver found and configured at %d Hz, buffer is %d samples\n",
+	       spec.freq, spec.samples);
+    sndbufpt = sndbuf_base = sndbuffer[which_buffer = 0];
+    sndbufsize = size * 2 * spec.channels;
     return 1;
 }
 

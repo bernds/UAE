@@ -10,7 +10,6 @@
 #include "sysdeps.h"
 #include <assert.h>
 
-#include "config.h"
 #include "options.h"
 #include "threaddep/thread.h"
 #include "uae.h"
@@ -42,9 +41,8 @@
 #include "SDL.h"
 #endif
 
-long int version = 256*65536L*UAEMAJOR + 65536L*UAEMINOR + UAESUBREV;
-
 struct uae_prefs currprefs, changed_prefs;
+struct gfx_params *curr_gfx;
 
 int no_gui = 0;
 int joystickpresent = 0;
@@ -75,6 +73,20 @@ char *colormodes[] = { "256 colors", "32768 colors", "65536 colors",
     "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
     "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""
 };
+
+unsigned long gtod_resolution, gtod_secs;
+
+static void init_gtod (void)
+{
+    struct timeval tv1, tv2;
+    gettimeofday (&tv1, NULL);
+    do {
+	gettimeofday (&tv2, NULL);
+    } while (tv1.tv_sec == tv2.tv_sec
+	     && tv1.tv_usec == tv2.tv_usec);
+
+    gtod_resolution = (tv2.tv_usec - tv1.tv_usec + 1000000 * (tv2.tv_sec - tv1.tv_sec));
+}
 
 void discard_prefs (struct uae_prefs *p)
 {
@@ -121,15 +133,16 @@ void default_prefs (struct uae_prefs *p)
     p->sound_interpol = 0;
 
     p->gfx_framerate = 1;
-    p->gfx_width = 800;
-    p->gfx_height = 600;
-    p->gfx_lores = 0;
-    p->gfx_linedbl = 2;
+    p->gfx_w.width = 800;
+    p->gfx_w.height = 600;
+    p->gfx_w.lores = 0;
+    p->gfx_w.linedbl = 2;
+    p->gfx_w.correct_aspect = 0;
+    p->gfx_w.xcenter = 0;
+    p->gfx_w.ycenter = 0;
+    p->gfx_f = p->gfx_w;
     p->gfx_afullscreen = 0;
     p->gfx_pfullscreen = 0;
-    p->gfx_correct_aspect = 0;
-    p->gfx_xcenter = 0;
-    p->gfx_ycenter = 0;
     p->color_mode = 0;
 
     p->x11_use_low_bandwidth = 0;
@@ -183,19 +196,19 @@ void default_prefs (struct uae_prefs *p)
     inputdevice_default_prefs (p);
 }
 
-void fixup_prefs_dimensions (struct uae_prefs *prefs)
+void fixup_prefs_dimensions (struct gfx_params *p)
 {
-    if (prefs->gfx_width < 320)
-	prefs->gfx_width = 320;
-    if (prefs->gfx_height < 200)
-	prefs->gfx_height = 200;
-    if (prefs->gfx_height > 300 && ! prefs->gfx_linedbl)
-	prefs->gfx_height = 300;
-    if (prefs->gfx_height > 600)
-	prefs->gfx_height = 600;
+    if (p->width < 320)
+	p->width = 320;
+    if (p->height < 200)
+	p->height = 200;
+    if (p->height > 300 && ! p->linedbl)
+	p->height = 300;
+    if (p->height > 600)
+	p->height = 600;
 
-    prefs->gfx_width += 7; /* X86.S wants multiples of 4 bytes, might be 8 in the future. */
-    prefs->gfx_width &= ~7;
+    p->width += 7; /* X86.S wants multiples of 4 bytes, might be 8 in the future. */
+    p->width &= ~7;
 }
 
 static void fix_options (void)
@@ -464,6 +477,11 @@ void real_main (int argc, char **argv)
     parse_cmdline_and_init_file (argc, argv);
 
     machdep_init ();
+    init_gtod ();
+    if (gtod_resolution < 1000) {
+	use_gtod = 1;
+	syncbase = 1000000;
+    }
 
     if (! setup_sound ()) {
 	write_log ("Sound driver unavailable: Sound output disabled\n");
@@ -521,6 +539,12 @@ void real_main (int argc, char **argv)
 	start_program ();
     }
     leave_program ();
+}
+
+void uae_abort (const char *msg)
+{
+    write_log ("%s", msg);
+    abort ();
 }
 
 #ifndef NO_MAIN_IN_MAIN_C

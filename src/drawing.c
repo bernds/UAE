@@ -32,7 +32,6 @@
 #include <ctype.h>
 #include <assert.h>
 
-#include "config.h"
 #include "options.h"
 #include "threaddep/thread.h"
 #include "uae.h"
@@ -1009,16 +1008,16 @@ static void init_aspect_maps (void)
     amiga2aspect_line_map = (int *)malloc (sizeof (int) * (MAXVPOS + 1)*2 + 1);
     native2amiga_line_map = (int *)malloc (sizeof (int) * gfxvidinfo.height);
 
-    if (currprefs.gfx_correct_aspect)
+    if (curr_gfx->correct_aspect)
 	native_lines_per_amiga_line = ((double)gfxvidinfo.height
-				       * (currprefs.gfx_lores ? 320 : 640)
-				       / (currprefs.gfx_linedbl ? 512 : 256)
+				       * (curr_gfx->lores ? 320 : 640)
+				       / (curr_gfx->linedbl ? 512 : 256)
 				       / gfxvidinfo.width);
     else
 	native_lines_per_amiga_line = 1;
 
-    maxl = (MAXVPOS + 1) * (currprefs.gfx_linedbl ? 2 : 1);
-    min_ypos_for_screen = minfirstline << (currprefs.gfx_linedbl ? 1 : 0);
+    maxl = (MAXVPOS + 1) * (curr_gfx->linedbl ? 2 : 1);
+    min_ypos_for_screen = minfirstline << (curr_gfx->linedbl ? 1 : 0);
     max_drawn_amiga_line = -1;
     for (i = 0; i < maxl; i++) {
 	int v = (int) ((i - min_ypos_for_screen) * native_lines_per_amiga_line);
@@ -1028,12 +1027,12 @@ static void init_aspect_maps (void)
 	    v = -1;
 	amiga2aspect_line_map[i] = v;
     }
-    if (currprefs.gfx_linedbl)
+    if (curr_gfx->linedbl)
 	max_drawn_amiga_line >>= 1;
 
-    if (currprefs.gfx_ycenter && !(currprefs.gfx_correct_aspect)) {
+    if (curr_gfx->ycenter && !(curr_gfx->correct_aspect)) {
 	/* @@@ verify maxvpos vs. MAXVPOS */
-	extra_y_adjust = (gfxvidinfo.height - (maxvpos << (currprefs.gfx_linedbl ? 1 : 0))) >> 1;
+	extra_y_adjust = (gfxvidinfo.height - (maxvpos << (curr_gfx->linedbl ? 1 : 0))) >> 1;
 	if (extra_y_adjust < 0)
 	    extra_y_adjust = 0;
     }
@@ -1045,7 +1044,7 @@ static void init_aspect_maps (void)
 	/* Must omit drawing some lines. */
 	for (i = maxl - 1; i > min_ypos_for_screen; i--) {
 	    if (amiga2aspect_line_map[i] == amiga2aspect_line_map[i-1]) {
-		if (currprefs.gfx_linedbl && (i & 1) == 0 && amiga2aspect_line_map[i+1] != -1) {
+		if (curr_gfx->linedbl && (i & 1) == 0 && amiga2aspect_line_map[i+1] != -1) {
 		    /* If only the first line of a line pair would be omitted,
 		     * omit the second one instead to avoid problems with line
 		     * doubling. */
@@ -1062,7 +1061,7 @@ static void init_aspect_maps (void)
 	if (amiga2aspect_line_map[i] == -1)
 	    continue;
 	for (j = amiga2aspect_line_map[i]; j < gfxvidinfo.height && native2amiga_line_map[j] == -1; j++)
-	    native2amiga_line_map[j] = i >> (currprefs.gfx_linedbl ? 1 : 0);
+	    native2amiga_line_map[j] = i >> (curr_gfx->linedbl ? 1 : 0);
     }
 }
 
@@ -1288,8 +1287,8 @@ STATIC_INLINE void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
     if (border == 0) {
 	pfield_expand_dp_bplcon ();
 
-	if (bplres == RES_LORES && ! currprefs.gfx_lores)
-	    currprefs.gfx_lores = 2;
+	if (bplres == RES_LORES && ! curr_gfx->lores)
+	    curr_gfx->lores = 2;
 
 	pfield_init_linetoscr ();
 	pfield_doline (lineno);
@@ -1333,8 +1332,8 @@ STATIC_INLINE void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 		memcpy (row_map[follow_ypos], row_map[gfx_ypos], gfxvidinfo.pixbytes * gfxvidinfo.width);
 	    do_flush_line (follow_ypos);
 	}
-	if (currprefs.gfx_lores == 2)
-	    currprefs.gfx_lores = 0;
+	if (curr_gfx->lores == 2)
+	    curr_gfx->lores = 0;
     } else if (border == 1) {
 	adjust_drawing_colors (dp_for_drawing->ctable, 0);
 
@@ -1389,8 +1388,8 @@ static void center_image (void)
     int prev_x_adjust = visible_left_border;
     int prev_y_adjust = thisframe_y_adjust;
 
-    if (currprefs.gfx_xcenter) {
-	if (max_diwstop - min_diwstart < gfxvidinfo.width && currprefs.gfx_xcenter == 2)
+    if (curr_gfx->xcenter) {
+	if (max_diwstop - min_diwstart < gfxvidinfo.width && curr_gfx->xcenter == 2)
 	    /* Try to center. */
 	    visible_left_border = ((max_diwstop - min_diwstart - gfxvidinfo.width) / 2 + min_diwstart) & ~1;
 	else
@@ -1398,7 +1397,7 @@ static void center_image (void)
 
 	/* Would the old value be good enough? If so, leave it as it is if we want to
 	 * be clever. */
-	if (currprefs.gfx_xcenter == 2) {
+	if (curr_gfx->xcenter == 2) {
 	    if (visible_left_border < prev_x_adjust && prev_x_adjust < min_diwstart)
 		visible_left_border = prev_x_adjust;
 	}
@@ -1414,14 +1413,14 @@ static void center_image (void)
 	visible_right_border = max_diwlastword;
 
     thisframe_y_adjust = minfirstline;
-    if (currprefs.gfx_ycenter && thisframe_first_drawn_line != -1) {
-	if (thisframe_last_drawn_line - thisframe_first_drawn_line < max_drawn_amiga_line && currprefs.gfx_ycenter == 2)
+    if (curr_gfx->ycenter && thisframe_first_drawn_line != -1) {
+	if (thisframe_last_drawn_line - thisframe_first_drawn_line < max_drawn_amiga_line && curr_gfx->ycenter == 2)
 	    thisframe_y_adjust = (thisframe_last_drawn_line - thisframe_first_drawn_line - max_drawn_amiga_line) / 2 + thisframe_first_drawn_line;
 	else
 	    thisframe_y_adjust = thisframe_first_drawn_line;
 	/* Would the old value be good enough? If so, leave it as it is if we want to
 	 * be clever. */
-	if (currprefs.gfx_ycenter == 2) {
+	if (curr_gfx->ycenter == 2) {
 	    if (thisframe_y_adjust != prev_y_adjust
 		&& prev_y_adjust <= thisframe_first_drawn_line
 		&& prev_y_adjust + max_drawn_amiga_line > thisframe_last_drawn_line)
@@ -1433,13 +1432,13 @@ static void center_image (void)
 	if (thisframe_y_adjust < minfirstline)
 	    thisframe_y_adjust = minfirstline;
     }
-    thisframe_y_adjust_real = thisframe_y_adjust << (currprefs.gfx_linedbl ? 1 : 0);
-    max_ypos_thisframe = (maxvpos - thisframe_y_adjust) << (currprefs.gfx_linedbl ? 1 : 0);
+    thisframe_y_adjust_real = thisframe_y_adjust << (curr_gfx->linedbl ? 1 : 0);
+    max_ypos_thisframe = (maxvpos - thisframe_y_adjust) << (curr_gfx->linedbl ? 1 : 0);
 
     /* @@@ interlace_seen used to be (bplcon0 & 4), but this is probably
      * better.  */
     if (prev_x_adjust != visible_left_border || prev_y_adjust != thisframe_y_adjust)
-	frame_redraw_necessary |= interlace_seen && currprefs.gfx_linedbl ? 2 : 1;
+	frame_redraw_necessary |= interlace_seen && curr_gfx->linedbl ? 2 : 1;
 
     max_diwstop = 0;
     min_diwstart = 10000;
@@ -1456,7 +1455,10 @@ static void init_drawing_frame (void)
     if (thisframe_first_drawn_line > thisframe_last_drawn_line)
 	thisframe_last_drawn_line = thisframe_first_drawn_line;
 
-    maxline = currprefs.gfx_linedbl ? (maxvpos+1) * 2 + 1 : (maxvpos+1) + 1;
+    if (!curr_gfx)
+	return;
+
+    maxline = curr_gfx->linedbl ? (maxvpos+1) * 2 + 1 : (maxvpos+1) + 1;
 #ifdef SMART_UPDATE
     for (i = 0; i < maxline; i++) {
 	switch (linestate[i]) {
@@ -1749,8 +1751,10 @@ void vsync_handle_redraw (int long_frame, int lof_changed)
 	check_prefs_changed_custom ();
 	check_prefs_changed_cpu ();
 	if (check_prefs_changed_gfx ()) {
-	    init_row_map ();
-	    init_aspect_maps ();
+	    if (curr_gfx) {
+		init_row_map ();
+		init_aspect_maps ();
+	    }
 	    notice_screen_contents_lost ();
 	    notice_new_xcolors ();
 	}
@@ -1813,16 +1817,12 @@ void reset_drawing (void)
     inhibit_frame = 0;
     uae_sem_init (&gui_sem, 0, 1);
 
-#ifdef PICASSO96
-    InitPicasso96 ();
-    picasso_on = 0;
-    picasso_requested_on = 0;
-    gfx_set_picasso_state (0);
-#endif
     max_diwstop = 0;
 
-    lores_factor = currprefs.gfx_lores ? 1 : 2;
-    lores_shift = currprefs.gfx_lores ? 0 : 1;
+    if (!curr_gfx)
+	return;
+    lores_factor = curr_gfx->lores ? 1 : 2;
+    lores_shift = curr_gfx->lores ? 0 : 1;
 
     /*memset(blitcount, 0, sizeof(blitcount));  blitter debug */
     for (i = 0; i < sizeof linestate / sizeof *linestate; i++)

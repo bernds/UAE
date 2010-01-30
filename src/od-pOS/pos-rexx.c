@@ -37,7 +37,6 @@ void rexx_handle_events(void) {}
 #include "sysdeps.h"
 
 #include "uae.h"
-#include "config.h"
 #include "options.h"
 #include "../include/memory.h" /* or else gcc includes machdep/memory.h */
 #include "custom.h"

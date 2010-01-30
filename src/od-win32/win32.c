@@ -10,7 +10,6 @@
 /* Uncomment this line if you want the logs time-stamped */
 /* #define TIMESTAMP_LOGS */
 
-#include "config.h"
 #include "sysconfig.h"
 
 #include <stdlib.h>
@@ -265,18 +264,18 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 
     switch( message ) 
     {
-        case WM_PALETTECHANGED:
-            if( (HWND)wParam != hWnd )
-            {
-                write_log( "WM_PALETTECHANGED Request\n" );
-                WIN32GFX_PaletteChange();
-            }
-        break;
-        case WM_ACTIVATEAPP:
-            if (bActive = wParam) 
-            {
+	case WM_PALETTECHANGED:
+	    if( (HWND)wParam != hWnd )
+	    {
+		write_log( "WM_PALETTECHANGED Request\n" );
+		WIN32GFX_PaletteChange();
+	    }
+	break;
+	case WM_ACTIVATEAPP:
+	    if (bActive = wParam) 
+	    {
 		if( WIN32GFX_IsFullScreen() ) 
-                {
+		{
 		    SetCursor (NULL);
 #ifndef HARDWARE_SPRITE_EMULATION
 		    SetCursorPos (mousecx, mousecy);
@@ -284,121 +283,121 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 		    if( !WIN32GFX_IsPicassoScreen() )
 			SetCursorPos (mousecx, mousecy);
 #endif
-	        }
-    	        my_kbd_handler (VK_CAPITAL, 0x3a, TRUE);
+		}
+		my_kbd_handler (VK_CAPITAL, 0x3a, TRUE);
 	    }
-            else
-            {
-                if( !WIN32GFX_IsFullScreen() )
+	    else
+	    {
+		if( !WIN32GFX_IsFullScreen() )
 		    setmouseactive (0);
-                else
-                {
-                    if( WIN32GFX_IsPicassoScreen() )
-                    {
-                        WIN32GFX_DisablePicasso();
-                    }
-                }
-	        }
+		else
+		{
+		    if( WIN32GFX_IsPicassoScreen() )
+		    {
+			WIN32GFX_DisablePicasso();
+		    }
+		}
+		}
 	    break;
-        case WM_ACTIVATE:
-            minimized = HIWORD( wParam );
-            if (LOWORD (wParam) != WA_INACTIVE) 
-            {
-                write_log( "WinUAE now active via WM_ACTIVATE\n" );
-                if( !minimized )
-                {
-                    if( currprefs.win32_iconified_nospeed )
+	case WM_ACTIVATE:
+	    minimized = HIWORD( wParam );
+	    if (LOWORD (wParam) != WA_INACTIVE) 
+	    {
+		write_log( "WinUAE now active via WM_ACTIVATE\n" );
+		if( !minimized )
+		{
+		    if( currprefs.win32_iconified_nospeed )
 		    {
 			SetPriorityClass( GetCurrentProcess(), NORMAL_PRIORITY_CLASS );
 		    }
-                    if( currprefs.win32_iconified_nosound )
+		    if( currprefs.win32_iconified_nosound )
 		    {
 			resume_sound();
 		    }
 
 		    clear_inhibit_frame( IHF_WINDOWHIDDEN );
-                }
-	        ShowWindow (hWnd, SW_RESTORE);
-                if( WIN32GFX_IsPicassoScreen() )
-                {
-                    WIN32GFX_EnablePicasso();
-                }
+		}
+		ShowWindow (hWnd, SW_RESTORE);
+		if( WIN32GFX_IsPicassoScreen() )
+		{
+		    WIN32GFX_EnablePicasso();
+		}
 	    }
-            else
-            {
-                write_log( "WinUAE now inactive via WM_ACTIVATE\n" );
-                if( minimized && !quit_program )
-                {
-                    if( currprefs.win32_iconified_nospeed )
+	    else
+	    {
+		write_log( "WinUAE now inactive via WM_ACTIVATE\n" );
+		if( minimized && !quit_program )
+		{
+		    if( currprefs.win32_iconified_nospeed )
 		    {
 			SetPriorityClass( GetCurrentProcess(), IDLE_PRIORITY_CLASS );
 		    }
-                    if( currprefs.win32_iconified_nosound )
+		    if( currprefs.win32_iconified_nosound )
 		    {
 			pause_sound ();
 		    }
 		    set_inhibit_frame( IHF_WINDOWHIDDEN );
-                }
-            }
+		}
+	    }
 	    break;
 
-        case WM_SETCURSOR:
-	        if( WIN32GFX_IsFullScreen() ) 
-            {
+	case WM_SETCURSOR:
+		if( WIN32GFX_IsFullScreen() ) 
+	    {
 #ifdef HARDWARE_SPRITE_EMULATION
 		    if( !WIN32GFX_IsPicassoScreen() )
 #endif
-	            SetCursor (NULL);
-	            return TRUE;
-	        }
+		    SetCursor (NULL);
+		    return TRUE;
+		}
 	    break;
 
-        case WM_SYSCOMMAND:
-            switch( wParam & 0xFFF0 )
-            {
-                case SC_MAXIMIZE:
-                    WIN32GFX_ToggleFullScreen();
-	                return 0;
-                break;
-                case SC_MINIMIZE:
-                    WIN32GFX_DisablePicasso();
-                break;
-            }
+	case WM_SYSCOMMAND:
+	    switch( wParam & 0xFFF0 )
+	    {
+		case SC_MAXIMIZE:
+		    WIN32GFX_ToggleFullScreen();
+			return 0;
+		break;
+		case SC_MINIMIZE:
+		    WIN32GFX_DisablePicasso();
+		break;
+	    }
 	    break;
 
-        case WM_KEYUP:
-        case WM_SYSKEYUP:
-	        numkeysdown--;
-	        keysdown[wParam] = 0;
-	        my_kbd_handler (wParam, (lParam >> 16) & 0x1ff, FALSE);
-            return 0;
-    	break;
+	case WM_KEYUP:
+	case WM_SYSKEYUP:
+		numkeysdown--;
+		keysdown[wParam] = 0;
+		my_kbd_handler (wParam, (lParam >> 16) & 0x1ff, FALSE);
+	    return 0;
+	break;
 
      case WM_KEYDOWN:
      case WM_SYSKEYDOWN:
 	if (LOWORD (lParam) == 1) 
     {
 	    if (numkeysdown) 
-        {
+	{
 		    int key;
 		    numkeysdown = 0;
 
 		    for (key = 256; key--;) 
-            {
-		        if (keysdown[key]) 
-                {
-			        if (checkkey (key, lParam))
-			            numkeysdown++;
-			        else 
-                    {
-			            my_kbd_handler (key, (keysdown[key] >> 16) & 0x1ff, FALSE);
-			            keysdown[key] = 0;
-			        }
-		        }
+	    {
+			if (keysdown[key]) 
+		{
+				if (checkkey (key, lParam))
+				    numkeysdown++;
+				else 
+		    {
+				    my_kbd_handler (key, (keysdown[key] >> 16) & 0x1ff, FALSE);
+				    keysdown[key] = 0;
+				}
+			}
 		    }
 	    }
 	    if (!keysdown[wParam]) 
-        {
+	{
 		    keysdown[wParam] = lParam;
 		    numkeysdown++;
 	    }
@@ -450,21 +449,21 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 	break;
 
      case WM_VSCROLL:
-         write_log( "WM_VSCROLL\n" );
-         if( LOWORD( wParam ) == SB_LINEDOWN )
-             record_key(0x7A<<1);
-         else if( LOWORD( wParam ) == SB_LINEUP )
-             record_key(0x7B<<1);
-         break;
+	 write_log( "WM_VSCROLL\n" );
+	 if( LOWORD( wParam ) == SB_LINEDOWN )
+	     record_key(0x7A<<1);
+	 else if( LOWORD( wParam ) == SB_LINEUP )
+	     record_key(0x7B<<1);
+	 break;
 
      case WM_MOUSEWHEEL:
-         wheeldelta = HIWORD(wParam);
-         write_log( "WM_MOUSEWHEEL with delta %d\n", wheeldelta );
-         if( wheeldelta > 0 )
-             record_key(0x7A<<1);
-         else if( wheeldelta < 0 )
-             record_key(0x7B<<1);
-         break;
+	 wheeldelta = HIWORD(wParam);
+	 write_log( "WM_MOUSEWHEEL with delta %d\n", wheeldelta );
+	 if( wheeldelta > 0 )
+	     record_key(0x7A<<1);
+	 else if( wheeldelta < 0 )
+	     record_key(0x7B<<1);
+	 break;
 
      case WM_MOUSEMOVE:
 #ifndef HARDWARE_SPRITE_EMULATION
@@ -506,21 +505,21 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
      case WM_PAINT:
 	notice_screen_contents_lost ();
 
-        hDC = BeginPaint (hWnd, &ps);
-        /* Check to see if this WM_PAINT is coming while we've got the GUI visible */
-        if( manual_painting_needed )
-        {
-            /* Update the display area */
-            if( !WIN32GFX_IsFullScreen() )
-            {
+	hDC = BeginPaint (hWnd, &ps);
+	/* Check to see if this WM_PAINT is coming while we've got the GUI visible */
+	if( manual_painting_needed )
+	{
+	    /* Update the display area */
+	    if( !WIN32GFX_IsFullScreen() )
+	    {
 		if( DirectDraw_GetLockableType() != overlay_surface )
 		    DX_Blit( 0, 0, 0, 0, WIN32GFX_GetWidth(), WIN32GFX_GetHeight(), BLIT_SRC );
-            }
-            else
-            {
-                DirectDraw_Blt( primary_surface, NULL, secondary_surface, NULL, DDBLT_WAIT, NULL );
-            }
-        }
+	    }
+	    else
+	    {
+		DirectDraw_Blt( primary_surface, NULL, secondary_surface, NULL, DDBLT_WAIT, NULL );
+	    }
+	}
 	EndPaint (hWnd, &ps);
 
 	break;
@@ -593,10 +592,10 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
     if( message >= 0xB000 && message < 0xB000+MAXPENDINGASYNC*2 )
     {
 #if DEBUG_SOCKETS
-        write_log( "sockmsg(0x%x, 0x%x, 0x%x)\n", message, wParam, lParam );
+	write_log( "sockmsg(0x%x, 0x%x, 0x%x)\n", message, wParam, lParam );
 #endif
-        sockmsg( message, wParam, lParam );
-        return 0;
+	sockmsg( message, wParam, lParam );
+	return 0;
     }
 #endif
 #endif
@@ -728,7 +727,7 @@ int WIN32_RegisterClasses( void )
     HDC hDC = GetDC( NULL ); 
 
     if( GetDeviceCaps( hDC, NUMCOLORS ) != -1 ) 
-        g_dwBackgroundColor = RGB( 255, 0, 255 );    
+	g_dwBackgroundColor = RGB( 255, 0, 255 );    
     ReleaseDC( NULL, hDC );
 
     wc.style = CS_BYTEALIGNCLIENT | CS_BYTEALIGNWINDOW | CS_DBLCLKS;
@@ -777,7 +776,7 @@ int WIN32_CleanupLibraries( void )
 	FreeLibrary (hRichEdit);
     
     if( hHtmlHelp )
-        FreeLibrary( hHtmlHelp );
+	FreeLibrary( hHtmlHelp );
 
     if( hUIDLL )
 	FreeLibrary( hUIDLL );
@@ -796,8 +795,8 @@ int WIN32_InitHtmlHelp( void )
     int result = 0;
     if( hHtmlHelp = LoadLibrary( "HHCTRL.OCX" ) )
     {
-        pHtmlHelp = ( HWND(WINAPI *)(HWND, LPCSTR, UINT, LPDWORD ) )GetProcAddress( hHtmlHelp, "HtmlHelpA" );
-        result = 1;
+	pHtmlHelp = ( HWND(WINAPI *)(HWND, LPCSTR, UINT, LPDWORD ) )GetProcAddress( hHtmlHelp, "HtmlHelpA" );
+	result = 1;
     }
 
 
@@ -1170,7 +1169,7 @@ static int zlib_gunzip( const char *src, char *dst )
 #endif
 
 static char *uncompress_error[2] = { "Error: You need zlib.dll to use .adz/.roz files!\n", 
-                                    "Error: You need xdms.exe (32 bit) to use .dms files!\n" };
+				    "Error: You need xdms.exe (32 bit) to use .dms files!\n" };
 
 int uncompress_hack( int type, const char *src, const char *dst)
 {
@@ -1190,23 +1189,23 @@ int uncompress_hack( int type, const char *src, const char *dst)
 	result = zlib_gunzip( src, fullname );
 	if( !result )
 	{
-            gui_message( uncompress_error[type-1] );
+	    gui_message( uncompress_error[type-1] );
 	}
 	return result;
 #else
-        strcpy( cmd, "gzip.exe -f -d" );
-        strcat( fullname, ".gz" );
+	strcpy( cmd, "gzip.exe -f -d" );
+	strcat( fullname, ".gz" );
 #endif
     }
     else if( type == 2 )
     {
-        strcpy( cmd, "xdms.exe u" );
-        posn = strrchr( fullname, '.' );
-        if( posn )
-        {
-            *posn = 0;
-            strcat( fullname, ".dms" );
-        }
+	strcpy( cmd, "xdms.exe u" );
+	posn = strrchr( fullname, '.' );
+	if( posn )
+	{
+	    *posn = 0;
+	    strcat( fullname, ".dms" );
+	}
     }
 
     if( CopyFile( src, fullname, FALSE ) ) 
@@ -1214,20 +1213,20 @@ int uncompress_hack( int type, const char *src, const char *dst)
 	sprintf (buf, "%s %s +%s", cmd, fullname, dst );
 	si.dwFlags = STARTF_USESTDHANDLES;
 	if( CreateProcess( NULL, buf, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi ) ) 
-        {
+	{
 	    WaitForSingleObject( pi.hProcess, INFINITE );
-            result = -1;
-    	}
-        else
-        {
-            gui_message( uncompress_error[type-1] );
-        }
+	    result = -1;
+	}
+	else
+	{
+	    gui_message( uncompress_error[type-1] );
+	}
     }
 
     /* Special handling for broken xdms.exe */
     if( type == 2 )
     {
-        DeleteFile( fullname );     /* Delete the uaeXX.dms file */
+	DeleteFile( fullname );     /* Delete the uaeXX.dms file */
     }
 
     return result;
@@ -1301,24 +1300,24 @@ void write_log (const char *format, ...)
     if( debugfile )
     {
 #if defined HAVE_GETTICKCOUNT && defined TIMESTAMP_LOGS
-        {
-            sprintf( buffer, "%7d - ", GetTickCount() );
-            fprintf( debugfile, buffer );
-        }
+	{
+	    sprintf( buffer, "%7d - ", GetTickCount() );
+	    fprintf( debugfile, buffer );
+	}
 #endif
-        va_start (parms, format);
-        count = vfprintf( debugfile, format, parms );
-        fflush( debugfile );
-        if( count >= WRITE_LOG_BUF_SIZE-1 )
-        {
-            fprintf( debugfile, "SHIT in write_log()\n" );
-            fflush( debugfile );
-            *blah = 0; /* Access Violation here! */
-            abort();
-        }
+	va_start (parms, format);
+	count = vfprintf( debugfile, format, parms );
+	fflush( debugfile );
+	if( count >= WRITE_LOG_BUF_SIZE-1 )
+	{
+	    fprintf( debugfile, "SHIT in write_log()\n" );
+	    fflush( debugfile );
+	    *blah = 0; /* Access Violation here! */
+	    abort();
+	}
 	else
 	    result = count;
-        va_end (parms);
+	va_end (parms);
     }
 }
 #else /* MSVC likes this one, and so do I */
@@ -1337,18 +1336,18 @@ int write_log( const char *format, ... )
     count = _vsnprintf( buffer, WRITE_LOG_BUF_SIZE-1, format, parms );
 #if defined HAVE_GETTICKCOUNT && defined TIMESTAMP_LOGS
     {
-        char buffme[WRITE_LOG_BUF_SIZE];
-        sprintf( buffme, "%7d - %s", GetTickCount(), buffer );
-        OutputDebugString( buffme );
-        if( debugfile )
-            fprintf( debugfile, buffme );
+	char buffme[WRITE_LOG_BUF_SIZE];
+	sprintf( buffme, "%7d - %s", GetTickCount(), buffer );
+	OutputDebugString( buffme );
+	if( debugfile )
+	    fprintf( debugfile, buffme );
 	result = strlen( buffme );
     }
 #else
     OutputDebugString( buffer );
     if( debugfile )
     {
-        fprintf( debugfile, buffer );
+	fprintf( debugfile, buffer );
 	fflush( debugfile );
     }
     result = strlen( buffer );
@@ -1383,9 +1382,9 @@ void logging_init( void )
 {
     char debugfilename[MAX_PATH];
     if (1) {
-        sprintf( debugfilename, "%s\\winuaelog.txt", start_path );
-        if( !debugfile )
-            debugfile = fopen( debugfilename, "wt" );
+	sprintf( debugfilename, "%s\\winuaelog.txt", start_path );
+	if( !debugfile )
+	    debugfile = fopen( debugfilename, "wt" );
     }
     write_log ( "%s\n", VersionStr );
     write_log ("\n(c) 1995-2001 Bernd Schmidt   - Core UAE concept and implementation."
@@ -1402,7 +1401,7 @@ void logging_init( void )
 void logging_cleanup( void )
 {
     if( debugfile )
-        fclose( debugfile );
+	fclose( debugfile );
 }
 
 static const char *sound_styles[] = { "waveout_looping", "waveout_dblbuff", "dsound_looping", "dsound_dblbuff", 0 };
@@ -1449,59 +1448,59 @@ void WIN32_HandleRegistryStuff( void )
 
     /* Create/Open the hWinUAEKey which points to our config-info */
     if( RegCreateKeyEx( HKEY_CLASSES_ROOT, ".uae", 0, "", REG_OPTION_NON_VOLATILE,
-                          KEY_ALL_ACCESS, NULL, &hWinUAEKey, &disposition ) == ERROR_SUCCESS )
+			  KEY_ALL_ACCESS, NULL, &hWinUAEKey, &disposition ) == ERROR_SUCCESS )
     {
 	// Regardless of opening the existing key, or creating a new key, we will write the .uae filename-extension
 	// commands in.  This way, we're always up to date.
 
-        /* Set our (default) sub-key to point to the "WinUAE" key, which we then create */
-        RegSetValueEx( hWinUAEKey, "", 0, REG_SZ, (CONST BYTE *)"WinUAE", strlen( "WinUAE" ) + 1 );
+	/* Set our (default) sub-key to point to the "WinUAE" key, which we then create */
+	RegSetValueEx( hWinUAEKey, "", 0, REG_SZ, (CONST BYTE *)"WinUAE", strlen( "WinUAE" ) + 1 );
 
-        if( ( RegCreateKeyEx( HKEY_CLASSES_ROOT, "WinUAE\\shell\\Edit\\command", 0, "", REG_OPTION_NON_VOLATILE,
-                              KEY_ALL_ACCESS, NULL, &hWinUAEKeyLocal, &disposition ) == ERROR_SUCCESS ) )
-        {
-            /* Set our (default) sub-key to BE the "WinUAE" command for editing a configuration */
-            sprintf( path, "%s\\WinUAE.exe -f \"%%1\" -s use_gui=yes", start_path );
-            RegSetValueEx( hWinUAEKeyLocal, "", 0, REG_SZ, (CONST BYTE *)path, strlen( path ) + 1 );
-        }
+	if( ( RegCreateKeyEx( HKEY_CLASSES_ROOT, "WinUAE\\shell\\Edit\\command", 0, "", REG_OPTION_NON_VOLATILE,
+			      KEY_ALL_ACCESS, NULL, &hWinUAEKeyLocal, &disposition ) == ERROR_SUCCESS ) )
+	{
+	    /* Set our (default) sub-key to BE the "WinUAE" command for editing a configuration */
+	    sprintf( path, "%s\\WinUAE.exe -f \"%%1\" -s use_gui=yes", start_path );
+	    RegSetValueEx( hWinUAEKeyLocal, "", 0, REG_SZ, (CONST BYTE *)path, strlen( path ) + 1 );
+	}
 	RegCloseKey( hWinUAEKeyLocal );
 
-        if( ( RegCreateKeyEx( HKEY_CLASSES_ROOT, "WinUAE\\shell\\Open\\command", 0, "", REG_OPTION_NON_VOLATILE,
-                              KEY_ALL_ACCESS, NULL, &hWinUAEKeyLocal, &disposition ) == ERROR_SUCCESS ) )
-        {
-            /* Set our (default) sub-key to BE the "WinUAE" command for launching a configuration */
-            sprintf( path, "%s\\WinUAE.exe -f \"%%1\"", start_path );
-            RegSetValueEx( hWinUAEKeyLocal, "", 0, REG_SZ, (CONST BYTE *)path, strlen( path ) + 1 );
-        }
+	if( ( RegCreateKeyEx( HKEY_CLASSES_ROOT, "WinUAE\\shell\\Open\\command", 0, "", REG_OPTION_NON_VOLATILE,
+			      KEY_ALL_ACCESS, NULL, &hWinUAEKeyLocal, &disposition ) == ERROR_SUCCESS ) )
+	{
+	    /* Set our (default) sub-key to BE the "WinUAE" command for launching a configuration */
+	    sprintf( path, "%s\\WinUAE.exe -f \"%%1\"", start_path );
+	    RegSetValueEx( hWinUAEKeyLocal, "", 0, REG_SZ, (CONST BYTE *)path, strlen( path ) + 1 );
+	}
 	RegCloseKey( hWinUAEKeyLocal );
     }
     else
     {
 	char szMessage[ MAX_PATH ];
 	WIN32GUI_LoadUIString( IDS_REGKEYCREATEFAILED, szMessage, MAX_PATH );
-        gui_message( szMessage );
-        hWinUAEKey = NULL;
+	gui_message( szMessage );
+	hWinUAEKey = NULL;
     }
     RegCloseKey( hWinUAEKey );
 
     /* Create/Open the hWinUAEKey which points our config-info */
     if( RegCreateKeyEx( HKEY_CURRENT_USER, "Software\\CodePoet Computing\\WinUAE", 0, "", REG_OPTION_NON_VOLATILE,
-                          KEY_ALL_ACCESS, NULL, &hWinUAEKey, &disposition ) == ERROR_SUCCESS )
+			  KEY_ALL_ACCESS, NULL, &hWinUAEKey, &disposition ) == ERROR_SUCCESS )
     {
-        if( disposition == REG_CREATED_NEW_KEY )
-        {
-            /* Create and initialize all our sub-keys to the default values */
-            colortype = 0;
-            RegSetValueEx( hWinUAEKey, "DisplayInfo", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
-            RegSetValueEx( hWinUAEKey, "xPos", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
-            RegSetValueEx( hWinUAEKey, "yPos", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
-            RegSetValueEx( hWinUAEKey, "FloppyPath", 0, REG_SZ, (CONST BYTE *)start_path, strlen( start_path ) + 1 );
-            RegSetValueEx( hWinUAEKey, "KickstartPath", 0, REG_SZ, (CONST BYTE *)start_path, strlen( start_path ) + 1 );
-            RegSetValueEx( hWinUAEKey, "hdfPath", 0, REG_SZ, (CONST BYTE *)start_path, strlen( start_path ) + 1 );
-        }
+	if( disposition == REG_CREATED_NEW_KEY )
+	{
+	    /* Create and initialize all our sub-keys to the default values */
+	    colortype = 0;
+	    RegSetValueEx( hWinUAEKey, "DisplayInfo", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
+	    RegSetValueEx( hWinUAEKey, "xPos", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
+	    RegSetValueEx( hWinUAEKey, "yPos", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
+	    RegSetValueEx( hWinUAEKey, "FloppyPath", 0, REG_SZ, (CONST BYTE *)start_path, strlen( start_path ) + 1 );
+	    RegSetValueEx( hWinUAEKey, "KickstartPath", 0, REG_SZ, (CONST BYTE *)start_path, strlen( start_path ) + 1 );
+	    RegSetValueEx( hWinUAEKey, "hdfPath", 0, REG_SZ, (CONST BYTE *)start_path, strlen( start_path ) + 1 );
+	}
 	// Set this even when we're opening an existing key, so that the version info is always up to date.
-        RegSetValueEx( hWinUAEKey, "Version", 0, REG_SZ, (CONST BYTE *)VersionStr, strlen( VersionStr ) + 1 );
-        
+	RegSetValueEx( hWinUAEKey, "Version", 0, REG_SZ, (CONST BYTE *)VersionStr, strlen( VersionStr ) + 1 );
+	
 	RegQueryValueEx( hWinUAEKey, "DisplayInfo", 0, &dwType, (LPBYTE)&colortype, &dwDisplayInfoSize );
 	if( colortype == 0 ) /* No color information stored in the registry yet */
 	{
@@ -1527,8 +1526,8 @@ void WIN32_HandleRegistryStuff( void )
     {
 	char szMessage[ MAX_PATH ];
 	WIN32GUI_LoadUIString( IDS_REGKEYCREATEFAILED, szMessage, MAX_PATH );
-        gui_message( szMessage );
-        hWinUAEKey = NULL;
+	gui_message( szMessage );
+	hWinUAEKey = NULL;
     }
 }
 

@@ -16,7 +16,6 @@
 #include <vgamouse.h>
 #include <vgakeyboard.h>
 
-#include "config.h"
 #include "options.h"
 #include "threaddep/thread.h"
 #include "uae.h"

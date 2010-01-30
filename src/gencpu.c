@@ -2559,7 +2559,6 @@ static void generate_includes (FILE * f)
 {
     fprintf (f, "#include \"sysconfig.h\"\n");
     fprintf (f, "#include \"sysdeps.h\"\n");
-    fprintf (f, "#include \"config.h\"\n");
     fprintf (f, "#include \"options.h\"\n");
     fprintf (f, "#include \"memory.h\"\n");
     fprintf (f, "#include \"custom.h\"\n");

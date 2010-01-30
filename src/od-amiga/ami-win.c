@@ -167,7 +167,6 @@ extern struct ExecBase *SysBase;
 
 /****************************************************************************/
 
-#include "config.h"
 #include "options.h"
 #include "threaddep/thread.h"
 #include "uae.h"
