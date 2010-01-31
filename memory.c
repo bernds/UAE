@@ -1672,7 +1672,7 @@ static int read_kickstart (struct zfile *f, uae_u8 *mem, int size, int dochecksu
     if (kickdisk && i > 262144)
 	i = 262144;
 
-    if (i != 8192 && i != 65536 && i != 131072 && i != 262144 && i != 524288 && i != 524288 * 2) {
+    if (i != 8192 && i != 65536 && i != 131072 && i != 262144 && i != 524288 && i != 524288 * 2 && i != 524288 * 4) {
 	notify_user (NUMSG_KSROMREADERROR);
 	return 0;
     }
@@ -2253,7 +2253,7 @@ void memory_reset (void)
 	memcpy (currprefs.romextfile, changed_prefs.romextfile, sizeof currprefs.romextfile);
 	if (savestate_state != STATE_RESTORE)
 	    memory_hardreset();
-	xfree (extendedkickmemory);
+	mapped_free (extendedkickmemory);
 	extendedkickmemory = 0;
 	extendedkickmem_size = 0;
 	extendedkickmem_type = 0;

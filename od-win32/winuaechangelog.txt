@@ -1,4 +1,59 @@
 
+Beta 4:
+
+- skip unknown extensions (or files without extension) when scanning
+  for known ROMs (faster scan if non-ROM files in ROM directory)
+- Picasso96 RAM was incorrectly mapped in non-JIT modes
+- paraport parallel port support sets INIT (pin 16) to inactive state
+  (called RESET in Amiga parallel port)
+
+Beta 3:
+
+- map POV Hat to joystick up/down and left/right by default
+- added master volume (Windows main volume) control input targets
+  default: END+CTRL+(numpad - and +, * = mute on/off)
+  (without CTRL = WinUAE-only volume control) Also master volume
+  mapped by default to "multimedia" vol down/up/mute keys.
+- custom input targets editable in GUI now (not very intuitive but
+  whole input panel isn't too intuitive. someday..)
+- fixed crash when switching from CD32/CDTV mode to A500 mode
+- input panel input list can be browsed in "compatibility mode"
+
+Beta 2:
+
+- better bsdsocket threading fix, should finally fix random crashes.
+- diskswapper input-panel input targets added (next/prev/insert)
+- change input configuration (1-4) input target added
+- custom input targets added, experimental, not in GUI yet, need manual
+  configuration file editing, syntax:
+  <anything>.button.x=<press>,<release>,<secondary press>,<sec. release>
+  press/release = key down/up, joystick button down/up
+  secondary = toggle-mode (first press uses "press" event, second press
+  uses "secondary press", third press is again "press" event etc..)
+  format of single event: '"entry=value"'.0 "unlimited" multiple
+  entry/value pairs supported: '"entry1=value1" "entry2=value2"'.0
+  empty event: NULL.0
+  Examples:
+  - toggle onscreen leds:
+  '"show_leds=false"'.0,NULL.0,'"show_leds=true"'.0
+  - refresh rate = 100 while key/button is kept down:
+  '"chipset_refreshrate=100"'.0,'"chipset_refreshrate=50"'.0
+  NOTES: format can change in future, toggle-mode may be added to regular
+  input event mapping system in future version.
+  BTW: custom input was implemented ages ago but it was not enabled until
+  now... (I forgot it..)
+  
+Beta 1:
+
+- startup crash fixed if serial port enumeration detected more than
+  8 ports. (broke in 140b6 when "compatibility mode" enumeration was
+  added) Also increased max amount of supported serial ports
+- default ASPI detection selected (possibly non-existing) AdaptecASPI
+- Quickstart now automatically selects working SCSI mode (uses setting
+  from default.uae if available, if not, selects "best" available)
+- 120b1 right border update fixed to work in interlaced modes (Unreal)
+
+1.4.0
 
 Beta 10 (pre-final):
 
