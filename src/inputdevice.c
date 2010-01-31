@@ -40,6 +40,7 @@
 #include "gui.h"
 #include "disk.h"
 #include "sound.h"
+#include "savestate.h"
 
 #define DIR_LEFT 1
 #define DIR_RIGHT 2
@@ -94,11 +95,6 @@ struct inputevent events[] = {
 #undef DEFEVENT
 
 static int sublevdir[2][MAX_INPUT_SUB_EVENT];
-
-#define ID_BUTTON_OFFSET 0
-#define ID_BUTTON_TOTAL 32
-#define ID_AXIS_OFFSET 32
-#define ID_AXIS_TOTAL 32
 
 struct uae_input_device2 {
     uae_u32 buttonmask;
@@ -1087,48 +1083,48 @@ void inputdevice_do_keyboard (int code, int state)
 	return;
     switch (code)
     {
-	case INPUTEVENT_SPC_ENTERGUI:
+	case AKS_ENTERGUI:
 	gui_display (-1);
 	break;
-	case INPUTEVENT_SPC_SCREENSHOT:
+	case AKS_SCREENSHOT:
 	screenshot (1);
 	break;
 #ifdef ACTION_REPLAY
-	case INPUTEVENT_SPC_FREEZEBUTTON:
+	case AKS_FREEZEBUTTON:
 	action_replay_freeze ();
 	break;
 #endif
-	case INPUTEVENT_SPC_FLOPPY0:
+	case AKS_FLOPPY0:
 	gui_display (0);
 	break;
-	case INPUTEVENT_SPC_FLOPPY1:
+	case AKS_FLOPPY1:
 	gui_display (1);
 	break;
-	case INPUTEVENT_SPC_FLOPPY2:
+	case AKS_FLOPPY2:
 	gui_display (2);
 	break;
-	case INPUTEVENT_SPC_FLOPPY3:
+	case AKS_FLOPPY3:
 	gui_display (3);
 	break;
-	case INPUTEVENT_SPC_EFLOPPY0:
+	case AKS_EFLOPPY0:
 	disk_eject (0);
 	break;
-	case INPUTEVENT_SPC_EFLOPPY1:
+	case AKS_EFLOPPY1:
 	disk_eject (1);
 	break;
-	case INPUTEVENT_SPC_EFLOPPY2:
+	case AKS_EFLOPPY2:
 	disk_eject (2);
 	break;
-	case INPUTEVENT_SPC_EFLOPPY3:
+	case AKS_EFLOPPY3:
 	disk_eject (3);
 	break;
-	case INPUTEVENT_SPC_IRQ7:
+	case AKS_IRQ7:
 	Interrupt (7);
 	break;
-	case INPUTEVENT_SPC_PAUSE:
+	case AKS_PAUSE:
         pause_emulation = pause_emulation ? 0 : 1;
 	break;
-	case INPUTEVENT_SPC_WARP:
+	case AKS_WARP:
 	turbo_emulation = turbo_emulation ? 0 : 1;
 	pause_emulation = 0;
 	if (turbo_emulation)
@@ -1137,8 +1133,20 @@ void inputdevice_do_keyboard (int code, int state)
 	    resume_sound ();
 	compute_vsynctime ();
 	break;
-	case INPUTEVENT_SPC_INHIBITSCREEN:
+	case AKS_INHIBITSCREEN:
 	toggle_inhibit_frame (IHF_SCROLLLOCK);
+	break;
+	case AKS_STATEREWIND:
+	savestate_dorewind(1);
+	break;
+	case AKS_VOLDOWN:
+	sound_volume (-1);
+	break;
+	case AKS_VOLUP:
+	sound_volume (1);
+	break;
+	case AKS_VOLMUTE:
+	sound_volume (0);
 	break;
     }
 }
@@ -1596,7 +1604,8 @@ static void set_kbr_default (struct uae_prefs *p, int index, int num)
 	    kbr->extra[i][0] = -1;
 	}
 	if (j < id->get_num ()) {
-	    kbr->enabled = 1;
+	    if (j == 0)
+		kbr->enabled = 1;
 	    for (i = 0; i < id->get_widget_num (num); i++) {
 		id->get_widget_type (num, i, 0, &scancode);
 		kbr->extra[i][0] = scancode;
@@ -1620,31 +1629,6 @@ static void set_kbr_default (struct uae_prefs *p, int index, int num)
     }
 }
 
-static void set_joystick_default (struct uae_prefs *p, int index, int anum)
-{
-    struct uae_input_device *uid = p->joystick_settings[index];
-
-    uid[anum].eventid[ID_AXIS_OFFSET + 0][0] = anum ? INPUTEVENT_JOY2_HORIZ : INPUTEVENT_JOY1_HORIZ;
-    uid[anum].eventid[ID_AXIS_OFFSET + 1][0] = anum ? INPUTEVENT_JOY2_VERT : INPUTEVENT_JOY1_VERT;
-    uid[anum].eventid[ID_BUTTON_OFFSET + 0][0] = anum ? INPUTEVENT_JOY2_FIRE_BUTTON : INPUTEVENT_JOY1_FIRE_BUTTON;
-    uid[anum].eventid[ID_BUTTON_OFFSET + 1][0] = anum ? INPUTEVENT_JOY2_2ND_BUTTON : INPUTEVENT_JOY1_2ND_BUTTON;
-    uid[anum].eventid[ID_BUTTON_OFFSET + 2][0] = anum ? INPUTEVENT_JOY2_3RD_BUTTON : INPUTEVENT_JOY1_3RD_BUTTON;
-    uid[anum].enabled = 1;
-}
-
-static void set_mouse_default (struct uae_prefs *p, int index, int anum)
-{
-    struct uae_input_device *uid = p->mouse_settings[index];
-
-    uid[anum].eventid[ID_AXIS_OFFSET + 0][0] = INPUTEVENT_MOUSE1_HORIZ;
-    uid[anum].eventid[ID_AXIS_OFFSET + 1][0] = INPUTEVENT_MOUSE1_VERT;
-    uid[anum].eventid[ID_AXIS_OFFSET + 2][0] = INPUTEVENT_MOUSE1_WHEEL;
-    uid[anum].eventid[ID_BUTTON_OFFSET + 0][0] = INPUTEVENT_JOY1_FIRE_BUTTON;
-    uid[anum].eventid[ID_BUTTON_OFFSET + 1][0] = INPUTEVENT_JOY1_2ND_BUTTON;
-    uid[anum].eventid[ID_BUTTON_OFFSET + 2][0] = INPUTEVENT_JOY1_3RD_BUTTON;
-    uid[anum].enabled = 1;
-}
-
 void inputdevice_default_prefs (struct uae_prefs *p)
 {
     int i;
@@ -1658,10 +1642,8 @@ void inputdevice_default_prefs (struct uae_prefs *p)
     p->input_autofire_framecnt = 10;
     for (i = 0; i <= MAX_INPUT_SETTINGS; i++) {
         set_kbr_default (p, i, 0);
-	set_mouse_default (p, i, (i + 0) & 1);
-	set_mouse_default (p, i, (i + 1) & 1);
-	set_joystick_default (p, i, (i + 1) & 1);
-	set_joystick_default (p, i, (i + 0) & 1);
+	input_get_default_mouse (p->mouse_settings[i]);
+	input_get_default_joystick (p->joystick_settings[i]);
     }
 }
 

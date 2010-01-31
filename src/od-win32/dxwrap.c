@@ -430,6 +430,16 @@ DWORD DirectDraw_GetPrimaryBitCount( void )
     return bits;
 }
 
+void DirectDraw_GetPrimaryWidthHeight(int *w, int *h)
+{
+    memset(&DirectDrawState.primary.desc,0,sizeof(DirectDrawState.primary.desc));
+    DirectDrawState.primary.desc.dwSize = sizeof(DirectDrawState.primary.desc);
+
+    IDirectDrawSurface7_GetSurfaceDesc(DirectDrawState.primary.surface, &DirectDrawState.primary.desc);
+    *w = DirectDrawState.primary.desc.dwWidth;
+    *h = DirectDrawState.primary.desc.dwHeight;
+}
+
 /*
  * FUNCTION:
  *
@@ -593,7 +603,7 @@ void ddraw_unlockscr( void )
  *   1999.08.02  Brian King             Creation
  *
  */
-int DirectDraw_Start( void )
+int DirectDraw_Start( GUID *guid )
 {
     HRESULT ddrval;
     DDCAPS_DX7 drivercaps, helcaps;
@@ -606,7 +616,7 @@ int DirectDraw_Start( void )
     drivercaps.dwSize = sizeof( drivercaps );
     helcaps.dwSize = sizeof( helcaps );
 
-    ddrval = DirectDrawCreate( NULL, &DirectDrawState.directdraw.ddx, NULL );
+    ddrval = DirectDrawCreate( guid, &DirectDrawState.directdraw.ddx, NULL );
     if (ddrval != DD_OK)
 	goto oops;
 
@@ -707,7 +717,7 @@ HRESULT DirectDraw_SetCooperativeLevel( HWND window, int want_fullscreen )
     ddrval = IDirectDraw7_SetCooperativeLevel( DirectDrawState.directdraw.dd,
                                                window,
                                                want_fullscreen ?
-                                               DDSCL_ALLOWREBOOT | DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN :
+                                               DDSCL_ALLOWREBOOT | DDSCL_EXCLUSIVE | DDSCL_FULLSCREEN  :
                                                DDSCL_NORMAL );
     if( ddrval == DD_OK )
     {
@@ -795,10 +805,6 @@ HRESULT DirectDraw_SetDisplayMode( int width, int height, int bits, int freq )
 HRESULT DirectDraw_GetDisplayMode( void )
 {
     HRESULT ddrval;
-
-    DirectDrawState.current.desc.dwSize = sizeof( DDSURFACEDESC2 );
-    ddrval = IDirectDraw7_GetDisplayMode( DirectDrawState.directdraw.dd,
-                                          &DirectDrawState.current.desc );
 
     /* We fill in the current.desc in all cases */
     DirectDrawState.current.desc.dwSize = sizeof( DDSURFACEDESC2 );
@@ -1887,6 +1893,13 @@ HRESULT DirectDraw_EnumDisplayModes( DWORD flags, LPDDENUMMODESCALLBACK2 callbac
     return result;
 }
 
+HRESULT DirectDraw_EnumDisplays(LPDDENUMCALLBACKEX callback )
+{
+    HRESULT result;
+    result = DirectDrawEnumerateEx (callback, 0, DDENUM_DETACHEDSECONDARYDEVICES | DDENUM_ATTACHEDSECONDARYDEVICES);
+    return result;
+}
+
 /*
  * FUNCTION:
  *
@@ -1971,6 +1984,7 @@ extern int display_change_requested;
 HRESULT DirectDraw_UpdateOverlay( RECT sr, RECT dr )
 {
     HRESULT result = DD_OK;
+
     if (DirectDrawState.isoverlay && DirectDrawState.overlay.surface)
     {
 	if ((drivercaps.dwCaps & DDCAPS_ALIGNBOUNDARYSRC) && drivercaps.dwAlignBoundarySrc)

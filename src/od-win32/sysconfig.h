@@ -5,6 +5,8 @@
 #define DIRECT3D_VERSION 0x0900
 #define SUPPORT_THREADS
 
+#define DRIVESOUND
+
 #ifndef UAE_MINI
 
 #define FILESYS /* filesys emulation */

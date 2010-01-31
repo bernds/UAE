@@ -938,12 +938,12 @@ void CIA_reset (void)
 
 void dumpcia (void)
 {
-    write_log("A: CRA: %02x, CRB: %02x, IMASK: %02x, TOD: %08lx %3s TA: %04lx (%04lx), TB: %04lx (%04lx)\n",
-	   (int)ciaacra, (int)ciaacrb, (int)ciaaimask, ciaatod,
-	   ciaatlatch ? "L" : "", ciaata, ciaala, ciaatb, ciaalb);
-    write_log("B: CRA: %02x, CRB: %02x, IMASK: %02x, TOD: %08lx %3s TA: %04lx (%04lx), TB: %04lx (%04lx)\n",
-	   (int)ciabcra, (int)ciabcrb, (int)ciabimask, ciabtod,
-	   ciabtlatch ? "L" : "", ciabta, ciabla, ciabtb, ciablb);
+    write_log("A: CRA %02x CRB %02x ICR %02x IM %02x TOD %06x %c%c TA %04x (%04x) TB %04x (%04x)\n",
+	   ciaacra, ciaacrb, ciaaicr, ciaaimask, ciaatod,
+	   ciaatlatch ? 'L' : ' ', ciaatodon ? ' ' : 'S', ciaata, ciaala, ciaatb, ciaalb);
+    write_log("B: CRA %02x CRB %02x ICR %02x IM %02x TOD %06x %c%c TA %04x (%04x) TB %04x (%04x)\n",
+	   ciabcra, ciabcrb, ciaaicr, ciabimask, ciabtod,
+	   ciabtlatch ? 'L' : ' ', ciabtodon ? ' ' : 'S', ciabta, ciabla, ciabtb, ciablb);
 }
 
 /* CIA memory access */
@@ -1286,7 +1286,7 @@ uae_u8 *restore_cia (int num, uae_u8 *src)
     l |= restore_u8 () << 8;
     l |= restore_u8 () << 16;
     if (num) ciabtod = l; else ciaatod = l;
-    restore_u8 ();						/* B unused */
+    restore_u8 ();					/* B unused */
     b = restore_u8 ();					/* C SDR */
     if (num) ciabsdr = b; else ciaasdr = b;
     b = restore_u8 ();					/* D ICR INFORMATION (not mask!) */
@@ -1325,12 +1325,15 @@ uae_u8 *restore_cia (int num, uae_u8 *src)
     return src;
 }
 
-uae_u8 *save_cia (int num, int *len)
+uae_u8 *save_cia (int num, int *len, uae_u8 *dstptr)
 {
     uae_u8 *dstbak,*dst, b;
     uae_u16 t;
 
-    dstbak = dst = malloc (16 + 12 + 1 + 1);
+    if (dstptr)
+	dstbak = dst = dstptr;
+    else
+	dstbak = dst = malloc (16 + 12 + 1 + 1);
 
     compute_passed_time ();
 

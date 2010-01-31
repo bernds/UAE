@@ -21,7 +21,17 @@ struct PicassoResolution
     /* Bit mask of RGBFF_xxx values.  */
     uae_u32 colormodes;
 };
-extern struct PicassoResolution DisplayModes[MAX_PICASSO_MODES];
+extern struct PicassoResolution *DisplayModes;
+extern GUID *displayGUID;
+
+#define MAX_DISPLAYS 10
+struct MultiDisplay {
+    int primary;
+    GUID guid;
+    char *name;
+    struct PicassoResolution *DisplayModes;
+};
+extern struct MultiDisplay Displays[MAX_DISPLAYS];
 
 typedef enum {
     BLIT_FALSE,
@@ -183,7 +193,7 @@ struct DirectDrawSurfaceMapper
     surface_type_e surface_type;
 };
 HRESULT DirectDraw_CreateOverlaySurface( int width, int height, int bits );
-int DirectDraw_Start( void );
+int DirectDraw_Start( GUID *);
 void DirectDraw_Release( void );
 HRESULT DirectDraw_SetCooperativeLevel( HWND window, int want_fullscreen );
 BOOL DirectDraw_GetCooperativeLevel( HWND *window, int *fullscreen );
@@ -200,6 +210,7 @@ HRESULT DirectDraw_SetPalette( int remove );
 HRESULT DirectDraw_SetPaletteEntries( int start, int count, PALETTEENTRY *palette );
 HRESULT DirectDraw_WaitForVerticalBlank( DWORD flags );
 HRESULT DirectDraw_EnumDisplayModes( DWORD flags, LPDDENUMMODESCALLBACK2 callback );
+HRESULT DirectDraw_EnumDisplays(LPDDENUMCALLBACKEX callback );
 HRESULT DirectDraw_FlipToGDISurface( void );
 HRESULT DirectDraw_GetDC( HDC *hdc, surface_type_e surface );
 HRESULT DirectDraw_ReleaseDC( HDC hdc, surface_type_e surface );
@@ -213,6 +224,7 @@ DWORD DirectDraw_GetPixelFormatFlags( void );
 DWORD DirectDraw_GetSurfaceFlags( void );
 DWORD DirectDraw_GetSurfaceBitCount( void );
 DWORD DirectDraw_GetPrimaryBitCount( void );
+void DirectDraw_GetPrimaryWidthHeight(int *w, int *h);
 int DirectDraw_DetermineLocking( int wantfull );
 BYTE DirectDraw_GetBytesPerPixel( void );
 RGBFTYPE DirectDraw_GetSurfacePixelFormat( LPDDSURFACEDESC2 surface );

@@ -19,6 +19,9 @@ extern void pause_sound (void);
 extern void reset_sound (void);
 extern void sound_setadjust (double);
 extern char **enumerate_sound_devices (int *total);
+extern int drivesound_init (void);
+extern void drivesound_free (void);
+extern void sound_volume (int);
 
 static __inline__ void check_sound_buffers (void)
 {

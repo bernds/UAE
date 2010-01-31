@@ -619,7 +619,7 @@ void AVIOutput_End(void)
 void AVIOutput_Begin(void)
 {
 	AVISTREAMINFO avistreaminfo; // Structure containing information about the stream, including the stream type and its sample rate
-	int i;
+	int i, err;
 
 	reset_sound ();
 	if (strlen (avioutput_filename) >= 4 && strcmpi (avioutput_filename + strlen (avioutput_filename) - 4, ".avi"))
@@ -648,9 +648,9 @@ void AVIOutput_Begin(void)
 	    return;
 	}
 	
-	if(AVIFileOpen(&pfile, avioutput_filename, OF_CREATE | OF_WRITE, NULL) != 0)
+	if(((err = AVIFileOpen(&pfile, avioutput_filename, OF_CREATE | OF_WRITE, NULL)) != 0))
 	{
-		gui_message("AVIFileOpen() FAILED\n\nThis can happen if the path and or file name was entered incorrectly.\nRequired *.avi extension.\n");
+		gui_message("AVIFileOpen() FAILED (Error %X)\n\nThis can happen if the path and or file name was entered incorrectly.\nRequired *.avi extension.\n", err);
 		goto error;
 	}
 	

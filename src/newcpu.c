@@ -352,8 +352,8 @@ int lastint_no;
 #define get_ibyte_1(o) get_byte(regs.pc + (regs.pc_p - regs.pc_oldp) + (o) + 1)
 #define get_iword_1(o) get_word(regs.pc + (regs.pc_p - regs.pc_oldp) + (o))
 #define get_ilong_1(o) get_long(regs.pc + (regs.pc_p - regs.pc_oldp) + (o))
-
-uae_s32 ShowEA (void *f, int reg, amodes mode, wordsizes size, char *buf)
+	
+uae_s32 ShowEA (void *f, uae_u16 opcode, int reg, amodes mode, wordsizes size, char *buf)
 {
     uae_u16 dp;
     uae_s8 disp8;
@@ -506,7 +506,8 @@ uae_s32 ShowEA (void *f, int reg, amodes mode, wordsizes size, char *buf)
      case imm1:
 	offset = (uae_s32)(uae_s16)get_iword_1 (m68kpc_offset);
 	m68kpc_offset += 2;
-	sprintf (buffer,"#$%04x", (unsigned int)(offset & 0xffff));
+	buffer[0] = 0;
+        sprintf (buffer,"#$%04x", (unsigned int)(offset & 0xffff));
 	break;
      case imm2:
 	offset = (uae_s32)get_ilong_1 (m68kpc_offset);
@@ -993,6 +994,7 @@ void Exception (int nr, uaecptr oldpc)
 void Interrupt (int nr)
 {
 #if 0
+    if (nr == 4 && (intreq & 0x80))
     write_log("irq %d at %x\n", nr, m68k_getpc());
 #endif
     assert(nr < 8 && nr >= 0);
@@ -1372,7 +1374,7 @@ void m68k_reset (void)
 {
     regs.kick_mask = 0x00F80000;
     regs.spcflags = 0;
-    if (savestate_state == STATE_RESTORE) {
+    if (savestate_state == STATE_RESTORE || savestate_state == STATE_REWIND) {
         m68k_setpc (regs.pc);
 	/* MakeFromSR() must not swap stack pointer */
 	regs.s = (regs.sr >> 13) & 1;
@@ -1431,7 +1433,7 @@ unsigned long REGPARAM2 op_illg (uae_u32 opcode)
 
     compiler_flush_jsr_stack ();
     if (opcode == 0x4E7B && get_long (0x10) == 0 && in_rom (pc)) {
-	write_log ("Your Kickstart requires a 68020 CPU. Giving up.\n");
+	gui_message ("Your Kickstart requires a 68020 CPU. Giving up.\n");
 	broken_in = 1;
 	set_special (SPCFLAG_BRK);
 	quit_program = 1;
@@ -2025,6 +2027,8 @@ void m68k_go (int may_quit)
 	    quit_program = 0;
 	    if (savestate_state == STATE_RESTORE)
 		restore_state (savestate_fname);
+	    else if (savestate_state == STATE_REWIND)
+		savestate_rewind ();
 	    /* following three lines must not be reordered or
 	     * fastram state restore breaks
 	     */
@@ -2036,7 +2040,7 @@ void m68k_go (int may_quit)
 		write_log ("chipmem cleared\n");
 	    }
 	    /* We may have been restoring state, but we're done now.  */
-	    if (savestate_state == STATE_RESTORE) {
+	    if (savestate_state == STATE_RESTORE || savestate_state == STATE_REWIND) {
 	        map_overlay (1);
 	        fill_prefetch_slow (); /* compatibility with old state saves */
 	    }
@@ -2131,14 +2135,15 @@ void m68k_disasm (void *f, uaecptr addr, uaecptr *nextpc, int cnt)
 
 	if (dp->suse) {
 	    newpc = m68k_getpc () + m68kpc_offset;
-	    newpc += ShowEA (0, dp->sreg, dp->smode, dp->size, instrname);
+	    newpc += ShowEA (0, opcode, dp->sreg, dp->smode, dp->size, instrname);
 	}
 	if (dp->suse && dp->duse)
 	    strcat (instrname, ",");
 	if (dp->duse) {
 	    newpc = m68k_getpc () + m68kpc_offset;
-	    newpc += ShowEA (0, dp->dreg, dp->dmode, dp->size, instrname);
+	    newpc += ShowEA (0, opcode, dp->dreg, dp->dmode, dp->size, instrname);
 	}
+
     
 	for (i = 0; i < (m68kpc_offset - oldpc) / 2; i++) {
 	    f_out (f, "%04x ", get_iword_1 (oldpc + i * 2));
@@ -2199,13 +2204,13 @@ void sm68k_disasm(char *instrname, char *instrcode, uaecptr addr, uaecptr *nextp
 
     if (dp->suse) {
         newpc = m68k_getpc () + m68kpc_offset;
-        newpc += ShowEA (0, dp->sreg, dp->smode, dp->size, instrname);
+        newpc += ShowEA (0, opcode, dp->sreg, dp->smode, dp->size, instrname);
     }
     if (dp->suse && dp->duse)
         strcat (instrname, ",");
     if (dp->duse) {
         newpc = m68k_getpc () + m68kpc_offset;
-        newpc += ShowEA (0, dp->dreg, dp->dmode, dp->size, instrname);
+        newpc += ShowEA (0, opcode, dp->dreg, dp->dmode, dp->size, instrname);
     }
     
     if (instrcode)
@@ -2257,8 +2262,15 @@ void m68k_dumpstate (void *f, uaecptr *nextpc)
 		(fpsr & 0x1000000) != 0);
     }
 #endif
-    if (currprefs.cpu_compatible)
-	f_out (f, "prefetch %04x %04x\n", regs.irc, regs.ir);
+    if (currprefs.cpu_compatible) {
+	struct instr *dp;
+	struct mnemolookup *lookup1, *lookup2;
+	dp = table68k + regs.irc;
+	for (lookup1 = lookuptab; lookup1->mnemo != dp->mnemo; lookup1++);
+	dp = table68k + regs.ir;
+	for (lookup2 = lookuptab; lookup2->mnemo != dp->mnemo; lookup2++);
+	f_out (f, "prefetch %04x (%s) %04x (%s)\n", regs.irc, lookup1->name, regs.ir, lookup2->name);
+    }
 
     m68k_disasm (f, m68k_getpc (), nextpc, 1);
     if (nextpc)
@@ -2342,12 +2354,15 @@ uae_u8 *restore_cpu (uae_u8 *src)
 
 static int cpumodel[] = { 68000, 68010, 68020, 68020, 68040 };
 
-uae_u8 *save_cpu (int *len)
+uae_u8 *save_cpu (int *len, uae_u8 *dstptr)
 {
     uae_u8 *dstbak,*dst;
     int model,i;
 
-    dstbak = dst = malloc(4+4+15*4+4+4+4+4+2+4+4+4+4+4+4+4);
+    if (dstptr)
+	dstbak = dst = dstptr;
+    else
+        dstbak = dst = malloc(4+4+15*4+4+4+4+4+2+4+4+4+4+4+4+4);
     model = cpumodel[currprefs.cpu_level];
     save_u32 (model);					/* MODEL */
     save_u32 (currprefs.address_space_24 ? 1 : 0);	/* FLAGS */

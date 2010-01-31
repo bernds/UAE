@@ -39,6 +39,7 @@
 #include "native2amiga.h"
 #include "scsidev.h"
 #include "akiko.h"
+#include "savestate.h"
 
 #ifdef USE_SDL
 #include "SDL.h"
@@ -136,34 +137,34 @@ void default_prefs (struct uae_prefs *p)
     p->sound_interpol = 0;
     p->sound_filter = 0;
 
-    p->comptrustbyte = 1;
-    p->comptrustword = 1;
-    p->comptrustlong = 1;
-    p->comptrustnaddr= 1;
-    p->compnf=1;
-    p->comp_hardflush=0;
-    p->comp_constjump=1;
-    p->comp_oldsegv=0;
-    p->compfpu=1;
-    p->compforcesettings=0;
-    p->cachesize=0;
-    p->avoid_cmov=0;
-    p->avoid_dga=0;
-    p->avoid_vid=0;
-    p->comp_midopt=0;
-    p->comp_lowopt=0;
-    p->override_dga_address=0;
+    p->comptrustbyte = 0;
+    p->comptrustword = 0;
+    p->comptrustlong = 0;
+    p->comptrustnaddr= 0;
+    p->compnf = 1;
+    p->comp_hardflush = 0;
+    p->comp_constjump = 1;
+    p->comp_oldsegv = 0;
+    p->compfpu = 1;
+    p->compforcesettings = 0;
+    p->cachesize = 0;
+    p->avoid_cmov = 0;
+    p->avoid_dga = 0;
+    p->avoid_vid = 0;
+    p->comp_midopt = 0;
+    p->comp_lowopt = 0;
+    p->override_dga_address = 0;
     {
 	int i;
-	for (i=0;i<10;i++)
-	    p->optcount[i]=-1;
-	p->optcount[0]=4; /* How often a block has to be executed before it
+	for (i = 0;i < 10; i++)
+	    p->optcount[i] = -1;
+	p->optcount[0] = 4; /* How often a block has to be executed before it
 			     is translated */
-	p->optcount[1]=0; /* How often to use the naive translation */
-	p->optcount[2]=0; 
-	p->optcount[3]=0;
-	p->optcount[4]=0;
-	p->optcount[5]=0;
+	p->optcount[1] = 0; /* How often to use the naive translation */
+	p->optcount[2] = 0; 
+	p->optcount[3] = 0;
+	p->optcount[4] = 0;
+	p->optcount[5] = 0;
     }
     p->gfx_framerate = 1;
     p->gfx_width_win = p->gfx_width_fs = 800;
@@ -221,10 +222,11 @@ void default_prefs (struct uae_prefs *p)
     strcpy (p->prtname, DEFPRTNAME);
     strcpy (p->sername, DEFSERNAME);
 
-    p->m68k_speed = 0;
 #ifdef CPUEMU_68000_ONLY
     p->cpu_level = 0;
+    p->m68k_speed = 0;
 #else
+    p->m68k_speed = -1;
     p->cpu_level = 2;
 #endif
 #ifdef CPUEMU_0
@@ -251,6 +253,11 @@ void default_prefs (struct uae_prefs *p)
     p->dfxtype[2] = -1;
     p->dfxtype[3] = -1;
     p->floppy_speed = 100;
+    p->dfxclickvolume = 33;
+
+    p->statecapturebuffersize = 20 * 1024 * 1024;
+    p->statecapturerate = 5 * 50;
+    p->statecapture = 0;
 
 #ifdef FILESYS
     p->mountinfo = alloc_mountinfo ();
@@ -666,6 +673,7 @@ void do_leave_program (void)
 #ifdef AUTOCONFIG
     expansion_cleanup ();
 #endif
+    savestate_free ();
     memory_cleanup ();
 }
 
@@ -753,6 +761,7 @@ static void real_main2 (int argc, char **argv)
     fix_options ();
     changed_prefs = currprefs;
 
+    savestate_init ();
 #ifdef SCSIEMU
     scsidev_install ();
 #endif
@@ -821,12 +830,9 @@ static void real_main2 (int argc, char **argv)
 
 void real_main (int argc, char **argv)
 {
-#ifdef _WIN32
-    extern char *start_path;
-#endif
     restart_program = 1;
 #ifdef _WIN32
-    sprintf (restart_config, "%s\\Configurations\\", start_path);
+    sprintf (restart_config, "%sConfigurations\\", start_path);
 #endif
     strcat (restart_config, OPTIONSFILENAME);
     while (restart_program) {

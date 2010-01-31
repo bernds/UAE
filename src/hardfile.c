@@ -45,6 +45,7 @@
 #define CMD_ADDCHANGEINT 20
 #define CMD_REMCHANGEINT 21
 #define CMD_GETGEOMETRY	22
+#define HD_SCSICMD 28
 
 /* Trackdisk64 support */
 #define TD_READ64 24
@@ -332,7 +333,7 @@ static int add_async_request (struct hardfileprivdata *hfpd, uaecptr request, in
 	    hfpd->d_request[i] = request;
 	    hfpd->d_request_type[i] = type;
 	    hfpd->d_request_data[i] = data;
-	    hf_log ("async request %p (%d) added\n", request, type);
+	    hf_log ("async request %p (%d) added (total=%d)\n", request, type, i);
 	    return 0;
 	}
 	i++;
@@ -564,10 +565,12 @@ static uae_u32 hardfile_do_io (struct hardfiledata *hfd, struct hardfileprivdata
 	case CMD_CLEAR:
 	case CMD_MOTOR:
 	case CMD_SEEK:
-	case CMD_REMOVE:
 	case CMD_CHANGENUM:
 	case TD_SEEK64:
 	case NSCMD_TD_SEEK64:
+	break;
+
+	case CMD_REMOVE:
 	break;
 
 	case CMD_ADDCHANGEINT:
@@ -579,7 +582,7 @@ static uae_u32 hardfile_do_io (struct hardfiledata *hfd, struct hardfileprivdata
 	release_async_request (hfpd, request);
 	break;
  
-	case 28: /* SCSI */
+	case HD_SCSICMD: /* SCSI */
 	    if (hfd->nrcyls == 0)
 		error = handle_scsi (request, hfd);
 	    else /* we don't want users trashing their "partition" hardfiles with hdtoolbox */
@@ -607,12 +610,14 @@ static uae_u32 hardfile_abortio (void)
     struct hardfiledata *hfd = get_hardfile_data (unit);
     struct hardfileprivdata *hfpd = &hardfpd[unit];
 
+    hf_log2 ("uaehf.device abortio ");
     if (!hfd) {
 	put_byte (request + 31, 32);
+	hf_log2 ("error\n");
 	return get_byte (request + 31);
     }
     put_byte (request + 31, -2);
-    hf_log2 ("uaehf.device abortio unit=%d, request=%08.8X\n",  unit, request);
+    hf_log2 ("unit=%d, request=%08.8X\n",  unit, request);
     abort_async (hfpd, request, -2, 0);
     return 0;
 }
@@ -726,24 +731,30 @@ void hardfile_install (void)
     ROM_hardfile_resid = ds ("UAE hardfile.device 0.2");
 
     nscmd_cmd = here ();
-    dw (CMD_READ);
-    dw (NSCMD_TD_READ64);
-    dw (CMD_WRITE);
-    dw (NSCMD_TD_WRITE64);
-    dw (CMD_FORMAT);
-    dw (NSCMD_TD_FORMAT64);
-    dw (NSCMD_TD_SEEK64);
     dw (NSCMD_DEVICEQUERY);
-    dw (CMD_GETDRIVETYPE);
-    dw (CMD_CLEAR);
+    dw (CMD_RESET);
+    dw (CMD_READ);
+    dw (CMD_WRITE);
     dw (CMD_UPDATE);
+    dw (CMD_CLEAR);
+    dw (CMD_START);
+    dw (CMD_STOP);
+    dw (CMD_FLUSH);
     dw (CMD_MOTOR);
     dw (CMD_SEEK);
+    dw (CMD_FORMAT);
+    dw (CMD_REMOVE);
     dw (CMD_CHANGENUM);
     dw (CMD_CHANGESTATE);
     dw (CMD_PROTSTATUS);
+    dw (CMD_GETDRIVETYPE);
     dw (CMD_ADDCHANGEINT);
     dw (CMD_REMCHANGEINT);
+    dw (HD_SCSICMD);
+    dw (NSCMD_TD_READ64);
+    dw (NSCMD_TD_WRITE64);
+    dw (NSCMD_TD_SEEK64);
+    dw (NSCMD_TD_FORMAT64);
     dw (0);
 
     /* initcode */

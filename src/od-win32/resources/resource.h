@@ -127,8 +127,11 @@
 #define IDS_RESTOREUSS                  166
 #define IDS_USS                         167
 #define IDS_WRONGOSVERSION              168
+#define IDR_DRIVE_STARTUP_A500_1        168
 #define IDS_SELECTFLASH                 169
+#define IDR_DRIVE_CLICK_A500_1          169
 #define IDS_FLASH                       170
+#define IDR_DRIVE_SPIN_A500_1           170
 #define IDD_INPUT                       171
 #define IDS_INPUTHOSTWIDGET             171
 #define IDI_INPUT                       172
@@ -141,6 +144,26 @@
 #define IDS_BOOTPRI                     178
 #define IDS_WRONGDXVERSION              179
 #define IDI_MISC2                       180
+#define IDR_DRIVE_SNATCH_A500_1         181
+#define IDR_DRIVE_SPINND_A500_1         182
+#define IDS_SOUND_MONO                  200
+#define IDS_SOUND_MIXED                 201
+#define IDS_SOUND_STEREO                202
+#define IDS_SOUND_INTERPOL_DISABLED     203
+#define IDS_SOUND_INTERPOL_RH           204
+#define IDS_SOUND_INTERPOL_CRUX         205
+#define IDS_SOUND_FILTER_OFF            206
+#define IDS_SOUND_FILTER_EMULATED       207
+#define IDS_SOUND_FILTER_ON             208
+#define IDS_INPUT_COMPATIBILITY         209
+#define IDS_INPUT_CUSTOM                210
+#define IDS_INPUT_COPY_DEFAULT          211
+#define IDS_INPUT_COPY_CUSTOM           212
+#define IDS_3D_NO_FILTER                213
+#define IDS_3D_BILINEAR                 214
+#define IDS_VSYNC_DEFAULT               215
+#define IDS_DRIVESOUND_NONE             216
+#define IDS_DRIVESOUND_DEFAULT_A500     217
 #define IDC_RESOLUTION                  1021
 #define IDC_SERIAL                      1022
 #define IDC_REFRESHRATE                 1022
@@ -150,6 +173,8 @@
 #define IDC_DA_MODE                     1023
 #define IDC_SHOWGUI                     1024
 #define IDC_MIDIINLIST                  1024
+#define IDC_RESOLUTION2                 1024
+#define IDC_DISPLAYSELECT               1024
 #define IDC_AUTOCONFIG                  1025
 #define IDC_PRINTERLIST                 1025
 #define IDC_CHIPMEM                     1026
@@ -198,6 +223,7 @@
 #define IDC_PFULLSCREEN                 1192
 #define IDC_P96MEM                      1193
 #define IDC_DA_SLIDER                   1193
+#define IDC_PFULLSCREEN2                1194
 #define IDC_CPU0                        1200
 #define IDC_CPU1                        1201
 #define IDC_CPU2                        1202
@@ -378,6 +404,7 @@
 #define IDC_MINIMIZED_NOSOUND           1530
 #define IDC_MINIMIZED_PAUSE             1531
 #define IDC_D0                          1532
+#define IDC_STATE_CAPTURE               1532
 #define IDC_D1                          1533
 #define IDC_D2                          1534
 #define IDC_D3                          1535
@@ -425,10 +452,12 @@
 #define IDC_SOUNDBUFFERRAM              1574
 #define IDC_SOUNDADJUST                 1575
 #define IDC_SOUNDBUFFERTEXT             1576
+#define IDC_SOUNDVOLUME                 1576
 #define IDC_SOUNDBUFFERMEM              1577
 #define IDC_HARDFLUSH                   1578
 #define IDC_SOUNDADJUSTNUM              1578
 #define IDC_CONSTJUMP                   1579
+#define IDC_SOUNDDRIVEVOLUME            1579
 #define IDC_JITFPU                      1580
 #define IDC_NOFLAGS                     1581
 #define IDC_CS_CACHE_TEXT               1582
@@ -542,6 +571,7 @@
 #define IDC_KAILLERAJOYKEYBOARD         1642
 #define IDC_ACTIVEPRIORITY              1642
 #define IDC_ACTIVE_PRIORITY             1642
+#define IDC_SOUNDDRIVE                  1642
 #define IDC_KAILLERAOPTIONS             1643
 #define IDC_INACTIVE_PRIORITY           1643
 #define IDC_KAILLERASUPPRESSWARNINGS    1644
@@ -549,15 +579,24 @@
 #define IDC_KAILLERANONE                1645
 #define IDC_MINIMIZED_PRIORITY          1645
 #define IDC_KAILLERACONTROLS            1646
+#define IDC_STATE_RATE                  1646
 #define IDC_KAILLERANOFPSLIMIT          1647
+#define IDC_STATE_BUFFERSIZE            1647
+#define IDC_SOUNDDRIVESELECT            1647
 #define IDC_AVIOUTPUT_DIMENSIONS_STATIC 1648
+#define IDC_STATE_BUFFERSIZE_TEXT       1648
 #define IDC_AVIOUTPUT_OPTIONS           1649
+#define IDC_STATE_RATE_TEXT             1649
 #define IDC_SOUNDCARD                   1650
 #define IDC_SOUNDCARDLIST               1651
 #define IDC_SOUNDFREQ                   1652
 #define IDC_SOUNDCARD2                  1653
 #define IDC_SOUNDFREQTXT                1653
 #define IDC_SOUNDFILTERTXT              1654
+#define IDC_SOUNDSTEREO                 1655
+#define IDC_SOUNDDRIVETXT               1656
+#define IDC_SOUNDSTEREOTXT              1657
+#define IDC_SOUNDINTERPOLATIONTXT       1658
 
 // Next default values for new objects
 // 
@@ -565,7 +604,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
 #define _APS_3D_CONTROLS                     1
-#define _APS_NEXT_RESOURCE_VALUE        168
+#define _APS_NEXT_RESOURCE_VALUE        183
 #define _APS_NEXT_COMMAND_VALUE         40001
 #define _APS_NEXT_CONTROL_VALUE         1645
 #define _APS_NEXT_SYMED_VALUE           101

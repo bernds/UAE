@@ -63,43 +63,43 @@ IDD_DISPLAY DIALOGEX 0, 0, 300, 175
 STYLE DS_SETFONT | DS_3DLOOK | WS_CHILD | WS_VISIBLE | WS_CAPTION
 FONT 8, "MS Sans Serif", 0, 0, 0x1
 BEGIN
-    GROUPBOX        "Amiga screen resolution",IDC_SCREENRESTEXT,24,0,185,56,
+    GROUPBOX        "Amiga screen resolution",IDC_SCREENRESTEXT,24,0,185,67,
                     BS_LEFT
-    RTEXT           "Fullscreen",IDC_SELECTRESTEXT,27,16,34,15,
+    RTEXT           "Fullscreen",IDC_SELECTRESTEXT,27,17,34,15,
                     SS_CENTERIMAGE
-    COMBOBOX        IDC_RESOLUTION,66,16,72,150,CBS_DROPDOWNLIST | 
+    COMBOBOX        IDC_RESOLUTION,66,27,72,150,CBS_DROPDOWNLIST | 
                     CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP
-    COMBOBOX        IDC_REFRESHRATE,142,16,60,150,CBS_DROPDOWNLIST | 
+    COMBOBOX        IDC_REFRESHRATE,142,27,60,150,CBS_DROPDOWNLIST | 
                     CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP
-    RTEXT           "Windowed",IDC_WINDOWEDTEXT,27,39,35,8
-    EDITTEXT        IDC_XSIZE,66,36,30,12,ES_NUMBER
-    EDITTEXT        IDC_YSIZE,108,36,30,12,ES_NUMBER
+    RTEXT           "Windowed",IDC_WINDOWEDTEXT,27,51,35,8
+    EDITTEXT        IDC_XSIZE,66,48,30,12,ES_NUMBER
+    EDITTEXT        IDC_YSIZE,108,48,30,12,ES_NUMBER
     CONTROL         "VSync",IDC_VSYNC,"Button",BS_AUTOCHECKBOX | BS_LEFT | 
-                    WS_TABSTOP,146,36,54,10
-    GROUPBOX        "Settings",IDC_SETTINGSTEXT,24,64,186,80
+                    WS_TABSTOP,146,48,54,10
+    GROUPBOX        "Settings",IDC_SETTINGSTEXT,24,72,186,73
     CONTROL         "Full Screen",IDC_AFULLSCREEN,"Button",BS_AUTOCHECKBOX | 
-                    BS_LEFT | WS_TABSTOP,35,79,90,10
+                    BS_LEFT | WS_TABSTOP,35,84,90,10
     CONTROL         "Correct aspect ratio",IDC_ASPECT,"Button",
-                    BS_AUTOCHECKBOX | BS_LEFT | WS_TABSTOP,35,96,90,10
+                    BS_AUTOCHECKBOX | BS_LEFT | WS_TABSTOP,35,101,90,10
     CONTROL         "Full Screen RTG",IDC_PFULLSCREEN,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,131,79,70,10,0,
+                    BS_AUTOCHECKBOX | WS_TABSTOP,131,84,70,10,0,
                     HIDC_PFULLSCREEN
-    LTEXT           "Refresh:",IDC_REFRESHTEXT,34,119,28,8
+    LTEXT           "Refresh:",IDC_REFRESHTEXT,34,124,28,8
     CONTROL         "Slider1",IDC_FRAMERATE,"msctls_trackbar32",
-                    TBS_AUTOTICKS | TBS_TOP | WS_TABSTOP,64,114,75,20
-    CTEXT           "",IDC_RATETEXT,144,114,50,20,SS_SUNKEN | WS_BORDER
-    GROUPBOX        "Centering",IDC_STATIC,217,0,58,56
+                    TBS_AUTOTICKS | TBS_TOP | WS_TABSTOP,64,119,75,20
+    CTEXT           "",IDC_RATETEXT,144,119,50,20,SS_SUNKEN | WS_BORDER
+    GROUPBOX        "Centering",IDC_STATIC,217,0,58,67
     CONTROL         "Horizontal",IDC_XCENTER,"Button",BS_AUTOCHECKBOX | 
                     WS_TABSTOP,225,16,45,10
     CONTROL         "Vertical",IDC_YCENTER,"Button",BS_AUTOCHECKBOX | 
                     WS_TABSTOP,225,32,39,10
-    GROUPBOX        "Line mode",IDC_LINEMODE,217,64,58,81
+    GROUPBOX        "Line mode",IDC_LINEMODE,217,72,58,74
     CONTROL         "Normal",IDC_LM_NORMAL,"Button",BS_AUTORADIOBUTTON | 
-                    BS_LEFT | WS_GROUP | WS_TABSTOP,225,80,38,10
+                    BS_LEFT | WS_GROUP | WS_TABSTOP,225,84,38,10
     CONTROL         "Doubled",IDC_LM_DOUBLED,"Button",BS_AUTORADIOBUTTON | 
-                    BS_LEFT | WS_TABSTOP,225,96,43,10
+                    BS_LEFT | WS_TABSTOP,225,100,43,10
     CONTROL         "Scanline",IDC_LM_SCANLINES,"Button",BS_AUTORADIOBUTTON | 
-                    BS_LEFT | WS_TABSTOP,225,112,40,10
+                    BS_LEFT | WS_TABSTOP,225,116,40,10
     COMBOBOX        IDC_DA_MODE,35,151,58,150,CBS_DROPDOWNLIST | 
                     CBS_HASSTRINGS | NOT WS_VISIBLE | WS_VSCROLL | 
                     WS_TABSTOP
@@ -107,6 +107,10 @@ BEGIN
                     TBS_TOP | NOT WS_VISIBLE | WS_TABSTOP,97,147,101,20
     PUSHBUTTON      "Detect pixel format",IDC_TEST16BIT,211,151,64,14,0,0,
                     HIDC_TEST16BIT
+    COMBOBOX        IDC_DISPLAYSELECT,66,10,136,150,CBS_DROPDOWNLIST | 
+                    CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Lo-res",IDC_LORES,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    131,101,70,10,0,HIDC_LORES
 END
 
 IDD_MEMORY DIALOGEX 0, 0, 300, 175
@@ -180,10 +184,10 @@ BEGIN
                     TBS_TOP | WS_TABSTOP,114,66,67,20
     LTEXT           "Chipset",IDC_CS_CHIPSET_TEXT,182,71,25,10,
                     SS_CENTERIMAGE | NOT WS_GROUP | WS_TABSTOP
-    RTEXT           "Idle",IDC_CS_CPU_TEXT2,217,72,17,10,SS_CENTERIMAGE | 
+    RTEXT           "CPU Idle",IDC_CS_CPU_TEXT2,236,56,32,10,SS_CENTERIMAGE | 
                     WS_TABSTOP
     CONTROL         "",IDC_CPUIDLE,"msctls_trackbar32",TBS_AUTOTICKS | 
-                    TBS_TOP | WS_TABSTOP,235,66,54,20
+                    TBS_TOP | WS_TABSTOP,219,66,69,20
     GROUPBOX        "JIT Settings:",IDC_STATIC,90,94,205,76
     RTEXT           "Cache Size:",IDC_CS_CACHE_TEXT,95,109,45,10,
                     SS_CENTERIMAGE | WS_TABSTOP
@@ -279,52 +283,55 @@ IDD_SOUND DIALOGEX 0, 0, 300, 175
 STYLE DS_SETFONT | DS_3DLOOK | WS_CHILD | WS_VISIBLE | WS_CAPTION
 FONT 8, "MS Sans Serif", 0, 0, 0x1
 BEGIN
-    RTEXT           "Sound Card:",IDC_SOUNDCARD,11,11,41,13,SS_CENTERIMAGE
-    COMBOBOX        IDC_SOUNDCARDLIST,60,11,221,50,CBS_DROPDOWNLIST | 
+    RTEXT           "Sound Card:",IDC_SOUNDCARD,11,9,41,13,SS_CENTERIMAGE
+    COMBOBOX        IDC_SOUNDCARDLIST,60,9,221,50,CBS_DROPDOWNLIST | 
                     WS_VSCROLL | WS_TABSTOP
-    GROUPBOX        "Sound Emulation",IDC_SOUNDSETTINGS,7,29,120,67
+    GROUPBOX        "Sound Emulation",IDC_SOUNDSETTINGS,7,25,120,58
     CONTROL         "Disabled",IDC_SOUND0,"Button",BS_AUTORADIOBUTTON | 
-                    WS_GROUP | WS_TABSTOP,15,40,43,10
+                    WS_GROUP | WS_TABSTOP,15,35,43,10
     CONTROL         "Disabled, but emulated",IDC_SOUND1,"Button",
-                    BS_AUTORADIOBUTTON | BS_LEFT | WS_TABSTOP,15,54,88,10
+                    BS_AUTORADIOBUTTON | BS_LEFT | WS_TABSTOP,15,47,88,10
     CONTROL         "Enabled",IDC_SOUND2,"Button",BS_AUTORADIOBUTTON | 
-                    BS_LEFT | WS_TABSTOP,15,68,42,10
+                    BS_LEFT | WS_TABSTOP,15,59,42,10
     CONTROL         "Enabled, 100% accurate",IDC_SOUND3,"Button",
-                    BS_AUTORADIOBUTTON | BS_LEFT | WS_TABSTOP,15,82,93,10
-    GROUPBOX        "Settings",IDC_SOUNDINTERPOLATION2,133,28,84,67
-    RTEXT           "Frequency:",IDC_SOUNDFREQTXT,135,39,41,8,SS_CENTERIMAGE
-    COMBOBOX        IDC_SOUNDFREQ,141,50,67,75,CBS_DROPDOWN | WS_VSCROLL | 
+                    BS_AUTORADIOBUTTON | BS_LEFT | WS_TABSTOP,15,71,93,10
+    GROUPBOX        "Settings",IDC_SOUNDINTERPOLATION2,133,25,160,58
+    RTEXT           "Frequency:",IDC_SOUNDFREQTXT,138,33,37,8,SS_CENTERIMAGE
+    COMBOBOX        IDC_SOUNDFREQ,140,42,67,75,CBS_DROPDOWN | WS_VSCROLL | 
                     WS_TABSTOP
-    RTEXT           "Audio filter:",IDC_SOUNDFILTERTXT,138,66,36,8,
+    RTEXT           "Audio filter:",IDC_SOUNDFILTERTXT,140,58,36,8,
                     SS_CENTERIMAGE
-    COMBOBOX        IDC_SOUNDFILTER,141,77,67,75,CBS_DROPDOWN | WS_VSCROLL | 
-                    WS_TABSTOP
-    GROUPBOX        "Stereo mode",IDC_SOUNDINTERPOLATION3,222,28,59,67
-    CONTROL         "Mono",IDC_STEREOMODE0,"Button",BS_AUTORADIOBUTTON | 
-                    BS_LEFT | WS_GROUP | WS_TABSTOP,232,45,34,10
-    CONTROL         "Mixed",IDC_STEREOMODE2,"Button",BS_AUTORADIOBUTTON | 
-                    BS_LEFT | WS_TABSTOP,232,61,35,8
-    CONTROL         "Stereo",IDC_STEREOMODE1,"Button",BS_AUTORADIOBUTTON | 
-                    BS_LEFT | WS_TABSTOP,232,75,37,10
-    GROUPBOX        "Sound buffer size",IDC_STATIC,7,108,144,29
+    COMBOBOX        IDC_SOUNDFILTER,140,67,67,75,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    GROUPBOX        "Sound buffer size",IDC_STATIC,7,108,120,29
     CONTROL         "Slider1",IDC_SOUNDBUFFERRAM,"msctls_trackbar32",
-                    TBS_AUTOTICKS | TBS_TOP | WS_TABSTOP,14,116,127,19
-    CTEXT           "",IDC_SOUNDBUFFERMEM,155,116,60,16,SS_CENTERIMAGE | 
+                    TBS_AUTOTICKS | TBS_TOP | WS_TABSTOP,14,116,106,19
+    CTEXT           "",IDC_SOUNDBUFFERMEM,134,116,40,16,SS_CENTERIMAGE | 
                     SS_SUNKEN | WS_BORDER | WS_TABSTOP
-    GROUPBOX        "Sound driver lag compensation",IDC_STATIC,8,139,144,29
+    GROUPBOX        "Sound driver lag compensation",IDC_STATIC,7,139,120,28
     CONTROL         "Slider1",IDC_SOUNDADJUST,"msctls_trackbar32",
-                    TBS_AUTOTICKS | TBS_TOP | WS_TABSTOP,14,147,127,19
-    CTEXT           "",IDC_SOUNDADJUSTNUM,155,152,60,16,SS_CENTERIMAGE | 
+                    TBS_AUTOTICKS | TBS_TOP | WS_TABSTOP,14,147,107,19
+    CTEXT           "",IDC_SOUNDADJUSTNUM,134,152,40,16,SS_CENTERIMAGE | 
                     SS_SUNKEN | WS_BORDER | WS_TABSTOP
-    GROUPBOX        "Interpolation",IDC_SOUNDINTERPOLATION,222,108,59,60
-    CONTROL         "Disabled",IDC_INTERPOLATION0,"Button",
-                    BS_AUTORADIOBUTTON | BS_LEFT | WS_GROUP | WS_TABSTOP,232,
-                    121,43,10
-    CONTROL         "RH",IDC_INTERPOLATION1,"Button",BS_AUTORADIOBUTTON | 
-                    BS_LEFT | WS_TABSTOP,232,136,27,10
-    CONTROL         "Crux",IDC_INTERPOLATION2,"Button",BS_AUTORADIOBUTTON | 
-                    BS_LEFT | WS_TABSTOP,232,151,30,10
-    PUSHBUTTON      "Calibrate",IDC_SOUNDCALIBRATE,163,136,44,14
+    PUSHBUTTON      "Calibrate",IDC_SOUNDCALIBRATE,134,135,40,14
+    COMBOBOX        IDC_SOUNDSTEREO,220,42,67,75,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_SOUNDINTERPOLATION,220,67,67,75,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    RTEXT           "Stereo mode:",IDC_SOUNDSTEREOTXT,223,33,41,8,
+                    SS_CENTERIMAGE
+    RTEXT           "Interpolation:",IDC_SOUNDINTERPOLATIONTXT,222,58,41,8,
+                    SS_CENTERIMAGE
+    GROUPBOX        "Volume",IDC_STATIC,181,108,112,29
+    CONTROL         "",IDC_SOUNDVOLUME,"msctls_trackbar32",TBS_AUTOTICKS | 
+                    TBS_TOP | WS_TABSTOP,183,116,107,19
+    COMBOBOX        IDC_SOUNDDRIVE,15,92,32,75,CBS_DROPDOWNLIST | WS_VSCROLL | 
+                    WS_TABSTOP
+    COMBOBOX        IDC_SOUNDDRIVESELECT,55,92,120,75,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    GROUPBOX        "Disk Drive Sound Emulation",IDC_STATIC,8,83,285,25
+    CONTROL         "",IDC_SOUNDDRIVEVOLUME,"msctls_trackbar32",
+                    TBS_AUTOTICKS | TBS_TOP | WS_TABSTOP,183,88,107,19
 END
 
 IDD_LOADSAVE DIALOGEX 0, 0, 300, 175
@@ -454,7 +461,7 @@ IDD_MISC1 DIALOGEX 0, 0, 300, 175
 STYLE DS_SETFONT | DS_3DLOOK | WS_CHILD | WS_VISIBLE | WS_CAPTION
 FONT 8, "MS Sans Serif", 0, 0, 0x1
 BEGIN
-    GROUPBOX        "Advanced:",IDC_STATIC,20,4,260,86
+    GROUPBOX        "Advanced:",IDC_STATIC,20,4,260,73
     CONTROL         "Middle-Mouse-Button --> ALT-TAB",IDC_JULIAN,"Button",
                     BS_AUTOCHECKBOX | WS_TABSTOP,26,15,120,10
     CONTROL         "Show GUI on startup",IDC_SHOWGUI,"Button",
@@ -463,9 +470,6 @@ BEGIN
                     WS_TABSTOP,26,45,115,10
     CONTROL         "UAEscsi.device",IDC_SCSIDEVICE,"Button",BS_AUTOCHECKBOX | 
                     WS_TABSTOP,26,60,66,10
-    CONTROL         "Synchronize clock",IDC_CLOCKSYNC,"Button",
-                    BS_AUTOCHECKBOX | NOT WS_VISIBLE | WS_TABSTOP,26,75,74,
-                    10
     CONTROL         "BSDsocket.library emulation",IDC_SOCKETS,"Button",
                     BS_AUTOCHECKBOX | WS_TABSTOP,156,15,120,10
     CONTROL         "Use CTRL-F11 to quit",IDC_CTRLF11,"Button",
@@ -474,23 +478,21 @@ BEGIN
                     BS_AUTOCHECKBOX | WS_TABSTOP,156,45,120,10
     CONTROL         "Use ASPI SCSI layer",IDC_ASPI,"Button",BS_AUTOCHECKBOX | 
                     WS_TABSTOP,156,60,115,10
-    GROUPBOX        "Keyboard LEDs:",IDC_STATIC,20,92,68,73
-    COMBOBOX        IDC_KBLED1,26,105,56,65,CBS_DROPDOWNLIST | WS_VSCROLL | 
+    GROUPBOX        "Keyboard LEDs:",IDC_STATIC,20,82,68,73
+    COMBOBOX        IDC_KBLED1,26,95,56,65,CBS_DROPDOWNLIST | WS_VSCROLL | 
                     WS_TABSTOP
-    COMBOBOX        IDC_KBLED2,26,124,56,65,CBS_DROPDOWNLIST | WS_VSCROLL | 
+    COMBOBOX        IDC_KBLED2,26,114,56,65,CBS_DROPDOWNLIST | WS_VSCROLL | 
                     WS_TABSTOP
-    COMBOBOX        IDC_KBLED3,26,144,56,65,CBS_DROPDOWNLIST | WS_VSCROLL | 
+    COMBOBOX        IDC_KBLED3,26,134,56,65,CBS_DROPDOWNLIST | WS_VSCROLL | 
                     WS_TABSTOP
-    GROUPBOX        "Logging:",IDC_STATIC,97,92,183,25
+    GROUPBOX        "Logging:",IDC_STATIC,97,82,183,25
     CONTROL         "Create log file",IDC_CREATELOGFILE,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,107,102,72,10,0,
+                    BS_AUTOCHECKBOX | WS_TABSTOP,107,92,72,10,0,
                     HIDC_CREATELOGFILE
     CONTROL         "Illegal mem accesses",IDC_ILLEGAL,"Button",
-                    BS_AUTOCHECKBOX | WS_TABSTOP,189,102,80,10
-    PUSHBUTTON      "Load state...",IDC_DOLOADSTATE,126,129,57,14
-    PUSHBUTTON      "Save state...",IDC_DOSAVESTATE,195,129,57,14
-    PUSHBUTTON      "Reset Amiga",IDC_RESETAMIGA,126,150,57,14
-    PUSHBUTTON      "Quit",IDC_QUITEMU,195,150,57,14
+                    BS_AUTOCHECKBOX | WS_TABSTOP,189,92,80,10
+    PUSHBUTTON      "Reset Amiga",IDC_RESETAMIGA,129,127,49,14
+    PUSHBUTTON      "Quit",IDC_QUITEMU,199,126,49,14
 END
 
 IDD_HARDFILE DIALOGEX 0, 0, 229, 164
@@ -743,12 +745,12 @@ IDD_MISC2 DIALOGEX 0, 0, 300, 175
 STYLE DS_SETFONT | DS_3DLOOK | WS_CHILD | WS_VISIBLE | WS_CAPTION
 FONT 8, "MS Sans Serif", 0, 0, 0x1
 BEGIN
-    GROUPBOX        "When Active:",-1,8,7,88,73
+    GROUPBOX        "When Active:",IDC_STATIC,8,7,88,73
     RTEXT           "Run at priority:",IDC_ACTIVE_PRI,14,17,45,10,
                     SS_CENTERIMAGE | WS_TABSTOP
     COMBOBOX        IDC_ACTIVE_PRIORITY,14,29,76,65,CBS_DROPDOWNLIST | 
                     WS_VSCROLL | WS_TABSTOP
-    GROUPBOX        "When Inactive:",-1,102,7,92,73
+    GROUPBOX        "When Inactive:",IDC_STATIC,102,7,92,73
     RTEXT           "Run at priority:",IDC_INACTIVE_PRI,109,17,45,10,
                     SS_CENTERIMAGE | WS_TABSTOP
     COMBOBOX        IDC_INACTIVE_PRIORITY,109,29,76,65,CBS_DROPDOWNLIST | 
@@ -757,7 +759,7 @@ BEGIN
                     BS_AUTOCHECKBOX | WS_TABSTOP,109,50,69,10
     CONTROL         "Disable sound output",IDC_INACTIVE_NOSOUND,"Button",
                     BS_AUTOCHECKBOX | WS_TABSTOP,109,63,79,10
-    GROUPBOX        "When Minimized:",-1,199,7,92,73
+    GROUPBOX        "When Minimized:",IDC_STATIC,199,7,92,73
     RTEXT           "Run at priority:",IDC_MINIMIZED_PRI,207,18,45,10,
                     SS_CENTERIMAGE | WS_TABSTOP
     COMBOBOX        IDC_MINIMIZED_PRIORITY,207,30,76,65,CBS_DROPDOWNLIST | 
@@ -766,6 +768,19 @@ BEGIN
                     BS_AUTOCHECKBOX | WS_TABSTOP,207,50,69,10
     CONTROL         "Disable sound output",IDC_MINIMIZED_NOSOUND,"Button",
                     BS_AUTOCHECKBOX | WS_TABSTOP,207,63,79,10
+    GROUPBOX        "State files:",IDC_STATIC,10,92,281,63
+    PUSHBUTTON      "Load state...",IDC_DOLOADSTATE,21,108,49,14
+    PUSHBUTTON      "Save state...",IDC_DOSAVESTATE,21,132,49,14
+    CONTROL         "Enable state recording",IDC_STATE_CAPTURE,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,160,103,88,10
+    RTEXT           "Recording rate (seconds)",IDC_STATE_RATE_TEXT,153,118,
+                    86,10,SS_CENTERIMAGE | WS_TABSTOP
+    COMBOBOX        IDC_STATE_RATE,244,116,38,65,CBS_DROPDOWN | WS_VSCROLL | 
+                    WS_TABSTOP
+    RTEXT           "Recording buffer (MB)",IDC_STATE_BUFFERSIZE_TEXT,153,
+                    138,83,10,SS_CENTERIMAGE | WS_TABSTOP
+    COMBOBOX        IDC_STATE_BUFFERSIZE,244,136,38,65,CBS_DROPDOWN | 
+                    WS_VSCROLL | WS_TABSTOP
 END
 
 
@@ -846,7 +861,7 @@ BEGIN
 
     IDD_MISC2, DIALOG
     BEGIN
-        BOTTOMMARGIN, 174
+        BOTTOMMARGIN, 173
         HORZGUIDE, 91
     END
 END
@@ -912,8 +927,8 @@ IDI_AVIOUTPUT           ICON                    "avioutput.ico"
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,8,23,0
- PRODUCTVERSION 0,8,23,0
+ FILEVERSION 0,8,24,0
+ PRODUCTVERSION 0,8,24,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -929,12 +944,12 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "WinUAE"
-            VALUE "FileVersion", "0.8.23"
+            VALUE "FileVersion", "0.8.24"
             VALUE "InternalName", "WinUAE"
-            VALUE "LegalCopyright", "© 1996-2003 under the GNU Public License (GPL)"
+            VALUE "LegalCopyright", "© 1996-2004 under the GNU Public License (GPL)"
             VALUE "OriginalFilename", "WinUAE.exe"
             VALUE "ProductName", "WinUAE"
-            VALUE "ProductVersion", "0.8.23"
+            VALUE "ProductVersion", "0.8.24"
         END
     END
     BLOCK "VarFileInfo"
@@ -976,7 +991,7 @@ END
 
 STRINGTABLE 
 BEGIN
-    IDS_MISC2               "Priority"
+    IDS_MISC2               "Priority and state files"
 END
 
 STRINGTABLE 
@@ -1084,7 +1099,56 @@ BEGIN
     IDS_ERRORTITLE          "WinUAE Message"
 END
 
+STRINGTABLE 
+BEGIN
+    IDS_SOUND_MONO          "Mono"
+    IDS_SOUND_MIXED         "Mixed"
+    IDS_SOUND_STEREO        "Stereo"
+    IDS_SOUND_INTERPOL_DISABLED "Disabled"
+    IDS_SOUND_INTERPOL_RH   "RH"
+    IDS_SOUND_INTERPOL_CRUX "Crux"
+    IDS_SOUND_FILTER_OFF    "Always off"
+    IDS_SOUND_FILTER_EMULATED "Emulated"
+END
+
+STRINGTABLE 
+BEGIN
+    IDS_SOUND_FILTER_ON     "Always on"
+    IDS_INPUT_COMPATIBILITY "Compatibility mode"
+    IDS_INPUT_CUSTOM        "Configuration #%d"
+    IDS_INPUT_COPY_DEFAULT  "Default"
+    IDS_INPUT_COPY_CUSTOM   "Config #%d"
+    IDS_3D_NO_FILTER        "No filter (%d-bit)"
+    IDS_3D_BILINEAR         "Bilinear (%d-bit)"
+    IDS_VSYNC_DEFAULT       "Default"
+    IDS_DRIVESOUND_NONE     "No sound"
+    IDS_DRIVESOUND_DEFAULT_A500 "A500 (WinUAE built-in)"
+END
+
 #endif    // English (U.S.) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+/////////////////////////////////////////////////////////////////////////////
+// Finnish resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_FIN)
+#ifdef _WIN32
+LANGUAGE LANG_FINNISH, SUBLANG_DEFAULT
+#pragma code_page(1252)
+#endif //_WIN32
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// WAVE
+//
+
+IDR_DRIVE_STARTUP_A500_1 WAVE                    "drive_startup.wav"
+IDR_DRIVE_CLICK_A500_1  WAVE                    "drive_click.wav"
+IDR_DRIVE_SPIN_A500_1   WAVE                    "drive_spin.wav"
+IDR_DRIVE_SNATCH_A500_1 WAVE                    "drive_snatch.wav"
+IDR_DRIVE_SPINND_A500_1 WAVE                    "drive_spinnd.wav"
+#endif    // Finnish resources
 /////////////////////////////////////////////////////////////////////////////
 
 

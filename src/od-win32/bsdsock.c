@@ -37,6 +37,8 @@
 
 
 static HWND hSockWnd;
+static long FAR PASCAL SocketWindowProc( HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam );
+
 extern HWND hAmigaWnd;
 int hWndSelector = 0; /* Set this to zero to get hSockWnd */
 CRITICAL_SECTION csSigQueueLock;
@@ -162,14 +164,36 @@ int init_socket_layer(void)
     {
 	if( ( result = mySockStartup() ) )
 	{
-	    InitializeCriticalSection(&csSigQueueLock);
+		InitializeCriticalSection(&csSigQueueLock);
 
 	    if( hSockThread == NULL )
 	    {
+	    WNDCLASS wc;    // Set up an invisible window and dummy wndproc
+		
 		InitializeCriticalSection( &SockThreadCS );
 		hSockReq = CreateEvent( NULL, FALSE, FALSE, NULL );
 		hSockReqHandled = CreateEvent( NULL, FALSE, FALSE, NULL );
-		hSockThread = (void *)THREAD(sock_thread,NULL);
+
+		wc.style = CS_BYTEALIGNCLIENT | CS_BYTEALIGNWINDOW;
+		wc.lpfnWndProc = SocketWindowProc;
+		wc.cbClsExtra = 0;
+		wc.cbWndExtra = 0;
+		wc.hInstance = 0;
+		wc.hIcon = LoadIcon (GetModuleHandle (NULL), MAKEINTRESOURCE( IDI_APPICON ) );
+		wc.hCursor = LoadCursor (NULL, IDC_ARROW);
+		wc.hbrBackground = GetStockObject (BLACK_BRUSH);
+		wc.lpszMenuName = 0;
+		wc.lpszClassName = "SocketFun";
+		if( RegisterClass (&wc) )
+			{
+			hSockWnd = CreateWindowEx ( 0,
+				    "SocketFun", "WinUAE Socket Window",
+				    WS_POPUP,
+				    0, 0,
+				    1, 1, 
+				    NULL, NULL, 0, NULL);
+			hSockThread = (void *)THREAD(sock_thread,NULL);
+			}
 	    }
 	}
     }
@@ -466,6 +490,47 @@ static void prepamigaaddr(struct sockaddr *realpt, int len)
     *((char *)realpt) = len;
 }
 
+
+int host_dup2socket(SB, int fd1, int fd2)
+	{
+    SOCKET s1,s2;
+
+    TRACE(("dup2socket(%d,%d) -> ",fd1,fd2));
+	fd1++;
+
+    s1 = getsock(sb, fd1);
+    if (s1 != INVALID_SOCKET)
+		{
+		if (fd2 != -1)
+			{
+		    if ((unsigned int) (fd2) >= (unsigned int) sb->dtablesize) 
+				{
+				TRACE (("Bad file descriptor (%d)\n", fd2));
+				seterrno (sb, 9);	/* EBADF */
+				}
+			fd2++;
+			s2 = getsock(sb,fd2);
+			if (s2 != INVALID_SOCKET)
+				{
+	            shutdown(s2,1);
+			    closesocket(s2);
+				}
+			setsd(sb,fd2,s1);
+		    TRACE(("0\n"));
+			return 0;
+			}
+		else
+			{
+			fd2 = getsd(sb, 1);
+			setsd(sb,fd2,s1);
+		    TRACE(("%d\n",fd2));
+			return (fd2 - 1);
+			}
+		}
+    TRACE(("-1\n"));
+	return -1;
+	}
+
 int host_socket(SB, int af, int type, int protocol)
 {
     int sd;
@@ -755,8 +820,11 @@ BOOL HandleStuff( void )
 		break;
 		case abort_req:
 		    *(sockreq.params.abort_s.newsock) = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
-		    shutdown( sb->sockAbort, 1 );
-		    closesocket(sb->sockAbort);
+			if (*(sockreq.params.abort_s.newsock) != sb->sockAbort)
+				{
+				shutdown( sb->sockAbort, 1 );
+				closesocket(sb->sockAbort);
+				}
 		    handled = FALSE; /* Don't bother the SETERRNO section after the switch() */
 		break;
 		case last_req:
@@ -797,31 +865,14 @@ static long FAR PASCAL SocketWindowProc( HWND hwnd, UINT message, WPARAM wParam,
     return DefWindowProc( hwnd, message, wParam, lParam );
 }
 
+
+
 static unsigned int __stdcall sock_thread(void *blah)
 {
     unsigned int result = 0;
 	HANDLE WaitHandle;
     MSG msg;
-    WNDCLASS wc;    // Set up an invisible window and dummy wndproc
 
-    wc.style = CS_BYTEALIGNCLIENT | CS_BYTEALIGNWINDOW;
-    wc.lpfnWndProc = SocketWindowProc;
-    wc.cbClsExtra = 0;
-    wc.cbWndExtra = 0;
-    wc.hInstance = 0;
-    wc.hIcon = LoadIcon (GetModuleHandle (NULL), MAKEINTRESOURCE( IDI_APPICON ) );
-    wc.hCursor = LoadCursor (NULL, IDC_ARROW);
-    wc.hbrBackground = GetStockObject (BLACK_BRUSH);
-    wc.lpszMenuName = 0;
-    wc.lpszClassName = "SocketFun";
-    if( RegisterClass (&wc) )
-    {
-	hSockWnd = CreateWindowEx ( 0,
-				    "SocketFun", "WinUAE Socket Window",
-				    WS_POPUP,
-				    0, 0,
-				    1, 1, 
-				    NULL, NULL, 0, NULL);
 	if( hSockWnd )
 	{
     // Make sure we're outrunning the wolves
@@ -840,14 +891,14 @@ static unsigned int __stdcall sock_thread(void *blah)
 			DWORD wait;
 			WaitHandle = hSockReq;
 			wait = MsgWaitForMultipleObjects (1, &WaitHandle, FALSE,INFINITE, QS_POSTMESSAGE);
-			Sleep(10);
- 			if (wait == WAIT_OBJECT_0)
+			if (wait == WAIT_OBJECT_0)
 				{
 				if( HandleStuff() ) // See if its time to quit...
 					break;
 				}
 			if (wait == WAIT_OBJECT_0 +1)
 				{
+				Sleep(10);
 				while( PeekMessage( &msg, NULL, WM_USER, 0xB000+MAXPENDINGASYNC*2, PM_REMOVE ) > 0 )
 					{
 					TranslateMessage( &msg );
@@ -857,7 +908,6 @@ static unsigned int __stdcall sock_thread(void *blah)
 			}
 	    }
 	}
-    }
     write_log( "BSDSOCK: We have exited our sock_thread()\n" );
 #ifndef __GNUC__
     _endthreadex( result );
@@ -865,13 +915,6 @@ static unsigned int __stdcall sock_thread(void *blah)
     return result;
 }
 
-static unsigned int __stdcall timerfunc(UINT uTimerID, UINT uMsg, DWORD dwUser, DWORD dw1, DWORD dw2)
-	{
-	SB;
-	sb = (struct socketbase*) dwUser;
-	SETSIGNAL;
-	return 0;
-	}
 
 void host_connect(SB, uae_u32 sd, uae_u32 name, uae_u32 namelen)
 {
@@ -1525,11 +1568,10 @@ int host_CloseSocket(SB, int sd)
     unsigned int wMsg;
     SOCKET s;
 	
-	sd++;
     TRACE(("CloseSocket(%d) -> ",sd));
+	sd++;
 
     s = getsock(sb,sd);
-
     if (s != INVALID_SOCKET)
     {
 	if (sb->mtable[sd-1])
@@ -1537,6 +1579,10 @@ int host_CloseSocket(SB, int sd)
 	    asyncsb[(sb->mtable[sd-1]-0xb000)/2] = NULL;
 	    sb->mtable[sd-1] = 0;
 	}
+
+	if (checksd(sb ,sd) == TRUE)
+		return 0;
+
 
 
 	BEGINBLOCKING;
@@ -1725,25 +1771,34 @@ static unsigned int __stdcall thread_WaitSelect(void *index2)
 			if (sb->resultval == SOCKET_ERROR)
 		    { 
 			// select was stopped by sb->sockAbort
-			makesocktable(sb,readfds,&readsocks,nfds,INVALID_SOCKET);
-			tv.tv_sec = 0;
-			tv.tv_usec = 10000;
-			// Check for 10ms if data is available
-			sb->resultval = select(nfds+1,&readsocks,writefds ? &writesocks : NULL,exceptfds ? &exceptsocks : NULL,&tv);
-			if (sb->resultval == 0)
-		        { // Now timeout -> really no data available
-				if (GetLastError() != 0)
-					{
-					sb->resultval = SOCKET_ERROR;
-				    // Set old resultval
-					}
-		        }   
+			if (readsocks.fd_count > 1)
+				{
+				makesocktable(sb,readfds,&readsocks,nfds,INVALID_SOCKET);
+				tv.tv_sec = 0;
+				tv.tv_usec = 10000;
+				// Check for 10ms if data is available
+				sb->resultval = select(nfds+1,&readsocks,writefds ? &writesocks : NULL,exceptfds ? &exceptsocks : NULL,&tv);
+				if (sb->resultval == 0)
+					{ // Now timeout -> really no data available
+					if (GetLastError() != 0)
+						{
+						sb->resultval = SOCKET_ERROR;
+						// Set old resultval
+						}
+					}   
+				}
 		    }
 			if (FD_ISSET(sb->sockAbort,&readsocks))
 				{
-				sb->resultval--;
+				if (sb->resultval != SOCKET_ERROR)
+					{
+					sb->resultval--;
+					}
 				}
-        	sb->needAbort = 0;
+			else
+				{
+	       		sb->needAbort = 0;
+				}
 
 		    if (sb->resultval == SOCKET_ERROR)
 		    {
@@ -1870,7 +1925,11 @@ void host_WaitSelect(SB, uae_u32 nfds, uae_u32 readfds, uae_u32 writefds, uae_u3
 			if ((newsock = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP)) == INVALID_SOCKET)
 				write_log("BSDSOCK: ERROR - Cannot create socket: %d\n",WSAGetLastError());
                         shutdown(sb->sockAbort,1);
-			closesocket(sb->sockAbort);
+			if (newsock != sb->sockAbort)
+				{
+				shutdown(sb->sockAbort,1);
+				closesocket(sb->sockAbort);
+				}
 		}
 
 		WaitForSingleObject(sb->hEvent,INFINITE);

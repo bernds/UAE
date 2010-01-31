@@ -1921,8 +1921,12 @@ void vsync_handle_redraw (int long_frame, int lof_changed)
 	last_redraw_point = 0;
 	interlace_seen = 0;
 
-	if (framecnt == 0)
+	if (framecnt == 0) {
 	    finish_drawing_frame ();
+#ifdef AVIOUTPUT
+	    frame_drawn ();
+#endif
+	}
 
 	/* At this point, we have finished both the hardware and the
 	 * drawing frame. Essentially, we are outside of all loops and
@@ -1930,12 +1934,12 @@ void vsync_handle_redraw (int long_frame, int lof_changed)
 	 * done at other times.
 	 */
 
-#ifdef AVIOUTPUT
-	frame_drawn ();
-#endif
-
 	if (savestate_state == STATE_DORESTORE) {
 	    savestate_state = STATE_RESTORE;
+	    reset_drawing ();
+	    uae_reset (0);
+	} else if (savestate_state == STATE_DOREWIND) {
+	    savestate_state = STATE_REWIND;
 	    reset_drawing ();
 	    uae_reset (0);
 	}
@@ -1950,6 +1954,7 @@ void vsync_handle_redraw (int long_frame, int lof_changed)
 	    return;
 	}
 
+	savestate_capture (0);
 	count_frame ();
 	check_picasso ();
 

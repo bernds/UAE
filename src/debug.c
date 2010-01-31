@@ -28,11 +28,16 @@
 #include "identify.h"
 #include "sound.h"
 #include "disk.h"
+#include "savestate.h"
+#include "autoconf.h"
 
-static int debugger_active = 0;
-static uaecptr skipaddr;
+static int debugger_active;
+static uaecptr skipaddr_start, skipaddr_end, skipaddr_doskip;
+static uae_u32 skipins;
 static int do_skip;
-int debugging = 0;
+static int debug_rewind;
+static int memwatch_enabled, memwatch_triggered;
+int debugging;
 
 static FILE *logfile;
 
@@ -47,7 +52,6 @@ void activate_debugger (void)
     debugger_active = 1;
     set_special (SPCFLAG_BRK);
     debugging = 1;
-    /* use_debugger = 1; */
 }
 
 int firsthist = 0;
@@ -59,18 +63,66 @@ union flagu historyf[MAX_HIST];
 uaecptr history[MAX_HIST];
 #endif
 
+static char help[] = {
+    "          HELP for UAE Debugger\n"
+    "         -----------------------\n\n"
+    "  g [<address>]         Start execution at the current address or <address>\n"
+    "  c                     Dump state of the CIA, disk drives and custom registers\n"
+    "  r                     Dump state of the CPU\n"
+    "  m <address> [<lines>] Memory dump starting at <address>\n"
+    "  d <address> [<lines>] Disassembly starting at <address>\n"
+    "  t [instructions]      Step one or more instructions\n"
+    "  z                     Step through one instruction - useful for JSR, DBRA etc\n"
+    "  f                     Step forward until PC in RAM\n"
+    "  f <address>           Add/remove breakpoint\n"
+    "  fi                    Step forward until PC points to RTS/RTD or RTE\n"
+    "  fi <opcode>           Step forward until PC points to <opcode>\n"
+    "  fl                    List breakpoints\n"
+    "  fd                    Remove all breakpoints\n"
+    "  f <addr1> <addr2>     Step forward until <addr1> <= PC <= <addr2>\n"
+    "  e                     Dump contents of all custom registers\n"
+    "  i                     Dump contents of interrupt and trap vectors\n"
+    "  o <1|2|addr> [<lines>]View memory as Copper instructions\n"
+    "  O                     Display bitplane offsets\n"
+    "  O <plane> <offset>    Offset a bitplane\n"
+    "  H <count>             Show PC history <count> instructions\n"
+    "  M                     Search for *Tracker sound modules\n"
+    "  C <value>             Search for values like energy or lifes in games\n"
+    "  W <address> <value>   Write into Amiga memory\n"
+    "  w <num> <address> <length> <R/W/RW> [<value>]\n"
+    "                        Add/remove memory watchpoints\n"
+    "  S <file> <addr> <n>   Save a block of Amiga memory\n"
+    "  s <string>/<values> [<addr>] [<length>]\n"
+    "                        search for string/bytes\n"
+    "  T                     Show exec tasks and their PCs\n"
+    "  h,?                   Show this help page\n"
+    "  b                     Step to previous state capture position\n"
+    "  q                     Quit the emulator. You don't want to use this command.\n\n"
+};
+
+static void debug_help (void)
+{
+    console_out (help);
+}
+
+
+
 static void ignore_ws (char **c)
 {
     while (**c && isspace(**c)) (*c)++;
 }
 
+static uae_u32 readint (char **c);
 static uae_u32 readhex (char **c)
 {
     uae_u32 val = 0;
     char nc;
 
     ignore_ws (c);
-
+    if (**c == '!' || **c == '_') {
+	(*c)++;
+	return readint (c);
+    }
     while (isxdigit(nc = **c)) {
 	(*c)++;
 	val *= 16;
@@ -91,7 +143,14 @@ static uae_u32 readint (char **c)
     int negative = 0;
 
     ignore_ws (c);
-
+    if (**c == '$') {
+	(*c)++;
+	return readhex (c);
+    }
+    if (**c == '0' && toupper((*c)[1]) == 'X') {
+	(*c)+= 2;	
+	return readhex (c);
+    }
     if (**c == '-')
 	negative = 1, (*c)++;
     while (isdigit(nc = **c)) {
@@ -112,6 +171,32 @@ static int more_params (char **c)
 {
     ignore_ws (c);
     return (**c) != 0;
+}
+
+static uae_u32 nextaddr (uae_u32 addr)
+{
+    if (addr == 0xffffffff) {
+	if (currprefs.bogomem_size)
+	    return 0xc00000 + currprefs.bogomem_size;
+	if (currprefs.fastmem_size)
+	    return 0x200000 + currprefs.fastmem_size;
+	return currprefs.chipmem_size;
+    }
+    if (addr == currprefs.chipmem_size) {
+	if (currprefs.fastmem_size)
+	    return 0x200000;
+	else if (currprefs.bogomem_size)
+	    return 0xc00000;
+	return 0xffffffff;
+    }
+    if (addr == 0x200000 + currprefs.fastmem_size) {
+	if (currprefs.bogomem_size)
+	    return 0xc00000;
+	return 0xffffffff;
+    }
+    if (addr == 0xc00000 + currprefs.bogomem_size)
+	return 0xffffffff;
+    return addr + 1;
 }
 
 static void dumpmem (uaecptr addr, uaecptr *nxmem, int lines)
@@ -207,21 +292,68 @@ static void modulesearch (void)
     }
 }
 
-static void dump_traps (void)
+static void dump_custom_regs (void)
 {
-    int i;
-    for (i = 0; trap_labels[i].name; i++) {
-	console_out("$%02x: %s\t $%08x\n", trap_labels[i].adr,
-	       trap_labels[i].name, get_long (trap_labels[i].adr));
+    int len, i, j, end;
+    uae_u8 *p1, *p2, *p3, *p4;
+
+    p1 = p2 = save_custom (&len, 0, 1);
+    p1 += 4; // skip chipset type
+    for (i = 0; i < 4; i++) {
+	p4 = p1 + 0xa0 + i * 16;
+	p3 = save_audio (i, &len, 0);
+	p4[0] = p3[12];
+	p4[1] = p3[13];
+	p4[2] = p3[14];
+	p4[3] = p3[15];
+	p4[4] = p3[4];
+	p4[5] = p3[5];
+	p4[6] = p3[8];
+	p4[7] = p3[9];
+	p4[8] = 0;
+	p4[9] = p3[1];
+	p4[10] = p3[10];
+	p4[11] = p3[11];
+	free (p3);
     }
+    end = 0;
+    while (custd[end].name)
+	end++;
+    end++;
+    end /= 2;
+    for (i = 0; i < end; i++) {
+	uae_u16 v1, v2;
+	int addr1, addr2;
+	j = end + i;
+	addr1 = custd[i].adr & 0x1ff;
+	addr2 = custd[j].adr & 0x1ff;
+	v1 = (p1[addr1 + 0] << 8) | p1[addr1 + 1];
+	v2 = (p1[addr2 + 0] << 8) | p1[addr2 + 1];
+	console_out ("%03.3X %s\t%04.4X\t%03.3X %s\t%04.4X\n",
+	    addr1, custd[i].name, v1,
+	    addr2, custd[j].name, v2);
+    }
+    free (p2);
 }
 
-static void dump_ints (void)
+static void dump_vectors (void)
 {
-    int i;	
-    for (i = 0; int_labels[i].name; i++) {
-	console_out ("$%02x: %s\t $%08x\n", int_labels[i].adr,
-		int_labels[i].name, get_long (int_labels[i].adr));
+    int i = 0, j = 0;
+
+    while (int_labels[i].name || trap_labels[j].name) {
+	if (int_labels[i].name) {
+	    console_out ("$%08X: %s  \t $%08X\t", int_labels[i].adr + regs.vbr,
+		int_labels[i].name, get_long (int_labels[i].adr + (int_labels[i].adr == 4 ? 0 : regs.vbr)));
+	    i++;
+	} else {
+	    console_out ("\t\t\t\t");
+	}
+	if (trap_labels[j].name) {
+	    console_out("$%08X: %s  \t $%08X", trap_labels[j].adr + regs.vbr,
+	       trap_labels[j].name, get_long (trap_labels[j].adr + regs.vbr));
+	    j++;
+	}
+	console_out ("\n");
     }
 }
 
@@ -291,16 +423,19 @@ static void decode_copper_insn (FILE* file, unsigned long insn, unsigned long ad
 
     case 0x00000000:
     case 0x00000001: /* MOVE insn */
-	console_out ("%s := 0x%04lx\n",
-		 custd[(insn & 0x01fe0000) >> 17].name,
-		 insn & 0x0000ffff);
-
-	if ((insn & 0xfe000000) != 0) {
-	    console_out ("                        \t;OCS Compatibility warning: bits 15-9 should be 0 for compatibility with OCS\n");
+	{
+	    int addr = (insn >> 16) & 0x1fe;
+	    int i = 0;
+	    while (custd[i].name) {
+		if (custd[i].adr == addr + 0xdff000)
+		    break;
+		i++;
+	    }
+	    if (custd[i].name)
+		console_out ("%s := 0x%04lx\n", custd[i].name, insn & 0xffff);
+	    else
+		console_out ("%04x := 0x%04lx\n", addr, insn & 0xffff);
 	}
-	/* 01fe0000 register destination address
-	   fe000000 should be 0 for compatibility (at least in ocs
-	   0000ffff data to be put in register destination */
 	break;
 
     default:
@@ -336,18 +471,9 @@ static void cheatsearch (char **c)
     uae_u32 count = 0;
     uae_u32 fcount = 0;
     uae_u32 full = 0;
-    char nc;
 
     ignore_ws (c);
-
-    while (isxdigit (nc = **c)) {
-	(*c)++;
-	val *= 10;
-	nc = toupper (nc);
-	if (isdigit (nc)) {
-	    val += nc - '0';
-	}
-    }
+    val = readhex (c);
     if (vlist == NULL) {
 	vlist = malloc (256*4);
 	if (vlist != 0) {
@@ -388,42 +514,283 @@ static void cheatsearch (char **c)
     }
 }
 
-static void writeintomem (char **c)
+#define BREAKPOINT_TOTAL 8
+struct breakpoint_node {
+    uaecptr addr;
+    int enabled;
+};
+static struct breakpoint_node bpnodes[BREAKPOINT_TOTAL];
+
+static addrbank **debug_mem_banks;
+#define MEMWATCH_TOTAL 4
+struct memwatch_node {
+    uaecptr addr;
+    int size;
+    int rw;
+    uae_u32 val;
+    int val_enabled;
+    uae_u32 modval;
+    int modval_written;
+};
+static struct memwatch_node mwnodes[MEMWATCH_TOTAL];
+static struct memwatch_node mwhit;
+
+static int debug_mem_off (uaecptr addr)
 {
-    uae_u8 *p = get_real_address (0);
-    uae_u32 addr = 0;
-    uae_u32 val = 0;
+    return (addr >> 16) & 0xff;
+}
+
+static void memwatch_func (uaecptr addr, int rw, int size, uae_u32 val)
+{
+    int i, brk;
+
+    for (i = 0; i < MEMWATCH_TOTAL; i++) {
+	uaecptr addr2 = mwnodes[i].addr;
+	uaecptr addr3 = addr2 + mwnodes[i].size;
+	int rw2 = mwnodes[i].rw;
+
+	brk = 0;
+	if (mwnodes[i].size == 0)
+	    continue;
+	if (mwnodes[i].val_enabled && mwnodes[i].val != val)
+	    continue;
+	if (rw != rw2 && rw2 < 2)
+	    continue;
+	if (addr >= addr2 && addr < addr3)
+	    brk = 1;
+	if (!brk && size == 2 && (addr + 1 >= addr2 && addr + 1 < addr3))
+	    brk = 1;
+	if (!brk && size == 4 && ((addr + 2 >= addr2 && addr + 2 < addr3) || (addr + 3 >= addr2 && addr + 3 < addr3)))
+	    brk = 1;
+	if (brk && mwnodes[i].modval_written) {
+	    if (!rw) {
+	        brk = 0;
+	    } else if (mwnodes[i].modval_written == 1) {
+		mwnodes[i].modval_written = 2;
+		mwnodes[i].modval = val;
+		brk = 0;
+	    } else if (mwnodes[i].modval == val) {
+		brk = 0;
+	    }
+	}
+	if (brk) {
+	    mwhit.addr = addr;
+	    mwhit.rw = rw;
+	    mwhit.size = size;
+	    mwhit.val = 0;
+	    if (mwhit.rw)
+		mwhit.val = val;
+	    memwatch_triggered = i + 1;
+	    debugging = 1;
+	    set_special (SPCFLAG_BRK);
+	    break;
+	}
+    }
+}
+
+static uae_u32 debug_lget (uaecptr addr)
+{
+    int off = debug_mem_off (addr);
+    uae_u32 v;
+    v = debug_mem_banks[off]->lget(addr);
+    memwatch_func (addr, 0, 4, v);
+    return v;
+}
+static uae_u32 debug_wget (uaecptr addr)
+{
+    int off = debug_mem_off (addr);
+    uae_u32 v;
+    v = debug_mem_banks[off]->wget(addr);
+    memwatch_func (addr, 0, 2, v);
+    return v;
+}
+static uae_u32 debug_bget (uaecptr addr)
+{
+    int off = debug_mem_off (addr);
+    uae_u32 v;
+    v = debug_mem_banks[off]->bget(addr);
+    memwatch_func (addr, 0, 1, v);
+    return v;
+}
+static void debug_lput (uaecptr addr, uae_u32 v)
+{
+    int off = debug_mem_off (addr);
+    memwatch_func (addr, 1, 4, v);
+    debug_mem_banks[off]->lput(addr, v);
+}   
+static void debug_wput (uaecptr addr, uae_u32 v)
+{
+    int off = debug_mem_off (addr);
+    memwatch_func (addr, 1, 2, v);
+    debug_mem_banks[off]->wput(addr, v);
+}   
+static void debug_bput (uaecptr addr, uae_u32 v)
+{
+    int off = debug_mem_off (addr);
+    memwatch_func (addr, 1, 1, v);
+    debug_mem_banks[off]->bput(addr, v);
+}   
+static int debug_check (uaecptr addr, uae_u32 size)
+{
+    return debug_mem_banks[addr >> 16]->check (addr, size);
+}
+static uae_u8 *debug_xlate (uaecptr addr)
+{
+    return debug_mem_banks[addr >> 16]->xlateaddr (addr);
+}
+
+static void deinitialize_memwatch (void)
+{
+    int i;
+    addrbank *a1, *a2;
+
+    if (!memwatch_enabled)
+	return;
+    for (i = 0; i < 256; i++) {
+	a1 = debug_mem_banks[i];
+	a2 = mem_banks[i];
+	memcpy (a2, a1, sizeof (addrbank));
+	free (a1);
+    }
+    free (debug_mem_banks);
+    debug_mem_banks = 0;
+    memwatch_enabled = 0;
+}
+
+static int initialize_memwatch (void)
+{
+    int i;
+    addrbank *a1, *a2;
+
+    if (!currprefs.address_space_24)
+	return 0;
+    debug_mem_banks = xmalloc (sizeof (addrbank*) * 256);
+    for (i = 0; i < 256; i++) {
+	a1 = debug_mem_banks[i] = xmalloc (sizeof (addrbank));
+	a2 = mem_banks[i];
+	memcpy (a1, a2, sizeof (addrbank));
+    }
+    for (i = 0; i < 256; i++) {
+	a2 = mem_banks[i];
+	a2->bget = debug_bget;
+	a2->wget = debug_wget;
+	a2->lget = debug_lget;
+	a2->bput = debug_bput;
+	a2->wput = debug_wput;
+	a2->lput = debug_lput;
+	a2->check = debug_check;
+	a2->xlateaddr = debug_xlate;
+    }
+    memwatch_enabled = 1;
+    return 1;
+}
+
+static void memwatch_dump (int num)
+{
+    int i;
+    struct memwatch_node *mwn;
+    for (i = 0; i < MEMWATCH_TOTAL; i++) {
+	if ((num >= 0 && num == i) || (num < 0)) {
+	    mwn = &mwnodes[i];
+	    if (mwn->size == 0)
+		continue;
+	    console_out ("%d: %08.8X - %08.8X (%d) %s",
+		i, mwn->addr, mwn->addr + (mwn->size - 1), mwn->size,
+		mwn->rw == 0 ? "R" : (mwn->rw == 1 ? "W" : "RW"));
+	    if (mwn->val_enabled)
+		console_out (" =%X", mwn->val);
+	    if (mwn->modval_written)
+		console_out (" =M");
+	    console_out("\n");
+	}
+    }
+}
+
+static void memwatch (char **c)
+{
+    int num;
+    struct memwatch_node *mwn;
     char nc;
 
-    ignore_ws(c);
-    while (isxdigit(nc = **c)) {
-	(*c)++;
-	addr *= 16;
-	nc = toupper(nc);
-	if (isdigit(nc)) {
-	    addr += nc - '0';
-	} else {
-	    addr += nc - 'A' + 10;
+    if (!memwatch_enabled) {
+	if (!initialize_memwatch ()) {
+	    console_out ("Memwatch breakpoints require 24-bit address space\n");
+	    return;
 	}
-    }
-    ignore_ws(c);
-    while (isxdigit(nc = **c)) {
-	(*c)++;
-	val *= 10;
-	nc = toupper(nc);
-	if (isdigit(nc)) {
-	    val += nc - '0';
-	}
+	console_out ("Memwatch breakpoints enabled\n");
     }
 
-    if (addr < allocated_chipmem) {
-      p[addr] = val>>24 & 0xff;
-      p[addr+1] = val>>16 & 0xff;
-      p[addr+2] = val>>8 & 0xff;
-      p[addr+3] = val & 0xff;
-      console_out ("Wrote %d at %08x\n",val,addr);
-    } else
-      console_out ("Invalid address %08x\n",addr);
+    ignore_ws (c);
+    if (!more_params (c)) {
+	memwatch_dump (-1);
+	return;
+    }
+    nc = next_char (c);
+    if (nc == '-') {
+	deinitialize_memwatch ();
+	console_out ("Memwatch breakpoints disabled\n");
+	return;
+    }
+    num = nc - '0';
+    if (num < 0 || num >= MEMWATCH_TOTAL)
+	return;
+    mwn = &mwnodes[num];
+    mwn->size = 0;
+    ignore_ws (c);
+    if (!more_params (c)) {
+	console_out ("Memwatch %d removed\n", num);
+	return;
+    }
+    mwn->addr = readhex (c);
+    mwn->size = 1;
+    mwn->rw = 2;
+    mwn->val_enabled = 0;
+    mwn->modval_written = 0;
+    ignore_ws (c);
+    if (more_params (c)) {
+	mwn->size = readhex (c);
+	ignore_ws (c);
+	if (more_params (c)) {
+	    char nc = toupper (next_char (c));
+	    if (nc == 'W')
+		mwn->rw = 1;
+	    else if (nc == 'R' && toupper(**c) != 'W')
+		mwn->rw = 0;
+	    ignore_ws (c);
+	    if (more_params (c)) {
+		if (toupper(**c) == 'M') {
+		    mwn->modval_written = 1;
+		} else {
+		    mwn->val = readhex (c);
+		    mwn->val_enabled = 1;
+		}
+	    }
+	}
+    }
+    memwatch_dump (num);
+}
+
+static void writeintomem (char **c)
+{
+    uae_u32 addr = 0;
+    uae_u32 val = 0;
+    char cc;
+
+    ignore_ws(c);
+    addr = readhex (c);
+    ignore_ws(c);
+    val = readhex (c);
+    if (val > 0xffff) {
+	put_long (addr, val);
+	cc = 'L';
+    } else if (val > 0xff) {
+	put_word (addr, val);
+	cc = 'W';
+    } else {
+	put_byte (addr, val);
+	cc = 'B';
+    }
+    console_out ("Wrote %x (%u) at %08x.%c\n", val, val, addr, cc);
 }
 
 static void show_exec_tasks (void)
@@ -457,6 +824,233 @@ static uae_u8 trace_insn_copy[10];
 static struct regstruct trace_prev_regs;
 static uaecptr nextpc;
 
+static int instruction_breakpoint (char **c)
+{
+    struct breakpoint_node *bpn;
+    int i;
+
+    if (more_params (c)) {
+	char nc = toupper((*c)[0]);
+	if (nc == 'I') {
+	    next_char (c);
+	    if (more_params (c))
+		skipins = readhex (c);
+	    else
+		skipins = 0x10000;
+	    do_skip = 1;
+	    skipaddr_doskip = 1;
+	    return 1;
+	} else if (nc == 'D') {
+	    for (i = 0; i < BREAKPOINT_TOTAL; i++)
+		bpnodes[i].enabled = 0;
+	    console_out ("All breakpoints removed\n");
+	    return 0;
+	} else if (nc == 'L') {
+	    int got = 0;
+	    for (i = 0; i < BREAKPOINT_TOTAL; i++) {
+		bpn = &bpnodes[i];
+		if (!bpn->enabled)
+		    continue;
+		console_out ("%8X ", bpn->addr);
+		got = 1;
+	    }
+	    if (!got)
+		console_out ("No breakpoints\n");
+	    else
+		console_out ("\n");
+    	    return 0;
+	}
+	skipaddr_doskip = 1;
+	skipaddr_start = readhex (c);
+	if (more_params (c)) {
+	    skipaddr_end = readhex (c);
+	} else {
+	    for (i = 0; i < BREAKPOINT_TOTAL; i++) {
+		bpn = &bpnodes[i];
+		if (bpn->enabled && bpn->addr == skipaddr_start) {
+		    bpn->enabled = 0;
+		    console_out ("Breakpoint removed\n");
+		    skipaddr_start = 0xffffffff;
+		    skipaddr_doskip = 0;
+		    return 0;
+		}
+	    }
+	    for (i = 0; i < BREAKPOINT_TOTAL; i++) {
+		bpn = &bpnodes[i];
+		if (bpn->enabled)
+		    continue;
+		bpn->addr = skipaddr_start;
+		bpn->enabled = 1;
+		console_out ("Breakpoint added\n");
+	        skipaddr_start = 0xffffffff;
+	        skipaddr_doskip = 0;
+		break;
+	    }
+	    return 0;
+	}
+    }
+    if (skipaddr_start == 0xC0DEDBAD) {
+        trace_same_insn_count = 0;
+	logfile = fopen ("uae.trace", "w");
+	memcpy (trace_insn_copy, regs.pc_p, 10);
+	memcpy (&trace_prev_regs, &regs, sizeof regs);
+    }
+    do_skip = 1;
+    skipaddr_doskip = 1;
+    return 1;
+}
+
+static void savemem (char **cc)
+{
+    uae_u8 b;
+    uae_u32 src, src2, len, len2;
+    char *name;
+    FILE *fp;
+
+    if (!more_params (cc))
+	goto S_argh;
+
+    name = *cc;
+    while (**cc != '\0' && !isspace (**cc))
+	(*cc)++;
+    if (!isspace (**cc))
+	goto S_argh;
+
+    **cc = '\0';
+    (*cc)++;
+    if (!more_params (cc))
+	goto S_argh;
+    src2 = src = readhex (cc);
+    if (!more_params (cc))
+	goto S_argh;
+    len2 = len = readhex (cc);
+    fp = fopen (name, "wb");
+    if (fp == NULL) {
+	console_out ("Couldn't open file '%s'\n", name);
+	return;
+    }
+    while (len > 0) {
+	b = get_byte (src);
+	src++;
+	len--;
+	if (fwrite (&b, 1, 1, fp) != 1) {
+	    console_out ("Error writing file\n");
+	    break;
+	}
+    }
+    fclose (fp);
+    if (len == 0)
+	console_out ("Wrote %08X - %08X (%d bytes) to '%s'\n",
+	    src2, src2 + len2, len2, name);
+    return;
+S_argh:
+    console_out ("S-command needs more arguments!\n");
+}
+
+static void searchmem (char **cc)
+{
+    int i, sslen, got, val, stringmode;
+    uae_u8 ss[256];
+    uae_u32 addr, endaddr;
+    char nc;
+
+    got = 0;
+    sslen = 0;
+    stringmode = 0;
+    ignore_ws (cc);
+    if (**cc == '"') {
+	stringmode = 1;
+	(*cc)++;
+	while (**cc != '"' && **cc != 0) {
+	    ss[sslen++] = tolower (**cc);
+	    (*cc)++;
+	}
+	if (**cc != 0)
+	    (*cc)++;
+    } else {
+	for (;;) {
+	    if (**cc == 32 || **cc == 0)
+		break;
+	    nc = toupper (next_char (cc));
+	    if (isspace (nc))
+		break;
+	    if (isdigit(nc))
+		val = nc - '0';
+	    else
+		val = nc - 'A' + 10;
+	    if (val < 0 || val > 15)
+		return;
+	    val *= 16;
+	    if (**cc == 32 || **cc == 0)
+		break;
+	    nc = toupper (next_char (cc));
+	    if (isspace (nc))
+		break;
+	    if (isdigit(nc))
+		val += nc - '0';
+	    else
+		val += nc - 'A' + 10;
+	    if (val < 0 || val > 255)
+		return;
+	    ss[sslen++] = (uae_u8)val;
+	}
+    }
+    if (sslen == 0)
+	return;
+    ignore_ws (cc);
+    addr = 0;
+    endaddr = nextaddr (0xffffffff);
+    if (more_params (cc)) {
+	addr = readhex (cc);
+	if (more_params (cc))
+	    endaddr = readhex (cc);
+    }
+    console_out ("Searching from %08x to %08x..\n", addr, endaddr);
+    while (addr < endaddr && addr != 0xffffffff) {
+	for (i = 0; i < sslen; i++) {
+	    uae_u8 b = get_byte (addr + i);
+	    if (stringmode) {
+		if (tolower (b) != ss[i])
+		    break;
+	    } else {
+		if (b != ss[i])
+		    break;
+	    }
+	}
+	if (i == sslen) {
+	    got++;
+	    console_out (" %08x", addr);
+	    if (got > 100) {
+		console_out ("\nMore than 100 results, aborting..");
+		break;
+	    }
+	}
+	addr = nextaddr (addr);
+    }
+    if (!got)
+	console_out ("nothing found");
+    console_out ("\n");
+}	
+
+static int staterecorder (char **cc)
+{
+    char nc;
+
+    if (!more_params (cc)) {
+        if (savestate_dorewind (1)) {
+	    debug_rewind = 1;
+	    return 1;
+	}
+	return 0;
+    }
+    nc = next_char (cc);
+    if (nc == 'l') {
+	savestate_listrewind ();
+	return 0;
+    }
+    return 0;
+}
+
 static void debug_1 (void)
 {
     char input[80];
@@ -471,61 +1065,20 @@ static void debug_1 (void)
 	console_out (">");
 	console_flush ();
         if (!console_get (input, 80))
-	    return;
+	    continue;
 	inptr = input;
 	cmd = next_char (&inptr);
 	switch (cmd) {
 	case 'c': dumpcia (); dumpdisk (); dumpcustom (); break;
-	case 'i': dump_ints (); break;
-	case 'e': dump_traps (); break;
+	case 'i': dump_vectors (); break;
+	case 'e': dump_custom_regs (); break;
 	case 'r': m68k_dumpstate (stdout, &nextpc); break;
 	case 'M': modulesearch (); break;
 	case 'C': cheatsearch (&inptr); break; 
 	case 'W': writeintomem (&inptr); break;
-	case 'S':
-	{
-	    uae_u8 *memp;
-	    uae_u32 src, len;
-	    char *name;
-	    FILE *fp;
-
-	    if (!more_params (&inptr))
-		goto S_argh;
-
-	    name = inptr;
-	    while (*inptr != '\0' && !isspace (*inptr))
-		inptr++;
-	    if (!isspace (*inptr))
-		goto S_argh;
-
-	    *inptr = '\0';
-	    inptr++;
-	    if (!more_params (&inptr))
-		goto S_argh;
-	    src = readhex (&inptr);
-	    if (!more_params (&inptr))
-		goto S_argh;
-	    len = readhex (&inptr);
-	    if (! valid_address (src, len)) {
-		console_out ("Invalid memory block\n");
-		break;
-	    }
-	    memp = get_real_address (src);
-	    fp = fopen (name, "wb");
-	    if (fp == NULL) {
-		console_out ("Couldn't open file\n");
-		break;
-	    }
-	    if (fwrite (memp, 1, len, fp) != len) {
-		console_out ("Error writing file\n");
-	    }
-	    fclose (fp);
-	    break;
-
-	  S_argh:
-	    console_out ("S command needs more arguments!\n");
-	    break;
-	}
+	case 'w': memwatch (&inptr); break;
+	case 'S': savemem (&inptr); break;
+	case 's': searchmem (&inptr); break;
 	case 'd':
 	{
 	    uae_u32 daddr;
@@ -543,25 +1096,23 @@ static void debug_1 (void)
 	}
 	break;
 	case 'T': show_exec_tasks (); break;
-	case 't': set_special (SPCFLAG_BRK);
+	case 't':
+	    if (more_params (&inptr))
+		skipaddr_doskip = readint (&inptr);
+	    if (skipaddr_doskip <= 0 || skipaddr_doskip > 10000)
+		skipaddr_doskip = 1;
+	    set_special (SPCFLAG_BRK);
 	    return;
 	case 'z':
-	    skipaddr = nextpc;
+	    skipaddr_start = nextpc;
+	    skipaddr_doskip = 1;
 	    do_skip = 1;
-	    set_special (SPCFLAG_BRK);
 	    return;
 
 	case 'f':
-	    skipaddr = readhex (&inptr);
-	    do_skip = 1;
-	    set_special (SPCFLAG_BRK);
-	    if (skipaddr == 0xC0DEDBAD) {
-	        trace_same_insn_count = 0;
-		logfile = fopen ("uae.trace", "w");
-		memcpy (trace_insn_copy, regs.pc_p, 10);
-		memcpy (&trace_prev_regs, &regs, sizeof regs);
-	    }
-	    return;
+	    if (instruction_breakpoint (&inptr))
+		return;
+	    break;
 
 	case 'q': uae_quit();
 	    debugger_active = 0;
@@ -622,7 +1173,7 @@ static void debug_1 (void)
 	    if (more_params(&inptr))
 		lines = readhex(&inptr);
 	    else
-		lines = 16;
+		lines = 20;
 	    dumpmem(maddr, &nxmem, lines);
 	}
 	break;
@@ -642,7 +1193,7 @@ static void debug_1 (void)
 	    if (more_params (&inptr))
 		lines = readhex (&inptr);
 	    else
-		lines = 10;
+		lines = 20;
 
 	    nxcopper = decode_copperlist (stdout, maddr, lines);
 	    break;
@@ -659,33 +1210,13 @@ static void debug_1 (void)
 		    console_out ("Plane %d offset %d\n", i, bpl_off[i]);
 	    }
 	    break;
+	case 'b':
+	    if (staterecorder (&inptr))
+	        return;
+	    break;
 	case 'h':
 	case '?':
-	{
-	    console_out ("          HELP for UAE Debugger\n");
-	    console_out ("         -----------------------\n\n");
-	    console_out ("  g: <address>          Start execution at the current address or <address>\n");
-	    console_out ("  c:                    Dump state of the CIA and custom chips\n");
-	    console_out ("  r:                    Dump state of the CPU\n");
-	    console_out ("  m <address> <lines>:  Memory dump starting at <address>\n");
-	    console_out ("  d <address> <lines>:  Disassembly starting at <address>\n");
-	    console_out ("  t:                    Step one instruction\n");
-	    console_out ("  z:                    Step through one instruction - useful for JSR, DBRA etc\n");
-	    console_out ("  f <address>:          Step forward until PC == <address>\n");
-	    console_out ("  i:                    Dump contents of interrupt registers\n");
-	    console_out ("  e:                    Dump contents of trap vectors\n");
-	    console_out ("  o <1|2|addr> <lines>: View memory as Copper Instructions\n");
-	    console_out ("  O:                    Display bitplane offsets\n");
-	    console_out ("  O <plane> <offset>:   Offset a bitplane\n");
-	    console_out ("  H <count>:            Show PC history <count> instructions\n");
-	    console_out ("  M:                    Search for *Tracker sound modules\n");
-	    console_out ("  C <value>:            Search for values like energy or lifes in games\n");
-	    console_out ("  W <address> <value>:  Write into Amiga memory\n");
-	    console_out ("  S <file> <addr> <n>:  Save a block of Amiga memory\n");
-	    console_out ("  T:                    Show exec tasks and their PCs\n");
-	    console_out ("  h,?:                  Show this help page\n");
-	    console_out ("  q:                    Quit the emulator. You don't want to use this command.\n\n");
-	}
+	    debug_help ();
 	break;
 	}
     }
@@ -693,10 +1224,14 @@ static void debug_1 (void)
 
 void debug (void)
 {
+    int i;
+
+    if (savestate_state)
+	return;
 
     bogusframe = 1;
 
-    if (do_skip && skipaddr == 0xC0DEDBAD) {
+    if (do_skip && skipaddr_start == 0xC0DEDBAD) {
 #if 0
 	if (trace_same_insn_count > 0) {
 	    if (memcmp (trace_insn_copy, regs.pc_p, 10) == 0
@@ -715,14 +1250,55 @@ void debug (void)
 	memcpy (&trace_prev_regs, &regs, sizeof regs);
     }
 
-    if (do_skip) {
-	if (m68k_getpc() != skipaddr /* || regs.a[0] != 0x1e558*/) {
+    if (!memwatch_triggered) {
+	if (do_skip) {
+	    uae_u32 pc = m68k_getpc();
+	    uae_u16 opcode = (currprefs.cpu_compatible || currprefs.cpu_cycle_exact) ? regs.ir : get_word (pc);
+	    int bp = 0;
+
+	    for (i = 0; i < BREAKPOINT_TOTAL; i++) {
+	        if (!bpnodes[i].enabled)
+		    continue;
+		if (bpnodes[i].addr == pc) {
+		    bp = 1;
+		    console_out ("Breakpoint at %08.8X\n", pc);
+		    break;
+		}
+	    }
+	    if (skipaddr_doskip) {
+		if (skipaddr_start == pc)
+		    bp = 1;
+		if (skipins != 0xffffffff) {
+		    if (skipins == 0x10000) {
+			if (opcode == 0x4e75 || opcode == 0x4e73 || opcode == 0x4e77)
+			    bp = 1;
+		    } else if (opcode == skipins)
+			bp = 1;
+		} else if (skipaddr_start == 0xffffffff && skipaddr_doskip) {
+		    if ((pc < 0xe00000 || pc >= 0x1000000) && opcode != 0x4ef9)
+			bp = 1;
+		} else if (skipaddr_end != 0xffffffff) {
+		    if (pc >= skipaddr_start && pc < skipaddr_end)
+			bp = 1;
+		}
+	    }
+	    if (!bp) {
+	        set_special (SPCFLAG_BRK);
+		return;
+	    }
+	}
+    } else {
+        write_log ("Memwatch %d: break at %08.8X.%c %c %08.8X\n", memwatch_triggered - 1, mwhit.addr,
+	    mwhit.size == 1 ? 'B' : (mwhit.size == 2 ? 'W' : 'L'), mwhit.rw ? 'W' : 'R', mwhit.val);
+	memwatch_triggered = 0;
+    }
+    if (skipaddr_doskip > 0) {
+	skipaddr_doskip--;
+	if (skipaddr_doskip > 0) {
 	    set_special (SPCFLAG_BRK);
 	    return;
 	}
     }
-   
-    do_skip = 0;
 
 #ifdef NEED_TO_DEBUG_BADLY
     history[lasthist] = regs;
@@ -735,10 +1311,34 @@ void debug (void)
 	if (++firsthist == MAX_HIST) firsthist = 0;
     }
     pause_sound ();
+    do_skip = 0;
+    skipaddr_start = 0xffffffff;
+    skipaddr_end = 0xffffffff;
+    skipins = 0xffffffff;
+    skipaddr_doskip = 0;
+    debug_rewind = 0;
+    if (!currprefs.statecapture) {
+	changed_prefs.statecapture = currprefs.statecapture = 1;
+	savestate_init ();
+    }
     debug_1 ();
+    if (!debug_rewind && !currprefs.cachesize
+#ifdef FILESYS
+	&& nr_units (currprefs.mountinfo) == 0
+#endif
+	) {
+	savestate_capture (1);
+    }
+    for (i = 0; i < BREAKPOINT_TOTAL; i++) {
+	if (bpnodes[i].enabled)
+	    do_skip = 1;
+    }
+    if (do_skip) {
+        set_special (SPCFLAG_BRK);
+	debugging = 1;
+    }
     resume_sound ();
 }
-
 
 int notinrom (void)
 {

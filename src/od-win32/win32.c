@@ -195,7 +195,7 @@ static int figure_processor_speed (void)
     int qpc_avail = 0;
     int mmx = 0; 
 
-    rpt_available = no_rdtsc ? 0 : 1;
+    rpt_available = no_rdtsc > 0 ? 0 : 1;
     __try
     {
 	__asm 
@@ -261,7 +261,7 @@ static int figure_processor_speed (void)
 	    clockrate >>= 6;
 	    clockrate1000 = clockrate / 1000.0;
 	}
-	if (clkdiv <= 0.95 || clkdiv >= 1.05 || !rpt_available) {
+	if (((clkdiv <= 0.95 || clkdiv >= 1.05) && no_rdtsc == 0) || !rpt_available) {
 	    if (rpt_available)
 		write_log ("CLOCKFREQ: CPU throttling detected, using QPF instead of RDTSC\n");
 	    useqpc = qpc_avail;
@@ -466,6 +466,7 @@ static void winuae_inactive (HWND hWnd, int minimized)
     pri = priorities[currprefs.win32_inactive_priority].value;
     if (!quit_program) {
 	if (minimized) {
+	    inputdevice_unacquire ();
 	    pri = priorities[currprefs.win32_iconified_priority].value;
 	    if (currprefs.win32_iconified_nosound) {
 		close_sound ();
@@ -558,11 +559,42 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 	}
     break;
 
+    case WM_KEYDOWN:
+	if (dinput_wmkey ((uae_u32)lParam))
+	    gui_display (-1);
+    return 0;
+
+    case WM_LBUTTONUP:
+	if (dinput_winmouse () > 0)
+	    setmousebuttonstate (dinput_winmouse(), 0, 0);
+    return 0;
     case WM_LBUTTONDOWN:
 	if (!mouseactive && !isfullscreen()) {
 	    setmouseactive (1);
 	}
-    break;
+	if (dinput_winmouse () > 0)
+	    setmousebuttonstate (dinput_winmouse(), 0, 1);
+    return 0;
+    case WM_RBUTTONUP:
+	if (dinput_winmouse () > 0)
+	    setmousebuttonstate (dinput_winmouse(), 1, 0);
+    return 0;
+    case WM_RBUTTONDOWN:
+	if (dinput_winmouse () > 0)
+	    setmousebuttonstate (dinput_winmouse(), 1, 1);
+    return 0;
+    case WM_MBUTTONUP:
+	if (dinput_winmouse () > 0)
+	    setmousebuttonstate (dinput_winmouse(), 2, 0);
+    return 0;
+    case WM_MBUTTONDOWN:
+	if (dinput_winmouse () > 0)
+	    setmousebuttonstate (dinput_winmouse(), 2, 1);
+    return 0;
+    case WM_MOUSEWHEEL:
+	if (dinput_winmouse () > 0)
+	    setmousestate (dinput_winmouse(), 2, ((short)HIWORD(wParam)), 0);
+    return 0;
 
     case WM_PAINT:
 	notice_screen_contents_lost ();
@@ -597,14 +629,20 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
     return 0;
 
     case WM_WINDOWPOSCHANGED:
-	if( !isfullscreen())
-	    GetWindowRect( hWnd, &amigawin_rect);
+	GetWindowRect( hWnd, &amigawin_rect);
     break;
 
     case WM_MOUSEMOVE:
         mx = (signed short) LOWORD (lParam);
         my = (signed short) HIWORD (lParam);
-        if (!mouseactive && !isfullscreen()) {
+	if (dinput_winmouse () > 0) {
+	    int mxx = (amigawin_rect.right - amigawin_rect.left) / 2;
+	    int myy = (amigawin_rect.bottom - amigawin_rect.top) / 2;
+	    mx = mx - mxx;
+	    my = my - myy;
+	    setmousestate (dinput_winmouse (), 0, mx, 0);
+	    setmousestate (dinput_winmouse (), 1, my, 0);
+        } else if ((!mouseactive && !isfullscreen())) {
 	    setmousestate (0, 0, mx, 1);
 	    setmousestate (0, 1, my, 1);
 	} else {
@@ -617,10 +655,9 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 	    setmousestate (0, 1, my, 0);
 #endif
 	}
-	if (mouseactive && !isfullscreen()) {
+	if (mouseactive)
 	    setcursor (LOWORD (lParam), HIWORD (lParam));
-	}
-    break;
+    return 0;
 
     case WM_MOVING:
     case WM_MOVE:
@@ -692,9 +729,9 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 	}
     break;
 
-    //case WM_INPUT:
-    //handle_rawinput (lParam);
-    //return 0;
+    case 0xff: // WM_INPUT:
+    handle_rawinput (lParam);
+    break;
     
     default:
     break;
@@ -712,6 +749,7 @@ static long FAR PASCAL MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, L
     switch (message) {
 
      case WM_MOUSEMOVE:
+     case WM_MOUSEWHEEL:
      case WM_ACTIVATEAPP:
      case WM_DROPFILES:
      case WM_ACTIVATE:
@@ -737,6 +775,7 @@ static long FAR PASCAL MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, L
      case WM_CLOSE:
      case WM_HELP:
      case WM_DEVICECHANGE:
+     case 0xff: // WM_INPUT
 	return AmigaWindowProc (hWnd, message, wParam, lParam);
 
      case WM_DISPLAYCHANGE:
@@ -1244,11 +1283,11 @@ void logging_init( void )
     }
 #ifndef SINGLEFILE
     if( currprefs.win32_logfile ) {
-	sprintf( debugfilename, "%s\\winuaelog.txt", start_path );
+	sprintf( debugfilename, "%swinuaelog.txt", start_path );
 	if( !debugfile )
 	    debugfile = fopen( debugfilename, "wt" );
     } else if (!first) {
-	sprintf( debugfilename, "%s\\winuaebootlog.txt", start_path );
+	sprintf( debugfilename, "%swinuaebootlog.txt", start_path );
 	if( !debugfile )
 	    debugfile = fopen( debugfilename, "wt" );
     }
@@ -1419,7 +1458,7 @@ static void WIN32_HandleRegistryStuff( void )
                               KEY_ALL_ACCESS, NULL, &hWinUAEKeyLocal, &disposition ) == ERROR_SUCCESS ) )
         {
             /* Set our (default) sub-key to BE the "WinUAE" command for editing a configuration */
-            sprintf( path, "%s\\WinUAE.exe -f \"%%1\" -s use_gui=yes", start_path );
+            sprintf( path, "%sWinUAE.exe -f \"%%1\" -s use_gui=yes", start_path );
             RegSetValueEx( hWinUAEKeyLocal, "", 0, REG_SZ, (CONST BYTE *)path, strlen( path ) + 1 );
         }
 		RegCloseKey( hWinUAEKeyLocal );
@@ -1428,7 +1467,7 @@ static void WIN32_HandleRegistryStuff( void )
                               KEY_ALL_ACCESS, NULL, &hWinUAEKeyLocal, &disposition ) == ERROR_SUCCESS ) )
         {
             /* Set our (default) sub-key to BE the "WinUAE" command for launching a configuration */
-            sprintf( path, "%s\\WinUAE.exe -f \"%%1\"", start_path );
+            sprintf( path, "%sWinUAE.exe -f \"%%1\"", start_path );
             RegSetValueEx( hWinUAEKeyLocal, "", 0, REG_SZ, (CONST BYTE *)path, strlen( path ) + 1 );
         }
 	RegCloseKey( hWinUAEKeyLocal );
@@ -1587,29 +1626,7 @@ static int osdetect (void)
    }
 
 
-static int resolution_compare (const void *a, const void *b)
-{
-    struct PicassoResolution *ma = (struct PicassoResolution *)a;
-    struct PicassoResolution *mb = (struct PicassoResolution *)b;
-    if (ma->res.width < mb->res.width)
-	return -1;
-    if (ma->res.width > mb->res.width)
-	return 1;
-    if (ma->res.height < mb->res.height)
-	return -1;
-    if (ma->res.height > mb->res.height)
-	return 1;
-    return ma->depth - mb->depth;
-}
-static void sortmodes (void)
-{
-    int	count = 0;
-    while (DisplayModes[count].depth >= 0)
-	count++;
-    qsort (DisplayModes, count, sizeof (struct PicassoResolution), resolution_compare);
-}
-
-char *start_path = NULL;
+char *start_path;
 char help_file[ MAX_PATH ];
 extern int harddrive_dangerous, do_rdbdump, aspi_allow_all, dsound_hardware_mixing;
 
@@ -1669,30 +1686,31 @@ __asm{
 #endif
 	if (!strcmp (arg, "-dsaudiomix")) dsound_hardware_mixing = 1;
 	if (!strcmp (arg, "-nordtsc")) no_rdtsc = 1;
+	if (!strcmp (arg, "-forcerdtsc")) no_rdtsc = -1;
     }
 
     /* Get our executable's root-path */
     if( ( start_path = xmalloc( MAX_PATH ) ) )
     {
 	GetModuleFileName( NULL, start_path, MAX_PATH );
-	if( ( posn = strrchr( start_path, '\\' ) ) )
-	    *posn = 0;
-	sprintf (help_file, "%s\\WinUAE.chm", start_path );
+	if((posn = strrchr (start_path, '\\')))
+	    posn[1] = 0;
+	sprintf (help_file, "%sWinUAE.chm", start_path );
 #ifndef SINGLEFILE
-	sprintf (tmp, "%s\\SaveStates", start_path);
+	sprintf (tmp, "%sSaveStates", start_path);
 	CreateDirectory (tmp, NULL);
 	strcat (tmp, "\\default.uss");
 	strcpy (savestate_fname, tmp);
-	sprintf (tmp, "%s\\SaveImages", start_path);
+	sprintf (tmp, "%sSaveImages", start_path);
 	CreateDirectory (tmp, NULL);
-	sprintf (tmp, "%s\\ScreenShots", start_path);
+	sprintf (tmp, "%sScreenShots", start_path);
 	CreateDirectory (tmp, NULL);
 #endif
 	sprintf( VersionStr, "WinUAE %d.%d.%d%s", UAEMAJOR, UAEMINOR, UAESUBREV, WINUAEBETA ? WINUAEBETASTR : "" );
 
 	logging_init ();
 
-	if( WIN32_RegisterClasses() && WIN32_InitLibraries() && DirectDraw_Start() )
+	if( WIN32_RegisterClasses() && WIN32_InitLibraries() && DirectDraw_Start(NULL) )
 	{
 	    struct foo {
 		DEVMODE actual_devmode;
@@ -1701,9 +1719,10 @@ __asm{
 
 	    DWORD i = 0;
 
-	    DisplayModes[0].depth = -1;
-	    DirectDraw_EnumDisplayModes( DDEDM_REFRESHRATES , modesCallback );
-	    sortmodes ();
+	    DirectDraw_Release ();
+	    write_log ("Enumerating display devices:\n");
+	    DirectDraw_EnumDisplays (displaysCallback);
+	    sortdisplays ();
 	    
 	    memset( &devmode, 0, sizeof(DEVMODE) + 8 );
 	    devmode.actual_devmode.dmSize = sizeof(DEVMODE);
@@ -1788,4 +1807,32 @@ struct threadpriorities priorities[] = {
     { "Low", THREAD_PRIORITY_LOWEST },
     { 0, -1 }
 };
+
+static int drvsampleres[] = {
+    IDR_DRIVE_CLICK_A500_1, IDR_DRIVE_SPIN_A500_1, IDR_DRIVE_SPINND_A500_1,
+    IDR_DRIVE_STARTUP_A500_1, IDR_DRIVE_SNATCH_A500_1
+};
+#include "driveclick.h"
+int driveclick_loadresource (struct drvsample *s, int drivetype)
+{
+    int i, ok;
+
+    ok = 1;
+    for (i = 0; i < DS_END; i++) {
+        HRSRC res = FindResource(NULL, MAKEINTRESOURCE(drvsampleres[i]), "WAVE");
+	if (res != 0) {
+	    HANDLE h = LoadResource(NULL, res);
+	    int len = SizeofResource(NULL, res);
+	    uae_u8 *p = LockResource(h);
+	    s->p = decodewav (p, &len);
+	    s->len = len;
+	} else {
+	    ok = 0;
+	}
+	s++;
+    }
+    return ok;
+}
+
+
 

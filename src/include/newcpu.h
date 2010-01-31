@@ -218,7 +218,7 @@ STATIC_INLINE void m68k_setstopped (int stop)
 extern uae_u32 get_disp_ea_020 (uae_u32 base, uae_u32 dp);
 extern uae_u32 get_disp_ea_000 (uae_u32 base, uae_u32 dp);
 
-extern uae_s32 ShowEA (void *, int reg, amodes mode, wordsizes size, char *buf);
+extern uae_s32 ShowEA (void *, uae_u16 opcode, int reg, amodes mode, wordsizes size, char *buf);
 
 extern void MakeSR (void);
 extern void MakeFromSR (void);

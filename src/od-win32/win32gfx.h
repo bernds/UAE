@@ -1,13 +1,10 @@
 #ifndef __WIN32GFX_H__
 #define __WIN32GFX_H__
 
-#ifndef _WIN32_WCE
 #include <ddraw.h>
-#endif
 
-#ifndef _WIN32_WCE
-HRESULT CALLBACK modesCallback( LPDDSURFACEDESC2 modeDesc, LPVOID context );
-#endif
+BOOL CALLBACK displaysCallback (GUID *guid, LPSTR desc, LPSTR name, LPVOID ctx, HMONITOR hm);
+extern void sortdisplays (void);
 
 int WIN32GFX_IsPicassoScreen( void );
 int WIN32GFX_GetWidth( void );

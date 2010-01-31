@@ -121,6 +121,8 @@ extern void sigsockettasks (void);
 extern void locksigqueue (void);
 extern void unlocksigqueue (void);
 
+extern BOOL checksd(SB, int sd);
+extern void setsd(SB, int ,int );
 extern int getsd (SB, int);
 extern int getsock (SB, int);
 extern void releasesock (SB, int);
@@ -133,6 +135,7 @@ extern void host_sbcleanup (SB);
 extern void host_sbreset (void);
 extern void host_closesocketquick (int);
 
+extern int host_dup2socket (SB, int, int);
 extern int host_socket (SB, int, int, int);
 extern uae_u32 host_bind (SB, uae_u32, uae_u32, uae_u32);
 extern uae_u32 host_listen (SB, uae_u32, uae_u32);

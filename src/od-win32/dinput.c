@@ -1,12 +1,14 @@
 /*
  * UAE - The Un*x Amiga Emulator
  *
- * Win32 DirectInput interface
+ * Win32 DirectInput/Windows XP RAWINPUT interface
  *
- * Copyright 2002 - 2003 Toni Wilen
+ * Copyright 2002 - 2004 Toni Wilen
  */
 
-//#define DI_DEBUG
+#define _WIN32_WINNT 0x501 /* make RAWINPUT available */
+
+#define DI_DEBUG
 //#define DI_DEBUG2
 
 #include "config.h"
@@ -47,9 +49,16 @@ struct didata {
     int type;
     int disabled;
     int acquired;
+    int priority;
+    int superdevice;
     GUID guid;
     char *name;
+    char *sortname;
+
     LPDIRECTINPUTDEVICE8 lpdi;
+    HANDLE rawinput;
+    int wininput;
+
     int axles;
     int buttons;
     int axismappings[MAX_MAPPINGS];
@@ -71,53 +80,341 @@ static int dd_inited, mouse_inited, keyboard_inited, joystick_inited;
 static int stopoutput;
 static HANDLE kbhandle = INVALID_HANDLE_VALUE;
 static int oldleds, oldusedleds, newleds;
+static int normalmouse, supermouse, rawmouse, winmouse, winmousenumber;
+static int normalkb, superkb, rawkb;
 
-#if 0
-void register_rawinput (void)
+int dinput_winmouse (void)
 {
-    static int registered;
+    if (winmouse)
+	return winmousenumber;
+    return -1;
+}
+
+typedef BOOL (CALLBACK* REGISTERRAWINPUTDEVICES)
+    (PCRAWINPUTDEVICE, UINT, UINT);
+static REGISTERRAWINPUTDEVICES pRegisterRawInputDevices;
+typedef UINT (CALLBACK* GETRAWINPUTDATA)
+    (HRAWINPUT, UINT, LPVOID, PUINT, UINT);
+static GETRAWINPUTDATA pGetRawInputData;
+typedef UINT (CALLBACK* GETRAWINPUTDEVICELIST)
+    (PRAWINPUTDEVICEKUST, PUINT, UINT);
+static GETRAWINPUTDEVICELIST pGetRawInputDeviceList;
+typedef UINT (CALLBACK* GETRAWINPUTDEVICEINFO)
+    (HANDLE, UINT, LPVOID, PUINT);
+static GETRAWINPUTDEVICEINFO pGetRawInputDeviceInfo;
+typedef UINT (CALLBACK* GETRAWINPUTBUFFER)
+    (PRAWINPUT, PUINT, UINT);
+static GETRAWINPUTBUFFER pGetRawInputBuffer;
+typedef LRESULT (CALLBACK* DEFRAWINPUTPROC)
+    (PRAWINPUT*, INT, UINT);
+static DEFRAWINPUTPROC pDefRawInputProc;
+
+static int rawinput_available, rawinput_registered;
+
+static void unregister_rawinput (void)
+{
+}
+
+static int register_rawinput (void)
+{
     RAWINPUTDEVICE rid[1];
 
-    if (registered)
-	return;
-    registered = 1;
+    if (!rawinput_available)
+	return 0;
     memset (rid, 0, sizeof (rid));
+    /* mouse */
     rid[0].usUsagePage = 1;
     rid[0].usUsage = 2;
+    rid[0].dwFlags = 0;
+#if 0
+    /* keyboard */
+    rid[1].usUsagePage = 1;
+    rid[1].usUsage = 6;
+    rid[1].dwFlags = 0;
+#endif
 
-    if (RegisterRawInputDevices(rid, 1, sizeof (RAWINPUTDEVICE)) == FALSE) {
-	write_log ("rawinput registration failed %d\n", GetLastError ());
-	return;
+    if (pRegisterRawInputDevices(rid, sizeof (rid) / sizeof (RAWINPUTDEVICE), sizeof (RAWINPUTDEVICE)) == FALSE) {
+	write_log ("RAWINPUT registration failed %d\n", GetLastError ());
+	return 0;
+    }
+    rawinput_registered = 1;
+    return 1;
+}
+
+#define RDP_MOUSE "\\??\\Root#RDP_MOU#"
+
+static int initialize_rawinput (void)
+{
+    RAWINPUTDEVICELIST *ridl = 0;
+    int num = 500, gotnum, i, bufsize, vtmp;
+    int rnum_mouse, rnum_kb, rnum_raw;
+    uae_u8 *buf = 0;
+    int rmouse = 0, rkb = 0;
+    char tmp[100];
+
+    pRegisterRawInputDevices = (REGISTERRAWINPUTDEVICES)GetProcAddress(
+	GetModuleHandle("user32.dll"), "RegisterRawInputDevices");
+    pGetRawInputData = (GETRAWINPUTDATA)GetProcAddress(
+	GetModuleHandle("user32.dll"), "GetRawInputData");
+    pGetRawInputDeviceList = (GETRAWINPUTDEVICELIST)GetProcAddress(
+	GetModuleHandle("user32.dll"), "GetRawInputDeviceList");
+    pGetRawInputDeviceInfo = (GETRAWINPUTDEVICEINFO)GetProcAddress(
+	GetModuleHandle("user32.dll"), "GetRawInputDeviceInfoA");
+    pGetRawInputBuffer = (GETRAWINPUTBUFFER)GetProcAddress(
+	GetModuleHandle("user32.dll"), "GetRawInputBuffer");
+    pDefRawInputProc = (DEFRAWINPUTPROC)GetProcAddress(
+	GetModuleHandle("user32.dll"), "DefRawInputProc");
+
+    if (!pRegisterRawInputDevices || !pGetRawInputData || !pGetRawInputDeviceList ||
+	!pGetRawInputDeviceInfo || !pGetRawInputBuffer || !pDefRawInputProc)
+	goto error;
+
+    ridl = malloc (sizeof(RAWINPUTDEVICELIST) * num);
+    memset (ridl, 0, sizeof (RAWINPUTDEVICELIST) * num);
+    bufsize = 1000;
+    buf = malloc (bufsize);
+
+    gotnum = pGetRawInputDeviceList(ridl, &num, sizeof (RAWINPUTDEVICELIST));
+    if (gotnum <= 0) {
+	write_log ("RAWINPUT didn't find any devices");
+	goto error;
+    }
+    write_log ("RAWINPUT: found %d devices\n", gotnum);
+    rnum_raw = rnum_mouse = rnum_kb = 0;
+    for (i = 0; i < gotnum; i++) {
+	int type = ridl[i].dwType;
+	HANDLE h = ridl[i].hDevice;
+        vtmp = bufsize;
+        pGetRawInputDeviceInfo (h, RIDI_DEVICENAME, buf, &vtmp);
+
+	if (!memcmp (RDP_MOUSE, buf, strlen (RDP_MOUSE)))
+	    continue;
+	if (type == RIM_TYPEMOUSE)
+	    rnum_mouse++;
+	if (type == RIM_TYPEKEYBOARD)
+	    rnum_kb++;
+    }
+
+    for (i = 0; i < gotnum; i++) {
+	HANDLE h = ridl[i].hDevice;
+	int type = ridl[i].dwType;
+
+	if (/* type == RIM_TYPEKEYBOARD || */ type == RIM_TYPEMOUSE) {
+	    struct didata *did = type == RIM_TYPEMOUSE ? di_mouse : di_keyboard;
+	    PRID_DEVICE_INFO rdi;
+	    int v, j;
+
+	    vtmp = bufsize;
+	    pGetRawInputDeviceInfo (h, RIDI_DEVICENAME, buf, &vtmp);
+
+	    if (did == di_mouse) {
+		if (!memcmp (RDP_MOUSE, buf, strlen (RDP_MOUSE)))
+		    continue;
+		if (rnum_mouse < 2)
+		    continue;
+		did += num_mouse;
+		num_mouse++;
+		rmouse++;
+		v = rmouse;
+	    } else if (did == di_keyboard) {
+		if (rnum_kb < 2)
+		    continue;
+		did += num_keyboard;
+		num_keyboard++;
+		rkb++;
+		v = rkb;
+	    }
+
+	    rnum_raw++;
+	    memset (did, 0, sizeof (*did));
+	    for (j = 0; j < MAX_MAPPINGS; j++) {
+		did->axismappings[j] = -1;
+		did->buttonmappings[j] = -1;
+	    }
+	    sprintf (tmp, "%s", type == RIM_TYPEMOUSE ? "RAW Mouse" : "RAW Keyboard");
+	    did->name = my_strdup (tmp);
+	    did->rawinput = h;
+
+	    write_log ("%p %s: ", h, type == RIM_TYPEMOUSE ? "mouse" : "keyboard");
+	    did->sortname = my_strdup (buf);
+	    write_log ("'%s'\n", buf);
+	    vtmp = bufsize;
+	    rdi = (PRID_DEVICE_INFO)buf;
+	    rdi->cbSize = sizeof (RID_DEVICE_INFO);
+	    pGetRawInputDeviceInfo (h, RIDI_DEVICEINFO, buf, &vtmp);
+	    if (type == RIM_TYPEMOUSE) {
+		PRID_DEVICE_INFO_MOUSE rdim = &rdi->mouse;
+		write_log ("id=%d buttons=%d rate=%d", 
+		    rdim->dwId, rdim->dwNumberOfButtons, rdim->dwSampleRate);
+		did->buttons = rdim->dwNumberOfButtons;
+		did->axles = 3;
+		did->axistype[0] = 1;
+		did->axissort[0] = 0;
+		did->axisname[0] = my_strdup ("X-Axis");
+		did->axistype[1] = 1;
+		did->axissort[1] = 1;
+		did->axisname[1] = my_strdup ("Y-Axis");
+		did->axistype[2] = 1;
+		did->axissort[2] = 2;
+		did->axisname[2] = my_strdup ("Wheel");
+		for (j = 0; j < did->buttons; j++) {
+		    did->buttonsort[j] = j;
+		    sprintf (tmp, "Button %d", j + 1);
+		    did->buttonname[j] = my_strdup (tmp);
+		}
+		did->priority = -1;
+	    } else {
+		PRID_DEVICE_INFO_KEYBOARD rdik = &rdi->keyboard;
+		write_log ("type=%d sub=%d mode=%d fkeys=%d indicators=%d tkeys=%d",
+		    rdik->dwType, rdik->dwSubType, rdik->dwKeyboardMode,
+		    rdik->dwNumberOfFunctionKeys, rdik->dwNumberOfIndicators, rdik->dwNumberOfKeysTotal);
+	    }
+	    write_log("\n");
+	}
+    }
+
+    free (ridl);
+    free (buf);
+    if (rnum_raw > 0)
+	rawinput_available = 1;
+    return 1;
+
+    error:
+    write_log ("RAWINPUT not available or failed to initialize\n");
+    free (ridl);
+    free (buf);
+    return 0;
+}
+
+static void initialize_windowsmouse (void)
+{
+    struct didata *did = di_mouse;
+    char tmp[100];
+    int j;
+
+    did += num_mouse;
+    num_mouse++;
+    did->name = my_strdup ("Windows mouse");
+    did->sortname = my_strdup ("Windows mouse");
+    did->buttons = 3;
+    did->axles = 3;
+    did->axistype[0] = 1;
+    did->axissort[0] = 0;
+    did->axisname[0] = my_strdup ("X-Axis");
+    did->axistype[1] = 1;
+    did->axissort[1] = 1;
+    did->axisname[1] = my_strdup ("Y-Axis");
+    did->axistype[2] = 1;
+    did->axissort[2] = 2;
+    did->axisname[2] = my_strdup ("Wheel");
+    for (j = 0; j < 3; j++) {
+        did->buttonsort[j] = j;
+        sprintf (tmp, "Button %d", j + 1);
+        did->buttonname[j] = my_strdup (tmp);
+    }
+    did->priority = 2;
+    did->wininput = 1;
+}
+
+static void handle_rawinput_2 (RAWINPUT *raw)
+{
+    int i, num;
+    struct didata *did;
+
+    if (raw->header.dwType == RIM_TYPEMOUSE) {
+	PRAWMOUSE rm = &raw->data.mouse;
+        
+	for (num = 0; num < num_mouse; num++) {
+	    did = &di_mouse[num];
+	    if (!did->disabled && did->rawinput == raw->header.hDevice)
+		break;
+	}
+#if DI_DEBUG2
+	write_log ("HANDLE=%08.8x %04.4x %04.4x %04.4x %08.8x %3d %3d %08.8x M=%d\n",
+	    raw->header.hDevice,
+	    rm->usFlags, 
+	    rm->usButtonFlags, 
+	    rm->usButtonData, 
+	    rm->ulRawButtons, 
+	    rm->lLastX, 
+	    rm->lLastY, 
+	    rm->ulExtraInformation, num < num_mouse ? num + 1 : -1);
+#endif
+	if (num == num_mouse) {
+	    return;
+	}
+
+	if (focus) {
+	    if (mouseactive || isfullscreen ()) {
+		for (i = 0; i < (5 > did->buttons ? did->buttons : 5); i++) {
+		    if (rm->usButtonFlags & (3 << (i * 2)))
+			setmousebuttonstate (num, i, (rm->usButtonFlags & (2 << (i * 2))) ? 1 : 0);
+		}
+		if (did->buttons > 5) {
+		    for (i = 5; i < did->buttons; i++)
+			setmousebuttonstate (num, i, (rm->ulRawButtons & (1 << i)) ? 1 : 0);
+		}
+	        if (did->buttons >= 3 && (rm->usButtonFlags & RI_MOUSE_MIDDLE_BUTTON_DOWN)) {
+		    if (currprefs.win32_middle_mouse) {
+		        if (isfullscreen ())
+			    minimizewindow ();
+			if (mouseactive)
+			    setmouseactive(0);
+	    	    }
+		}
+	    }
+	    if (rm->usButtonFlags & RI_MOUSE_WHEEL)
+		setmousestate (num, 2, (int)rm->usButtonData, 0);
+	    setmousestate (num, 0, rm->lLastX, (rm->usFlags & MOUSE_MOVE_RELATIVE) ? 0 : 1);
+	    setmousestate (num, 1, rm->lLastY, (rm->usFlags & MOUSE_MOVE_RELATIVE) ? 0 : 1);
+	}
+
+    } else if (raw->header.dwType == RIM_TYPEKEYBOARD) {
+#if DI_DEBUG2
+	write_log ("HANDLE=%x CODE=%x Flags=%x VK=%x MSG=%x EXTRA=%x\n",
+	    raw->header.hDevice,
+	    raw->data.keyboard.MakeCode,
+	    raw->data.keyboard.Flags,
+	    raw->data.keyboard.VKey,
+	    raw->data.keyboard.Message,
+	    raw->data.keyboard.ExtraInformation);
+#endif
     }
 }
+
+#if 0
+static void read_rawinput (void)
+{
+    RAWINPUT raw;
+    int size, ret;
+
+    for(;;) {
+	size = sizeof (RAWINPUT);
+	ret = pGetRawInputBuffer (&raw, &size, sizeof (RAWINPUTHEADER));
+	if (ret <= 0)
+	    return;
+	handle_rawinput_2 (&raw);
+    }
+}
+#endif
 
 void handle_rawinput (DWORD lParam)
 {
     UINT dwSize;
     BYTE lpb[1000];
-    RAWINPUT* raw;
-    static int reg;
+    RAWINPUT *raw;
 
-    GetRawInputData((HRAWINPUT)lParam, RID_INPUT, NULL, &dwSize, sizeof(RAWINPUTHEADER));
+    if (!rawinput_available)
+	return;
+    pGetRawInputData((HRAWINPUT)lParam, RID_INPUT, NULL, &dwSize, sizeof(RAWINPUTHEADER));
     if (dwSize >= sizeof (lpb))
 	return;
-    if (GetRawInputData((HRAWINPUT)lParam, RID_INPUT, lpb, &dwSize, sizeof(RAWINPUTHEADER)) != dwSize )
+    if (pGetRawInputData((HRAWINPUT)lParam, RID_INPUT, lpb, &dwSize, sizeof(RAWINPUTHEADER)) != dwSize )
 	return;
     raw = (RAWINPUT*)lpb;
-    if (raw->header.dwType != RIM_TYPEMOUSE)
-	return;
-
-    write_log ("%x %d %x %x %x %d %d %x\n",
-          raw->data.mouse.usFlags, 
-          raw->data.mouse.ulButtons, 
-          raw->data.mouse.usButtonFlags, 
-          raw->data.mouse.usButtonData, 
-          raw->data.mouse.ulRawButtons, 
-          raw->data.mouse.lLastX, 
-          raw->data.mouse.lLastY, 
-          raw->data.mouse.ulExtraInformation);
+    handle_rawinput_2 (raw);
+    pDefRawInputProc (&raw, 1, sizeof (RAWINPUTHEADER));
 }
-#endif
 
 static void unacquire (LPDIRECTINPUTDEVICE8 lpdi, char *txt)
 {
@@ -129,19 +426,24 @@ static void unacquire (LPDIRECTINPUTDEVICE8 lpdi, char *txt)
 }
 static int acquire (LPDIRECTINPUTDEVICE8 lpdi, char *txt)
 {
-    HRESULT hr = IDirectInputDevice8_Acquire (lpdi);
-    if (hr != DI_OK && hr != 0x80070005) {
-	write_log ("acquire %s failed, %s\n", txt, DXError (hr));
+    HRESULT hr = DI_OK;
+    if (lpdi) {
+	hr = IDirectInputDevice8_Acquire (lpdi);
+	if (hr != DI_OK && hr != 0x80070005) {
+	    write_log ("acquire %s failed, %s\n", txt, DXError (hr));
+	}
     }
     return hr == DI_OK ? 1 : 0;
 }
 
 static int setcoop (LPDIRECTINPUTDEVICE8 lpdi, DWORD mode, char *txt)
 {
-    HRESULT hr;
-    hr = IDirectInputDevice8_SetCooperativeLevel (lpdi, hMainWnd, mode);
-    if (hr != DI_OK && hr != E_NOTIMPL)
-	write_log ("setcooperativelevel %s failed, %s\n", txt, DXError (hr));
+    HRESULT hr = DI_OK;
+    if (lpdi) {
+	hr = IDirectInputDevice8_SetCooperativeLevel (lpdi, hMainWnd, mode);
+	if (hr != DI_OK && hr != E_NOTIMPL)
+	    write_log ("setcooperativelevel %s failed, %s\n", txt, DXError (hr));
+    }
     return hr == DI_OK ? 1 : 0;
 }
 
@@ -153,7 +455,7 @@ static void sortdd (struct didata *dd, int num, int type)
 	dd[i].type = type;
 	for (j = i + 1; j < num; j++) {
 	    dd[j].type = type;
-	    if (strcmp (dd[i].name, dd[j].name) > 0) {
+	    if (dd[i].priority < dd[j].priority || (dd[i].priority == dd[j].priority && strcmp (dd[i].sortname, dd[j].sortname) > 0)) {
 		memcpy (&ddtmp, &dd[i], sizeof(ddtmp));
 		memcpy (&dd[i], &dd[j], sizeof(ddtmp));
 		memcpy (&dd[j], &ddtmp, sizeof(ddtmp));
@@ -162,7 +464,7 @@ static void sortdd (struct didata *dd, int num, int type)
     }
 }
 
-static void sortobjects (char *name, int *mappings, int *sort, char **names, int *types, int num)
+static void sortobjects (struct didata *did, int *mappings, int *sort, char **names, int *types, int num)
 {
     int i, j, tmpi;
     char *tmpc;
@@ -181,7 +483,11 @@ static void sortobjects (char *name, int *mappings, int *sort, char **names, int
     }
 #ifdef DI_DEBUG
     if (num > 0) {
-	write_log ("%s:\n", name);
+	write_log ("%s (GUID=%08.8X-%04.8X-%04.8X-%02.2X%02.2X%02.2X%02.2X%02.2X%02.2X%02.2X%02.2X):\n",
+	    did->name,
+	    did->guid.Data1, did->guid.Data2, did->guid.Data3,
+	    did->guid.Data4[0], did->guid.Data4[1], did->guid.Data4[2], did->guid.Data4[3],
+	    did->guid.Data4[4], did->guid.Data4[5], did->guid.Data4[6], did->guid.Data4[7]);
 	for (i = 0; i < num; i++)
 	    write_log ("%d '%s' (%d,%d)\n", mappings[i], names[i], sort[i], types ? types[i] : -1);
     }
@@ -283,7 +589,30 @@ static BOOL CALLBACK EnumObjectsCallback (const DIDEVICEOBJECTINSTANCE* pdidoi, 
 static BOOL CALLBACK di_enumcallback (LPCDIDEVICEINSTANCE lpddi, LPVOID *dd)
 {
     struct didata *did = (struct didata*)dd;
-    int i, len;
+    int i, len, type;
+
+#ifdef DI_DEBUG
+    write_log ("GUID=%08.8X-%04.8X-%04.8X-%02.2X%02.2X%02.2X%02.2X%02.2X%02.2X%02.2X%02.2X:\n",
+        lpddi->guidInstance.Data1, lpddi->guidInstance.Data2, lpddi->guidInstance.Data3,
+        lpddi->guidInstance.Data4[0], lpddi->guidInstance.Data4[1], lpddi->guidInstance.Data4[2], lpddi->guidInstance.Data4[3],
+        lpddi->guidInstance.Data4[4], lpddi->guidInstance.Data4[5], lpddi->guidInstance.Data4[6], lpddi->guidInstance.Data4[7]);
+    write_log ("'%s' '%s' %08.8X\n", lpddi->tszProductName, lpddi->tszInstanceName, lpddi->dwDevType);
+#endif
+
+    type = lpddi->dwDevType & 0xff;
+    if (type == DI8DEVTYPE_MOUSE || type == DI8DEVTYPE_SCREENPOINTER) {
+	did = di_mouse;
+    } else if (type == DI8DEVTYPE_GAMEPAD  || type == DI8DEVTYPE_JOYSTICK ||
+	type == DI8DEVTYPE_FLIGHT || type == DI8DEVTYPE_DRIVING || type == DI8DEVTYPE_1STPERSON) {
+	did = di_joystick;
+    } else if (type == DI8DEVTYPE_KEYBOARD) {
+	did = di_keyboard;
+    } else {
+#ifdef DI_DEBUG
+	write_log ("unknown device, ignored\n");
+#endif
+	return DIENUM_CONTINUE;
+    }
 
     if (did == di_mouse) {
 	did += num_mouse;
@@ -300,10 +629,17 @@ static BOOL CALLBACK di_enumcallback (LPCDIDEVICEINSTANCE lpddi, LPVOID *dd)
         did->axismappings[i] = -1;
         did->buttonmappings[i] = -1;
     }
-    len = strlen (lpddi->tszInstanceName) + 1;
+    len = strlen (lpddi->tszInstanceName) + 3 + 1;
     did->name = malloc (len);
     strcpy (did->name, lpddi->tszInstanceName);
     did->guid = lpddi->guidInstance;
+    did->sortname = my_strdup (did->name);
+
+    if (!memcmp (&did->guid, &GUID_SysKeyboard, sizeof (GUID)) || !memcmp (&did->guid, &GUID_SysMouse, sizeof (GUID))) {
+	did->priority = 2;
+	did->superdevice = 1;
+	strcat (did->name, " *");
+    }
     return DIENUM_CONTINUE;
 }
 
@@ -320,18 +656,25 @@ static int di_do_init (void)
 	write_log ("DirectInput8Create failed, %s\n", DXError (hr));
 	return 0;
     }
-    IDirectInput8_EnumDevices (g_lpdi, DI8DEVCLASS_POINTER, di_enumcallback, di_mouse, DIEDFL_ATTACHEDONLY);
-    sortdd (di_mouse, num_mouse, DID_MOUSE);
-    IDirectInput8_EnumDevices (g_lpdi, DI8DEVCLASS_GAMECTRL, di_enumcallback, di_joystick, DIEDFL_ATTACHEDONLY);
+    memset (&di_mouse, 0, sizeof (di_mouse));
+    memset (&di_joystick, 0, sizeof (di_joystick));
+    memset (&di_keyboard, 0, sizeof (di_keyboard));
+
+    IDirectInput8_EnumDevices (g_lpdi, DI8DEVCLASS_ALL, di_enumcallback, 0, DIEDFL_ATTACHEDONLY);
+    initialize_rawinput ();
+    initialize_windowsmouse ();
+
     sortdd (di_joystick, num_joystick, DID_JOYSTICK);
-    IDirectInput8_EnumDevices (g_lpdi, DI8DEVCLASS_KEYBOARD, di_enumcallback, di_keyboard, DIEDFL_ATTACHEDONLY);
+    sortdd (di_mouse, num_mouse, DID_MOUSE);
     sortdd (di_keyboard, num_keyboard, DID_KEYBOARD);
+
     return 1;
 }
 
 static void di_dev_free (struct didata *did)
 {
     free (did->name);
+    free (did->sortname);
     memset (did, 0, sizeof (*did));
 }
 
@@ -416,16 +759,17 @@ static int init_mouse (void)
     mouse_inited = 1;
     for (i = 0; i < num_mouse; i++) {
 	did = &di_mouse[i];
-	if (!did->disabled) {
+	if (!did->disabled && !did->rawinput && !did->wininput) {
 	    hr = IDirectInput8_CreateDevice (g_lpdi, &did->guid, &lpdi, NULL);
 	    if (hr == DI_OK) {
 		hr = IDirectInputDevice8_SetDataFormat(lpdi, &c_dfDIMouse); 
 		IDirectInputDevice8_EnumObjects (lpdi, EnumObjectsCallback, (void*)did, DIDFT_ALL);
-		sortobjects (did->name, did->axismappings, did->axissort, did->axisname, did->axistype, did->axles);
-		sortobjects (did->name, did->buttonmappings, did->buttonsort, did->buttonname, 0, did->buttons);
+		sortobjects (did, did->axismappings, did->axissort, did->axisname, did->axistype, did->axles);
+		sortobjects (did, did->buttonmappings, did->buttonsort, did->buttonname, 0, did->buttons);
 		did->lpdi = lpdi;
-	    } else
-		write_log ("mouse CreateDevice failed, %s\n", DXError (hr));
+	    } else {
+		write_log ("mouse %d CreateDevice failed, %s\n", i, DXError (hr));
+	    }
 	}
     }
     return 1;
@@ -443,6 +787,7 @@ static void close_mouse (void)
 	    IDirectInputDevice8_Release (di_mouse[i].lpdi);
 	di_mouse[i].lpdi = 0;
     }
+    supermouse = normalmouse = rawmouse = winmouse = 0;
     di_free ();
 }
 
@@ -452,25 +797,51 @@ static int acquire_mouse (int num, int flags)
     DIPROPDWORD dipdw;
     HRESULT hr;
 
-    //register_rawinput ();
     unacquire (lpdi, "mouse");
-    setcoop (lpdi, flags ? (DISCL_FOREGROUND | DISCL_EXCLUSIVE) : (DISCL_BACKGROUND | DISCL_NONEXCLUSIVE), "mouse");
-    dipdw.diph.dwSize = sizeof(DIPROPDWORD);
-    dipdw.diph.dwHeaderSize = sizeof(DIPROPHEADER);
-    dipdw.diph.dwObj = 0;
-    dipdw.diph.dwHow = DIPH_DEVICE;
-    dipdw.dwData = DI_BUFFER;
-    hr = IDirectInputDevice8_SetProperty (lpdi, DIPROP_BUFFERSIZE, &dipdw.diph);
-    if (hr != DI_OK)
-        write_log ("mouse setpropertry failed, %s\n", DXError (hr));
-    di_mouse[num].acquired = 1;
-    return acquire (lpdi, "mouse");
+    if (lpdi) {
+	setcoop (lpdi, flags ? (DISCL_FOREGROUND | DISCL_EXCLUSIVE) : (DISCL_BACKGROUND | DISCL_NONEXCLUSIVE), "mouse");
+	dipdw.diph.dwSize = sizeof(DIPROPDWORD);
+	dipdw.diph.dwHeaderSize = sizeof(DIPROPHEADER);
+	dipdw.diph.dwObj = 0;
+	dipdw.diph.dwHow = DIPH_DEVICE;
+	dipdw.dwData = DI_BUFFER;
+	hr = IDirectInputDevice8_SetProperty (lpdi, DIPROP_BUFFERSIZE, &dipdw.diph);
+	if (hr != DI_OK)
+	    write_log ("mouse setpropertry failed, %s\n", DXError (hr));
+	di_mouse[num].acquired = acquire (lpdi, "mouse");
+    } else {
+	di_mouse[num].acquired = 1;
+    }
+    if (di_mouse[num].acquired) {
+	if (di_mouse[num].rawinput)
+	    rawmouse++;
+	else if (di_mouse[num].superdevice)
+	    supermouse++;
+	else if (di_mouse[num].wininput) {
+	    winmouse++;
+	    winmousenumber = num;
+	} else
+	    normalmouse++;
+    }
+    if (!supermouse && rawmouse)
+	register_rawinput ();
+    return di_mouse[num].acquired;
 }
 
 static void unacquire_mouse (int num)
 {
     unacquire (di_mouse[num].lpdi, "mouse");
-    di_mouse[num].acquired = 0;
+    if (di_mouse[num].acquired) {
+	if (di_mouse[num].rawinput)
+	    rawmouse--;
+	else if (di_mouse[num].superdevice)
+	    supermouse--;
+	else if (di_mouse[num].wininput)
+	    winmouse--;
+	else
+	    normalmouse--;
+	di_mouse[num].acquired = 0;
+    }
 }
 
 static void read_mouse (void)
@@ -489,10 +860,15 @@ static void read_mouse (void)
 	elements = DI_BUFFER;
 	hr = IDirectInputDevice8_GetDeviceData (lpdi, sizeof (DIDEVICEOBJECTDATA), didod, &elements, 0);
 	if (hr == DI_OK) {
+	    if (supermouse && !did->superdevice)
+		continue;
 	    for (j = 0; j < elements; j++) {
 		int dimofs = didod[j].dwOfs;
 		int data = didod[j].dwData;
 		int state = (data & 0x80) ? 1 : 0;
+#ifdef DI_DEBUG2
+		write_log ("MOUSE: %d OFF=%d DATA=%d STATE=%d\n", i, dimofs, data, state);
+#endif
 		if (focus) {
 		    if (mouseactive || fs) {
 			for (k = 0; k < did->axles; k++) {
@@ -672,7 +1048,7 @@ static int init_kb (void)
     keyboard_inited = 1;
     for (i = 0; i < num_keyboard; i++) {
         struct didata *did = &di_keyboard[i];
-	if (did->lpdi == 0 && !did->disabled) {
+	if (!did->disabled && !did->rawinput && !did->wininput) {
 	    hr = IDirectInput8_CreateDevice (g_lpdi, &did->guid, &lpdi, NULL);
 	    if (hr == DI_OK) {
 		hr = IDirectInputDevice8_SetDataFormat(lpdi, &c_dfDIKeyboard); 
@@ -687,8 +1063,8 @@ static int init_kb (void)
 		if (hr != DI_OK)
 		    write_log ("keyboard setpropertry failed, %s\n", DXError (hr));
 	        IDirectInputDevice8_EnumObjects (lpdi, EnumObjectsCallback, (void*)did, DIDFT_ALL);
-		sortobjects (did->name, did->axismappings, did->axissort, did->axisname, did->axistype, did->axles);
-		sortobjects (did->name, did->buttonmappings, did->buttonsort, did->buttonname, 0, did->buttons);
+		sortobjects (did, did->axismappings, did->axissort, did->axisname, did->axistype, did->axles);
+		sortobjects (did, did->buttonmappings, did->buttonsort, did->buttonname, 0, did->buttons);
 		did->lpdi = lpdi;
 	    } else
 		write_log ("keyboard CreateDevice failed, %s\n", DXError (hr));
@@ -699,7 +1075,6 @@ static int init_kb (void)
     keyboard_german = 0;
     if (keyboardlangid == MAKELANGID (LANG_GERMAN, SUBLANG_GERMAN))
 	keyboard_german = 1;
-
     return 1;
 }
 
@@ -862,10 +1237,9 @@ static void read_kb (void)
 {
     DIDEVICEOBJECTDATA didod[DI_BUFFER];
     DWORD elements;
-    HRESULT hr; //, hr2;
+    HRESULT hr;
     LPDIRECTINPUTDEVICE8 lpdi;
     int i, j;
-//    uae_u8 kc[256];
 
     update_leds ();
     for (i = 0; i < MAX_INPUT_DEVICES; i++) {
@@ -878,19 +1252,14 @@ static void read_kb (void)
 		continue;
 	    kb_do_refresh &= ~(1 << i);
 	}
-//	hr2 = IDirectInputDevice8_GetDeviceState (lpdi, sizeof (kc), kc);
 	elements = DI_BUFFER;
 	hr = IDirectInputDevice8_GetDeviceData(lpdi, sizeof(DIDEVICEOBJECTDATA), didod, &elements, 0);
 	if (hr == DI_OK) {
+	    if (did->superdevice && (normalkb || rawkb))
+		continue;
 	    for (j = 0; j < elements; j++) {
 		int scancode = didod[j].dwOfs;
 		int pressed = (didod[j].dwData & 0x80) ? 1 : 0;
-/*
-		if (hr2 == DI_OK && (kc[scancode] & 0x80) && pressed == 0) {
-		    write_log ("confused key %02.2X\n", scancode);
-		    continue;
-		}
-*/
 	        scancode = keyhack (scancode, pressed, i);
 	        if (scancode < 0)
 		    continue;
@@ -970,7 +1339,6 @@ static int acquire_kb (int num, int flags)
     unacquire (lpdi, "keyboard");
     setcoop (lpdi, mode, "keyboard");
     kb_do_refresh = ~0;
-    di_keyboard[num].acquired = 1;
 
 #ifdef WINDDK
     if (currprefs.keyboard_leds_in_use) {
@@ -989,14 +1357,29 @@ static int acquire_kb (int num, int flags)
 	set_leds (oldusedleds);
     }
 #endif
-    return acquire (lpdi, "keyboard");
+    if (acquire (lpdi, "keyboard")) {
+	if (di_keyboard[num].superdevice)
+	    superkb++;
+	else
+	    normalkb++;
+        di_keyboard[num].acquired = 1;
+	return 1;
+    }
+    return 0;
 }
 
 static void unacquire_kb (int num)
 {
     LPDIRECTINPUTDEVICE8 lpdi = di_keyboard[num].lpdi;
+
     unacquire (lpdi, "keyboard");
-    di_keyboard[num].acquired = 0;
+    if (di_keyboard[num].acquired) {
+	if (di_keyboard[num].superdevice)
+	    superkb--;
+	else
+	    normalkb--;
+        di_keyboard[num].acquired = 0;
+    }
     release_keys ();
 
 #ifdef WINDDK
@@ -1188,8 +1571,8 @@ static int init_joystick (void)
 		if (hr == DI_OK) {
 		    did->lpdi = lpdi;
 		    IDirectInputDevice8_EnumObjects (lpdi, EnumObjectsCallback, (void*)did, DIDFT_ALL);
-		    sortobjects (did->name,did->axismappings, did->axissort, did->axisname, did->axistype, did->axles);
-		    sortobjects (did->name,did->buttonmappings, did->buttonsort, did->buttonname, 0, did->buttons);
+		    sortobjects (did, did->axismappings, did->axissort, did->axisname, did->axistype, did->axles);
+		    sortobjects (did, did->buttonmappings, did->buttonsort, did->buttonname, 0, did->buttons);
 		}
 	    } else
 		write_log ("joystick createdevice failed, %s\n", DXError (hr));
@@ -1247,3 +1630,44 @@ struct inputdevice_functions inputdevicefunc_joystick = {
     get_joystick_widget_first
 };
 
+int dinput_wmkey (uae_u32 key)
+{
+    if (normalkb || superkb || rawkb)
+	return 0;
+    if (((key >> 16) & 0xff) == 0x58)
+	return 1;
+    return 0;
+}
+
+void input_get_default_mouse (struct uae_input_device *uid)
+{
+    int i, port;
+
+    for (i = 0; i < num_mouse; i++) {
+	port = i & 1;
+	if (di_mouse[i].wininput)
+	    port = 0;
+        uid[i].eventid[ID_AXIS_OFFSET + 0][0] = port ? INPUTEVENT_MOUSE2_HORIZ : INPUTEVENT_MOUSE1_HORIZ;
+	uid[i].eventid[ID_AXIS_OFFSET + 1][0] = port ? INPUTEVENT_MOUSE2_VERT : INPUTEVENT_MOUSE1_VERT;
+        uid[i].eventid[ID_AXIS_OFFSET + 2][0] = port ? 0 : INPUTEVENT_MOUSE1_WHEEL;
+	uid[i].eventid[ID_BUTTON_OFFSET + 0][0] = port ? INPUTEVENT_JOY2_FIRE_BUTTON : INPUTEVENT_JOY1_FIRE_BUTTON;
+	uid[i].eventid[ID_BUTTON_OFFSET + 1][0] = port ? INPUTEVENT_JOY2_2ND_BUTTON : INPUTEVENT_JOY1_2ND_BUTTON;
+	uid[i].eventid[ID_BUTTON_OFFSET + 2][0] = port ? INPUTEVENT_JOY2_3RD_BUTTON : INPUTEVENT_JOY1_3RD_BUTTON;
+    }
+    uid[0].enabled = 1;
+}
+
+void input_get_default_joystick (struct uae_input_device *uid)
+{
+    int i, port;
+
+    for (i = 0; i < num_mouse; i++) {
+	port = i & 1;
+        uid[i].eventid[ID_AXIS_OFFSET + 0][0] = port ? INPUTEVENT_JOY2_HORIZ : INPUTEVENT_JOY1_HORIZ;
+	uid[i].eventid[ID_AXIS_OFFSET + 1][0] = port ? INPUTEVENT_JOY2_VERT : INPUTEVENT_JOY1_VERT;
+	uid[i].eventid[ID_BUTTON_OFFSET + 0][0] = port ? INPUTEVENT_JOY2_FIRE_BUTTON : INPUTEVENT_JOY1_FIRE_BUTTON;
+	uid[i].eventid[ID_BUTTON_OFFSET + 1][0] = port ? INPUTEVENT_JOY2_2ND_BUTTON : INPUTEVENT_JOY1_2ND_BUTTON;
+	uid[i].eventid[ID_BUTTON_OFFSET + 2][0] = port ? INPUTEVENT_JOY2_3RD_BUTTON : INPUTEVENT_JOY1_3RD_BUTTON;
+    }
+    uid[0].enabled = 1;
+}

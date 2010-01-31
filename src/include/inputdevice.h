@@ -43,6 +43,11 @@ struct uae_input_device_kbr_default {
 #define IDEV_MAPPED_AUTOFIRE_POSSIBLE 1
 #define IDEV_MAPPED_AUTOFIRE_SET 2
 
+#define ID_BUTTON_OFFSET 0
+#define ID_BUTTON_TOTAL 32
+#define ID_AXIS_OFFSET 32
+#define ID_AXIS_TOTAL 32
+
 extern int inputdevice_iterate (int devnum, int num, char *name, int *af);
 extern int inputdevice_set_mapping (int devnum, int num, char *name, int af, int sub);
 extern int inputdevice_get_mapped_name (int devnum, int num, int *pflags, char *name, int sub);
@@ -58,6 +63,9 @@ extern void inputdevice_set_device_status (int devnum, int enabled);
 extern int inputdevice_get_device_total (int type);
 extern int inputdevice_get_widget_num (int devnum);
 extern int inputdevice_get_widget_type (int devnum, int num, char *name);
+
+extern void input_get_default_mouse (struct uae_input_device *uid);
+extern void input_get_default_joystick (struct uae_input_device *uid);
 
 #define DEFEVENT(A, B, C, D, E, F) INPUTEVENT_ ## A,
 enum inputevents {

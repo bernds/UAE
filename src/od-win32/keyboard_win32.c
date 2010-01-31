@@ -155,6 +155,12 @@ static struct uae_input_device_kbr_default keytrans[] = {
     { DIK_SLASH, INPUTEVENT_KEY_DIV },
     { DIK_OEM_102, INPUTEVENT_KEY_30 },
 
+    { DIK_BACK, INPUTEVENT_SPC_STATEREWIND },
+
+    { DIK_VOLUMEDOWN, INPUTEVENT_SPC_VOLUME_DOWN },
+    { DIK_VOLUMEUP, INPUTEVENT_SPC_VOLUME_UP },
+    { DIK_MUTE, INPUTEVENT_SPC_VOLUME_MUTE },
+
     { -1, 0 }
 };
 
@@ -349,6 +355,22 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 #endif
 	    break;
 	    case DIK_NEXT:
+	    break;
+	    case DIK_NUMPADMINUS:
+	    if (endpressed ())
+		sound_volume (-1);
+	    break;
+	    case DIK_NUMPADPLUS:
+	    if (endpressed ())
+		sound_volume (1);
+	    break;
+	    case DIK_NUMPADSTAR:
+	    if (endpressed ())
+		sound_volume (0);
+	    break;
+	    case DIK_NUMPADSLASH:
+	    if (endpressed ())
+		savestate_dorewind (1);
 	    break;
 	}
     }

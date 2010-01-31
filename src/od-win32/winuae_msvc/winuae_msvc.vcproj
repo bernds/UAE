@@ -205,6 +205,9 @@
 				RelativePath="..\resources\Volume01.ico">
 			</File>
 			<File
+				RelativePath="..\resources\wave1.bin">
+			</File>
+			<File
 				RelativePath="..\resources\winuae.ico">
 			</File>
 			<File
@@ -390,6 +393,9 @@
 				RelativePath="..\..\drawing.c">
 			</File>
 			<File
+				RelativePath="..\..\driveclick.c">
+			</File>
+			<File
 				RelativePath="..\..\enforcer.c">
 			</File>
 			<File
@@ -524,6 +530,21 @@
 				RelativePath="..\..\dms\u_rle.c">
 			</File>
 		</Filter>
+		<File
+			RelativePath="..\resources\drive_click.wav">
+		</File>
+		<File
+			RelativePath="..\resources\drive_snatch.wav">
+		</File>
+		<File
+			RelativePath="..\resources\drive_spin.wav">
+		</File>
+		<File
+			RelativePath="..\resources\drive_spinnd.wav">
+		</File>
+		<File
+			RelativePath="..\resources\drive_startup.wav">
+		</File>
 		<File
 			RelativePath="..\hq2x32.obj">
 		</File>

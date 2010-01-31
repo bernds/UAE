@@ -25,6 +25,8 @@
 #include "gui.h"
 #include "dxwrap.h"
 #include "win32.h"
+#include "savestate.h"
+#include "driveclick.h"
 
 #include <windows.h>
 #include <mmsystem.h>
@@ -44,6 +46,7 @@ int dsound_hardware_mixing = 0;
 static int obtainedfreq;
 static int have_sound;
 static int paused;
+static int mute;
 
 #define SND_MAX_BUFFER2 262144
 #define SND_MAX_BUFFER 512
@@ -228,6 +231,18 @@ static void close_audio_ds (void)
 
 extern HWND hMainWnd;
 
+static void setvolume (void)
+{
+    HRESULT hr;
+    LONG vol = DSBVOLUME_MIN;
+
+    if (currprefs.sound_volume < 100 && !mute)
+        vol = (LONG)((DSBVOLUME_MIN / 2) + (-DSBVOLUME_MIN / 2) * log (1 + (2.718281828 - 1) * (1 - currprefs.sound_volume / 100.0)));
+    hr = IDirectSoundBuffer_SetVolume (lpDSBsecondary, vol);
+    if (hr != DS_OK)
+        write_log ("SOUND: SetVolume(%d) failed: %s\n", vol, DXError (hr));
+}
+
 static int open_audio_ds (int size)
 {
     HRESULT hr;
@@ -330,6 +345,7 @@ static int open_audio_ds (int size)
     sound_buffer.dwBufferBytes = dsoundbuf;
     sound_buffer.lpwfxFormat = &wavfmt;
     sound_buffer.dwFlags = DSBCAPS_GETCURRENTPOSITION2 | DSBCAPS_GLOBALFOCUS | DSBCAPS_STATIC;
+    sound_buffer.dwFlags |= DSBCAPS_CTRLVOLUME;
 
     hr = IDirectSound_CreateSoundBuffer( lpDS, &sound_buffer, &lpDSBsecondary, NULL );
     if (hr != DS_OK) {
@@ -342,7 +358,8 @@ static int open_audio_ds (int size)
         write_log ("SOUND: Primary SetFormat() failure: %s\n", DXError (hr));
         goto error;
     }
-    
+    setvolume ();
+
     clearbuffer ();
 
     init_sound_table16 ();
@@ -388,6 +405,7 @@ static int open_sound (void)
     sound_available = 1;
     update_sound (fake_vblank_hz);
     sndbufpt = sndbuffer;
+    driveclick_init ();
 
     return 1;
 }
@@ -408,6 +426,7 @@ int init_sound (void)
     if (!open_sound ())
 	return 0;
     paused = 1;
+    driveclick_reset ();
     resume_sound ();
     return 1;
 }
@@ -482,6 +501,9 @@ static void finish_sound_buffer_ds (void)
 	    //write_log ("GetCurrentPosition failed: %s\n", DirectSound_ErrorText (hr));
 	    return;
 	}
+
+	if (savestate_state)
+	    return;
 
 	if (writepos >= playpos)
 	    diff = writepos - playpos;
@@ -580,6 +602,9 @@ void finish_sound_buffer (void)
     if (!have_sound || turbo_emulation)
 	return;
     filtercheck ((uae_s16*)sndbuffer, sndbufsize / 2);
+#ifdef DRIVESOUND
+    driveclick_mix ((uae_s16*)sndbuffer, sndbufsize / 2);
+#endif
 #ifdef AVIOUTPUT
     if (avioutput_audio)
         AVIOutput_WriteAudio ((uae_u8*)sndbuffer, sndbufsize);
@@ -630,4 +655,17 @@ int sound_calibrate (HWND hwnd, struct uae_prefs *p)
     }
     hMainWnd = old;
     return pct;
+}
+
+void sound_volume (int dir)
+{
+    if (dir == 0)
+	mute = mute ? 0 : 1;
+    currprefs.sound_volume -= dir * 10;
+    if (currprefs.sound_volume < 0)
+	currprefs.sound_volume = 0;
+    if (currprefs.sound_volume > 100)
+	currprefs.sound_volume = 100;
+    changed_prefs.sound_volume = currprefs.sound_volume;
+    setvolume ();
 }

@@ -1235,13 +1235,16 @@ void restore_pram (int len, long filepos)
     changed_prefs.gfxmem_size = len;
 }
 
-uae_u8 *save_expansion (int *len)
+uae_u8 *save_expansion (int *len, uae_u8 *dstptr)
 {
-    static uae_u8 t[20], *dst = t;
+    static uae_u8 t[20];
+    uae_u8 *dst = t, *dstbak = t;
+    if (dstptr)
+	dst = dstbak = dstptr;
     save_u32 (fastmem_start);
     save_u32 (z3fastmem_start);
     *len = 8;
-    return t;
+    return dstbak;
 }
 
 uae_u8 *restore_expansion (uae_u8 *src)

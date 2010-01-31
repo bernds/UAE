@@ -9,7 +9,7 @@
 
 #define UAEMAJOR 0
 #define UAEMINOR 8
-#define UAESUBREV 23
+#define UAESUBREV 24
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -71,6 +71,7 @@ struct uae_prefs {
     int sound_interpol;
     int sound_adjust;
     int sound_filter;
+    int sound_volume;
 
     int comptrustbyte;
     int comptrustword;
@@ -94,6 +95,7 @@ struct uae_prefs {
     int avoid_vid;
     uae_u32 override_dga_address;
 
+    int gfx_display;
     int gfx_framerate;
     int gfx_width_win, gfx_height_win;
     int gfx_width_fs, gfx_height_fs;
@@ -168,6 +170,9 @@ struct uae_prefs {
 
     int nr_floppies;
     int dfxtype[4];
+    int dfxclick[4];
+    char dfxclickexternal[4][256];
+    int dfxclickvolume;
 
     /* Target specific options */
     int x11_use_low_bandwidth;
@@ -195,6 +200,9 @@ struct uae_prefs {
     int win32_soundcard;
 
     int curses_reverse_video;
+
+    int statecapture;
+    int statecapturerate, statecapturebuffersize;
 
     /* input */
 

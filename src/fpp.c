@@ -714,7 +714,10 @@ void fsave_opp (uae_u32 opcode)
 {
     uae_u32 ad;
     int incr = (opcode & 0x38) == 0x20 ? -1 : 1;
+    int fpu_version = 0x18; /* 68881 */
+//    int fpu_version = 0x38; /* 68882 */
     int i;
+
 
 #if DEBUG_FPP
     printf ("fsave_opp at %08lx\n", m68k_getpc ());
@@ -744,9 +747,9 @@ void fsave_opp (uae_u32 opcode)
 		put_long (ad, 0x00000000);
 	    }
 	    ad -= 4;
-	    put_long (ad, 0x1f180000);
+	    put_long (ad, 0x1f000000 | (fpu_version << 16));
 	} else {
-	    put_long (ad, 0x1f180000);
+	    put_long (ad, 0x1f000000 | (fpu_version << 16));
 	    ad += 4;
 	    for (i = 0; i < 5; i++) {
 		put_long (ad, 0x00000000);
@@ -1409,11 +1412,12 @@ uae_u8 *restore_fpu (uae_u8 *src)
     return src;
 }
 
-uae_u8 *save_fpu (int *len)
+uae_u8 *save_fpu (int *len, uae_u8 *dstptr)
 {
     uae_u8 *dstbak,*dst;
     int model,i;
 
+    *len = 0;
     switch (currprefs.cpu_level)
     {
 	case 3:
@@ -1425,7 +1429,10 @@ uae_u8 *save_fpu (int *len)
 	default:
 	return 0;
     }
-    dstbak = dst = malloc(4+4+8*10+4+4+4);
+    if (dstptr)
+	dstbak = dst = dstptr;
+    else
+        dstbak = dst = malloc(4+4+8*10+4+4+4);
     save_u32 (model);
     save_u32 (0);
     for (i = 0; i < 8; i++) {

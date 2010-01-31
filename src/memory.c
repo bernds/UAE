@@ -1095,43 +1095,38 @@ static int load_kickstart (void)
 
     strcpy (tmprom, currprefs.romfile);
     strcpy (tmpkey, currprefs.keyfile);
-    if (f == NULL) 
-    {
-#ifndef SINGLEFILE
-	gui_message("No Kickstart ROM found with name %s, trying default locations...\n", currprefs.romfile );
-#endif
-        if( strcmp( currprefs.romfile, "kick.rom" ) )
-        {
-            strcpy( currprefs.romfile, "kick.rom" );
-            f = zfile_fopen( currprefs.romfile, "rb" );
-            if( f == NULL )
-                goto ami4ever; /* Yuck */
-        }
-        else
-        {
-ami4ever:
-            strcpy( currprefs.romfile, "..\\shared\\rom\\kick.rom" );
-            f = zfile_fopen( currprefs.romfile, "rb" );
-        }
-        if( f == NULL ) /* still no luck */
-        {
-#if defined(AMIGA)||defined(__POS__)
-#define USE_UAE_ERSATZ "USE_UAE_ERSATZ"
-	        if( !getenv(USE_UAE_ERSATZ)) 
-            {
-	            write_log ("Using current ROM. (create ENV:%s to "
-		        "use uae's ROM replacement)\n",USE_UAE_ERSATZ);
-	            memcpy(kickmemory,(char*)0x1000000-kickmem_size,kickmem_size);
-		    kickstart_checksum (kickmemory, kickmem_size);
-	            goto chk_sum;
-	        }
-#endif
-	    goto err;
+    if (f == NULL) {
+	strcpy (currprefs.romfile, "roms/kick.rom");
+	f = zfile_fopen (currprefs.romfile, "rb");
+	if (f == NULL) {
+	    strcpy( currprefs.romfile, "kick.rom" );
+	    f = zfile_fopen( currprefs.romfile, "rb" );
+	    if (f == NULL) {
+		strcpy( currprefs.romfile, "..\\shared\\rom\\kick.rom" );
+		f = zfile_fopen( currprefs.romfile, "rb" );
+	    }
         }
     }
-
-    if (!read_kickstart (f, kickmemory, kickmem_size, 1, &cloanto_rom))
+    if( f == NULL ) { /* still no luck */
+#if defined(AMIGA)||defined(__POS__)
+#define USE_UAE_ERSATZ "USE_UAE_ERSATZ"
+	if( !getenv(USE_UAE_ERSATZ)) 
+        {
+	    write_log ("Using current ROM. (create ENV:%s to "
+		"use uae's ROM replacement)\n",USE_UAE_ERSATZ);
+	    memcpy(kickmemory,(char*)0x1000000-kickmem_size,kickmem_size);
+	    kickstart_checksum (kickmemory, kickmem_size);
+	    goto chk_sum;
+	}
+#else
 	goto err;
+#endif
+    }
+
+    if (f != NULL) {
+	if (!read_kickstart (f, kickmemory, kickmem_size, 1, &cloanto_rom))
+	    goto err;
+    }
 
 #if defined(AMIGA)
     chk_sum:
@@ -1413,7 +1408,7 @@ void map_overlay (int chip)
 	map_banks (cb, 0, i, allocated_chipmem);
     else
 	map_banks (&kickmem_bank, 0, i, 0x80000);
-    if (savestate_state != STATE_RESTORE)
+    if (savestate_state != STATE_RESTORE && savestate_state != STATE_REWIND)
         m68k_setpc(m68k_getpc());
 }
 
@@ -1688,7 +1683,7 @@ uae_u8 *restore_rom (uae_u8 *src)
     return src;
 }
 
-uae_u8 *save_rom (int first, int *len)
+uae_u8 *save_rom (int first, int *len, uae_u8 *dstptr)
 {
     static int count;
     uae_u8 *dst, *dstbak;
@@ -1723,7 +1718,10 @@ uae_u8 *save_rom (int first, int *len)
 	if (mem_size)
 	    break;
     }
-    dstbak = dst = malloc (4 + 4 + 4 + 4 + 4 + mem_size);
+    if (dstptr)
+	dstbak = dst = dstptr;
+    else
+        dstbak = dst = malloc (4 + 4 + 4 + 4 + 4 + mem_size);
     save_u32 (mem_start);
     save_u32 (mem_size);
     save_u32 (mem_type);

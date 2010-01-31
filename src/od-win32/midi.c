@@ -75,7 +75,7 @@ static long outbufferlength[ MIDI_BUFFERS ] = { 0,0 };
 static int outbufferselect = 0;
 static int out_allocated = 0;
 static volatile exitin = 0;
-
+static CRITICAL_SECTION cs_proc;
 /*
  * FUNCTION:   getmidiouterr
  *
@@ -505,19 +505,28 @@ static long midi_inptr = 0,midi_inlast = 0;
 
 static void  add1byte(char w) //put 1 Byte to Midibuffer
 {
-	if(midi_inlast >= BUFFLEN - 10)return;
+	if(midi_inlast >= BUFFLEN - 10) {
+	    TRACE(("add1byte buffer full (%02.2X)\n", w));
+	    return;
+	}
 	midibuf[midi_inlast++] = w;
 }
 static void  add2byte(long w) //put 2 Byte to Midibuffer
 {
-	if(midi_inlast >= BUFFLEN - 10)return;
+	if(midi_inlast >= BUFFLEN - 10) {
+	    TRACE(("add2byte buffer full (%04.4X)\n", w));
+	    return;
+	}
 	midibuf[midi_inlast++] = (uae_u8)w;
 	w = w>>8;
 	midibuf[midi_inlast++] = (uae_u8)w;
 }
 static void  add3byte(long w) //put 3 Byte to Midibuffer
 {
-	if(midi_inlast >= BUFFLEN - 10)return;
+	if(midi_inlast >= BUFFLEN - 10) {
+	    TRACE(("add3byte buffer full (%08.8X)\n", w));
+	    return;
+	}
 	midibuf[midi_inlast++] = (uae_u8)w;
 	w = w>>8;
 	midibuf[midi_inlast++] = (uae_u8)w;
@@ -535,7 +544,9 @@ int ismidibyte(void)
 LONG getmidibyte(void) //return midibyte or -1 if none
 {   
     int i;
+    LONG rv;
 
+    EnterCriticalSection (&cs_proc);
     if (overflow == 1)
     {
 	char szMessage[ MAX_PATH ];
@@ -543,6 +554,7 @@ LONG getmidibyte(void) //return midibyte or -1 if none
 	gui_message( szMessage );
 	overflow = 0;
     }
+    TRACE(("getmidibyte(%02.2X)\n", midibuf[midi_inptr]));
     if (midibuf[midi_inptr] >= 0xf0) // only check for free buffers if status sysex 
     {
     	for (i = 0;i < MIDI_INBUFFERS;i++)
@@ -555,51 +567,56 @@ LONG getmidibyte(void) //return midibyte or -1 if none
 		  midiin[i].dwUser = 0;
 		  midiin[i].dwFlags = 0;
 		  midiInPrepareHeader(inHandle,&midiin[i], sizeof(MIDIHDR));*/
+		  LeaveCriticalSection(&cs_proc);
 		  midiInAddBuffer(inHandle,&midiin[i],sizeof(MIDIHDR));
+		  EnterCriticalSection(&cs_proc);
 	    }	
 	}
     }
     if (midi_inptr < midi_inlast) 
     {
-	return midibuf[midi_inptr++];
+	rv = midibuf[midi_inptr++];
     }	
     else
     {
 	midi_inptr = midi_inlast = 0;
-	return -1;
+	rv = -1;
     }
+    LeaveCriticalSection(&cs_proc);
+    return rv;
 }
 
 static void CALLBACK MidiInProc(HMIDIIN hMidiIn,UINT wMsg,DWORD dwInstance,DWORD dwParam1,DWORD dwParam2)    
 {
+	EnterCriticalSection (&cs_proc);
 	if(wMsg == MIM_ERROR)
 	{
-		long result;
-		result = 1;
-		write_log("Data Lost\n");
-		write_log("Data Lost\n");
+		TRACE(("MIDI Data Lost\n"));
 	}
 	if(wMsg == MIM_LONGDATA)
 	{
 		LPMIDIHDR midiin = (LPMIDIHDR)dwParam1;
 		static long synum;
-		if (exitin == 1)return;    //for safeness midi want close
+		TRACE(("MIM_LONGDATA %d\n", midiin->dwBytesRecorded));
+		if (exitin == 1) goto end;    //for safeness midi want close
 		if ((midi_inlast+midiin->dwBytesRecorded) >= (BUFFLEN-6))
 		{
 			overflow = 1;
+			TRACE(("MIDI overflow1\n"));
  			//for safeness if buffer too full (should not occur)
-			return;
+			goto end;
 		}
 
 		if (midiin->dwBufferLength == midiin->dwBytesRecorded)
 		{
 		//for safeness if buffer too full (should not occur)
 			overflow = 1;
-			return;
+			TRACE(("MIDI overflow2\n"));
+			goto end;
 		}
 
-	memcpy(&midibuf[midi_inlast],midiin->lpData,midiin->dwBytesRecorded);
-	midi_inlast = midi_inlast+midiin->dwBytesRecorded;
+		memcpy(&midibuf[midi_inlast], midiin->lpData, midiin->dwBytesRecorded);
+		midi_inlast = midi_inlast + midiin->dwBytesRecorded;
 
 
 	}
@@ -607,9 +624,10 @@ static void CALLBACK MidiInProc(HMIDIIN hMidiIn,UINT wMsg,DWORD dwInstance,DWORD
 	if(wMsg == MM_MIM_DATA)
 	{
 		BYTE state = (BYTE)dwParam1;
-		if(state == 254)return;
-		if(state<0xf0)state = state&0xf0;
- 		//else {add1byte(state);return;}
+		TRACE(("MM_MIM_DATA %08.8X\n", dwParam1));
+		if(state == 254) goto end;
+		if(state < 0xf0) state = state & 0xf0;
+ 		//else {add1byte(state); goto end;}
 		switch (state)
 		{	
 			case 0x80: //Note OFF
@@ -668,6 +686,8 @@ static void CALLBACK MidiInProc(HMIDIIN hMidiIn,UINT wMsg,DWORD dwInstance,DWORD
 
 		}
 	}
+end:
+	LeaveCriticalSection(&cs_proc);
   }
 /*
  * FUNCTION:   Midi_Open
@@ -696,9 +716,10 @@ int Midi_Open( void )
     }
     else
     {
+        InitializeCriticalSection(&cs_proc);
 	// We don't need input for output...
         if( ( currprefs.win32_midiindev >= 0 ) && 
-	    ( result = midiInOpen( &inHandle, currprefs.win32_midiindev, MidiInProc, 0, CALLBACK_FUNCTION|MIDI_IO_STATUS) ) )
+	    ( result = midiInOpen( &inHandle, currprefs.win32_midiindev, (DWORD_PTR)MidiInProc, 0, CALLBACK_FUNCTION|MIDI_IO_STATUS) ) )
         {
             write_log( "MIDI IN: error %s / %d while opening port %d\n", getmidiinerr(result), result, currprefs.win32_midiindev );
         }
@@ -745,6 +766,7 @@ int Midi_Open( void )
 		midi_in_ready = FALSE;
 	    }
 	    result = 0;
+	    DeleteCriticalSection(&cs_proc);
 	}
     }
     return result;
@@ -806,5 +828,6 @@ void Midi_Close( void )
 	    serper = 0x30;
 	}
 	write_log( "MIDI: closed.\n" );
+	DeleteCriticalSection(&cs_proc);
     }
 }

@@ -31,4 +31,3 @@ extern void DSKDAT (uae_u16);
 extern void DSKSYNC (int, uae_u16);
 extern void DSKPTL (uae_u16);
 extern void DSKPTH (uae_u16);
-

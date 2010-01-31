@@ -33,6 +33,7 @@ extern uae_u32 allocated_z3fastmem;
 extern uae_u32 allocated_a3000mem;
 
 extern uae_u32 wait_cpu_cycle_read (uaecptr addr, int mode);
+extern uae_u32 wait_cpu_cycle_read_cycles (uaecptr addr, int mode, int *cycles);
 extern void wait_cpu_cycle_write (uaecptr addr, int mode, uae_u32 v);
 
 #undef DIRECT_MEMFUNCS_SUCCESSFUL

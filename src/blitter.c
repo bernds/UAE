@@ -8,6 +8,7 @@
   */
 
 //#define BLITTER_DEBUG
+//#define BLITTER_SLOWDOWNDEBUG 4
 
 #include "sysconfig.h"
 #include "sysdeps.h"
@@ -37,6 +38,9 @@ static int blit_modadda, blit_modaddb, blit_modaddc, blit_modaddd;
 
 #ifdef BLITTER_DEBUG
 static int blitter_dontdo;
+#endif
+#ifdef BLITTER_SLOWDOWNDEBUG
+static int blitter_slowdowndebug;
 #endif
 
 struct bltinfo blt_info;
@@ -76,7 +80,7 @@ static uae_u8 blit_cycle_diagram[][10] =
     { 0, 3, 2,3,0 },		/* 6 */
     { 3, 4, 0,2,3,4, 2,3,0 },	/* 7 */
     { 0, 2, 1,0 },		/* 8 */
-    { 2, 2, 1,4, 1,0},		/* 9 */
+    { 2, 2, 1,4, 1,0 },		/* 9 */
     { 0, 2, 1,3 },		/* A */
     { 3, 3, 1,3,4, 1,3,0 },	/* B */
     { 2, 3, 0,1,2, 1,2 },	/* C */
@@ -380,7 +384,7 @@ STATIC_INLINE int blitter_write(void)
     if (bltcon0 & 0x200) {
 	if (!dmaen(DMA_BLITTER)) return 1;
 	chipmem_bank.wput(bltdpt, blt_info.bltddat);
-	bltdpt = bltcpt;
+	bltdpt = bltcpt; /* believe it or not but try Cardamon or Cardamom without this.. */
     }
     bltstate = BLT_next;
     return (bltcon0 & 0x200) != 0;
@@ -702,6 +706,13 @@ void decide_blitter (int hpos)
     if (dmaen (DMA_BLITTER)) {
 	while (blit_last_hpos < hpos) {
 	    int c = channel_state (blit_cyclecounter);
+#ifdef BLITTER_SLOWDOWNDEBUG
+	    blitter_slowdowndebug--;
+	    if (blitter_slowdowndebug < 0) {
+		cycle_line[blit_last_hpos] |= CYCLE_BLITTER;
+		blitter_slowdowndebug = BLITTER_SLOWDOWNDEBUG;
+	    }
+#endif
 	    for (;;) {
 	        if (c && (cycle_line[blit_last_hpos] || is_bitplane_dma (blit_last_hpos))) {
 		    blit_misscyclecounter++;
@@ -1019,7 +1030,7 @@ uae_u8 *restore_blitter (uae_u8 *src)
     return src;
 }
 
-uae_u8 *save_blitter (int *len)
+uae_u8 *save_blitter (int *len, uae_u8 *dstptr)
 {
     uae_u8 *dstbak,*dst;
 
@@ -1028,7 +1039,10 @@ uae_u8 *save_blitter (int *len)
 	 /* blitter is active just now but we don't have blitter state support yet */
 	blitter_force_finish ();
     }
-    dstbak = dst = malloc (16);
+    if (dstptr)
+	dstbak = dst = dstptr;
+    else
+        dstbak = dst = malloc (16);
     save_u32((bltstate != BLT_done) ? 0 : 1);
     *len = dst - dstbak;
     return dstbak;

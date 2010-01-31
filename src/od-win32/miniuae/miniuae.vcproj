@@ -184,6 +184,9 @@
 				RelativePath="..\..\drawing.c">
 			</File>
 			<File
+				RelativePath="..\..\driveclick.c">
+			</File>
+			<File
 				RelativePath="..\..\fdi2raw.c">
 			</File>
 			<File

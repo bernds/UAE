@@ -121,7 +121,7 @@ static uae_u32 emulib_ExecuteNativeCode2 (void)
     uae_u32 a4 = m68k_areg( regs, 4 );
     uae_u32 a5 = m68k_areg( regs, 5 );
     uae_u32 a7 = m68k_areg( regs, 7 );
-    uae_u32 regs_ = &regs;
+    uae_u32 regs_ = (uae_u32)&regs;
     CREATE_NATIVE_FUNC_PTR2;
     uaevar.z3offset = (uae_u32)(get_real_address (0x10000000) - 0x10000000);
     uaevar.amigawnd = hAmigaWnd;

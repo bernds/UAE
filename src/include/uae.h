@@ -24,6 +24,7 @@ extern void reset_all_systems (void);
 extern int quit_program;
 
 extern char warning_buffer[256];
+extern char *start_path;
 
 /* This structure is used to define menus. The val field can hold key
  * shortcuts, or one of these special codes:

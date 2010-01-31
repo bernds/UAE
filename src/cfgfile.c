@@ -138,7 +138,7 @@ static const char *filtermode2[] = { "0x", "1x", "2x", "3x", "4x", 0 };
 static const char *obsolete[] = {
     "accuracy","gfx_opengl","gfx_32bit_blits","32bit_blits",
     "gfx_immediate_blits","gfx_ntsc","win32",
-    0 };
+    "sound_pri_cutoff", "sound_pri_time", 0 };
 
 #define UNEXPANDED "$(FILE_PATH)"
 
@@ -224,6 +224,9 @@ void save_options (FILE *f, struct uae_prefs *p)
 	cfgfile_write (f, "floppy%d=%s\n", i, str);
 	free (str);
 	cfgfile_write (f, "floppy%dtype=%d\n", i, p->dfxtype[i]);
+	cfgfile_write (f, "floppy%dsound=%d\n", i, p->dfxclick[i]);
+	if (p->dfxclick[i] < 0 && p->dfxclickexternal[i][0])
+	    cfgfile_write (f, "floppy%dsoundext=%s\n", i, p->dfxclickexternal[i]);
 	if (p->dfxtype[i] < 0 && p->nr_floppies > i)
 	    p->nr_floppies = i;
     }
@@ -242,6 +245,7 @@ void save_options (FILE *f, struct uae_prefs *p)
     cfgfile_write (f, "sound_interpol=%s\n", interpolmode[p->sound_interpol]);
     cfgfile_write (f, "sound_adjust=%d\n", p->sound_adjust);
     cfgfile_write (f, "sound_filter=%s\n", soundfiltermode[p->sound_filter]);
+    cfgfile_write (f, "sound_volume=%d\n", p->sound_volume);
 
     cfgfile_write (f, "comp_trustbyte=%s\n", compmode[p->comptrustbyte]);
     cfgfile_write (f, "comp_trustword=%s\n", compmode[p->comptrustword]);
@@ -271,6 +275,7 @@ void save_options (FILE *f, struct uae_prefs *p)
     cfgfile_write (f, "synchronize_clock=%s\n", p->tod_hack ? "yes" : "no");
     cfgfile_write (f, "maprom=0x%x\n", p->maprom);
 
+    cfgfile_write (f, "gfx_display=%d\n", p->gfx_display);
     cfgfile_write (f, "gfx_framerate=%d\n", p->gfx_framerate);
     cfgfile_write (f, "gfx_width=%d\n", p->gfx_width_win); /* compatibility with old versions */
     cfgfile_write (f, "gfx_height=%d\n", p->gfx_height_win); /* compatibility with old versions */
@@ -368,6 +373,10 @@ void save_options (FILE *f, struct uae_prefs *p)
 				  : p->keyboard_lang == KBD_LANG_FR ? "fr"
 				  : p->keyboard_lang == KBD_LANG_IT ? "it"
 				  : "FOO"));
+
+    cfgfile_write (f, "state_replay=%s\n", p->statecapture ? "yes" : "no");
+    cfgfile_write (f, "state_replay_rate=%d\n", p->statecapturerate);
+    cfgfile_write (f, "state_replay_buffer=%d\n", p->statecapturebuffersize);
 
 #ifdef FILESYS
     write_filesys_config (currprefs.mountinfo, UNEXPANDED, p->path_hardfile, f);
@@ -530,6 +539,7 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	return 0;
     }
     if (cfgfile_yesno (option, value, "use_debugger", &p->start_debugger)
+	|| cfgfile_yesno (option, value, "state_replay", &p->statecapture)
 	|| cfgfile_yesno (option, value, "synchronize_clock", &p->tod_hack)
 	|| cfgfile_yesno (option, value, "bsdsocket_emu", &p->socket_emu)
 	|| cfgfile_yesno (option, value, "immediate_blits", &p->immediate_blits)
@@ -567,10 +577,14 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	|| cfgfile_yesno (option, value, "filesys_no_fsdb", &p->filesys_no_uaefsdb))
 	return 1;
     if (cfgfile_intval (option, value, "sound_max_buff", &p->sound_maxbsiz, 1)
+	|| cfgfile_intval (option, value, "state_replay_rate", &p->statecapturerate, 1)
+	|| cfgfile_intval (option, value, "state_replay_buffer", &p->statecapturebuffersize, 1)
 	|| cfgfile_intval (option, value, "sound_frequency", &p->sound_freq, 1)
 	|| cfgfile_intval (option, value, "sound_adjust", &p->sound_adjust, 1)
+	|| cfgfile_intval (option, value, "sound_volume", &p->sound_volume, 1)
 	|| cfgfile_intval (option, value, "cachesize", &p->cachesize, 1)
 	|| cfgfile_intval (option, value, "override_dga_address", &p->override_dga_address, 1)
+	|| cfgfile_intval (option, value, "gfx_display", &p->gfx_display, 1)
 	|| cfgfile_intval (option, value, "gfx_framerate", &p->gfx_framerate, 1)
 	|| cfgfile_intval (option, value, "gfx_width_windowed", &p->gfx_width_win, 1)
 	|| cfgfile_intval (option, value, "gfx_height_windowed", &p->gfx_height_win, 1)
@@ -597,6 +611,10 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	|| cfgfile_intval (option, value, "floppy1type", &p->dfxtype[1], 1)
 	|| cfgfile_intval (option, value, "floppy2type", &p->dfxtype[2], 1)
 	|| cfgfile_intval (option, value, "floppy3type", &p->dfxtype[3], 1)
+	|| cfgfile_intval (option, value, "floppy0sound", &p->dfxclick[0], 1)
+	|| cfgfile_intval (option, value, "floppy1sound", &p->dfxclick[1], 1)
+	|| cfgfile_intval (option, value, "floppy2sound", &p->dfxclick[2], 1)
+	|| cfgfile_intval (option, value, "floppy3sound", &p->dfxclick[3], 1)
 	|| cfgfile_intval (option, value, "maprom", &p->maprom, 1)
 	|| cfgfile_intval (option, value, "catweasel_io", &p->catweasel_io, 1))
 	return 1;
@@ -636,6 +654,10 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value)
 	|| cfgfile_string (option, value, "flash_file", p->flashfile, 256)
 	|| cfgfile_string (option, value, "cart_file", p->cartfile, 256)
 	|| cfgfile_string (option, value, "pci_devices", p->pci_devices, 256)
+	|| cfgfile_string (option, value, "floppy0soundext", p->dfxclickexternal[0], 256)
+	|| cfgfile_string (option, value, "floppy1soundext", p->dfxclickexternal[1], 256)
+	|| cfgfile_string (option, value, "floppy2soundext", p->dfxclickexternal[2], 256)
+	|| cfgfile_string (option, value, "floppy3soundext", p->dfxclickexternal[3], 256)
 	|| cfgfile_string (option, value, "config_description", p->description, 256))
 	return 1;
 

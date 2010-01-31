@@ -88,5 +88,7 @@ struct threadpriorities {
     int value;
 };
 extern struct threadpriorities priorities[];
+extern int dinput_wmkey (uae_u32 key);
+extern int dinput_winmouse (void);
 
 #endif
