@@ -4,17 +4,13 @@
   * Support for Linux/USS sound
   *
   * Copyright 1997 Bernd Schmidt
-  * Copyright 2003 Richard Drummond
+  * Copyright 2003-2007 Richard Drummond
   */
 
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
-#include "memory.h"
-#include "events.h"
-#include "custom.h"
 #include "gensound.h"
 #include "sounddep/sound.h"
 
@@ -35,7 +31,6 @@ static unsigned long formats;
 uae_u16 sndbuffer[44100];
 uae_u16 *sndbufpt;
 int sndbufsize;
-static int obtainedfreq;
 
 static int exact_log2 (int v)
 {
@@ -43,27 +38,6 @@ static int exact_log2 (int v)
     while ((v >>= 1) != 0)
 	l++;
     return l;
-}
-
-void update_sound (int freq)
-{
-    int scaled_sample_evtime_orig;
-    static int lastfreq =0;
-
-    if (freq < 0)
-        freq = lastfreq;
-    lastfreq = freq;
-    if (have_sound) {
-	if (currprefs.gfx_vsync && currprefs.gfx_afullscreen) {
-	    if (currprefs.ntscmode)
-		scaled_sample_evtime_orig = (unsigned long)(MAXHPOS_NTSC * MAXVPOS_NTSC * freq * CYCLE_UNIT + obtainedfreq - 1) / obtainedfreq;
-	    else
-		scaled_sample_evtime_orig = (unsigned long)(MAXHPOS_PAL * MAXVPOS_PAL * freq * CYCLE_UNIT + obtainedfreq - 1) / obtainedfreq;
-	} else {
-	    scaled_sample_evtime_orig = (unsigned long)(312.0 * 50 * CYCLE_UNIT / (obtainedfreq  / 227.0));
-	}
-	scaled_sample_evtime = scaled_sample_evtime_orig;
-    }
 }
 
 void close_sound (void)
@@ -105,6 +79,7 @@ int init_sound (void)
     int tmp;
     int rate;
     int dspbits;
+    int bufsize;
 
     sound_fd = open ("/dev/dsp", O_WRONLY);
     have_sound = !(sound_fd < 0);
@@ -121,15 +96,6 @@ int init_sound (void)
 	return 0;
     }
 
-    if (currprefs.sound_maxbsiz < 128 || currprefs.sound_maxbsiz > 16384) {
-	fprintf (stderr, "Sound buffer size %d out of range.\n", currprefs.sound_maxbsiz);
-	currprefs.sound_maxbsiz = 8192;
-    }
-
-    tmp = 0x00040000 + exact_log2 (currprefs.sound_maxbsiz);
-    ioctl (sound_fd, SNDCTL_DSP_SETFRAGMENT, &tmp);
-    ioctl (sound_fd, SNDCTL_DSP_GETBLKSIZE, &sndbufsize);
-
     dspbits = currprefs.sound_bits;
     ioctl (sound_fd, SNDCTL_DSP_SAMPLESIZE, &dspbits);
     ioctl (sound_fd, SOUND_PCM_READ_BITS, &dspbits);
@@ -138,7 +104,7 @@ int init_sound (void)
 	return 0;
     }
 
-    tmp = currprefs.stereo;
+    tmp = currprefs.sound_stereo;
     ioctl (sound_fd, SNDCTL_DSP_STEREO, &tmp);
 
     rate = currprefs.sound_freq;
@@ -150,7 +116,12 @@ int init_sound (void)
 	return 0;
     }
 
-    update_sound(vblank_hz );
+    bufsize = rate * currprefs.sound_latency * (dspbits / 8) * (currprefs.sound_stereo ? 2 : 1) / 1000;
+
+    tmp = 0x00040000 + exact_log2 (bufsize);
+    ioctl (sound_fd, SNDCTL_DSP_SETFRAGMENT, &tmp);
+    ioctl (sound_fd, SNDCTL_DSP_GETBLKSIZE, &sndbufsize);
+
     obtainedfreq = currprefs.sound_freq;
 
     if (dspbits == 16) {
@@ -158,25 +129,49 @@ int init_sound (void)
 	if (!(formats & AFMT_S16_NE))
 	    return 0;
 	init_sound_table16 ();
-	sample_handler = currprefs.stereo ? sample16s_handler : sample16_handler;
+	sample_handler = currprefs.sound_stereo ? sample16s_handler : sample16_handler;
     } else {
 	if (!(formats & AFMT_U8))
 	    return 0;
 	init_sound_table8 ();
-	sample_handler = currprefs.stereo ? sample8s_handler : sample8_handler;
+	sample_handler = currprefs.sound_stereo ? sample8s_handler : sample8_handler;
     }
     sound_available = 1;
-    printf ("Sound driver found and configured for %d bits at %d Hz, buffer is %d bytes\n",
-	    dspbits, rate, sndbufsize);
+    printf ("Sound driver found and configured for %d bits at %d Hz, buffer is %d bytes (%d ms).\n",
+	    dspbits, rate, sndbufsize, sndbufsize * 1000 / (rate * dspbits / 8 * (currprefs.sound_stereo ? 2 : 1)));
     sndbufpt = sndbuffer;
-
-#ifdef FRAME_RATE_HACK
-    vsynctime = vsynctime * 9 / 10;
-#endif
 
     return 1;
 }
 
 void reset_sound (void)
 {
+}
+
+void pause_sound (void)
+{
+}
+
+void resume_sound (void)
+{
+}
+
+void sound_volume (int dir)
+{
+}
+
+/*
+ * Handle audio specific cfgfile options
+ */
+void audio_default_options (struct uae_prefs *p)
+{
+}
+
+void audio_save_options (FILE *f, const struct uae_prefs *p)
+{
+}
+
+int audio_parse_option (struct uae_prefs *p, const char *option, const char *value)
+{
+    return 0;
 }

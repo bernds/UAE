@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
 	if (!sp)
 	    strcat(msg, " --");
 
-        sprintf(tmp, " [%d]", tracklength);
+	sprintf(tmp, " [%d]", tracklength);
 	strcat(msg, tmp);
 
 	if (strcmp(prevmsg, msg)) {

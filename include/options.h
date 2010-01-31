@@ -9,7 +9,7 @@
 
 #define UAEMAJOR 1
 #define UAEMINOR 4
-#define UAESUBREV 3
+#define UAESUBREV 4
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -67,8 +67,8 @@ struct uaedev_config_info {
     int controller;
 };
 
-typedef enum { CP_GENERIC = 1, CP_CDTV, CP_CD32, CP_A500, CP_A500P, CP_A600, CP_A1000,
-    CP_A1200, CP_A2000, CP_A3000, CP_A3000T, CP_A4000, CP_A4000T };
+enum { CP_GENERIC = 1, CP_CDTV, CP_CD32, CP_A500, CP_A500P, CP_A600, CP_A1000,
+       CP_A1200, CP_A2000, CP_A3000, CP_A3000T, CP_A4000, CP_A4000T };
 
 struct uae_prefs {
 
@@ -103,7 +103,7 @@ struct uae_prefs {
     int produce_sound;
     int sound_stereo;
     int sound_stereo_separation;
-    int sound_mixed_stereo;
+    int sound_mixed_stereo_delay;
     int sound_bits;
     int sound_freq;
     int sound_maxbsiz;
@@ -232,7 +232,6 @@ struct uae_prefs {
     char path_rom[256];
 
     int m68k_speed;
-    int cpu_level;
     int cpu_model;
     int cpu060_revision;
     int fpu_model;
@@ -289,7 +288,9 @@ struct uae_prefs {
     int win32_no_overlay; /* If this is set, we won't try and use any RGB overlays */
     int win32_borderless;
     int win32_ctrl_F11_is_quit;
+    int win32_automount_removable;
     int win32_automount_drives;
+    int win32_automount_cddrives;
     int win32_automount_netdrives;
     int win32_midioutdev;
     int win32_midiindev;
@@ -326,7 +327,7 @@ extern void save_options (struct zfile *, struct uae_prefs *, int);
 extern void cfgfile_write (struct zfile *, char *format,...);
 extern void cfgfile_target_write (struct zfile *, char *format,...);
 extern void cfgfile_backup (const char *path);
-extern int add_filesys_config (struct uae_prefs *p, int index,
+extern struct uaedev_config_info *add_filesys_config (struct uae_prefs *p, int index,
 			char *devname, char *volname, char *rootdir, int readonly,
 			int secspertrack, int surfaces, int reserved,
 			int blocksize, int bootpri, char *filesysdir, int hdc, int flags);
@@ -336,10 +337,10 @@ extern void discard_prefs (struct uae_prefs *, int);
 
 int parse_cmdline_option (struct uae_prefs *, char, char *);
 
-extern int cfgfile_yesno (char *option, char *value, char *name, int *location);
-extern int cfgfile_intval (char *option, char *value, char *name, int *location, int scale);
-extern int cfgfile_strval (char *option, char *value, char *name, int *location, const char *table[], int more);
-extern int cfgfile_string (char *option, char *value, char *name, char *location, int maxsz);
+extern int cfgfile_yesno (const char *option, const char *value, const char *name, int *location);
+extern int cfgfile_intval (const char *option, const char *value, const char *name, int *location, int scale);
+extern int cfgfile_strval (const char *option, const char *value, const char *name, int *location, const char *table[], int more);
+extern int cfgfile_string (const char *option, const char *value, const char *name, char *location, int maxsz);
 extern char *cfgfile_subst_path (const char *path, const char *subst, const char *file);
 
 extern int target_parse_option (struct uae_prefs *, char *option, char *value);
@@ -349,7 +350,7 @@ extern int target_cfgfile_load (struct uae_prefs *, char *filename, int type, in
 extern void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type);
 
 extern int cfgfile_load (struct uae_prefs *p, const char *filename, int *type, int ignorelink);
-extern int cfgfile_save (struct uae_prefs *, const char *filename, int);
+extern int cfgfile_save (struct uae_prefs *p, const char *filename, int);
 extern void cfgfile_parse_line (struct uae_prefs *p, char *, int);
 extern int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value, int);
 extern int cfgfile_get_description (const char *filename, char *description, char *hostlink, char *hardwarelink, int *type);
@@ -358,8 +359,8 @@ extern uae_u32 cfgfile_uaelib (int mode, uae_u32 name, uae_u32 dst, uae_u32 maxl
 extern uae_u32 cfgfile_uaelib_modify (uae_u32 mode, uae_u32 parms, uae_u32 size, uae_u32 out, uae_u32 outsize);
 extern uae_u32 cfgfile_modify (uae_u32 index, char *parms, uae_u32 size, char *out, uae_u32 outsize);
 extern void cfgfile_addcfgparam (char *);
-extern int build_in_prefs (struct uae_prefs *p, int model, int config, int compa, int romcheck);
-extern int build_in_chipset_prefs (struct uae_prefs *p);
+extern int built_in_prefs (struct uae_prefs *p, int model, int config, int compa, int romcheck);
+extern int built_in_chipset_prefs (struct uae_prefs *p);
 extern int cmdlineparser (char *s, char *outp[], int max);
 extern int cfgfile_configuration_change(int);
 extern void fixup_prefs_dimensions (struct uae_prefs *prefs);

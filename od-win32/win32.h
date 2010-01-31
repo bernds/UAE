@@ -1,8 +1,8 @@
-/* 
+/*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Win32-specific header file
-  * 
+  *
   * (c) 1997-1999 Mathias Ortmann
   * (c) 1998-2001 Brian King
   */
@@ -17,7 +17,7 @@
 
 #define WINUAEBETA 0
 #define WINUAEPUBLICBETA 0
-#define WINUAEDATE MAKEBD(2007, 7, 29)
+#define WINUAEDATE MAKEBD(2007, 9, 22)
 #define WINUAEEXTRA ""
 #define WINUAEREV ""
 
@@ -107,6 +107,9 @@ extern int dinput_wmkey (uae_u32 key);
 extern int dinput_winmouse (void);
 extern int dinput_winmousemode (void);
 
+void addnotifications (HWND hwnd, int remove);
+int win32_hardfile_media_change (void);
+extern int CheckRM(char *DriveName);
 void systray (HWND hwnd, int remove);
 void systraymenu (HWND hwnd);
 void exit_gui (int);

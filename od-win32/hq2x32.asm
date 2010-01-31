@@ -1,4 +1,5 @@
 ;hq2x filter
+;32bpp output
 ;----------------------------------------------------------
 ;Copyright (C) 2003 MaxSt ( maxst@hiend3d.com )
 ;
@@ -415,8 +416,7 @@ inbuffer     equ 8
 outbuffer    equ 12
 Xres         equ 16
 Yres         equ 20
-dstpitch     equ 24
-srcpitch     equ 28
+pitch        equ 24
 
 _hq2x_32:
     push ebp
@@ -652,7 +652,7 @@ _hq2x_32:
     mov  edx,[ebx+edx*4]
     mov  [c9],edx
 .switch
-    mov  ebx,[ebp+dstpitch]
+    mov  ebx,[ebp+pitch]
     jmp  [FuncTable+ecx*4]
 
 ..@flag0
@@ -1716,7 +1716,7 @@ _hq2x_32:
 
 
 ..@cross0
-    mov     ebx,[ebp+dstpitch]
+    mov     ebx,[ebp+pitch]
     mov     [edi],eax
     mov     [edi+4],eax
     mov     [edi+ebx],eax
@@ -1729,7 +1729,7 @@ _hq2x_32:
     add     edx,[ebx+ecx*4]
     sub     edx,eax
     shr     edx,2
-    mov     ebx,[ebp+dstpitch]
+    mov     ebx,[ebp+pitch]
     mov     [edi],edx
     mov     [edi+4],edx
     mov     [edi+ebx],eax
@@ -1742,7 +1742,7 @@ _hq2x_32:
     add     edx,[ebx+ecx*4]
     sub     edx,eax
     shr     edx,2
-    mov     ebx,[ebp+dstpitch]
+    mov     ebx,[ebp+pitch]
     mov     [edi],edx
     mov     [edi+4],eax
     mov     [edi+ebx],edx
@@ -1755,7 +1755,7 @@ _hq2x_32:
     add     edx,[ebx+ecx*4]
     sub     edx,eax
     shr     edx,2
-    mov     ebx,[ebp+dstpitch]
+    mov     ebx,[ebp+pitch]
     mov     [edi],eax
     mov     [edi+4],edx
     mov     [edi+ebx],eax
@@ -1768,7 +1768,7 @@ _hq2x_32:
     add     edx,[ebx+ecx*4]
     sub     edx,eax
     shr     edx,2
-    mov     ebx,[ebp+dstpitch]
+    mov     ebx,[ebp+pitch]
     mov     [edi],eax
     mov     [edi+4],eax
     mov     [edi+ebx],edx
@@ -1787,7 +1787,7 @@ _hq2x_32:
     mov     edx,[w8]
     mov     ecx,[ebx+edx*4]
     mov     [c8],ecx
-    mov     ebx,[ebp+dstpitch]
+    mov     ebx,[ebp+pitch]
     jmp     ..@flag0
 
 .loopx_end
@@ -1865,9 +1865,6 @@ _hq2x_32:
     jmp     .flags
 .nexty
     add     edi,ebx
-    add     esi,[ebp+srcpitch]
-    sub     esi,[ebp+Xres]
-    sub     esi,[ebp+Xres]
     dec     dword[linesleft]
     jz      .fin
     mov     ebx,[ebp+Xres]

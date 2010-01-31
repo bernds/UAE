@@ -115,7 +115,7 @@ extern char help_file[MAX_DPATH];
 
 extern int mouseactive;
 
-static char config_filename[MAX_DPATH] = "";
+char config_filename[MAX_DPATH] = "";
 
 #define Error(x) MessageBox(NULL, (x), "WinUAE Error", MB_OK)
 
@@ -267,7 +267,7 @@ static int drag_start (HWND hWnd, HWND hListView, LPARAM lParam)
     bFirst = TRUE;
     iPos = ListView_GetNextItem(hListView, -1, LVNI_SELECTED);
     while (iPos != -1) {
-	if (bFirst) {
+        if (bFirst) {
 	    // For the first selected item,
 	    // we simply create a single-line drag image
 	    hDragImageList = ListView_CreateDragImage(hListView, iPos, &p);
@@ -279,8 +279,7 @@ static int drag_start (HWND hWnd, HWND hListView, LPARAM lParam)
 	    // we create a single-line drag image, then
 	    // append it to the bottom of the complete drag image
 	    hOneImageList = ListView_CreateDragImage(hListView, iPos, &p);
-	    hTempImageList = ImageList_Merge(hDragImageList, 
-			     0, hOneImageList, 0, 0, iHeight);
+	    hTempImageList = ImageList_Merge(hDragImageList, 0, hOneImageList, 0, 0, iHeight);
 	    ImageList_Destroy(hDragImageList);
 	    ImageList_Destroy(hOneImageList);
 	    hDragImageList = hTempImageList;
@@ -296,7 +295,7 @@ static int drag_start (HWND hWnd, HWND hListView, LPARAM lParam)
     pt = ((NM_LISTVIEW*) ((LPNMHDR)lParam))->ptAction;
     ClientToScreen(hListView, &pt);
 
-    ImageList_DragEnter(GetDesktopWindow(), pt.x, pt.y);
+    ImageList_DragEnter(NULL, pt.x, pt.y);
 
     bDragging = TRUE;
 
@@ -359,7 +358,7 @@ static int drag_end (HWND hWnd, HWND hListView, LPARAM lParam, int **draggeditem
 	(*draggeditems)[cnt++] = iPos;
 	iPos = ListView_GetNextItem(hListView, iPos, LVNI_SELECTED);
     }
-    (*draggeditems)[cnt] = -1;    
+    (*draggeditems)[cnt] = -1;
     return lvhti.iItem;
 }
 static int drag_move (HWND hWnd, LPARAM lParam)
@@ -440,8 +439,8 @@ static struct romdata *scan_single_rom_2 (struct zfile *f)
     if (!cl)
 	rd = getromdatabydata (rombuf, size);
     if (!rd) {
-	write_log ("Unknown: Size=%d, Name='%s'\nCRC32=%08X SHA1=%s\n",
-	   size, zfile_getname(f), get_crc32(rombuf, size), get_sha1_txt(rombuf, size));
+	;//write_log ("Unknown: Size=%d, Name='%s'\nCRC32=%08X SHA1=%s\n",
+	 //  size, zfile_getname(f), get_crc32(rombuf, size), get_sha1_txt(rombuf, size));
     }
     free (rombuf);
     return rd;
@@ -456,7 +455,7 @@ static struct romdata *scan_single_rom (char *path)
     strcpy (tmp, path);
     rd = scan_arcadia_rom (tmp, 0);
     if (rd)
-        return rd;
+	return rd;
     rd = getromdatabypath(path);
     if (rd && rd->crc32 == 0xffffffff)
 	return rd;
@@ -482,26 +481,36 @@ static int addrom (HKEY fkey, struct romdata *rd, char *name)
 	    sprintf(tmp2, ":ROM%03d", rd->id);
     }
     if (RegSetValueEx (fkey, tmp1, 0, REG_SZ, (CONST BYTE *)tmp2, strlen (tmp2) + 1) != ERROR_SUCCESS)
-        return 0;
+	return 0;
     return 1;
 }
 
-static int scan_rom_2 (struct zfile *f, struct romscandata *rsd)
+static int isromext(char *path)
 {
-    int i;
-    char *path = zfile_getname(f);
     char *ext = strrchr (path, '.');
-    struct romdata *rd;
+    int i;
 
     if (!ext)
 	return 0;
     ext++;
+
+    if (!stricmp (ext, "rom") ||  !stricmp (ext, "adf") || !stricmp (ext, "key")
+	|| !stricmp (ext, "a500") || !stricmp (ext, "a1200") || !stricmp (ext, "a4000"))
+	    return 1;
     for (i = 0; uae_archive_extensions[i]; i++) {
-	if (!stricmp (ext, uae_archive_extensions[i])) {
-	    //zfile_zopen (path, scan_rom_2, rsd);
-	    return 0;
-	}
+	if (!stricmp (ext, uae_archive_extensions[i]))
+	    return 1;
     }
+    return 0;
+}
+
+static int scan_rom_2 (struct zfile *f, struct romscandata *rsd)
+{
+    char *path = zfile_getname(f);
+    struct romdata *rd;
+
+    if (!isromext(path))
+	return 0;
     rd = scan_single_rom_2 (f);
     if (rd) {
 	addrom (rsd->fkey, rd, path);
@@ -514,24 +523,12 @@ static int scan_rom (char *path, HKEY fkey)
 {
     struct romscandata rsd = { fkey, 0 };
     struct romdata *rd;
-    int cnt = 0, i;
-    char *ext = strrchr (path, '.');
+    int cnt = 0;
 
-    if (!ext)
+    if (!isromext(path)) {
+	//write_log("ROMSCAN: skipping file '%s', unknown extension\n", path);
 	return 0;
-    ext++;
-    for (i = 0; uae_archive_extensions[i]; i++) {
-	if (!stricmp (ext, uae_archive_extensions[i]))
-	    break;
     }
-    if (!uae_archive_extensions[i]) {
-	if (stricmp (ext, "rom") && stricmp (ext, "adf") && stricmp (ext, "key")
-	    && stricmp (ext, "a500") && stricmp (ext, "a1200") && stricmp (ext, "a4000")) {
-	    write_log("ROMSCAN: skipping file '%s', unknown extension\n", path);
-	    return 0;
-	}
-    }
-
     for (;;) {
 	char tmp[MAX_DPATH];
 	strcpy (tmp, path);
@@ -550,7 +547,7 @@ static int scan_rom (char *path, HKEY fkey)
 static int listrom (int *roms)
 {
     int i;
-    
+
     i = 0;
     while (roms[i] >= 0) {
 	struct romdata *rd = getromdatabyid (roms[i]);
@@ -590,7 +587,7 @@ static void show_rom_list (void)
     strcat (avail, "\n");
     strcat (unavail, "\n");
     p1 = "A500 Boot ROM 1.2\0A500 Boot ROM 1.3\0A500+\0A600\0A1000\0A1200\0A3000\0A4000\0\nCD32\0CDTV\0Arcadia Multi Select\0High end WinUAE\0\nA590/A2091 SCSI Boot ROM\0\0";
-    
+
     p = malloc (100000);
     if (!p)
 	return;
@@ -605,8 +602,8 @@ static void show_rom_list (void)
 	strcat (p, p1); strcat (p, ": ");
 	if (listrom (rp))
 	    ok = 1;
-        while(*rp++ != -1);
-        if (*rp != -1) {
+	while(*rp++ != -1);
+	if (*rp != -1) {
 	    if (ok) {
 		ok = 0;
 		if (listrom (rp))
@@ -614,7 +611,7 @@ static void show_rom_list (void)
 	    }
 	    while(*rp++ != -1);
 	}
-        rp++;
+	rp++;
 	if (ok)
 	    strcat (p, avail); else strcat (p, unavail);
 	p1 = p2;
@@ -624,46 +621,85 @@ static void show_rom_list (void)
     free (p);
 }
 
-static int scan_roms_2 (char *pathp)
+static int scan_roms_2 (HKEY fkey, char *pathp)
 {
-    HKEY fkey = NULL;
     char buf[MAX_DPATH], path[MAX_DPATH];
     WIN32_FIND_DATA find_data;
     HANDLE handle;
     int ret;
-    int keys;
-    
+
     if (!pathp)
-	fetch_path ("KickstartPath", path, sizeof (path));
-    else
-	strcpy (path, pathp);
+	return 0;
+    GetFullPathName(pathp, MAX_DPATH, path, NULL);
+    write_log("ROM scan directory '%s'\n", path);
     strcpy (buf, path);
     strcat (buf, "*.*");
-    if (!hWinUAEKey)
-	goto end;
-    keys = get_keyring();
+    ret = 0;
+    handle = FindFirstFile (buf, &find_data);
+    if (handle == INVALID_HANDLE_VALUE)
+	return 0;
+    for (;;) {
+	char tmppath[MAX_DPATH];
+	strcpy (tmppath, path);
+	strcat (tmppath, find_data.cFileName);
+	if (!(find_data.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY |FILE_ATTRIBUTE_SYSTEM)) && find_data.nFileSizeLow < 10000000) {
+	    if (scan_rom (tmppath, fkey))
+		ret = 1;
+	}
+	if (FindNextFile (handle, &find_data) == 0) {
+	    FindClose (handle);
+	    break;
+	}
+    }
+    return ret;
+}
+
+static int scan_roms_3(HKEY fkey, char **paths, int offset, char *path)
+{
+    int i, ret;
+
+    ret = 0;
+    for (i = 0; i < offset; i++) {
+	if (paths[i] && !strcmpi(paths[i], path))
+	    return ret;
+    }
+    ret = scan_roms_2 (fkey, path);
+    paths[offset] = my_strdup(path);
+    return ret;
+}
+
+extern int get_rom_path(char *out, int mode);
+
+int scan_roms (void)
+{
+    char path[MAX_DPATH];
+    static int recursive;
+    int id, i, ret, keys, cnt;
+    HKEY fkey = NULL;
+    char *paths[10];
+
+    if (recursive)
+	return 0;
+    recursive++;
+
     SHDeleteKey (hWinUAEKey, "DetectedROMs");
     RegCreateKeyEx(hWinUAEKey , "DetectedROMs", 0, NULL, REG_OPTION_NON_VOLATILE,
 	KEY_READ | KEY_WRITE, NULL, &fkey, NULL);
     if (fkey == NULL)
 	goto end;
-    ret = 0;
+
+    cnt = 0;
+    for (i = 0; i < 10; i++)
+	paths[i] = NULL;
     for (;;) {
-	handle = FindFirstFile (buf, &find_data);
-	if (handle == INVALID_HANDLE_VALUE)
-	    goto end;
-	for (;;) {
-	    char tmppath[MAX_DPATH];
-	    strcpy (tmppath, path);
-	    strcat (tmppath, find_data.cFileName);
-	    if (!(find_data.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY |FILE_ATTRIBUTE_SYSTEM)) && find_data.nFileSizeLow < 10000000) {
-		if (scan_rom (tmppath, fkey))
-		    ret = 1;
-	    }
-	    if (FindNextFile (handle, &find_data) == 0) {
-		FindClose (handle);
+	keys = get_keyring();
+	fetch_path("KickstartPath", path, sizeof path);
+	scan_roms_3 (fkey, paths, 0, path);
+	for(i = 0; ;i++) {
+	    ret = get_rom_path(path, i);
+	    if (ret < 0)
 		break;
-	    }
+	    cnt += scan_roms_3 (fkey, paths, 2 + i, path);
 	}
 	if (get_keyring() > keys) { /* more keys detected in previous scan? */
 	    keys = get_keyring();
@@ -671,48 +707,33 @@ static int scan_roms_2 (char *pathp)
 	}
 	break;
     }
-end:
-    if (fkey)
-	RegCloseKey (fkey);
-    return ret;
-}
+    if (cnt == 0)
+	scan_roms_3 (fkey, paths, 1, workprefs.path_rom);
 
-int scan_roms (char *pathp)
-{
-    char path[MAX_DPATH];
-    int ret;
-    static int recursive;
-    int id;
-    HKEY fkey;
+    for (i = 0; i < 10; i++)
+	xfree(paths[i]);
 
-    if (recursive)
-	return 0;
-    recursive++;
-    ret = scan_roms_2 (pathp);
-    sprintf (path, "%s..\\shared\\rom\\", start_path_data);
-    if (!ret && pathp == NULL) {
-	ret = scan_roms_2 (path);
-	if (ret)
-	    set_path ("KickstartPath", path);
-    }
-    if (hWinUAEKey) {
-	RegCreateKeyEx(hWinUAEKey , "DetectedROMs", 0, NULL, REG_OPTION_NON_VOLATILE,
-	    KEY_READ | KEY_WRITE, NULL, &fkey, NULL);
-	if (fkey) {
-	    id = 1;
-	    for (;;) {
-		struct romdata *rd = getromdatabyid(id);
-		if (!rd)
-		    break;
-		if (rd->crc32 == 0xffffffff)
-		    addrom(fkey, rd, NULL);
-		id++;
-	    }
-	    RegCloseKey(fkey);
+    RegCreateKeyEx(hWinUAEKey , "DetectedROMs", 0, NULL, REG_OPTION_NON_VOLATILE,
+	KEY_READ | KEY_WRITE, NULL, &fkey, NULL);
+    if (fkey) {
+	id = 1;
+	for (;;) {
+	    struct romdata *rd = getromdatabyid(id);
+	    if (!rd)
+		break;
+	    if (rd->crc32 == 0xffffffff)
+		addrom(fkey, rd, NULL);
+	    id++;
 	}
+	RegCloseKey(fkey);
     }
+
+end:
     read_rom_list ();
     show_rom_list ();
+
+    if (fkey)
+	RegCloseKey (fkey);
     recursive--;
     return ret;
 }
@@ -759,7 +780,7 @@ int target_cfgfile_load (struct uae_prefs *p, char *filename, int type, int isde
     DWORD ct, ct2, size;
     char tmp1[MAX_DPATH], tmp2[MAX_DPATH];
     char fname[MAX_DPATH];
-    
+
     strcpy (fname, filename);
     if (!zfile_exists (fname)) {
 	fetch_configurationpath (fname, sizeof (fname));
@@ -934,16 +955,16 @@ int DirectorySelection(HWND hDlg, int flag, char *path)
 
     buf[0] = 0;
     bi.hwndOwner = hDlg;
-    bi.pidlRoot = NULL; 
+    bi.pidlRoot = NULL;
     bi.pszDisplayName = buf;
-    bi.lpszTitle = "Select folder"; 
-    bi.ulFlags = 0; 
-    bi.lpfn = NULL; 
-    bi.lParam = 0; 
- 
-    // Browse for a folder and return its PIDL. 
-    pidlBrowse = SHBrowseForFolder(&bi); 
-    if (pidlBrowse != NULL) { 
+    bi.lpszTitle = "Select folder";
+    bi.ulFlags = 0;
+    bi.lpfn = NULL;
+    bi.lParam = 0;
+
+    // Browse for a folder and return its PIDL.
+    pidlBrowse = SHBrowseForFolder(&bi);
+    if (pidlBrowse != NULL) {
 	if (SHGetPathFromIDList(pidlBrowse, buf)) {
 	    strcpy (path, buf);
 	    return 1;
@@ -984,9 +1005,9 @@ int DiskSelection_2 (HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs
     char szTitle[MAX_DPATH] = { 0 };
     char szFormat[MAX_DPATH];
     char szFilter[MAX_DPATH] = { 0 };
-    
+
     memset (&openFileName, 0, sizeof (OPENFILENAME));
-    
+
     strncpy (init_path, start_path_data, MAX_DPATH);
     switch (flag)
     {
@@ -1016,13 +1037,13 @@ int DiskSelection_2 (HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs
 	case 16:
 	    fetch_path ("InputPath", init_path, sizeof (init_path));
 	break;
-	
+
     }
 
     openFileName.lStructSize = os_winnt ? sizeof (OPENFILENAME) : OPENFILENAME_SIZE_VERSION_400;
     openFileName.hwndOwner = hDlg;
     openFileName.hInstance = hInst;
-    
+
     switch (flag) {
     case 0:
 	WIN32GUI_LoadUIString(IDS_SELECTADF, szTitle, MAX_DPATH);
@@ -1227,7 +1248,7 @@ int DiskSelection_2 (HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs
 	    sprintf (full_path, "%s\\%s", full_path2, nextp);
 	    nextp += strlen (nextp) + 1;
 	}
-	switch (wParam) 
+	switch (wParam)
 	{
 	case IDC_PATH_NAME:
 	case IDC_PATH_FILESYS:
@@ -1454,7 +1475,7 @@ static unsigned long memsizes[] = {
 /* 8 */ 0x02000000, /* 32-meg */
 /* 9 */ 0x04000000, /* 64-meg */
 /* 10*/ 0x08000000, //128 Meg
-/* 11*/ 0x10000000, //256 Meg 
+/* 11*/ 0x10000000, //256 Meg
 /* 12*/ 0x20000000, //512 Meg The correct size is set in mman.c
 /* 13*/ 0x40000000, //1GB
 /* 14*/ 0x00180000, //1.5MB
@@ -1484,6 +1505,37 @@ static int CalculateHardfileSize (HWND hDlg)
 static const char *nth[] = {
     "", "second ", "third ", "fourth ", "fifth ", "sixth ", "seventh ", "eighth ", "ninth ", "tenth "
 };
+
+static void setguititle (HWND phwnd)
+{
+    static char title[200];
+    char title2[1000];
+    char *name;
+    static HWND hwnd;
+
+    if (phwnd)
+	hwnd = phwnd;
+    if (!title[0]) {
+        GetWindowText (hwnd, title, sizeof (title));
+	if (WINUAEBETA > 0) {
+	    strcat (title, BetaStr);
+	    if (strlen(WINUAEEXTRA) > 0) {
+    		strcat (title, " ");
+		strcat (title, WINUAEEXTRA);
+	    }
+	}
+    }
+    title2[0] = 0;
+    name = config_filename;
+    if (name && strlen (name) > 0) {
+	strcat (title2, "[");
+	strcat (title2, name);
+	strcat (title2, "] - ");
+    }
+    strcat (title2, title);
+    SetWindowText (hwnd, title2);
+}
+
 
 static void GetConfigPath (char *path, struct ConfigStruct *parent, int noroot)
 {
@@ -1623,7 +1675,7 @@ static struct ConfigStruct *CreateConfigStore (struct ConfigStruct *oldconfig)
     int level = 0, i;
     char path[MAX_DPATH], name[MAX_DPATH];
     struct ConfigStruct *cs;
-    
+
     if (oldconfig) {
 	strcpy (path, oldconfig->Path);
 	strcpy (name, oldconfig->Name);
@@ -1648,6 +1700,7 @@ static char *HandleConfiguration (HWND hDlg, int flag, struct ConfigStruct *conf
 
     full_path[0] = 0;
     GetDlgItemText (hDlg, IDC_EDITNAME, name, MAX_DPATH);
+    strcpy (config_filename, name);
     if (flag == CONFIG_SAVE_FULL || flag == CONFIG_SAVE) {
 	if (strlen (name) < 4 || strcasecmp (name + strlen (name) - 4, ".uae")) {
 	    strcat (name, ".uae");
@@ -1674,7 +1727,7 @@ static char *HandleConfiguration (HWND hDlg, int flag, struct ConfigStruct *conf
 	    DiskSelection(hDlg, IDC_LOAD, 4, &workprefs, 0);
 	    EnableWindow(GetDlgItem (hDlg, IDC_VIEWINFO), workprefs.info[0]);
 	break;
-		
+
 	case CONFIG_SAVE:
 	    if (strlen (name) == 0 || strcmp (name, ".uae") == 0) {
 		char szMessage[MAX_DPATH];
@@ -1685,7 +1738,7 @@ static char *HandleConfiguration (HWND hDlg, int flag, struct ConfigStruct *conf
 		cfgfile_save (&workprefs, path, configtypepanel);
 	    }
 	    break;
-	
+
 	case CONFIG_LOAD:
 	    if (strlen (name) == 0) {
 		char szMessage[MAX_DPATH];
@@ -1694,8 +1747,9 @@ static char *HandleConfiguration (HWND hDlg, int flag, struct ConfigStruct *conf
 	    } else {
 		if (target_cfgfile_load (&workprefs, path, configtypepanel, 0) == 0) {
 		    char szMessage[MAX_DPATH];
-		    WIN32GUI_LoadUIString( IDS_COULDNOTLOADCONFIG, szMessage, MAX_DPATH );
+		    WIN32GUI_LoadUIString (IDS_COULDNOTLOADCONFIG, szMessage, MAX_DPATH);
 		    pre_gui_message (szMessage);
+		    config_filename[0] = 0;
 		} else {
 		    ew (hDlg, IDC_VIEWINFO, workprefs.info[0]);
 		}
@@ -1709,18 +1763,20 @@ static char *HandleConfiguration (HWND hDlg, int flag, struct ConfigStruct *conf
 		} else {
 		    char szMessage[MAX_DPATH];
 		    char szTitle[MAX_DPATH];
-		    WIN32GUI_LoadUIString( IDS_DELETECONFIGCONFIRMATION, szMessage, MAX_DPATH );
-		    WIN32GUI_LoadUIString( IDS_DELETECONFIGTITLE, szTitle, MAX_DPATH );
-		    if( MessageBox( hDlg, szMessage, szTitle,
-			MB_YESNO | MB_ICONWARNING | MB_APPLMODAL | MB_SETFOREGROUND ) == IDYES ) {
+		    WIN32GUI_LoadUIString (IDS_DELETECONFIGCONFIRMATION, szMessage, MAX_DPATH);
+		    WIN32GUI_LoadUIString (IDS_DELETECONFIGTITLE, szTitle, MAX_DPATH );
+		    if (MessageBox (hDlg, szMessage, szTitle,
+			MB_YESNO | MB_ICONWARNING | MB_APPLMODAL | MB_SETFOREGROUND) == IDYES) {
 			cfgfile_backup (path);
 			DeleteFile (path);
 			write_log ("deleted config '%s'\n", path);
+			config_filename[0] = 0;
 		    }
 		}
 	    break;
 	}
     }
+    setguititle (NULL);
     return full_path;
 }
 
@@ -2007,10 +2063,14 @@ void InitializeListView (HWND hDlg)
 		strcpy (size_str, "n/a");
 		sprintf (bootpri_str, "%d", uci->bootpri);
 	    }
+	    if (!mi.ismedia) {
+		strcpy (blocksize_str, "n/a");
+		strcpy (size_str, "n/a");
+	    }
 	    WIN32GUI_LoadUIString (uci->readonly ? IDS_NO : IDS_YES, readwrite_str, sizeof (readwrite_str));
 
 	    lvstruct.mask     = LVIF_TEXT | LVIF_PARAM;
-	    lvstruct.pszText  = nosize ? "X" : (mi.ismounted ? "*" : " ");
+	    lvstruct.pszText  = mi.ismedia == 0 ? "E" : (nosize ? "X" : (mi.ismounted ? "*" : " "));
 	    if (uci->controller)
 		lvstruct.pszText = " ";
 	    lvstruct.lParam   = 0;
@@ -2144,21 +2204,21 @@ static int listview_entry_from_click (HWND list, int *column)
 static INT_PTR CALLBACK InfoSettingsProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     static int recursive = 0;
-    
-    switch (msg) 
+
+    switch (msg)
     {
 	case WM_INITDIALOG:
 	    recursive++;
 	    SetDlgItemText (hDlg, IDC_PATH_NAME, workprefs.info);
 	    recursive--;
 	return TRUE;
-	
+
 	case WM_COMMAND:
 	    if (recursive)
 		break;
 	    recursive++;
-	
-	    switch(wParam) 
+
+	    switch(wParam)
 	    {
 		case IDC_SELECTOR:
 		    DiskSelection (hDlg, IDC_PATH_NAME, 8, &workprefs, 0);
@@ -2170,7 +2230,7 @@ static INT_PTR CALLBACK InfoSettingsProc (HWND hDlg, UINT msg, WPARAM wParam, LP
 		    EndDialog (hDlg, 0);
 		break;
 	    }
-	
+
 	    GetDlgItemText(hDlg, IDC_PATH_NAME, workprefs.info, sizeof workprefs.info);
 	    recursive--;
 	break;
@@ -2394,8 +2454,7 @@ static struct ConfigStruct *initloadsave (HWND hDlg, struct ConfigStruct *config
     HTREEITEM root;
     char name_buf[MAX_DPATH];
 
-    EnableWindow (GetDlgItem( hDlg, IDC_VIEWINFO ), workprefs.info[0]);
-    SetDlgItemText (hDlg, IDC_EDITNAME, config_filename);
+    EnableWindow (GetDlgItem (hDlg, IDC_VIEWINFO), workprefs.info[0]);
     SetDlgItemText (hDlg, IDC_EDITPATH, "");
     SetDlgItemText (hDlg, IDC_EDITDESCRIPTION, workprefs.description);
     root = InitializeConfigTreeView (hDlg);
@@ -2443,7 +2502,7 @@ static INT_PTR CALLBACK LoadSaveDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPA
 
     case WM_USER:
 	break;
-	
+
     case WM_COMMAND:
     {
 	recursive++;
@@ -2595,7 +2654,7 @@ static INT_PTR CALLBACK LoadSaveDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPA
 	break;
     }
     }
-    
+
     return FALSE;
 }
 
@@ -2647,11 +2706,11 @@ typedef struct url_info
     char *url;
 } urlinfo;
 
-static urlinfo urls[] = 
+static urlinfo urls[] =
 {
     {IDC_CLOANTOHOME, FALSE, "Cloanto's Amiga Forever", "http://www.amigaforever.com/"},
     {IDC_AMIGAHOME, FALSE, "Amiga Inc.", "http://www.amiga.com"},
-    {IDC_PICASSOHOME, FALSE, "Picasso96 Home Page", "http://www.picasso96.cogito.de/"}, 
+    {IDC_PICASSOHOME, FALSE, "Picasso96 Home Page", "http://www.picasso96.cogito.de/"},
     {IDC_UAEHOME, FALSE, "UAE Home Page", "http://uae.coresystems.de/"},
     {IDC_WINUAEHOME, FALSE, "WinUAE Home Page", "http://www.winuae.net/"},
     {IDC_AIABHOME, FALSE, "AIAB", "http://www.amigainabox.co.uk/"},
@@ -2689,14 +2748,14 @@ static void url_handler(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
     POINT point;
     point.x = LOWORD (lParam);
     point.y = HIWORD (lParam);
-    
-    for (i = 0; urls[i].id >= 0; i++) 
+
+    for (i = 0; urls[i].id >= 0; i++)
     {
 	RECT rect;
 	GetWindowRect(GetDlgItem(hDlg, urls[i].id), &rect);
 	ScreenToClient(hDlg, (POINT*)&rect);
 	ScreenToClient(hDlg, (POINT*)&rect.right);
-	if(PtInRect(&rect, point)) 
+	if(PtInRect(&rect, point))
 	{
 	    if(msg == WM_LBUTTONDOWN)
 	    {
@@ -2784,6 +2843,7 @@ static void resetregistry (void)
 int path_type;
 static INT_PTR CALLBACK PathsDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+    void create_afnewdir(int);
     static int recursive;
     static int ptypes[3], numtypes;
     int val, selpath = 0;
@@ -2797,13 +2857,15 @@ static INT_PTR CALLBACK PathsDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 	currentpage = PATHS_ID;
 	ShowWindow (GetDlgItem (hDlg, IDC_RESETREGISTRY), FALSE);
 	numtypes = 0;
-        SendDlgItemMessage (hDlg, IDC_PATHS_DEFAULTTYPE, CB_RESETCONTENT, 0, 0L);
+	SendDlgItemMessage (hDlg, IDC_PATHS_DEFAULTTYPE, CB_RESETCONTENT, 0, 0L);
 	if (af_path_2005 & 1) {
 	    WIN32GUI_LoadUIString(IDS_DEFAULT_AF2005, tmp, sizeof tmp);
 	    SendDlgItemMessage (hDlg, IDC_PATHS_DEFAULTTYPE, CB_ADDSTRING, 0, (LPARAM)tmp);
 	    if (path_type == PATH_TYPE_NEWAF)
 		selpath = numtypes;
 	    ptypes[numtypes++] = PATH_TYPE_NEWAF;
+	}
+	if (start_path_new1[0]) {
 	    WIN32GUI_LoadUIString(IDS_DEFAULT_NEWWINUAE, tmp, sizeof tmp);
 	    SendDlgItemMessage (hDlg, IDC_PATHS_DEFAULTTYPE, CB_ADDSTRING, 0, (LPARAM)tmp);
 	    if (path_type == PATH_TYPE_NEWWINUAE)
@@ -2823,12 +2885,12 @@ static INT_PTR CALLBACK PathsDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 		selpath = numtypes;
 	    ptypes[numtypes++] = PATH_TYPE_OLDAF;
 	}
-        WIN32GUI_LoadUIString(IDS_DEFAULT_WINUAE, tmp, sizeof tmp);
-        SendDlgItemMessage (hDlg, IDC_PATHS_DEFAULTTYPE, CB_ADDSTRING, 0, (LPARAM)tmp);
-        if (path_type == 0)
+	WIN32GUI_LoadUIString(IDS_DEFAULT_WINUAE, tmp, sizeof tmp);
+	SendDlgItemMessage (hDlg, IDC_PATHS_DEFAULTTYPE, CB_ADDSTRING, 0, (LPARAM)tmp);
+	if (path_type == 0)
 	    selpath = numtypes;
 	ptypes[numtypes++] = 0;
-        SendDlgItemMessage (hDlg, IDC_PATHS_DEFAULTTYPE, CB_SETCURSEL, selpath, 0);
+	SendDlgItemMessage (hDlg, IDC_PATHS_DEFAULTTYPE, CB_SETCURSEL, selpath, 0);
 	EnableWindow(GetDlgItem (hDlg, IDC_PATHS_DEFAULTTYPE), numtypes > 0 ? TRUE : FALSE);
 	values_to_pathsdialog (hDlg);
 	recursive--;
@@ -2843,12 +2905,10 @@ static INT_PTR CALLBACK PathsDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 	    case IDC_PATHS_ROMS:
 	    fetch_path ("KickstartPath", tmp, sizeof (tmp));
 	    if (DirectorySelection (hDlg, 0, tmp)) {
-	        load_keyring(&workprefs, NULL);
-		if (tmp[strlen (tmp) - 1] != '\\')
-		    strcat (tmp, "\\");
-		if (!scan_roms (tmp)) 
-		    gui_message_id (IDS_ROMSCANNOROMS);
+		load_keyring(&workprefs, NULL);
 		set_path ("KickstartPath", tmp);
+		if (!scan_roms ())
+		    gui_message_id (IDS_ROMSCANNOROMS);
 		values_to_pathsdialog (hDlg);
 	    }
 	    break;
@@ -2913,7 +2973,7 @@ static INT_PTR CALLBACK PathsDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 	    GetWindowText (GetDlgItem (hDlg, IDC_PATHS_AVIOUTPUT), tmp, sizeof (tmp));
 	    set_path ("VideoPath", tmp);
 	    break;
-	    case IDC_PATHS_DEFAULT:	
+	    case IDC_PATHS_DEFAULT:
 	    val = SendDlgItemMessage (hDlg, IDC_PATHS_DEFAULTTYPE, CB_GETCURSEL, 0, 0L);
 	    if (val != CB_ERR && val >= 0 && val < numtypes) {
 		val = ptypes[val];
@@ -2924,6 +2984,7 @@ static INT_PTR CALLBACK PathsDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 		} else if (val == PATH_TYPE_NEWWINUAE && start_path_new1[0]) {
 		    strcpy (start_path_data, start_path_new1);
 		    path_type = PATH_TYPE_NEWWINUAE;
+		    create_afnewdir(0);
 		    strcpy (pathmode, "WinUAE_2");
 		} else if (val == PATH_TYPE_OLDAF && start_path_af[0]) {
 		    strcpy (start_path_data, start_path_af);
@@ -2932,6 +2993,7 @@ static INT_PTR CALLBACK PathsDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 		} else if (val == PATH_TYPE_NEWAF && start_path_new1[0]) {
 		    strcpy (pathmode, "AF2005");
 		    path_type = PATH_TYPE_NEWAF;
+		    create_afnewdir(0);
 		    strcpy (start_path_data, start_path_new1);
 		} else if (val == PATH_TYPE_AMIGAFOREVERDATA && start_path_new2[0]) {
 		    strcpy (pathmode, "AMIGAFOREVERDATA");
@@ -2952,7 +3014,7 @@ static INT_PTR CALLBACK PathsDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 	    }
 	    break;
 	    case IDC_ROM_RESCAN:
-	    scan_roms (NULL);
+	    scan_roms ();
 	    break;
 	    case IDC_RESETREGISTRY:
 	    resetregistry ();
@@ -2977,7 +3039,7 @@ static struct amigamodels amodels[] = {
     { 4, IDS_QS_MODEL_A1000 }, // "Amiga 1000"
     { 3, IDS_QS_MODEL_A1200 }, // "Amiga 1200"
     { 1, IDS_QS_MODEL_A3000 }, // "Amiga 3000"
-    { 0, }, //{ 1, IDS_QS_MODEL_A4000 }, // "Amiga 4000"
+    { 1, IDS_QS_MODEL_A4000 }, // "Amiga 4000"
     { 0, }, //{ 1, IDS_QS_MODEL_A4000T }, // "Amiga 4000T"
     { 3, IDS_QS_MODEL_CD32 }, // "CD32"
     { 4, IDS_QS_MODEL_CDTV }, // "CDTV"
@@ -3002,11 +3064,13 @@ static void load_quickstart (HWND hDlg, int romcheck)
 {
     ew (guiDlg, IDC_RESETAMIGA, FALSE);
     workprefs.nr_floppies = quickstart_floppy;
-    quickstart_ok = build_in_prefs (&workprefs, quickstart_model, quickstart_conf, quickstart_compa, romcheck);
+    quickstart_ok = built_in_prefs (&workprefs, quickstart_model, quickstart_conf, quickstart_compa, romcheck);
     enable_for_quickstart (hDlg);
     addfloppytype (hDlg, 0);
     addfloppytype (hDlg, 1);
     addfloppyhistory (hDlg);
+    config_filename[0] = 0;
+    setguititle (NULL);
 }
 
 static void quickstarthost (HWND hDlg, char *name)
@@ -3117,7 +3181,7 @@ static void init_quickstartdlg (HWND hDlg)
     if (quickstart_conf >= i)
 	quickstart_conf = 0;
     SendDlgItemMessage (hDlg, IDC_QUICKSTART_CONFIGURATION, CB_SETCURSEL, quickstart_conf, 0);
-    
+
     if (quickstart_compa >= amodels[quickstart_model].compalevels)
 	quickstart_compa = 1;
     if (quickstart_compa >= amodels[quickstart_model].compalevels)
@@ -3413,9 +3477,9 @@ static INT_PTR CALLBACK AboutDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 	    currentpage = ABOUT_ID;
 	    init_aboutdlg (hDlg);
 	    break;
-	    
+
 	case WM_COMMAND:
-	    if (wParam == IDC_CONTRIBUTORS) 
+	    if (wParam == IDC_CONTRIBUTORS)
 		DisplayContributors (hDlg);
 	    break;
 	case WM_SETCURSOR:
@@ -3426,7 +3490,7 @@ static INT_PTR CALLBACK AboutDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 	    url_handler( hDlg, msg, wParam, lParam );
 	    break;
     }
-    
+
     return FALSE;
 }
 
@@ -3482,7 +3546,7 @@ static void init_frequency_combo (HWND hDlg, int dmode)
     int i, j, freq, tmp;
     char hz[20], hz2[20], txt[100];
     LRESULT index;
-    
+
     i = 0; index = 0;
     while ((freq = DisplayModes[dmode].refresh[i]) > 0 && index < MAX_REFRESH_RATES) {
 	storedrefreshrates[index++] = freq;
@@ -3691,7 +3755,7 @@ static int display_toselect(int fs, int vsync, int p96)
     if (p96)
 	return fs *  2 + vsync;
     if (fs == 2)
-        return 3;
+	return 3;
     if (!vsync)
 	return fs;
     if (fs == 1 && vsync)
@@ -3886,7 +3950,7 @@ static void values_from_displaydlg (HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
     workprefs.gfx_xcenter = (IsDlgButtonChecked (hDlg, IDC_XCENTER) ? 2 : 0 ); /* Smart centering */
     workprefs.gfx_ycenter = (IsDlgButtonChecked (hDlg, IDC_YCENTER) ? 2 : 0 ); /* Smart centering */
 
-    if (msg == WM_COMMAND && HIWORD (wParam) == CBN_SELCHANGE) 
+    if (msg == WM_COMMAND && HIWORD (wParam) == CBN_SELCHANGE)
     {
 	if (LOWORD (wParam) == IDC_DISPLAYSELECT) {
 	    posn = SendDlgItemMessage (hDlg, IDC_DISPLAYSELECT, CB_GETCURSEL, 0, 0);
@@ -3971,7 +4035,7 @@ static INT_PTR CALLBACK DisplayDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPAR
 {
     static int recursive = 0;
 
-    switch (msg) 
+    switch (msg)
     {
     case WM_INITDIALOG:
 	pages[DISPLAY_ID] = hDlg;
@@ -4005,9 +4069,9 @@ static INT_PTR CALLBACK DisplayDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPAR
 	    init_da(hDlg);
 	    update_da();
 	}
-        handle_da (hDlg);
-        values_from_displaydlg (hDlg, msg, wParam, lParam);
-        enable_for_displaydlg (hDlg);
+	handle_da (hDlg);
+	values_from_displaydlg (hDlg, msg, wParam, lParam);
+	enable_for_displaydlg (hDlg);
 	recursive--;
 	break;
 
@@ -4127,10 +4191,10 @@ static void values_from_chipsetdlg (HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 	else if (workprefs.produce_sound >= 2)
 	    workprefs.produce_sound = 2;
     }
-    n = SendDlgItemMessage (hDlg, IDC_CS_EXT, CB_GETCURSEL, 0, 0); 
+    n = SendDlgItemMessage (hDlg, IDC_CS_EXT, CB_GETCURSEL, 0, 0);
     if (n != CB_ERR) {
 	workprefs.cs_compatible = n;
-	build_in_chipset_prefs (&workprefs);
+	built_in_chipset_prefs (&workprefs);
     }
 }
 
@@ -4232,7 +4296,7 @@ static void values_to_chipsetdlg2 (HWND hDlg)
     txt[0] = 0;
     if (workprefs.cs_agnusrev >= 0) {
 	rev = workprefs.cs_agnusrev;
-        sprintf (txt, "%02.2X", rev);
+	sprintf (txt, "%02.2X", rev);
     } else if (workprefs.cs_compatible) {
 	rev = 0;
 	if (workprefs.ntscmode)
@@ -4247,14 +4311,14 @@ static void values_to_chipsetdlg2 (HWND hDlg)
     txt[0] = 0;
     if (workprefs.cs_deniserev >= 0) {
 	rev = workprefs.cs_deniserev;
-        sprintf (txt, "%01.1X", rev);
+	sprintf (txt, "%01.1X", rev);
     } else if (workprefs.cs_compatible) {
 	rev = 0xf;
 	if (workprefs.chipset_mask & CSMASK_ECS_DENISE)
 	    rev = 0xc;
 	if (workprefs.chipset_mask & CSMASK_AGA)
 	    rev = 0x8;
-        sprintf (txt, "%01.1X", rev);
+	sprintf (txt, "%01.1X", rev);
     }
     SetDlgItemText(hDlg, IDC_CS_DENISEREV, txt);
 }
@@ -4283,7 +4347,7 @@ static void values_from_chipsetdlg2 (HWND hDlg, UINT msg, WPARAM wParam, LPARAM 
     workprefs.cs_a4091 = IsDlgButtonChecked (hDlg, IDC_CS_A4091) ? 1 : 0;
 #if 0
     if (msg == WM_COMMAND && LOWORD(wParam) == IDC_CS_SCSIMODE)
-        workprefs.scsi = IsDlgButtonChecked (hDlg, IDC_CS_SCSIMODE) ? 2 : 0;
+	workprefs.scsi = IsDlgButtonChecked (hDlg, IDC_CS_SCSIMODE) ? 2 : 0;
 #endif
     workprefs.cs_cdtvscsi = IsDlgButtonChecked (hDlg, IDC_CS_CDTVSCSI) ? 1 : 0;
     workprefs.cs_pcmcia = IsDlgButtonChecked (hDlg, IDC_CS_PCMCIA) ? 1 : 0;
@@ -4644,8 +4708,6 @@ static void values_from_kickstartdlg (HWND hDlg)
     getromfile (hDlg, IDC_ROMFILE, workprefs.romfile, sizeof (workprefs.romfile));
     getromfile (hDlg, IDC_ROMFILE2, workprefs.romextfile, sizeof (workprefs.romextfile));
     getromfile (hDlg, IDC_CARTFILE, workprefs.cartfile, sizeof (workprefs.cartfile));
-    ew (hDlg, IDC_HRTMON, workprefs.cartfile[0] ? FALSE : TRUE);
-    //CheckDlgButton(hDlg, IDC_HRTMON, workprefs.cart_internal == 1 ? TRUE : FALSE);
 }
 
 static void values_to_kickstartdlg (HWND hDlg)
@@ -4656,9 +4718,12 @@ static void values_to_kickstartdlg (HWND hDlg)
 	RegCreateKeyEx(hWinUAEKey , "DetectedROMs", 0, NULL, REG_OPTION_NON_VOLATILE,
 	    KEY_READ | KEY_WRITE, NULL, &fkey, NULL);
 	load_keyring(&workprefs, NULL);
-	addromfiles (fkey, hDlg, IDC_ROMFILE, workprefs.romfile, ROMTYPE_KICK | ROMTYPE_KICKCD32);
-	addromfiles (fkey, hDlg, IDC_ROMFILE2, workprefs.romextfile, ROMTYPE_EXTCD32 | ROMTYPE_EXTCDTV | ROMTYPE_ARCADIABIOS);
-	addromfiles (fkey, hDlg, IDC_CARTFILE, workprefs.cartfile, ROMTYPE_AR | ROMTYPE_SUPERIV | ROMTYPE_ARCADIAGAME | ROMTYPE_HRTMON);
+	addromfiles (fkey, hDlg, IDC_ROMFILE, workprefs.romfile,
+	    ROMTYPE_KICK | ROMTYPE_KICKCD32);
+	addromfiles (fkey, hDlg, IDC_ROMFILE2, workprefs.romextfile,
+	    ROMTYPE_EXTCD32 | ROMTYPE_EXTCDTV | ROMTYPE_ARCADIABIOS);
+	addromfiles (fkey, hDlg, IDC_CARTFILE, workprefs.cartfile,
+	    ROMTYPE_AR | ROMTYPE_SUPERIV | ROMTYPE_NORDIC | ROMTYPE_XPOWER | ROMTYPE_ARCADIAGAME | ROMTYPE_HRTMON);
 	if (fkey)
 	    RegCloseKey (fkey);
     }
@@ -4690,11 +4755,9 @@ static void init_kickstart (HWND hDlg)
     ew (hDlg, IDC_FLASHCHOOSER), FALSE);
 #endif
     if (RegOpenKeyEx (hWinUAEKey , "DetectedROMs", 0, KEY_READ, &fkey) != ERROR_SUCCESS)
-	scan_roms (workprefs.path_rom);
+	scan_roms ();
     if (fkey)
 	RegCloseKey (fkey);
-    ew (hDlg, IDC_HRTMON, full_property_sheet);
-
 }
 
 static INT_PTR CALLBACK KickstartDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -4702,7 +4765,7 @@ static INT_PTR CALLBACK KickstartDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LP
     static int recursive;
     char tmp[MAX_DPATH];
 
-    switch( msg ) 
+    switch( msg )
     {
     case WM_INITDIALOG:
 	pages[KICKSTART_ID] = hDlg;
@@ -4736,7 +4799,7 @@ static INT_PTR CALLBACK KickstartDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LP
 	    DiskSelection(hDlg, IDC_ROMFILE2, 6, &workprefs, 0);
 	    values_to_kickstartdlg (hDlg);
 	    break;
-		    
+
 	case IDC_FLASHCHOOSER:
 	    DiskSelection(hDlg, IDC_FLASHFILE, 11, &workprefs, 0);
 	    values_to_kickstartdlg (hDlg);
@@ -4763,7 +4826,7 @@ static INT_PTR CALLBACK KickstartDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LP
 	    workprefs.cart_internal = IsDlgButtonChecked(hDlg, IDC_HRTMON) ? 1 : 0;
 	    ew (hDlg, IDC_CARTFILE, workprefs.cart_internal == 1 ? FALSE : TRUE);
 	    break;
-#endif	
+#endif
 	}
 	recursive--;
 	break;
@@ -4870,7 +4933,7 @@ static void misc_lang(HWND hDlg)
     if (hWinUAEKey) {
 	DWORD regkeytype;
 	DWORD regkeysize = sizeof(langid);
-        RegQueryValueEx (hWinUAEKey, "Language", 0, &regkeytype, (LPBYTE)&langid, &regkeysize);
+	RegQueryValueEx (hWinUAEKey, "Language", 0, &regkeytype, (LPBYTE)&langid, &regkeysize);
     }
     SendDlgItemMessage (hDlg, IDC_LANGUAGE, CB_RESETCONTENT, 0, 0);
     SendDlgItemMessage (hDlg, IDC_LANGUAGE, CB_ADDSTRING, 0, (LPARAM)"Autodetect");
@@ -4960,7 +5023,7 @@ static void values_to_miscdlg (HWND hDlg)
 	SendDlgItemMessage (hDlg, IDC_STATE_RATE, CB_ADDSTRING, 0, (LPARAM)"20");
 	SendDlgItemMessage (hDlg, IDC_STATE_RATE, CB_ADDSTRING, 0, (LPARAM)"30");
 	sprintf (txt, "%d", workprefs.statecapturerate / 50);
-	SendDlgItemMessage( hDlg, IDC_STATE_RATE, WM_SETTEXT, 0, (LPARAM)txt); 
+	SendDlgItemMessage( hDlg, IDC_STATE_RATE, WM_SETTEXT, 0, (LPARAM)txt);
 
 	SendDlgItemMessage (hDlg, IDC_STATE_BUFFERSIZE, CB_RESETCONTENT, 0, 0);
 	SendDlgItemMessage (hDlg, IDC_STATE_BUFFERSIZE, CB_ADDSTRING, 0, (LPARAM)"5");
@@ -4969,7 +5032,7 @@ static void values_to_miscdlg (HWND hDlg)
 	SendDlgItemMessage (hDlg, IDC_STATE_BUFFERSIZE, CB_ADDSTRING, 0, (LPARAM)"50");
 	SendDlgItemMessage (hDlg, IDC_STATE_BUFFERSIZE, CB_ADDSTRING, 0, (LPARAM)"100");
 	sprintf (txt, "%d", workprefs.statecapturebuffersize / (1024 * 1024));
-	SendDlgItemMessage( hDlg, IDC_STATE_BUFFERSIZE, WM_SETTEXT, 0, (LPARAM)txt); 
+	SendDlgItemMessage( hDlg, IDC_STATE_BUFFERSIZE, WM_SETTEXT, 0, (LPARAM)txt);
 
 	misc_scsi(hDlg);
 	misc_lang(hDlg);
@@ -4992,12 +5055,12 @@ static INT_PTR MiscDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
     char txt[100];
     int v;
     static int recursive;
-    
+
     if (recursive)
 	return FALSE;
     recursive++;
 
-    switch (msg) 
+    switch (msg)
     {
 
     case WM_USER:
@@ -5051,7 +5114,7 @@ static INT_PTR MiscDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 	switch(wParam)
 	{
 	case IDC_DOSAVESTATE:
-	    if (DiskSelection(hDlg, wParam, 9, &workprefs, 0)) 
+	    if (DiskSelection(hDlg, wParam, 9, &workprefs, 0))
 		save_state (savestate_fname, "Description!");
 	    break;
 	case IDC_DOLOADSTATE:
@@ -5307,14 +5370,14 @@ static void values_from_cpudlg (HWND hDlg)
 {
     int newcpu, newfpu, newtrust, oldcache, jitena;
     static int cachesize_prev, comptrust_prev, compforce_prev;
-    
+
     workprefs.cpu_compatible = workprefs.cpu_cycle_exact | (IsDlgButtonChecked (hDlg, IDC_COMPATIBLE) ? 1 : 0);
     workprefs.fpu_strict = IsDlgButtonChecked (hDlg, IDC_COMPATIBLE_FPU) ? 1 : 0;
     workprefs.address_space_24 = IsDlgButtonChecked (hDlg, IDC_COMPATIBLE24) ? 1 : 0;
     workprefs.m68k_speed = IsDlgButtonChecked (hDlg, IDC_CS_HOST) ? -1
 	: IsDlgButtonChecked (hDlg, IDC_CS_68000) ? 0
 	: SendMessage (GetDlgItem (hDlg, IDC_SPEED), TBM_GETPOS, 0, 0) * CYCLE_UNIT;
-    
+
     newcpu = IsDlgButtonChecked (hDlg, IDC_CPU0) ? 68000
 	: IsDlgButtonChecked (hDlg, IDC_CPU1) ? 68010
 	: IsDlgButtonChecked (hDlg, IDC_CPU2) ? 68020
@@ -5373,7 +5436,7 @@ static void values_from_cpudlg (HWND hDlg)
     jitena = IsDlgButtonChecked (hDlg, IDC_JITENABLE) ? 1 : 0;
     workprefs.cachesize = SendMessage(GetDlgItem(hDlg, IDC_CACHE), TBM_GETPOS, 0, 0) * 1024;
     if (!jitena) {
-        cachesize_prev = workprefs.cachesize;
+	cachesize_prev = workprefs.cachesize;
 	comptrust_prev = workprefs.comptrustbyte;
 	compforce_prev = workprefs.compforcesettings;
 	workprefs.cachesize = 0;
@@ -5637,8 +5700,8 @@ static void values_to_sounddlg (HWND hDlg)
 	SendDlgItemMessage(hDlg, IDC_SOUNDSTEREOMIX, CB_ADDSTRING, 0, (LPARAM)txt);
     }
     SendDlgItemMessage (hDlg, IDC_SOUNDSTEREOMIX, CB_SETCURSEL,
-	workprefs.sound_mixed_stereo > 0 ? workprefs.sound_mixed_stereo : 0, 0);
-    
+	workprefs.sound_mixed_stereo_delay > 0 ? workprefs.sound_mixed_stereo_delay : 0, 0);
+
     SendDlgItemMessage(hDlg, IDC_SOUNDINTERPOLATION, CB_RESETCONTENT, 0, 0);
     WIN32GUI_LoadUIString (IDS_SOUND_INTERPOL_DISABLED, txt, sizeof (txt));
     SendDlgItemMessage(hDlg, IDC_SOUNDINTERPOLATION, CB_ADDSTRING, 0, (LPARAM)txt);
@@ -5657,7 +5720,7 @@ static void values_to_sounddlg (HWND hDlg)
 	i++;
     }
     sprintf (txt, "%d", workprefs.sound_freq);
-    SendDlgItemMessage(hDlg, IDC_SOUNDFREQ, WM_SETTEXT, 0, (LPARAM)txt); 
+    SendDlgItemMessage(hDlg, IDC_SOUNDFREQ, WM_SETTEXT, 0, (LPARAM)txt);
 
     switch (workprefs.produce_sound) {
      case 0: which_button = IDC_SOUND0; break;
@@ -5755,17 +5818,17 @@ static void values_from_sounddlg (HWND hDlg)
     if (idx != CB_ERR)
 	workprefs.sound_stereo = idx;
     workprefs.sound_stereo_separation = 0;
-    workprefs.sound_mixed_stereo = 0;
+    workprefs.sound_mixed_stereo_delay = 0;
     if (workprefs.sound_stereo > 0) {
 	idx = SendDlgItemMessage (hDlg, IDC_SOUNDSTEREOSEP, CB_GETCURSEL, 0, 0);
 	if (idx != CB_ERR) {
 	    if (idx > 0)
-		workprefs.sound_mixed_stereo = -1;
+		workprefs.sound_mixed_stereo_delay = -1;
 	    workprefs.sound_stereo_separation = 10 - idx;
 	}
 	idx = SendDlgItemMessage (hDlg, IDC_SOUNDSTEREOMIX, CB_GETCURSEL, 0, 0);
 	if (idx != CB_ERR && idx > 0)
-	    workprefs.sound_mixed_stereo = idx;
+	    workprefs.sound_mixed_stereo_delay = idx;
     }
 
     workprefs.sound_interpol = SendDlgItemMessage (hDlg, IDC_SOUNDINTERPOLATION, CB_GETCURSEL, 0, 0);
@@ -5926,12 +5989,11 @@ static INT_PTR CALLBACK VolumeSettingsProc (HWND hDlg, UINT msg, WPARAM wParam, 
     switch (msg) {
 	case WM_INITDIALOG:
 	{
-	    if (archivehd < 0) {
-		if (my_existsfile(current_fsvdlg.rootdir))
-		    archivehd = 1;
-		else if (my_existsdir(current_fsvdlg.rootdir))
-		    archivehd = 0;
-	    }
+	    archivehd = -1;
+	    if (my_existsfile(current_fsvdlg.rootdir))
+	        archivehd = 1;
+	    else if (my_existsdir(current_fsvdlg.rootdir))
+	        archivehd = 0;
 	    recursive++;
 	    SetDlgItemText (hDlg, IDC_VOLUME_NAME, current_fsvdlg.volume);
 	    SetDlgItemText (hDlg, IDC_VOLUME_DEVICE, current_fsvdlg.device);
@@ -5952,41 +6014,44 @@ static INT_PTR CALLBACK VolumeSettingsProc (HWND hDlg, UINT msg, WPARAM wParam, 
 	    if (HIWORD (wParam) == BN_CLICKED) {
 		switch (LOWORD (wParam))
 		{
-		    case IDC_SELECTOR:
-		    {
+		    case IDC_FS_SELECT_EJECT:
+			SetDlgItemText (hDlg, IDC_PATH_NAME, "");
+			SetDlgItemText (hDlg, IDC_VOLUME_NAME, "");
+			CheckDlgButton (hDlg, IDC_RW, FALSE);
+			ew (hDlg, IDC_RW, FALSE);
+			archivehd = -1;
+		    break;
+		    case IDC_FS_SELECT_FILE:
 			strcpy (directory_path, current_fsvdlg.rootdir);
-			if (archivehd) {
-			    if (DiskSelection(hDlg, 0, 14, &workprefs, directory_path))
-				SetDlgItemText (hDlg, IDC_PATH_NAME, directory_path);
-			} else {
-			    WIN32GUI_LoadUIString(IDS_SELECTFILESYSROOT, szTitle, MAX_DPATH);
-			    browse_info.hwndOwner = hDlg;
-			    browse_info.pidlRoot = NULL;
-			    browse_info.pszDisplayName = directory_path;
-			    browse_info.lpszTitle = "";
-			    browse_info.ulFlags = BIF_DONTGOBELOWDOMAIN | BIF_RETURNONLYFSDIRS;
-			    browse_info.lpfn = NULL;
-			    browse_info.iImage = 0;
-			    if ((browse = SHBrowseForFolder (&browse_info)) != NULL) {
-				SHGetPathFromIDList (browse, directory_path);
-				SetDlgItemText (hDlg, IDC_PATH_NAME, directory_path);
-			    }
+			if (DiskSelection(hDlg, 0, 14, &workprefs, directory_path)) {
+			    char *s = filesys_createvolname (NULL, directory_path, "Harddrive");
+			    SetDlgItemText (hDlg, IDC_PATH_NAME, directory_path);
+			    SetDlgItemText (hDlg, IDC_VOLUME_NAME, s);
+			    xfree (s);
+			    CheckDlgButton (hDlg, IDC_RW, FALSE);
+			    ew (hDlg, IDC_RW, FALSE);
+			    archivehd = 1;
 			}
-		    }
+		    break;
+		    case IDC_FS_SELECT_DIR:
+			strcpy (directory_path, current_fsvdlg.rootdir);
+			WIN32GUI_LoadUIString(IDS_SELECTFILESYSROOT, szTitle, MAX_DPATH);
+			browse_info.hwndOwner = hDlg;
+			browse_info.pidlRoot = NULL;
+			browse_info.pszDisplayName = directory_path;
+			browse_info.lpszTitle = "";
+			browse_info.ulFlags = BIF_DONTGOBELOWDOMAIN | BIF_RETURNONLYFSDIRS;
+			browse_info.lpfn = NULL;
+			browse_info.iImage = 0;
+			if ((browse = SHBrowseForFolder (&browse_info)) != NULL) {
+			    SHGetPathFromIDList (browse, directory_path);
+			    SetDlgItemText (hDlg, IDC_PATH_NAME, directory_path);
+			    ew (hDlg, IDC_RW, TRUE);
+			    archivehd = 0;
+			}
 		    break;
 		    case IDOK:
-		    {
-			if(!my_existsfile(current_fsvdlg.rootdir) && !my_existsdir(current_fsvdlg.rootdir)) {
-			    char szMessage[MAX_DPATH];
-			    char szTitle[MAX_DPATH];
-			    WIN32GUI_LoadUIString(IDS_MUSTSELECTPATH, szMessage, MAX_DPATH);
-			    WIN32GUI_LoadUIString(IDS_SETTINGSERROR, szTitle, MAX_DPATH);
-			    MessageBox(hDlg, szMessage, szTitle,
-				MB_OK | MB_ICONERROR | MB_APPLMODAL | MB_SETFOREGROUND);
-			    break;
-			}
 			EndDialog (hDlg, 1);
-		    }
 		    break;
 		    case IDCANCEL:
 			EndDialog (hDlg, 0);
@@ -6024,12 +6089,8 @@ static void sethardfile (HWND hDlg)
     SendDlgItemMessage (hDlg, IDC_HDF_CONTROLLER, CB_SETCURSEL, current_hfdlg.controller, 0);
 }
 
-static void inithardfile (HWND hDlg)
+static void inithdcontroller (HWND hDlg)
 {
-    char tmp[MAX_DPATH];
-
-    ew (hDlg, IDC_HF_DOSTYPE, FALSE);
-    ew (hDlg, IDC_HF_CREATE, FALSE);
     SendDlgItemMessage(hDlg, IDC_HDF_CONTROLLER, CB_RESETCONTENT, 0, 0);
     SendDlgItemMessage (hDlg, IDC_HDF_CONTROLLER, CB_ADDSTRING, 0, (LPARAM)"UAE");
     SendDlgItemMessage (hDlg, IDC_HDF_CONTROLLER, CB_ADDSTRING, 0, (LPARAM)"IDE0");
@@ -6044,6 +6105,15 @@ static void inithardfile (HWND hDlg)
     SendDlgItemMessage (hDlg, IDC_HDF_CONTROLLER, CB_ADDSTRING, 0, (LPARAM)"SCSI5");
     SendDlgItemMessage (hDlg, IDC_HDF_CONTROLLER, CB_ADDSTRING, 0, (LPARAM)"SCSI6");
     SendDlgItemMessage (hDlg, IDC_HDF_CONTROLLER, CB_SETCURSEL, 0, 0);
+}
+
+static void inithardfile (HWND hDlg)
+{
+    char tmp[MAX_DPATH];
+
+    ew (hDlg, IDC_HF_DOSTYPE, FALSE);
+    ew (hDlg, IDC_HF_CREATE, FALSE);
+    inithdcontroller (hDlg);
     SendDlgItemMessage(hDlg, IDC_HF_TYPE, CB_RESETCONTENT, 0, 0);
     WIN32GUI_LoadUIString (IDS_HF_FS_CUSTOM, tmp, sizeof (tmp));
     SendDlgItemMessage (hDlg, IDC_HF_TYPE, CB_ADDSTRING, 0, (LPARAM)"OFS/FFS/RDB");
@@ -6135,7 +6205,7 @@ static INT_PTR CALLBACK HardfileSettingsProc (HWND hDlg, UINT msg, WPARAM wParam
 		DiskSelection (hDlg, IDC_PATH_FILESYS, 12, &workprefs, 0);
 		break;
 	    case IDOK:
-		if(strlen(current_hfdlg.filename) == 0 ) 
+		if(strlen(current_hfdlg.filename) == 0 )
 		{
 		    char szMessage[MAX_DPATH];
 		    char szTitle[MAX_DPATH];
@@ -6196,19 +6266,24 @@ static INT_PTR CALLBACK HarddriveSettingsProc (HWND hDlg, UINT msg, WPARAM wPara
 	oposn = -1;
 	hdf_init ();
 	recursive++;
+	inithdcontroller (hDlg);
 	CheckDlgButton (hDlg, IDC_RW, current_hfdlg.rw);
 	SendDlgItemMessage(hDlg, IDC_HARDDRIVE, CB_RESETCONTENT, 0, 0);
+	SendDlgItemMessage (hDlg, IDC_HDF_CONTROLLER, CB_SETCURSEL, current_hfdlg.controller, 0);
 	ew (hDlg, IDC_HARDDRIVE_IMAGE, FALSE);
 	ew (hDlg, IDOK, FALSE);
 	ew (hDlg, IDC_RW, FALSE);
+	ew (hDlg, IDC_HDF_CONTROLLER, FALSE);
 	index = -1;
 	for (i = 0; i < hdf_getnumharddrives(); i++) {
-	    SendDlgItemMessage(hDlg, IDC_HARDDRIVE, CB_ADDSTRING, 0, (LPARAM)hdf_getnameharddrive(i, 1));
-	    if (!strcmp (current_hfdlg.filename, hdf_getnameharddrive (i, 0)))
+	    SendDlgItemMessage(hDlg, IDC_HARDDRIVE, CB_ADDSTRING, 0, (LPARAM)hdf_getnameharddrive(i, 1, NULL));
+	    if (!strcmp (current_hfdlg.filename, hdf_getnameharddrive (i, 0, NULL)))
 		index = i;
 	}
-	if (index >= 0)
+	if (index >= 0) {
 	    SendDlgItemMessage (hDlg, IDC_HARDDRIVE, CB_SETCURSEL, index, 0);
+	    SendDlgItemMessage (hDlg, IDC_HDF_CONTROLLER, CB_SETCURSEL, current_hfdlg.controller, 0);
+	}
 	recursive--;
 	return TRUE;
 
@@ -6223,6 +6298,7 @@ static INT_PTR CALLBACK HarddriveSettingsProc (HWND hDlg, UINT msg, WPARAM wPara
 		ew (hDlg, IDC_HARDDRIVE_IMAGE, TRUE);
 		ew (hDlg, IDOK, TRUE);
 		ew (hDlg, IDC_RW, TRUE);
+		ew (hDlg, IDC_HDF_CONTROLLER, TRUE);
 	    }
 	}
 	if (HIWORD (wParam) == BN_CLICKED) {
@@ -6233,49 +6309,57 @@ static INT_PTR CALLBACK HarddriveSettingsProc (HWND hDlg, UINT msg, WPARAM wPara
 	    case IDCANCEL:
 		EndDialog (hDlg, 0);
 		break;
-   	    case IDC_HARDDRIVE_IMAGE:
+	    case IDC_HARDDRIVE_IMAGE:
 		if (posn != CB_ERR)
 		    harddrive_to_hdf(hDlg, &workprefs, posn);
 		break;
 	    }
 	}
 	if (posn != CB_ERR)
-	    strcpy (current_hfdlg.filename, hdf_getnameharddrive ((int)posn, 0));
+	    strcpy (current_hfdlg.filename, hdf_getnameharddrive ((int)posn, 0, &current_hfdlg.blocksize));
 	current_hfdlg.rw = IsDlgButtonChecked (hDlg, IDC_RW);
+	posn = SendDlgItemMessage (hDlg, IDC_HDF_CONTROLLER, CB_GETCURSEL, 0, 0);
+	if (posn != CB_ERR)
+	    current_hfdlg.controller = posn;
 	recursive--;
 	break;
     }
     return FALSE;
 }
 
-static void new_filesys (HWND hDlg)
+static void new_filesys (HWND hDlg, int entry)
 {
-    int result;
+    struct uaedev_config_info *uci;
 
-    result = add_filesys_config (&workprefs, -1, current_fsvdlg.device, current_fsvdlg.volume,
+    uci = add_filesys_config (&workprefs, entry, current_fsvdlg.device, current_fsvdlg.volume,
 		    current_fsvdlg.rootdir, ! current_fsvdlg.rw, 0, 0, 0, 0, current_fsvdlg.bootpri, 0, 0, 0);
-
+    if (uci)
+	filesys_media_change (uci->rootdir, 1, uci);
 }
 
-static void new_hardfile (HWND hDlg)
+static void new_hardfile (HWND hDlg, int entry)
 {
-    int result;
+    struct uaedev_config_info *uci;
 
-    result = add_filesys_config (&workprefs, -1, current_hfdlg.devicename, 0,
+    uci = add_filesys_config (&workprefs, entry, current_hfdlg.devicename, 0,
 				current_hfdlg.filename, ! current_hfdlg.rw,
 				current_hfdlg.sectors, current_hfdlg.surfaces,
 				current_hfdlg.reserved, current_hfdlg.blocksize,
 				current_hfdlg.bootpri, current_hfdlg.fsfilename,
 				current_hfdlg.controller, 0);
+    if (uci)
+	hardfile_do_disk_change (uci->configoffset, 1);
 }
 
-static void new_harddrive (HWND hDlg)
+static void new_harddrive (HWND hDlg, int entry)
 {
-    int result;
+    struct uaedev_config_info *uci;
 
-    result = add_filesys_config (&workprefs, -1, 0, 0,
+    uci = add_filesys_config (&workprefs, entry, 0, 0,
 				current_hfdlg.filename, ! current_hfdlg.rw, 0, 0,
 				0, current_hfdlg.blocksize, 0, 0, current_hfdlg.controller, 0);
+    if (uci)
+	hardfile_do_disk_change (uci->configoffset, 1);
 }
 
 static void harddisk_remove (HWND hDlg)
@@ -6332,12 +6416,9 @@ static void harddisk_edit (HWND hDlg)
 	}
 	current_hfdlg.rw = !uci->readonly;
 	current_hfdlg.bootpri = uci->bootpri;
-	if (CustomDialogBox(IDD_HARDFILE, hDlg, HardfileSettingsProc)) 
+	if (CustomDialogBox(IDD_HARDFILE, hDlg, HardfileSettingsProc))
 	{
-	    int result = add_filesys_config (&workprefs, entry, current_hfdlg.devicename, 0, current_hfdlg.filename,
-					! current_hfdlg.rw, current_hfdlg.sectors, current_hfdlg.surfaces,
-					current_hfdlg.reserved, current_hfdlg.blocksize, current_hfdlg.bootpri,
-					current_hfdlg.fsfilename, current_hfdlg.controller, 0);
+	    new_hardfile (hDlg, entry);
 	}
     }
     else if (type == FILESYS_HARDDRIVE) /* harddisk */
@@ -6345,12 +6426,9 @@ static void harddisk_edit (HWND hDlg)
 	current_hfdlg.rw = !uci->readonly;
 	strncpy (current_hfdlg.filename, uci->rootdir, (sizeof current_hfdlg.filename) - 1);
 	current_hfdlg.filename[(sizeof current_hfdlg.filename) - 1] = '\0';
-	if (CustomDialogBox(IDD_HARDDRIVE, hDlg, HarddriveSettingsProc)) 
+	if (CustomDialogBox(IDD_HARDDRIVE, hDlg, HarddriveSettingsProc))
 	{
-	    int result = add_filesys_config (&workprefs, entry, 0, 0, current_hfdlg.filename,
-					! current_hfdlg.rw, 0, 0,
-					0, current_hfdlg.blocksize, current_hfdlg.bootpri, 0,
-					current_hfdlg.controller, 0);
+	    new_harddrive (hDlg, entry);
 	}
     }
     else /* Filesystem */
@@ -6368,8 +6446,7 @@ static void harddisk_edit (HWND hDlg)
 	current_fsvdlg.bootpri = uci->bootpri;
 	archivehd = -1;
 	if (CustomDialogBox(IDD_FILESYS, hDlg, VolumeSettingsProc)) {
-	    int result = add_filesys_config (&workprefs, entry, current_fsvdlg.device, current_fsvdlg.volume,
-					current_fsvdlg.rootdir, ! current_fsvdlg.rw, 0, 0, 0, 0, current_fsvdlg.bootpri, 0, 0, 0);
+	    new_filesys (hDlg, entry);
 	}
     }
 }
@@ -6388,19 +6465,19 @@ static void harddiskdlg_button (HWND hDlg, int button)
 	current_fsvdlg = empty_fsvdlg;
 	archivehd = 0;
 	if (CustomDialogBox(IDD_FILESYS, hDlg, VolumeSettingsProc))
-	    new_filesys (hDlg);
+	    new_filesys (hDlg, -1);
 	break;
      case IDC_NEW_FSARCH:
 	 archivehd = 1;
 	current_fsvdlg = empty_fsvdlg;
 	if (CustomDialogBox(IDD_FILESYS, hDlg, VolumeSettingsProc))
-	    new_filesys (hDlg);
+	    new_filesys (hDlg, -1);
 	break;
 
      case IDC_NEW_HF:
 	current_hfdlg = empty_hfdlg;
 	if (CustomDialogBox (IDD_HARDFILE, hDlg, HardfileSettingsProc))
-	    new_hardfile (hDlg);
+	    new_hardfile (hDlg, -1);
 	break;
 
      case IDC_NEW_HD:
@@ -6411,7 +6488,7 @@ static void harddiskdlg_button (HWND hDlg, int button)
 	    gui_message (tmp);
 	} else {
 	    if (CustomDialogBox (IDD_HARDDRIVE, hDlg, HarddriveSettingsProc))
-		new_harddrive (hDlg);
+		new_harddrive (hDlg, -1);
 	}
 	break;
 
@@ -6433,8 +6510,16 @@ static void harddiskdlg_button (HWND hDlg, int button)
 	clicked_entry++;
 	break;
 
+     case IDC_MAPDRIVES_AUTO:
+	workprefs.win32_automount_removable = IsDlgButtonChecked(hDlg, IDC_MAPDRIVES_AUTO);
+	break;
+
      case IDC_MAPDRIVES:
 	workprefs.win32_automount_drives = IsDlgButtonChecked(hDlg, IDC_MAPDRIVES);
+	break;
+
+     case IDC_MAPDRIVES_CD:
+	workprefs.win32_automount_cddrives = IsDlgButtonChecked(hDlg, IDC_MAPDRIVES_CD);
 	break;
 
      case IDC_MAPDRIVES_NET:
@@ -6500,9 +6585,11 @@ static INT_PTR CALLBACK HarddiskDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPA
 	pages[HARDDISK_ID] = hDlg;
 	currentpage = HARDDISK_ID;
 	EnableWindow (GetDlgItem(hDlg, IDC_NEW_HD), os_winnt && os_winnt_admin > 1 ? TRUE : FALSE);
-	
+
     case WM_USER:
+	CheckDlgButton (hDlg, IDC_MAPDRIVES_AUTO, workprefs.win32_automount_removable);
 	CheckDlgButton (hDlg, IDC_MAPDRIVES, workprefs.win32_automount_drives);
+	CheckDlgButton (hDlg, IDC_MAPDRIVES_CD, workprefs.win32_automount_cddrives);
 	CheckDlgButton (hDlg, IDC_MAPDRIVES_NET, workprefs.win32_automount_netdrives);
 	CheckDlgButton (hDlg, IDC_NOUAEFSDB, workprefs.filesys_no_uaefsdb);
 	CheckDlgButton (hDlg, IDC_NORECYCLEBIN, workprefs.win32_norecyclebin);
@@ -6545,7 +6632,7 @@ static INT_PTR CALLBACK HarddiskDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPA
 	    break;
 	}
     break;
-	
+
     case WM_NOTIFY:
 	if (((LPNMHDR) lParam)->idFrom == IDC_VOLUMELIST)
 	    harddiskdlg_volume_notify (hDlg, (NM_LISTVIEW *) lParam);
@@ -6553,7 +6640,7 @@ static INT_PTR CALLBACK HarddiskDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPA
     default:
 	return FALSE;
     }
-    
+
     return FALSE;
 }
 
@@ -6593,7 +6680,7 @@ static void floppytooltip (HWND hDlg, int num, uae_u32 crc32)
     TOOLINFO ti;
     int id;
     char tmp[100];
-    
+
     if (currentpage == QUICKSTART_ID)
 	id = floppybuttonsq[num][0];
     else
@@ -6608,7 +6695,7 @@ static void floppytooltip (HWND hDlg, int num, uae_u32 crc32)
 	return;
     sprintf (tmp, "CRC=%08.8X", crc32);
     ti.lpszText = tmp;
-    SendMessage (ToolTipHWND, TTM_ADDTOOL, 0, (LPARAM) (LPTOOLINFO) &ti);	
+    SendMessage (ToolTipHWND, TTM_ADDTOOL, 0, (LPARAM) (LPTOOLINFO) &ti);
 }
 
 static void addfloppyhistory_2 (HWND hDlg, HKEY fkey, int n, int f_text)
@@ -6628,7 +6715,7 @@ static void addfloppyhistory_2 (HWND hDlg, HKEY fkey, int n, int f_text)
 	    break;
 	i++;
 	strcpy (tmppath, s);
-        p = tmppath + strlen(tmppath) - 1;
+	p = tmppath + strlen(tmppath) - 1;
 	for (j = 0; uae_archive_extensions[j]; j++) {
 	    p2 = strstr (tmppath, uae_archive_extensions[j]);
 	    if (p2) {
@@ -6636,9 +6723,9 @@ static void addfloppyhistory_2 (HWND hDlg, HKEY fkey, int n, int f_text)
 		break;
 	    }
 	}
-        while (p > tmppath) {
+	while (p > tmppath) {
 	    if (*p == '\\' || *p == '/')
-	        break;
+		break;
 	    p--;
 	}
 	strcpy (tmpname, p + 1);
@@ -6743,7 +6830,7 @@ static void getfloppytype (HWND hDlg, int n)
 {
     int f_type = floppybuttons[n][3];
     LRESULT val = SendDlgItemMessage (hDlg, f_type, CB_GETCURSEL, 0, 0L);
-    
+
     if (val != CB_ERR && workprefs.dfxtype[n] != val - 1) {
 	workprefs.dfxtype[n] = (int)val - 1;
 	addfloppytype (hDlg, n);
@@ -6790,10 +6877,10 @@ static int getfloppybox (HWND hDlg, int f_text, char *out, int maxlen)
     p1 = strstr(tmp, " { ");
     p2 = strstr(tmp, " }");
     if (p1 && p2 && p2 > p1) {
-        *p1 = 0;
-        memset (out, 0, maxlen);
-        memcpy (out, p1 + 3, p2 - p1 - 3);
-        strcat (out, tmp);
+	*p1 = 0;
+	memset (out, 0, maxlen);
+	memcpy (out, p1 + 3, p2 - p1 - 3);
+	strcat (out, tmp);
     }
     xfree (tmp);
     i = 0;
@@ -6821,7 +6908,7 @@ static void getfloppyname (HWND hDlg, int n)
 static void addallfloppies (HWND hDlg)
 {
     int i;
-    
+
     for (i = 0; i < 4; i++)
 	addfloppytype (hDlg, i);
     addfloppyhistory (hDlg);
@@ -6860,7 +6947,7 @@ static INT_PTR CALLBACK FloppyDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARA
     int i;
     static char diskname[40] = { "empty" };
 
-    switch (msg) 
+    switch (msg)
     {
     case WM_INITDIALOG:
     {
@@ -6906,7 +6993,7 @@ static INT_PTR CALLBACK FloppyDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARA
 	addallfloppies (hDlg);
 	recursive--;
 	break;
-	    
+
     case WM_COMMAND:
 	if (recursive > 0)
 	    break;
@@ -6918,23 +7005,23 @@ static INT_PTR CALLBACK FloppyDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARA
 		case IDC_DF0TEXTQ:
 		getfloppyname (hDlg, 0);
 		addfloppytype (hDlg, 0);
-	        addfloppyhistory (hDlg);
+		addfloppyhistory (hDlg);
 		break;
 		case IDC_DF1TEXT:
 		case IDC_DF1TEXTQ:
 		getfloppyname (hDlg, 1);
 		addfloppytype (hDlg, 1);
-	        addfloppyhistory (hDlg);
+		addfloppyhistory (hDlg);
 		break;
 		case IDC_DF2TEXT:
 		getfloppyname (hDlg, 2);
 		addfloppytype (hDlg, 2);
-	        addfloppyhistory (hDlg);
+		addfloppyhistory (hDlg);
 		break;
 		case IDC_DF3TEXT:
 		getfloppyname (hDlg, 3);
 		addfloppytype (hDlg, 3);
-	        addfloppyhistory (hDlg);
+		addfloppyhistory (hDlg);
 		break;
 		case IDC_DF0TYPE:
 		getfloppytype (hDlg, 0);
@@ -6959,7 +7046,7 @@ static INT_PTR CALLBACK FloppyDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARA
 	case IDC_DF1ENABLE:
 	case IDC_DF1QENABLE:
 	    getfloppytypeq (hDlg, 1);
-    	    break;
+	    break;
 	case IDC_DF2ENABLE:
 	    getfloppytypeq (hDlg, 2);
 	    break;
@@ -7059,7 +7146,7 @@ static ACCEL SwapperAccel[] = {
     { FALT|FVIRTKEY, '6', 10006 }, { FALT|FVIRTKEY, '7', 10007 }, { FALT|FVIRTKEY, '8', 10008 }, { FALT|FVIRTKEY, '9', 10009 }, { FALT|FVIRTKEY, '0', 10010 },
     { FALT|FSHIFT|FVIRTKEY, '1', 10011 }, { FALT|FSHIFT|FVIRTKEY, '2', 10012 }, { FALT|FSHIFT|FVIRTKEY, '3', 10013 }, { FALT|FSHIFT|FVIRTKEY, '4', 10014 }, { FALT|FSHIFT|FVIRTKEY, '5', 10015 },
     { FALT|FSHIFT|FVIRTKEY, '6', 10016 }, { FALT|FSHIFT|FVIRTKEY, '7', 10017 }, { FALT|FSHIFT|FVIRTKEY, '8', 10018 }, { FALT|FSHIFT|FVIRTKEY, '9', 10019 }, { FALT|FSHIFT|FVIRTKEY, '0', 10020 },
-    { FVIRTKEY, VK_UP, 10101 }, { FVIRTKEY, VK_DOWN, 10102 }, { FVIRTKEY, VK_RIGHT, 10104 }, 
+    { FVIRTKEY, VK_UP, 10101 }, { FVIRTKEY, VK_DOWN, 10102 }, { FVIRTKEY, VK_RIGHT, 10104 },
     { FVIRTKEY|FSHIFT, VK_UP, IDC_UP }, { FVIRTKEY|FSHIFT, VK_DOWN, IDC_DOWN },
     { FVIRTKEY|FCONTROL, '1', 10201 }, { FVIRTKEY|FCONTROL, '2', 10202 }, { FVIRTKEY|FCONTROL, '3', 10203 }, { FVIRTKEY|FCONTROL, '4', 10204 },
     { FVIRTKEY|FCONTROL|FSHIFT, '1', 10205 }, { FVIRTKEY|FCONTROL|FSHIFT, '2', 10206 }, { FVIRTKEY|FCONTROL|FSHIFT, '3', 10207 }, { FVIRTKEY|FCONTROL|FSHIFT, '4', 10208 },
@@ -7098,7 +7185,7 @@ static INT_PTR CALLBACK SwapperDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPAR
     static int entry;
     char tmp[MAX_DPATH];
 
-    switch (msg) 
+    switch (msg)
     {
     case WM_INITDIALOG:
 	pages[DISK_ID] = hDlg;
@@ -7214,19 +7301,19 @@ static INT_PTR CALLBACK SwapperDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPAR
 		addswapperfile (hDlg, entry);
 	    }
 	    break;
-	
+
 	    case IDC_DISKLISTINSERT:
 		if (entry >= 0) {
 		    if (getfloppybox (hDlg, IDC_DISKTEXT, tmp, sizeof (tmp))) {
 			strcpy (workprefs.dfxlist[entry], tmp);
-		    	addfloppyhistory (hDlg);
+			addfloppyhistory (hDlg);
 			InitializeListView (hDlg);
 			swapperhili (hDlg, entry);
 		    } else {
 			addswapperfile (hDlg, entry);
 		    }
 		}
-		break;		    
+		break;
 
 	    case IDC_DISKLISTREMOVE:
 		if (entry >= 0) {
@@ -7259,21 +7346,21 @@ static INT_PTR CALLBACK SwapperDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPAR
 	break;
     }
     case WM_NOTIFY:
-	if (((LPNMHDR) lParam)->idFrom == IDC_DISKLIST) 
+	if (((LPNMHDR) lParam)->idFrom == IDC_DISKLIST)
 	{
 	    int dblclick = 0, button = 0, col;
 	    HWND list;
 	    NM_LISTVIEW *nmlistview;
 	    nmlistview = (NM_LISTVIEW *) lParam;
 	    cachedlist = list = nmlistview->hdr.hwndFrom;
-	    switch (nmlistview->hdr.code) 
+	    switch (nmlistview->hdr.code)
 	    {
 		case LVN_BEGINDRAG:
 		drag_start (hDlg, cachedlist, lParam);
 		break;
 		case NM_RDBLCLK:
 		case NM_DBLCLK:
-	        dblclick = 1;
+		dblclick = 1;
 		/* fall-through here too */
 		case NM_RCLICK:
 		if (nmlistview->hdr.code == NM_RCLICK || nmlistview->hdr.code == NM_RDBLCLK)
@@ -7362,7 +7449,7 @@ static void updatejoyport (HWND hDlg)
 {
     int i, j;
     char tmp[MAX_DPATH], tmp2[MAX_DPATH];
- 
+
     enable_for_portsdlg (hDlg);
     if (joy0previous < 0)
 	joy0previous = inputdevice_get_device_total (IDTYPE_JOYSTICK) + 1;
@@ -7447,7 +7534,7 @@ static void fixjport (int *port, int v)
 	vv += JSEM_KBDLAYOUT;
     }
     *port = vv;
-}	
+}
 
 static void values_from_portsdlg (HWND hDlg)
 {
@@ -7527,11 +7614,11 @@ static void values_from_portsdlg (HWND hDlg)
 
     item = SendDlgItemMessage (hDlg, IDC_SERIAL, CB_GETCURSEL, 0, 0L);
     if (item != CB_ERR && item > 0) {
-        workprefs.use_serial = 1;
+	workprefs.use_serial = 1;
 	strcpy (workprefs.sername, comports[item - 1].dev);
     } else {
-        workprefs.use_serial = 0;
-        workprefs.sername[0] = 0;
+	workprefs.use_serial = 0;
+	workprefs.sername[0] = 0;
     }
     workprefs.serial_demand = 0;
     if (IsDlgButtonChecked (hDlg, IDC_SER_SHARED))
@@ -7575,7 +7662,7 @@ static void values_to_portsdlg (HWND hDlg)
 	    // Warn the user that their printer-port selection is not valid on this machine
 	    char szMessage[MAX_DPATH];
 	    WIN32GUI_LoadUIString(IDS_INVALIDPRTPORT, szMessage, MAX_DPATH);
-	    pre_gui_message (szMessage);    
+	    pre_gui_message (szMessage);
 	    // Disable the invalid parallel-port selection
 	    workprefs.prtname[0] = 0;
 	    result = 0;
@@ -7585,7 +7672,7 @@ static void values_to_portsdlg (HWND hDlg)
     CheckDlgButton(hDlg, IDC_PSPRINTER, workprefs.parallel_postscript_emulation);
     CheckDlgButton(hDlg, IDC_PSPRINTERDETECT, workprefs.parallel_postscript_detection);
     SetDlgItemText(hDlg, IDC_PS_PARAMS, workprefs.ghostscript_parameters);
-    
+
     SendDlgItemMessage(hDlg, IDC_PRINTERLIST, CB_SETCURSEL, result, 0);
     SendDlgItemMessage(hDlg, IDC_MIDIOUTLIST, CB_SETCURSEL, workprefs.win32_midioutdev + 2, 0);
     if (!bNoMidiIn && workprefs.win32_midiindev >= 0)
@@ -7593,12 +7680,12 @@ static void values_to_portsdlg (HWND hDlg)
     else
 	SendDlgItemMessage(hDlg, IDC_MIDIINLIST, CB_SETCURSEL, 0, 0);
     ew (hDlg, IDC_MIDIINLIST, workprefs.win32_midioutdev < -1 ? FALSE : TRUE);
-    
+
     CheckDlgButton(hDlg, IDC_UAESERIAL, workprefs.uaeserial);
     CheckDlgButton(hDlg, IDC_SER_SHARED, workprefs.serial_demand);
     CheckDlgButton(hDlg, IDC_SER_CTSRTS, workprefs.serial_hwctsrts);
     CheckDlgButton(hDlg, IDC_SER_DIRECT, workprefs.serial_direct);
-    
+
     if(!workprefs.sername[0])  {
 	SendDlgItemMessage (hDlg, IDC_SERIAL, CB_SETCURSEL, 0, 0L);
 	workprefs.use_serial = 0;
@@ -7617,7 +7704,7 @@ static void values_to_portsdlg (HWND hDlg)
 	    WIN32GUI_LoadUIString(IDS_INVALIDCOMPORT, szMessage, MAX_DPATH);
 	    pre_gui_message (szMessage);
 	    // Select "none" as the COM-port
-	    SendDlgItemMessage(hDlg, IDC_SERIAL, CB_SETCURSEL, 0L, 0L);		
+	    SendDlgItemMessage(hDlg, IDC_SERIAL, CB_SETCURSEL, 0L, 0L);
 	    // Disable the chosen serial-port selection
 	    workprefs.sername[0] = 0;
 	    workprefs.use_serial = 0;
@@ -7650,7 +7737,7 @@ static void init_portsdlg( HWND hDlg )
     SendDlgItemMessage (hDlg, IDC_SERIAL, CB_RESETCONTENT, 0, 0L);
     SendDlgItemMessage (hDlg, IDC_SERIAL, CB_ADDSTRING, 0, (LPARAM)szNone);
     for (port = 0; port < MAX_SERIAL_PORTS && comports[port].name; port++) {
-        SendDlgItemMessage(hDlg, IDC_SERIAL, CB_ADDSTRING, 0, (LPARAM)comports[port].name);
+	SendDlgItemMessage(hDlg, IDC_SERIAL, CB_ADDSTRING, 0, (LPARAM)comports[port].name);
     }
 
     SendDlgItemMessage (hDlg, IDC_PRINTERLIST, CB_RESETCONTENT, 0, 0L);
@@ -7724,7 +7811,7 @@ static INT_PTR CALLBACK PortsDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
     static int recursive = 0;
     int temp;
 
-    switch (msg) 
+    switch (msg)
     {
     case WM_INITDIALOG:
 	recursive++;
@@ -7735,7 +7822,7 @@ static INT_PTR CALLBACK PortsDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 	values_to_portsdlg(hDlg);
 	updatejoyport(hDlg);
 	recursive--;
-	break;	    
+	break;
     case WM_USER:
 	recursive++;
 	enable_for_portsdlg (hDlg);
@@ -7813,7 +7900,7 @@ static INT_PTR CALLBACK StringBoxDialogProc(HWND hDlg, UINT msg, WPARAM wParam, 
 		case IDOK:
 		    stringboxdialogactive = -1;
 		    DestroyWindow (hDlg);
-		return TRUE;		    
+		return TRUE;
 		case IDCANCEL:
 		    stringboxdialogactive = 0;
 		    DestroyWindow (hDlg);
@@ -7821,7 +7908,7 @@ static INT_PTR CALLBACK StringBoxDialogProc(HWND hDlg, UINT msg, WPARAM wParam, 
 	    }
 	break;
     }
-    return DefWindowProc(hDlg, msg, wParam, lParam); 
+    return DefWindowProc(hDlg, msg, wParam, lParam);
 }
 
 static int askinputcustom(HWND hDlg, char *custom, int maxlen)
@@ -7971,7 +8058,7 @@ static void doinputcustom(HWND hDlg, int newcustom)
     int flags;
     custom1[0] = 0;
     inputdevice_get_mapped_name (input_selected_device, input_selected_widget,
-        &flags, 0, custom1, input_selected_sub_num);
+	&flags, 0, custom1, input_selected_sub_num);
     if (strlen(custom1) > 0 || newcustom) {
 	if (askinputcustom(hDlg, custom1, sizeof custom1)) {
 	    inputdevice_set_mapping (input_selected_device, input_selected_widget,
@@ -8104,7 +8191,7 @@ static INT_PTR CALLBACK InputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM 
     int items = 0, entry = 0;
     static int recursive;
 
-    switch (msg) 
+    switch (msg)
     {
     case WM_INITDIALOG:
 	pages[INPUT_ID] = hDlg;
@@ -8113,7 +8200,7 @@ static INT_PTR CALLBACK InputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM 
 	inputdevice_config_change ();
 	input_selected_widget = -1;
 	init_inputdlg(hDlg);
-	    
+
     case WM_USER:
 	recursive++;
 	enable_for_inputdlg (hDlg);
@@ -8144,12 +8231,12 @@ static INT_PTR CALLBACK InputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM 
 	recursive--;
 	break;
     case WM_NOTIFY:
-	if (((LPNMHDR) lParam)->idFrom == IDC_INPUTLIST) 
+	if (((LPNMHDR) lParam)->idFrom == IDC_INPUTLIST)
 	{
 	    int row;
 	    nmlistview = (NM_LISTVIEW *) lParam;
 	    list = nmlistview->hdr.hwndFrom;
-	    switch (nmlistview->hdr.code) 
+	    switch (nmlistview->hdr.code)
 	    {
 		case NM_DBLCLK:
 		dblclick = 1;
@@ -8380,7 +8467,7 @@ static void values_to_hw3ddlg (HWND hDlg)
 	int idx = SendDlgItemMessage (hDlg, IDC_FILTERXTRA, CB_GETCURSEL, 0, 0L);
 	if (idx == CB_ERR)
 	    idx = -1;
-        SendDlgItemMessage (hDlg, IDC_FILTERXTRA, CB_RESETCONTENT, 0, 0L);
+	SendDlgItemMessage (hDlg, IDC_FILTERXTRA, CB_RESETCONTENT, 0, 0L);
 	for (i = 0; filter_extra[i].label; i++) {
 	    if (filter_selected == &filter_extra[i] && idx < 0)
 		idx2 = i;
@@ -8408,16 +8495,16 @@ static void values_to_hw3ddlg (HWND hDlg)
     SendDlgItemMessage (hDlg, IDC_FILTERHZMULT, CB_RESETCONTENT, 0, 0L);
     SendDlgItemMessage (hDlg, IDC_FILTERVZMULT, CB_RESETCONTENT, 0, 0L);
     for (i = 0; filtermultnames[i]; i++) {
-        SendDlgItemMessage (hDlg, IDC_FILTERHZMULT, CB_ADDSTRING, 0, (LPARAM)filtermultnames[i]);
-        SendDlgItemMessage (hDlg, IDC_FILTERVZMULT, CB_ADDSTRING, 0, (LPARAM)filtermultnames[i]);
+	SendDlgItemMessage (hDlg, IDC_FILTERHZMULT, CB_ADDSTRING, 0, (LPARAM)filtermultnames[i]);
+	SendDlgItemMessage (hDlg, IDC_FILTERVZMULT, CB_ADDSTRING, 0, (LPARAM)filtermultnames[i]);
     }
     SendDlgItemMessage (hDlg, IDC_FILTERHZMULT, CB_SETCURSEL, 0, 0);
     SendDlgItemMessage (hDlg, IDC_FILTERVZMULT, CB_SETCURSEL, 0, 0);
     for (i = 0; filtermultnames[i]; i++) {
 	if (filtermults[i] == workprefs.gfx_filter_horiz_zoom_mult)
-            SendDlgItemMessage (hDlg, IDC_FILTERHZMULT, CB_SETCURSEL, i, 0);
+	    SendDlgItemMessage (hDlg, IDC_FILTERHZMULT, CB_SETCURSEL, i, 0);
 	if (filtermults[i] == workprefs.gfx_filter_vert_zoom_mult)
-            SendDlgItemMessage (hDlg, IDC_FILTERVZMULT, CB_SETCURSEL, i, 0);
+	    SendDlgItemMessage (hDlg, IDC_FILTERVZMULT, CB_SETCURSEL, i, 0);
     }
 
     SendDlgItemMessage (hDlg, IDC_FILTERSLR, CB_RESETCONTENT, 0, 0L);
@@ -8432,7 +8519,7 @@ static void values_to_hw3ddlg (HWND hDlg)
 	i++;
     }
     SendDlgItemMessage (hDlg, IDC_FILTERSLR, CB_SETCURSEL, j, 0);
-    
+
     j = 0;
     SendDlgItemMessage (hDlg, IDC_FILTERPRESETS, CB_RESETCONTENT, 0, 0L);
     SendDlgItemMessage (hDlg, IDC_FILTERPRESETS, CB_ADDSTRING, 0, (LPARAM)"");
@@ -8463,7 +8550,7 @@ static void values_to_hw3ddlg (HWND hDlg)
 	    RegCloseKey (fkey);
 	}
     }
-    
+
     SendDlgItemMessage (hDlg, IDC_FILTERHZ, TBM_SETPOS, TRUE, workprefs.gfx_filter_horiz_zoom);
     SendDlgItemMessage (hDlg, IDC_FILTERVZ, TBM_SETPOS, TRUE, workprefs.gfx_filter_vert_zoom);
     SendDlgItemMessage (hDlg, IDC_FILTERHO, TBM_SETPOS, TRUE, workprefs.gfx_filter_horiz_offset);
@@ -8556,7 +8643,7 @@ static void filter_preset (HWND hDlg, WPARAM wParam)
 	} else if (wParam == IDC_FILTERPRESETLOAD) {
 	    char *s = tmp2;
 	    char *t;
-	    
+
 	    load = 1;
 	    strcat (s, ",");
 	    t = strchr (s, ',');
@@ -8616,7 +8703,7 @@ static INT_PTR CALLBACK hw3dDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
     static int recursive;
     LRESULT item;
 
-    switch (msg) 
+    switch (msg)
     {
     case WM_INITDIALOG:
 #if WINUAEBETA == 0
@@ -8625,7 +8712,7 @@ static INT_PTR CALLBACK hw3dDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 	pages[HW3D_ID] = hDlg;
 	currentpage = HW3D_ID;
 	enable_for_hw3ddlg (hDlg);
-	    
+
     case WM_USER:
 	if(recursive > 0)
 	    break;
@@ -8728,32 +8815,32 @@ static INT_PTR CALLBACK hw3dDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 static void values_to_avioutputdlg(HWND hDlg)
 {
     char tmpstr[256];
-	
+
     updatewinfsmode (&workprefs);
     SetDlgItemText(hDlg, IDC_AVIOUTPUT_FILETEXT, avioutput_filename);
-	
+
     sprintf(tmpstr, "%d fps", avioutput_fps);
     SendMessage(GetDlgItem(hDlg, IDC_AVIOUTPUT_FPS_STATIC), WM_SETTEXT, (WPARAM) 0, (LPARAM) tmpstr);
-	
+
     sprintf(tmpstr, "Actual: %d x %d", workprefs.gfx_size.width, workprefs.gfx_size.height);
     SendMessage(GetDlgItem(hDlg, IDC_AVIOUTPUT_DIMENSIONS_STATIC), WM_SETTEXT, (WPARAM) 0, (LPARAM) tmpstr);
-	
+
     switch(avioutput_fps)
     {
 	case VBLANK_HZ_PAL:
 	    CheckRadioButton(hDlg, IDC_AVIOUTPUT_PAL, IDC_AVIOUTPUT_NTSC, IDC_AVIOUTPUT_PAL);
 	break;
-		
+
 	case VBLANK_HZ_NTSC:
 	    CheckRadioButton(hDlg, IDC_AVIOUTPUT_PAL, IDC_AVIOUTPUT_NTSC, IDC_AVIOUTPUT_NTSC);
 	break;
-		
+
 	default:
 	    CheckDlgButton(hDlg, IDC_AVIOUTPUT_PAL, BST_UNCHECKED);
 	    CheckDlgButton(hDlg, IDC_AVIOUTPUT_NTSC, BST_UNCHECKED);
 	break;
     }
-	
+
     CheckDlgButton (hDlg, IDC_AVIOUTPUT_FRAMELIMITER, avioutput_framelimiter ? FALSE : TRUE);
     CheckDlgButton (hDlg, IDC_AVIOUTPUT_NOSOUNDOUTPUT, avioutput_nosoundoutput ? TRUE : FALSE);
     CheckDlgButton (hDlg, IDC_AVIOUTPUT_ACTIVATED, avioutput_requested ? BST_CHECKED : BST_UNCHECKED);
@@ -8780,7 +8867,7 @@ static void enable_for_avioutputdlg(HWND hDlg)
 #if defined (PROWIZARD)
     ew (hDlg, IDC_PROWIZARD, TRUE);
     if (full_property_sheet)
-        ew (hDlg, IDC_PROWIZARD, FALSE);
+	ew (hDlg, IDC_PROWIZARD, FALSE);
 #endif
 
     ew (hDlg, IDC_SCREENSHOT, full_property_sheet ? FALSE : TRUE);
@@ -8790,7 +8877,7 @@ static void enable_for_avioutputdlg(HWND hDlg)
     ew (hDlg, IDC_AVIOUTPUT_NTSC, TRUE);
     ew (hDlg, IDC_AVIOUTPUT_FPS, TRUE);
     ew (hDlg, IDC_AVIOUTPUT_FILE, TRUE);
-		
+
     if(workprefs.produce_sound < 2) {
 	ew (hDlg, IDC_AVIOUTPUT_AUDIO, FALSE);
 	ew (hDlg, IDC_AVIOUTPUT_AUDIO_STATIC, FALSE);
@@ -8810,7 +8897,7 @@ static void enable_for_avioutputdlg(HWND hDlg)
 	WIN32GUI_LoadUIString (IDS_AVIOUTPUT_NOCODEC, tmp, sizeof tmp);
     }
     SetWindowText(GetDlgItem(hDlg, IDC_AVIOUTPUT_AUDIO_STATIC), tmp);
-	
+
     if (avioutput_audio != AVIAUDIO_WAV)
 	avioutput_video = AVIOutput_GetVideoCodec(tmp, sizeof tmp);
     if(!avioutput_video) {
@@ -8839,7 +8926,7 @@ static INT_PTR CALLBACK AVIOutputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPA
 {
     static int recursive = 0;
     char tmp[1000];
-	
+
     switch(msg)
     {
 	case WM_INITDIALOG:
@@ -8851,17 +8938,17 @@ static INT_PTR CALLBACK AVIOutputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPA
 	    SendDlgItemMessage(hDlg, IDC_AVIOUTPUT_FPS, TBM_SETPOS, TRUE, avioutput_fps);
 	    SendMessage(hDlg, WM_HSCROLL, (WPARAM) NULL, (LPARAM) NULL);
 	    if (!avioutput_filename[0]) {
-	        fetch_path ("VideoPath", avioutput_filename, sizeof (avioutput_filename));
-	        strcat (avioutput_filename, "output.avi");
+		fetch_path ("VideoPath", avioutput_filename, sizeof (avioutput_filename));
+		strcat (avioutput_filename, "output.avi");
 	    }
-		
+
 	case WM_USER:
 	    recursive++;
 	    values_to_avioutputdlg(hDlg);
 	    enable_for_avioutputdlg(hDlg);
 	    recursive--;
 	return TRUE;
-		
+
 	case WM_HSCROLL:
 	{
 	    recursive++;
@@ -8871,14 +8958,14 @@ static INT_PTR CALLBACK AVIOutputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPA
 	    recursive--;
 	    return TRUE;
 	}
-		
+
 	case WM_COMMAND:
 
 	    if(recursive > 0)
-	    	break;
-		
+		break;
+
 	    recursive++;
-		
+
 	    switch(wParam)
 	    {
 
@@ -8926,37 +9013,37 @@ static INT_PTR CALLBACK AVIOutputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPA
 		case IDC_SCREENSHOT:
 		    screenshot(1, 0);
 		break;
-			
+
 		case IDC_AVIOUTPUT_PAL:
 		    SendDlgItemMessage(hDlg, IDC_AVIOUTPUT_FPS, TBM_SETPOS, TRUE, VBLANK_HZ_PAL);
 		    SendMessage(hDlg, WM_HSCROLL, (WPARAM) NULL, (LPARAM) NULL);
 		break;
-			
+
 		case IDC_AVIOUTPUT_NTSC:
 		    SendDlgItemMessage(hDlg, IDC_AVIOUTPUT_FPS, TBM_SETPOS, TRUE, VBLANK_HZ_NTSC);
 		    SendMessage(hDlg, WM_HSCROLL, (WPARAM) NULL, (LPARAM) NULL);
 		break;
-			
+
 		case IDC_AVIOUTPUT_AUDIO:
 		{
 		    if (avioutput_enabled)
-		        AVIOutput_End ();
+			AVIOutput_End ();
 		    if(IsDlgButtonChecked(hDlg, IDC_AVIOUTPUT_AUDIO) == BST_CHECKED) {
 			avioutput_audio = AVIOutput_ChooseAudioCodec(hDlg, tmp, sizeof tmp);
 			enable_for_avioutputdlg(hDlg);
 		    } else {
 			avioutput_audio = 0;
-		    }	
+		    }
 		    break;
 		}
-			
+
 		case IDC_AVIOUTPUT_VIDEO:
 		{
 		    if (avioutput_enabled)
-		        AVIOutput_End ();
+			AVIOutput_End ();
 		    if(IsDlgButtonChecked(hDlg, IDC_AVIOUTPUT_VIDEO) == BST_CHECKED) {
 			avioutput_video = AVIOutput_ChooseVideoCodec(hDlg, tmp, sizeof tmp);
-		        if (avioutput_audio = AVIAUDIO_WAV)
+			if (avioutput_audio = AVIAUDIO_WAV)
 			    avioutput_audio = 0;
 			enable_for_avioutputdlg(hDlg);
 		    } else {
@@ -8965,11 +9052,11 @@ static INT_PTR CALLBACK AVIOutputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPA
 		    enable_for_avioutputdlg(hDlg);
 		    break;
 		}
-			
+
 		case IDC_AVIOUTPUT_FILE:
 		{
 		    OPENFILENAME ofn;
-				
+
 		    ZeroMemory(&ofn, sizeof(OPENFILENAME));
 		    ofn.lStructSize = sizeof(OPENFILENAME);
 		    ofn.hwndOwner = hDlg;
@@ -8987,26 +9074,26 @@ static INT_PTR CALLBACK AVIOutputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPA
 		    ofn.lpTemplateName = NULL;
 		    ofn.lCustData = 0;
 		    ofn.lpstrFilter = "Video Clip (*.avi)\0*.avi\0Wave Sound (*.wav)\0";
-				
+
 		    if(!GetSaveFileName(&ofn))
 			break;
 		    if (ofn.nFilterIndex == 2) {
-		        avioutput_audio = AVIAUDIO_WAV;
-		        avioutput_video = 0;
-		        if (strlen (avioutput_filename) > 4 && !stricmp (avioutput_filename + strlen (avioutput_filename) - 4, ".avi"))
+			avioutput_audio = AVIAUDIO_WAV;
+			avioutput_video = 0;
+			if (strlen (avioutput_filename) > 4 && !stricmp (avioutput_filename + strlen (avioutput_filename) - 4, ".avi"))
 			    strcpy (avioutput_filename + strlen (avioutput_filename) - 4, ".wav");
 		    }
 		    break;
 		}
-		
+
 	    }
-	
+
 	    values_from_avioutputdlg(hDlg, msg, wParam, lParam);
 	    values_to_avioutputdlg(hDlg);
 	    enable_for_avioutputdlg(hDlg);
-		
+
 	    recursive--;
-	
+
 	    return TRUE;
 	}
 	return FALSE;
@@ -9456,8 +9543,8 @@ static void centerWindow (HWND hDlg)
 	GetWindowRect (owner, &rcOwner);
 	GetWindowRect (hDlg, &rcDlg);
 	CopyRect (&rc, &rcOwner);
-	OffsetRect(&rcDlg, -rcDlg.left, -rcDlg.top); 
-	OffsetRect(&rc, -rc.left, -rc.top); 
+	OffsetRect(&rcDlg, -rcDlg.left, -rcDlg.top);
+	OffsetRect(&rc, -rc.left, -rc.top);
 	OffsetRect(&rc, -rcDlg.right, -rcDlg.bottom);
 	x = rcOwner.left + (rc.right / 2);
 	y = rcOwner.top + (rc.bottom / 2);
@@ -9481,6 +9568,13 @@ static void centerWindow (HWND hDlg)
     SetWindowPos (hDlg,  HWND_TOP, x, y, 0, 0, SWP_NOSIZE);
 }
 
+static int do_filesys_insert (const char *root)
+{
+    if (filesys_insert (-1, NULL, root, 0, 0) == 0)
+	return filesys_media_change (root, 2, NULL);
+    return 1;
+}
+
 int dragdrop (HWND hDlg, HDROP hd, struct uae_prefs *prefs, int	currentpage)
 {
     int cnt, i, drv, firstdrv, list;
@@ -9490,7 +9584,7 @@ int dragdrop (HWND hDlg, HDROP hd, struct uae_prefs *prefs, int	currentpage)
     RECT r, r2;
     int ret = 0;
     DWORD flags;
-    
+
     DragQueryPoint (hd, &pt);
     pt.y += GetSystemMetrics (SM_CYMENU) + GetSystemMetrics (SM_CYBORDER);
     cnt = DragQueryFile (hd, 0xffffffff, NULL, 0);
@@ -9528,7 +9622,7 @@ int dragdrop (HWND hDlg, HDROP hd, struct uae_prefs *prefs, int	currentpage)
 	int type = -1;
 
 	DragQueryFile (hd, i, file, sizeof (file));
-        flags = GetFileAttributes(file);
+	flags = GetFileAttributes(file);
 	if (flags & FILE_ATTRIBUTE_DIRECTORY)
 	    type = ZFILE_HDF;
 	if (type < 0) {
@@ -9541,22 +9635,27 @@ int dragdrop (HWND hDlg, HDROP hd, struct uae_prefs *prefs, int	currentpage)
 	    }
 	}
 
+	if (currentpage < 0 && i == 0) {
+	    if (do_filesys_insert (file))
+		continue;
+	}
+
 	switch (type)
 	{
-    	    case  ZFILE_DISKIMAGE:
-	        if (currentpage == DISK_ID) {
+	    case  ZFILE_DISKIMAGE:
+		if (currentpage == DISK_ID) {
 		    list = 0;
 		    while (list < MAX_SPARE_DRIVES) {
-		        if (!strcasecmp (prefs->dfxlist[list], file))
+			if (!strcasecmp (prefs->dfxlist[list], file))
 			    break;
 			list++;
 		    }
 		    if (list == MAX_SPARE_DRIVES) {
-		        list = 0;
-		        while (list < MAX_SPARE_DRIVES) {
+			list = 0;
+			while (list < MAX_SPARE_DRIVES) {
 			    if (!prefs->dfxlist[list][0]) {
-			        strcpy (prefs->dfxlist[list], file);
-			        break;
+				strcpy (prefs->dfxlist[list], file);
+				break;
 			    }
 			    list++;
 			}
@@ -9569,61 +9668,66 @@ int dragdrop (HWND hDlg, HDROP hd, struct uae_prefs *prefs, int	currentpage)
 		    disk_insert (drv, workprefs.df[drv]);
 		    drv++;
 		    if (drv >= (currentpage == QUICKSTART_ID ? 2 : 4))
-		        drv = 0;
+			drv = 0;
 		    if (workprefs.dfxtype[drv] < 0)
-		        drv = 0;
+			drv = 0;
 		    if (drv == firstdrv)
-		        i = cnt;
+			i = cnt;
 		}
 	    break;
 	    case ZFILE_ROM:
-	        if (rd) {
+		if (rd) {
 		    if (rd->type == ROMTYPE_KICK || rd->type == ROMTYPE_KICKCD32)
-		        strcpy (prefs->romfile, file);
+			strcpy (prefs->romfile, file);
 		    if (rd->type == ROMTYPE_EXTCD32 || rd->type == ROMTYPE_EXTCDTV)
-		        strcpy (prefs->romextfile, file);
+			strcpy (prefs->romextfile, file);
 		    if (rd->type == ROMTYPE_AR)
-		        strcpy (prefs->cartfile, file);
+			strcpy (prefs->cartfile, file);
 		} else {
 		    strcpy (prefs->romfile, file);
 		}
 	    break;
 	    case ZFILE_HDF:
 		if (flags & FILE_ATTRIBUTE_DIRECTORY) {
-		    add_filesys_config (&workprefs, -1, NULL, "", file, 0,
-			0, 0, 0, 0, 0, NULL, 0, 0);
+		    if (!full_property_sheet && currentpage < 0)
+			do_filesys_insert (file);
+		    else
+			add_filesys_config (&workprefs, -1, NULL, "", file, 0,
+			    0, 0, 0, 0, 0, NULL, 0, 0);
 		} else {
 		    add_filesys_config (&workprefs, -1, NULL, NULL, file, 0,
 			32, 1, 2, 512, 0, NULL, 0, 0);
 		}
 	    break;
 	    case ZFILE_NVR:
-	        strcpy (prefs->flashfile, file);
+		strcpy (prefs->flashfile, file);
 	    break;
 	    case ZFILE_CONFIGURATION:
-	        if (target_cfgfile_load (&workprefs, file, 0, 0)) {
+		if (target_cfgfile_load (&workprefs, file, 0, 0)) {
 		    if (full_property_sheet) {
-		        inputdevice_updateconfig (&workprefs);
-		        if (!workprefs.start_gui)
+			inputdevice_updateconfig (&workprefs);
+			if (!workprefs.start_gui)
 			    ret = 1;
 		    } else {
-		        uae_restart (workprefs.start_gui, file);
-		        ret = 1;
+			uae_restart (workprefs.start_gui, file);
+			ret = 1;
 		    }
 		}
 	    break;
 	    case ZFILE_STATEFILE:
-	        savestate_state = STATE_DORESTORE;
-	        strcpy (savestate_fname, file);
-	        ret = 1;
+		savestate_state = STATE_DORESTORE;
+		strcpy (savestate_fname, file);
+		ret = 1;
 	    break;
 	    default:
-		if (currentpage == HARDDISK_ID) {
+		if (currentpage < 0 && !full_property_sheet) {
+		    do_filesys_insert (file);
+		} else if (currentpage == HARDDISK_ID) {
 		    add_filesys_config (&workprefs, -1, NULL, "", file, 0,
 			0, 0, 0, 0, 0, NULL, 0, 0);
 		} else {
 		    rd = scan_arcadia_rom (file, 0);
-	    	    if (rd) {
+		    if (rd) {
 			if (rd->type == ROMTYPE_ARCADIABIOS)
 			    strcpy (prefs->romextfile, file);
 			else if (rd->type == ROMTYPE_ARCADIAGAME)
@@ -9655,7 +9759,7 @@ static INT_PTR CALLBACK DialogProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lP
 		quit_program = 1;
 		regs.spcflags |= SPCFLAG_BRK;
 	    }
-	}	    
+	}
 	return TRUE;
 	case WM_INITDIALOG:
 	    guiDlg = hDlg;
@@ -9665,6 +9769,7 @@ static INT_PTR CALLBACK DialogProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lP
 		WIN32GUI_LoadUIString (IDS_STARTEMULATION, tmp, sizeof (tmp));
 		SetWindowText (GetDlgItem (guiDlg, IDOK), tmp);
 	    }
+	    ShowWindow (GetDlgItem(guiDlg, IDC_RESTARTEMU), full_property_sheet ? SW_HIDE : SW_SHOW);
 	    centerWindow (hDlg);
 	    createTreeView (hDlg, currentpage);
 	    updatePanel (hDlg, currentpage);
@@ -9708,6 +9813,10 @@ static INT_PTR CALLBACK DialogProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lP
 		case IDC_QUITEMU:
 		    uae_quit ();
 		    SendMessage (hDlg, WM_COMMAND, IDCANCEL, 0);
+		    return TRUE;
+		case IDC_RESTARTEMU:
+		    uae_restart (-1, NULL);
+		    exit_gui(1);
 		    return TRUE;
 		case IDHELP:
 		    if (pHtmlHelp && ppage[currentpage].help)
@@ -9953,7 +10062,7 @@ static int GetSettings (int all_options, HWND hwnd)
     hAccelTable = NULL;
     DragAcceptFiles(hwnd, TRUE);
     if (first)
-	write_log("Entering GUI idle loop\n");
+	write_log ("Entering GUI idle loop\n");
     scaleresource_setmaxsize(800, 600);
     tres = scaleresource(panelresource, hwnd);
     dhwnd = CreateDialogIndirect (tres->inst, tres->resource, hwnd, DialogProc);
@@ -9965,16 +10074,8 @@ static int GetSettings (int all_options, HWND hwnd)
     if (dhwnd != NULL) {
 	MSG msg;
 	DWORD v;
-	char tmp[MAX_DPATH];
 
-	if (WINUAEBETA > 0 && GetWindowText (dhwnd, tmp, sizeof (tmp)) > 0) {
-	    strcat (tmp, BetaStr);
-	    if (strlen(WINUAEEXTRA) > 0) {
-		strcat (tmp, " ");
-		strcat (tmp, WINUAEEXTRA);
-	    }
-	    SetWindowText (dhwnd, tmp);
-	}
+	setguititle (dhwnd);
 	ShowWindow (dhwnd, SW_SHOW);
 	MapDialogRect(dhwnd, &dialog_rect);
 
@@ -10005,7 +10106,7 @@ static int GetSettings (int all_options, HWND hwnd)
 		DispatchMessage (&msg);
 	    }
 	    if (dialogreturn >= 0)
-	        break;
+		break;
 	}
 	psresult = dialogreturn;
     }
@@ -10024,7 +10125,7 @@ static int GetSettings (int all_options, HWND hwnd)
 int gui_init (void)
 {
     int ret;
-    
+
     read_rom_list();
     for (;;) {
 	ret = GetSettings(1, currprefs.win32_notaskbarbutton ? hHiddenWnd : NULL);
@@ -10048,7 +10149,7 @@ int gui_update (void)
 void gui_exit (void)
 {
     int i;
-    
+
     for (i = 0; i < C_PAGES; i++) {
 	if (ppage[i].accel)
 	    DestroyAcceleratorTable (ppage[i].accel);
@@ -10139,7 +10240,7 @@ void gui_led (int led, int on)
 		break;
 	    j--;
 	}
-	tt = dfx[led - 1]; 
+	tt = dfx[led - 1];
 	tt[0] = 0;
 	if (strlen (p + j) > 0)
 	    sprintf (tt, "%s (CRC=%08.8X)", p + j, gui_data.crc32[led - 1]);
@@ -10243,9 +10344,9 @@ int gui_message_multibutton (int flags, const char *format,...)
     va_start (parms, format);
     vsprintf( msg, format, parms );
     va_end (parms);
-    write_log( msg );
+    write_log ( msg );
     if (msg[strlen(msg)-1]!='\n')
-	write_log("\n");
+	write_log ("\n");
 
     WIN32GUI_LoadUIString (IDS_ERRORTITLE, szTitle, MAX_DPATH);
 
@@ -10290,14 +10391,14 @@ void gui_message (const char *format,...)
     if (flipflop)
 	ShowWindow (hAmigaWnd, SW_MINIMIZE);
 
-    write_log(msg);
+    write_log (msg);
     if (msg[strlen(msg) - 1] != '\n')
-	write_log("\n");
+	write_log ("\n");
 
     WIN32GUI_LoadUIString (IDS_ERRORTITLE, szTitle, MAX_DPATH);
 
     if (!MessageBox (hwnd, msg, szTitle, flags))
-	write_log("MessageBox(%s) failed, err=%d\n", msg, GetLastError());
+	write_log ("MessageBox(%s) failed, err=%d\n", msg, GetLastError());
 
     if (flipflop)
 	ShowWindow (hAmigaWnd, SW_RESTORE);
@@ -10323,7 +10424,7 @@ void pre_gui_message (const char *format,...)
     va_end (parms);
     write_log (msg);
     if (msg[strlen(msg)-1]!='\n')
-	write_log("\n");
+	write_log ("\n");
 
     WIN32GUI_LoadUIString (IDS_ERRORTITLE, szTitle, MAX_DPATH);
     strcat (szTitle, BetaStr);

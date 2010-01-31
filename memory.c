@@ -59,6 +59,14 @@ uae_u32 max_z3fastmem = 512 * 1024 * 1024;
 
 static size_t bootrom_filepos, chip_filepos, bogo_filepos, rom_filepos, a3000lmem_filepos, a3000hmem_filepos;
 
+/* Set if we notice during initialization that settings changed,
+   and we must clear all memory to prevent bogus contents from confusing
+   the Kickstart.  */
+static int need_hardreset;
+
+/* The address space setting used during the last reset.  */
+static int last_address_space_24;
+
 static struct romlist *rl;
 static int romlist_cnt;
 
@@ -108,7 +116,7 @@ struct romdata *getromdatabypath(char *path)
     return NULL;
 }
 
-#define NEXT_ROM_ID 68
+#define NEXT_ROM_ID 70
 
 static struct romheader romheaders[] = {
     { "Freezer Cartridges", 1 },
@@ -117,139 +125,140 @@ static struct romheader romheaders[] = {
 };
 
 static struct romdata roms[] = {
-    { "Cloanto Amiga Forever ROM key", 0, 0, 0, 0, 0, 2069, 0, 0, 1, ROMTYPE_KEY, 0,
+    { "Cloanto Amiga Forever ROM key", 0, 0, 0, 0, 0, 2069, 0, 0, 1, ROMTYPE_KEY, 0, 0,
 	0x869ae1b1, 0x801bbab3,0x2e3d3738,0x6dd1636d,0x4f1d6fa7,0xe21d5874 },
-    { "Cloanto Amiga Forever 2006 ROM key", 0, 0, 0, 0, 0, 750, 48, 0, 1, ROMTYPE_KEY, 0,
+    { "Cloanto Amiga Forever 2006 ROM key", 0, 0, 0, 0, 0, 750, 48, 0, 1, ROMTYPE_KEY, 0, 0,
 	0xb01c4b56, 0xbba8e5cd,0x118b8d92,0xafed5693,0x5eeb9770,0x2a662d8f },
 
-    { "KS ROM v1.0 (A1000)(NTSC)", 1, 0, 1, 0, "A1000\0", 262144, 1, 0, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v1.0 (A1000)(NTSC)", 1, 0, 1, 0, "A1000\0", 262144, 1, 0, 0, ROMTYPE_KICK, 0, 0,
 	0x299790ff, 0x00C15406,0xBEB4B8AB,0x1A16AA66,0xC05860E1,0xA7C1AD79 },
-    { "KS ROM v1.1 (A1000)(NTSC)", 1, 1, 31, 34, "A1000\0", 262144, 2, 0, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v1.1 (A1000)(NTSC)", 1, 1, 31, 34, "A1000\0", 262144, 2, 0, 0, ROMTYPE_KICK, 0, 0,
 	0xd060572a, 0x4192C505,0xD130F446,0xB2ADA6BD,0xC91DAE73,0x0ACAFB4C},
-    { "KS ROM v1.1 (A1000)(PAL)", 1, 1, 31, 34, "A1000\0", 262144, 3, 0, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v1.1 (A1000)(PAL)", 1, 1, 31, 34, "A1000\0", 262144, 3, 0, 0, ROMTYPE_KICK, 0, 0,
 	0xec86dae2, 0x16DF8B5F,0xD524C5A1,0xC7584B24,0x57AC15AF,0xF9E3AD6D },
-    { "KS ROM v1.2 (A1000)", 1, 2, 33, 166, "A1000\0", 262144, 4, 0, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v1.2 (A1000)", 1, 2, 33, 166, "A1000\0", 262144, 4, 0, 0, ROMTYPE_KICK, 0, 0,
 	0x9ed783d0, 0x6A7BFB5D,0xBD6B8F17,0x9F03DA84,0xD8D95282,0x67B6273B },
-    { "KS ROM v1.2 (A500,A1000,A2000)", 1, 2, 33, 180, "A500\0A1000\0A2000\0", 262144, 5, 0, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v1.2 (A500,A1000,A2000)", 1, 2, 33, 180, "A500\0A1000\0A2000\0", 262144, 5, 0, 0, ROMTYPE_KICK, 0, 0,
 	0xa6ce1636, 0x11F9E62C,0xF299F721,0x84835B7B,0x2A70A163,0x33FC0D88 },
-    { "KS ROM v1.3 (A500,A1000,A2000)", 1, 3, 34, 5, "A500\0A1000\0A2000\0", 262144, 6, 0, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v1.3 (A500,A1000,A2000)", 1, 3, 34, 5, "A500\0A1000\0A2000\0", 262144, 6, 0, 0, ROMTYPE_KICK, 0, 0,
 	0xc4f0f55f, 0x891E9A54,0x7772FE0C,0x6C19B610,0xBAF8BC4E,0xA7FCB785 },
-    { "KS ROM v1.3 (A3000)(SK)", 1, 3, 34, 5, "A3000\0", 262144, 32, 0, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v1.3 (A3000)(SK)", 1, 3, 34, 5, "A3000\0", 262144, 32, 0, 0, ROMTYPE_KICK, 0, 0,
 	0xe0f37258, 0xC39BD909,0x4D4E5F4E,0x28C1411F,0x30869504,0x06062E87 },
-    { "KS ROM v1.4 (A3000)", 1, 4, 36, 16, "A3000\0", 524288, 59, 3, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v1.4 (A3000)", 1, 4, 36, 16, "A3000\0", 524288, 59, 3, 0, ROMTYPE_KICK, 0, 0,
 	0xbc0ec13f, 0xF76316BF,0x36DFF14B,0x20FA349E,0xD02E4B11,0xDD932B07 },
 
-    { "KS ROM v2.04 (A500+)", 2, 4, 37, 175, "A500+\0", 524288, 7, 0, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v2.04 (A500+)", 2, 4, 37, 175, "A500+\0", 524288, 7, 0, 0, ROMTYPE_KICK, 0, 0,
 	0xc3bdb240, 0xC5839F5C,0xB98A7A89,0x47065C3E,0xD2F14F5F,0x42E334A1 },
-    { "KS ROM v2.05 (A600)", 2, 5, 37, 299, "A600\0", 524288, 8, 0, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v2.05 (A600)", 2, 5, 37, 299, "A600\0", 524288, 8, 0, 0, ROMTYPE_KICK, 0, 0,
 	0x83028fb5, 0x87508DE8,0x34DC7EB4,0x7359CEDE,0x72D2E3C8,0xA2E5D8DB },
-    { "KS ROM v2.05 (A600HD)", 2, 5, 37, 300, "A600HD\0A600\0", 524288, 9, 0, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v2.05 (A600HD)", 2, 5, 37, 300, "A600HD\0A600\0", 524288, 9, 0, 0, ROMTYPE_KICK, 0, 0,
 	0x64466c2a, 0xF72D8914,0x8DAC39C6,0x96E30B10,0x859EBC85,0x9226637B },
-    { "KS ROM v2.05 (A600HD)", 2, 5, 37, 350, "A600HD\0A600\0", 524288, 10, 0, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v2.05 (A600HD)", 2, 5, 37, 350, "A600HD\0A600\0", 524288, 10, 0, 0, ROMTYPE_KICK, 0, 0,
 	0x43b0df7b, 0x02843C42,0x53BBD29A,0xBA535B0A,0xA3BD9A85,0x034ECDE4 },
 
-    { "KS ROM v3.0 (A1200)", 3, 0, 39, 106, "A1200\0", 524288, 11, 0, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v3.0 (A1200)", 3, 0, 39, 106, "A1200\0", 524288, 11, 0, 0, ROMTYPE_KICK, 0, 0,
 	0x6c9b07d2, 0x70033828,0x182FFFC7,0xED106E53,0x73A8B89D,0xDA76FAA5 },
-    { "KS ROM v3.0 (A4000)", 3, 0, 39, 106, "A4000\0", 524288, 12, 2 | 4, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v3.0 (A4000)", 3, 0, 39, 106, "A4000\0", 524288, 12, 2 | 4, 0, ROMTYPE_KICK, 0, 0,
 	0x9e6ac152, 0xF0B4E9E2,0x9E12218C,0x2D5BD702,0x0E4E7852,0x97D91FD7 },
-    { "KS ROM v3.1 (A4000)", 3, 1, 40, 70, "A4000\0", 524288, 13, 2 | 4, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v3.1 (A4000)", 3, 1, 40, 70, "A4000\0", 524288, 13, 2 | 4, 0, ROMTYPE_KICK, 0, 0,
 	0x2b4566f1, 0x81c631dd,0x096bbb31,0xd2af9029,0x9c76b774,0xdb74076c },
-    { "KS ROM v3.1 (A500,A600,A2000)", 3, 1, 40, 63, "A500\0A600\0A2000\0", 524288, 14, 0, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v3.1 (A500,A600,A2000)", 3, 1, 40, 63, "A500\0A600\0A2000\0", 524288, 14, 0, 0, ROMTYPE_KICK, 0, 0,
 	0xfc24ae0d, 0x3B7F1493,0xB27E2128,0x30F989F2,0x6CA76C02,0x049F09CA },
-    { "KS ROM v3.1 (A1200)", 3, 1, 40, 68, "A1200\0", 524288, 15, 1, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v3.1 (A1200)", 3, 1, 40, 68, "A1200\0", 524288, 15, 1, 0, ROMTYPE_KICK, 0, 0,
 	0x1483a091, 0xE2154572,0x3FE8374E,0x91342617,0x604F1B3D,0x703094F1 },
-    { "KS ROM v3.1 (A3000)", 3, 1, 40, 68, "A3000\0", 524288, 61, 2, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v3.1 (A3000)", 3, 1, 40, 68, "A3000\0", 524288, 61, 2, 0, ROMTYPE_KICK, 0, 0,
 	0xefb239cc, 0xF8E210D7,0x2B4C4853,0xE0C9B85D,0x223BA20E,0x3D1B36EE },
-    { "KS ROM v3.1 (A4000)(Cloanto)", 3, 1, 40, 68, "A4000\0", 524288, 31, 2 | 4, 1, ROMTYPE_KICK, 0,
+    { "KS ROM v3.1 (A4000)(Cloanto)", 3, 1, 40, 68, "A4000\0", 524288, 31, 2 | 4, 1, ROMTYPE_KICK, 0, 0,
 	0x43b6dd22, 0xC3C48116,0x0866E60D,0x085E436A,0x24DB3617,0xFF60B5F9 },
-    { "KS ROM v3.1 (A4000)", 3, 1, 40, 68, "A4000\0", 524288, 16, 2 | 4, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v3.1 (A4000)", 3, 1, 40, 68, "A4000\0", 524288, 16, 2 | 4, 0, ROMTYPE_KICK, 0, 0,
 	0xd6bae334, 0x5FE04842,0xD04A4897,0x20F0F4BB,0x0E469481,0x99406F49 },
-    { "KS ROM v3.1 (A4000T)", 3, 1, 40, 70, "A4000T\0", 524288, 17, 2 | 4, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v3.1 (A4000T)", 3, 1, 40, 70, "A4000T\0", 524288, 17, 2 | 4, 0, ROMTYPE_KICK, 0, 0,
 	0x75932c3a, 0xB0EC8B84,0xD6768321,0xE01209F1,0x1E6248F2,0xF5281A21 },
-    { "KS ROM v3.X (A4000)(Cloanto)", 3, 10, 45, 57, "A4000\0", 524288, 46, 2 | 4, 0, ROMTYPE_KICK, 0,
+    { "KS ROM v3.X (A4000)(Cloanto)", 3, 10, 45, 57, "A4000\0", 524288, 46, 2 | 4, 0, ROMTYPE_KICK, 0, 0,
 	0x08b69382, 0x81D3AEA3,0x0DB7FBBB,0x4AFEE41C,0x21C5ED66,0x2B70CA53 },
 
-    { "CD32 KS ROM v3.1", 3, 1, 40, 60, "CD32\0", 524288, 18, 1, 0, ROMTYPE_KICKCD32, 0,
+    { "CD32 KS ROM v3.1", 3, 1, 40, 60, "CD32\0", 524288, 18, 1, 0, ROMTYPE_KICKCD32, 0, 0,
 	0x1e62d4a5, 0x3525BE88,0x87F79B59,0x29E017B4,0x2380A79E,0xDFEE542D },
-    { "CD32 extended ROM", 3, 1, 40, 60, "CD32\0", 524288, 19, 1, 0, ROMTYPE_EXTCD32, 0,
+    { "CD32 extended ROM", 3, 1, 40, 60, "CD32\0", 524288, 19, 1, 0, ROMTYPE_EXTCD32, 0, 0,
 	0x87746be2, 0x5BEF3D62,0x8CE59CC0,0x2A66E6E4,0xAE0DA48F,0x60E78F7F },
-    { "CD32 ROM (KS + extended)", 3, 1, 40, 60, "CD32\0", 2 * 524288, 64, 1, 0, ROMTYPE_KICKCD32, 0,
+    { "CD32 ROM (KS + extended)", 3, 1, 40, 60, "CD32\0", 2 * 524288, 64, 1, 0, ROMTYPE_KICKCD32 | ROMTYPE_EXTCD32, 0, 0,
 	0xd3837ae4, 0x06807db3,0x18163745,0x5f4d4658,0x2d9972af,0xec8956d9 },
 
-    { "CDTV extended ROM v1.00", 1, 0, 1, 0, "CDTV\0", 262144, 20, 0, 0, ROMTYPE_EXTCDTV, 0,
+    { "CDTV extended ROM v1.00", 1, 0, 1, 0, "CDTV\0", 262144, 20, 0, 0, ROMTYPE_EXTCDTV, 0, 0,
 	0x42baa124, 0x7BA40FFA,0x17E500ED,0x9FED041F,0x3424BD81,0xD9C907BE },
-    { "CDTV extended ROM v2.07", 2, 7, 2, 7, "CDTV\0", 262144, 22, 0, 0, ROMTYPE_EXTCDTV, 0,
+    { "CDTV extended ROM v2.07", 2, 7, 2, 7, "CDTV\0", 262144, 22, 0, 0, ROMTYPE_EXTCDTV, 0, 0,
 	0xceae68d2, 0x5BC114BB,0xA29F60A6,0x14A31174,0x5B3E2464,0xBFA06846 },
-    { "CDTV extended ROM v2.30", 2, 30, 2, 30, "CDTV\0", 262144, 21, 0, 0, ROMTYPE_EXTCDTV, 0,
+    { "CDTV extended ROM v2.30", 2, 30, 2, 30, "CDTV\0", 262144, 21, 0, 0, ROMTYPE_EXTCDTV, 0, 0,
 	0x30b54232, 0xED7E461D,0x1FFF3CDA,0x321631AE,0x42B80E3C,0xD4FA5EBB },
 
-    { "A1000 bootstrap ROM", 0, 0, 0, 0, "A1000\0", 8192, 23, 0, 0, ROMTYPE_KICK, 0,
+    { "A1000 bootstrap ROM", 0, 0, 0, 0, "A1000\0", 8192, 23, 0, 0, ROMTYPE_KICK, 0, 0,
 	0x62f11c04, 0xC87F9FAD,0xA4EE4E69,0xF3CCA0C3,0x6193BE82,0x2B9F5FE6 },
-    { "A1000 bootstrap ROM", 0, 0, 0, 0, "A1000\0", 65536, 24, 0, 0, ROMTYPE_KICK, 0,
+    { "A1000 bootstrap ROM", 0, 0, 0, 0, "A1000\0", 65536, 24, 0, 0, ROMTYPE_KICK, 0, 0,
 	0x0b1ad2d0, 0xBA93B8B8,0x5CA0D83A,0x68225CC3,0x3B95050D,0x72D2FDD7 },
 
-    { "Freezer: Action Replay Mk I v1.00", 1, 0, 1, 0, "AR\0", 65536, 52, 0, 0, ROMTYPE_AR, 1,
+    { "Freezer: Action Replay Mk I v1.00", 1, 0, 1, 0, "AR\0", 65536, 52, 0, 0, ROMTYPE_AR, 0, 1,
 	0x2d921771, 0x1EAD9DDA,0x2DAD2914,0x6441F5EF,0x72183750,0x22E01248 },
-    { "Freezer: Action Replay Mk I v1.50", 1, 50, 1, 50, "AR\0", 65536, 25, 0, 0, ROMTYPE_AR, 1,
+    { "Freezer: Action Replay Mk I v1.50", 1, 50, 1, 50, "AR\0", 65536, 25, 0, 0, ROMTYPE_AR, 0, 1,
 	0xd4ce0675, 0x843B433B,0x2C56640E,0x045D5FDC,0x854DC6B1,0xA4964E7C },
-    { "Freezer: Action Replay Mk II v2.05", 2, 5, 2, 5, "AR\0", 131072, 26, 0, 0, ROMTYPE_AR, 1,
+    { "Freezer: Action Replay Mk II v2.05", 2, 5, 2, 5, "AR\0", 131072, 26, 0, 0, ROMTYPE_AR, 0, 1,
 	0x1287301f, 0xF6601DE8,0x888F0050,0x72BF562B,0x9F533BBC,0xAF1B0074 },
-    { "Freezer: Action Replay Mk II v2.12", 2, 12, 2, 12, "AR\0", 131072, 27, 0, 0, ROMTYPE_AR, 1,
+    { "Freezer: Action Replay Mk II v2.12", 2, 12, 2, 12, "AR\0", 131072, 27, 0, 0, ROMTYPE_AR, 0, 1,
 	0x804d0361, 0x3194A07A,0x0A82D8B5,0xF2B6AEFA,0x3CA581D6,0x8BA8762B },
-    { "Freezer: Action Replay Mk II v2.14", 2, 14, 2, 14, "AR\0", 131072, 28, 0, 0, ROMTYPE_AR, 1,
+    { "Freezer: Action Replay Mk II v2.14", 2, 14, 2, 14, "AR\0", 131072, 28, 0, 0, ROMTYPE_AR, 0, 1,
 	0x49650e4f, 0x255D6DF6,0x3A4EAB0A,0x838EB1A1,0x6A267B09,0x59DFF634 },
-    { "Freezer: Action Replay Mk III v3.09", 3, 9, 3, 9, "AR\0", 262144, 29, 0, 0, ROMTYPE_AR, 1,
+    { "Freezer: Action Replay Mk III v3.09", 3, 9, 3, 9, "AR\0", 262144, 29, 0, 0, ROMTYPE_AR, 0, 1,
 	0x0ed9b5aa, 0x0FF3170A,0xBBF0CA64,0xC9DD93D6,0xEC0C7A01,0xB5436824 },
-    { "Freezer: Action Replay Mk III v3.17", 3, 17, 3, 17, "AR\0", 262144, 30, 0, 0, ROMTYPE_AR, 1,
+    { "Freezer: Action Replay Mk III v3.17", 3, 17, 3, 17, "AR\0", 262144, 30, 0, 0, ROMTYPE_AR, 0, 1,
 	0xc8a16406, 0x5D4987C2,0xE3FFEA8B,0x1B02E314,0x30EF190F,0x2DB76542 },
-    { "Freezer: Action Replay 1200", 0, 0, 0, 0, "AR\0", 262144, 47, 0, 0, ROMTYPE_AR, 1,
+    { "Freezer: Action Replay 1200", 0, 0, 0, 0, "AR\0", 262144, 47, 0, 0, ROMTYPE_AR, 0, 1,
 	0x8d760101, 0x0F6AB834,0x2810094A,0xC0642F62,0xBA42F78B,0xC0B07E6A },
 
-    { "Freezer: Action Cartridge Super IV Professional", 0, 0, 0, 0, "SUPERIV\0", 0, 62, 0, 0, ROMTYPE_SUPERIV, 1,
+    { "Freezer: Action Cartridge Super IV Professional", 0, 0, 0, 0, "SUPERIV\0", 0, 62, 0, 0, ROMTYPE_SUPERIV, 0, 1,
 	0xffffffff, 0, 0, 0, 0, 0, "SuperIV" },
-    { "Freezer: Action Cart. Super IV Pro (+ROM v4.3)", 4, 3, 4, 3, "SUPERIV\0", 170368, 60, 0, 0, ROMTYPE_SUPERIV, 1,
+    { "Freezer: Action Cart. Super IV Pro (+ROM v4.3)", 4, 3, 4, 3, "SUPERIV\0", 170368, 60, 0, 0, ROMTYPE_SUPERIV, 0, 1,
 	0xe668a0be, 0x633A6E65,0xA93580B8,0xDDB0BE9C,0x9A64D4A1,0x7D4B4801 },
-    { "Freezer: X-Power Professional 500 v1.2", 1, 2, 1, 2, "XPOWER\0", 131072, 65, 0, 0, ROMTYPE_SUPERIV, 1,
+    { "Freezer: X-Power Professional 500 v1.2", 1, 2, 1, 2, "XPOWER\0", 131072, 65, 0, 0, ROMTYPE_XPOWER, 0, 1,
 	0x9e70c231, 0xa2977a1c,0x41a8ca7d,0x4af4a168,0x726da542,0x179d5963 },
-    /* v1.0 is bad dump */
-    { "Freezer: Nordic Power v1.0", 0, 0, 0, 0, "NPOWER\0", 65536, 66, 0, 0, ROMTYPE_SUPERIV, 1, },
-	//0xdd16cdec, 0xfd882967,0x87e2da5f,0x4ef6be32,0x5f7c9324,0xb5bd8e64 },
-    { "Freezer: Nordic Power v2.0", 2, 0, 2, 0, "NPOWER\0", 65536, 67, 0, 0, ROMTYPE_SUPERIV, 1,
+    { "Freezer: X-Power Professional 500 v1.3", 1, 2, 1, 2, "XPOWER\0", 131072, 68, 0, 0, ROMTYPE_XPOWER, 0, 1,
+	0x31e057f0, 0x84650266,0x465d1859,0x7fd71dee,0x00775930,0xb7e450ee },
+    { "Freezer: Nordic Power v1.5", 1, 5, 1, 5, "NPOWER\0", 65536, 69, 0, 0, ROMTYPE_NORDIC, 0, 1,
+	0x83b4b21c, 0xc56ced25,0x506a5aab,0x3fa13813,0x4fc9e5ae,0x0f9d3709 },
+    { "Freezer: Nordic Power v2.0", 2, 0, 2, 0, "NPOWER\0", 65536, 67, 0, 0, ROMTYPE_NORDIC, 0, 1,
 	0xa4db2906, 0x0aec68f7,0x25470c89,0x6b699ff4,0x6623dec5,0xc777466e },
 
-    { "Freezer: HRTMon v2.30 (built-in)", 0, 0, 0, 0, "HRTMON\0", 0, 63, 0, 0, ROMTYPE_HRTMON, 1,
+    { "Freezer: HRTMon v2.30 (built-in)", 0, 0, 0, 0, "HRTMON\0", 0, 63, 0, 0, ROMTYPE_HRTMON, 0, 1,
 	0xffffffff, 0, 0, 0, 0, 0, "HRTMon" },
 
-    { "A590/A2091 SCSI boot ROM", 0, 0, 6, 0, "A590\0A2091\0", 16384, 53, 0, 0, ROMTYPE_A2091BOOT, 0,
+    { "A590/A2091 SCSI boot ROM", 0, 0, 6, 0, "A590\0A2091\0", 16384, 53, 0, 0, ROMTYPE_A2091BOOT, 0, 0,
 	0x8396cf4e, 0x5E03BC61,0x8C862ABE,0x7BF79723,0xB4EEF4D2,0x1859A0F2 },
-    { "A590/A2091 SCSI boot ROM", 0, 0, 6, 6, "A590\0A2091\0", 16384, 54, 0, 0, ROMTYPE_A2091BOOT, 0,
+    { "A590/A2091 SCSI boot ROM", 0, 0, 6, 6, "A590\0A2091\0", 16384, 54, 0, 0, ROMTYPE_A2091BOOT, 0, 0,
 	0x33e00a7a, 0x739BB828,0xE874F064,0x9360F59D,0x26B5ED3F,0xBC99BB66 },
-    { "A590/A2091 SCSI boot ROM", 0, 0, 7, 0, "A590\0A2091\0", 16384, 55, 0, 0, ROMTYPE_A2091BOOT, 0,
+    { "A590/A2091 SCSI boot ROM", 0, 0, 7, 0, "A590\0A2091\0", 16384, 55, 0, 0, ROMTYPE_A2091BOOT, 0, 0,
 	0x714a97a2, 0xE50F01BA,0xF2899892,0x85547863,0x72A82C33,0x3C91276E },
-    { "A590/A2091 SCSI Guru boot ROM", 0, 0, 6, 14, "A590\0A2091\0", 32768, 56, 0, 0, ROMTYPE_A2091BOOT, 0,
+    { "A590/A2091 SCSI Guru boot ROM", 0, 0, 6, 14, "A590\0A2091\0", 32768, 56, 0, 0, ROMTYPE_A2091BOOT, 0, 0,
 	0x04e52f93, 0x6DA21B6F,0x5E8F8837,0xD64507CD,0x8A4D5CDC,0xAC4F426B },
-    { "A4091 SCSI boot ROM", 0, 0, 40, 9, "A4091\0", 32768, 57, 0, 0, ROMTYPE_A4091BOOT, 0,
+    { "A4091 SCSI boot ROM", 0, 0, 40, 9, "A4091\0", 32768, 57, 0, 0, ROMTYPE_A4091BOOT, 0, 0,
 	0x00000000, 0, 0, 0, 0, 0 },
-    { "A4091 SCSI boot ROM", 0, 0, 40, 13, "A4091\0", 32768, 58, 0, 0, ROMTYPE_A4091BOOT, 0,
+    { "A4091 SCSI boot ROM", 0, 0, 40, 13, "A4091\0", 32768, 58, 0, 0, ROMTYPE_A4091BOOT, 0, 0,
 	0x54cb9e85, 0x3CE66919,0xF6FD6797,0x4923A12D,0x91B730F1,0xFFB4A7BA },
 
-    { "Arcadia OnePlay 2.11", 0, 0, 0, 0, "ARCADIA\0", 0, 49, 0, 0, ROMTYPE_ARCADIABIOS, 0 },
-    { "Arcadia TenPlay 2.11", 0, 0, 0, 0, "ARCADIA\0", 0, 50, 0, 0, ROMTYPE_ARCADIABIOS, 0 },
-    { "Arcadia OnePlay 3.00", 0, 0, 0, 0, "ARCADIA\0", 0, 51, 0, 0, ROMTYPE_ARCADIABIOS, 0 },
+    { "Arcadia OnePlay 2.11", 0, 0, 0, 0, "ARCADIA\0", 0, 49, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
+    { "Arcadia TenPlay 2.11", 0, 0, 0, 0, "ARCADIA\0", 0, 50, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
+    { "Arcadia OnePlay 3.00", 0, 0, 0, 0, "ARCADIA\0", 0, 51, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
 
-    { "Arcadia SportTime Table Hockey", 0, 0, 0, 0, "ARCADIA\0", 0, 33, 0, 0, ROMTYPE_ARCADIAGAME, 2 },
-    { "Arcadia SportTime Bowling", 0, 0, 0, 0, "ARCADIA\0", 0, 34, 0, 0, ROMTYPE_ARCADIAGAME, 2 },
-    { "Arcadia World Darts", 0, 0, 0, 0, "ARCADIA\0", 0, 35, 0, 0, ROMTYPE_ARCADIAGAME, 2 },
-    { "Arcadia Magic Johnson's Fast Break", 0, 0, 0, 0, "ARCADIA\0", 0, 36, 0, 0, ROMTYPE_ARCADIAGAME, 2 },
-    { "Arcadia Leader Board Golf", 0, 0, 0, 0, "ARCADIA\0", 0, 37, 0, 0, ROMTYPE_ARCADIAGAME, 2 },
-    { "Arcadia Leader Board Golf (alt)", 0, 0, 0, 0, "ARCADIA\0", 0, 38, 0, 0, ROMTYPE_ARCADIAGAME, 2 },
-    { "Arcadia Ninja Mission", 0, 0, 0, 0, "ARCADIA\0", 0, 39, 0, 0, ROMTYPE_ARCADIAGAME, 2 },
-    { "Arcadia Road Wars", 0, 0, 0, 0, "ARCADIA\0", 0, 40, 0, 0, ROMTYPE_ARCADIAGAME, 2 },
-    { "Arcadia Sidewinder", 0, 0, 0, 0, "ARCADIA\0", 0, 41, 0, 0, ROMTYPE_ARCADIAGAME, 2 },
-    { "Arcadia Spot", 0, 0, 0, 0, "ARCADIA\0", 0, 42, 0, 0, ROMTYPE_ARCADIAGAME, 2 },
-    { "Arcadia Space Ranger", 0, 0, 0, 0, "ARCADIA\0", 0, 43, 0, 0, ROMTYPE_ARCADIAGAME, 2 },
-    { "Arcadia Xenon", 0, 0, 0, 0, "ARCADIA\0", 0, 44, 0, 0, ROMTYPE_ARCADIAGAME, 2 },
-    { "Arcadia World Trophy Soccer", 0, 0, 0, 0, "ARCADIA\0", 0, 45, 0, 0, ROMTYPE_ARCADIAGAME, 2 },
+    { "Arcadia SportTime Table Hockey", 0, 0, 0, 0, "ARCADIA\0", 0, 33, 0, 0, ROMTYPE_ARCADIAGAME, 0, 2 },
+    { "Arcadia SportTime Bowling", 0, 0, 0, 0, "ARCADIA\0", 0, 34, 0, 0, ROMTYPE_ARCADIAGAME, 0, 2 },
+    { "Arcadia World Darts", 0, 0, 0, 0, "ARCADIA\0", 0, 35, 0, 0, ROMTYPE_ARCADIAGAME, 0, 2 },
+    { "Arcadia Magic Johnson's Fast Break", 0, 0, 0, 0, "ARCADIA\0", 0, 36, 0, 0, ROMTYPE_ARCADIAGAME, 0, 2 },
+    { "Arcadia Leader Board Golf", 0, 0, 0, 0, "ARCADIA\0", 0, 37, 0, 0, ROMTYPE_ARCADIAGAME, 0, 2 },
+    { "Arcadia Leader Board Golf (alt)", 0, 0, 0, 0, "ARCADIA\0", 0, 38, 0, 0, ROMTYPE_ARCADIAGAME, 0, 2 },
+    { "Arcadia Ninja Mission", 0, 0, 0, 0, "ARCADIA\0", 0, 39, 0, 0, ROMTYPE_ARCADIAGAME, 0, 2 },
+    { "Arcadia Road Wars", 0, 0, 0, 0, "ARCADIA\0", 0, 40, 0, 0, ROMTYPE_ARCADIAGAME, 0, 2 },
+    { "Arcadia Sidewinder", 0, 0, 0, 0, "ARCADIA\0", 0, 41, 0, 0, ROMTYPE_ARCADIAGAME, 0, 2 },
+    { "Arcadia Spot", 0, 0, 0, 0, "ARCADIA\0", 0, 42, 0, 0, ROMTYPE_ARCADIAGAME, 0, 2 },
+    { "Arcadia Space Ranger", 0, 0, 0, 0, "ARCADIA\0", 0, 43, 0, 0, ROMTYPE_ARCADIAGAME, 0, 2 },
+    { "Arcadia Xenon", 0, 0, 0, 0, "ARCADIA\0", 0, 44, 0, 0, ROMTYPE_ARCADIAGAME, 0, 2 },
+    { "Arcadia World Trophy Soccer", 0, 0, 0, 0, "ARCADIA\0", 0, 45, 0, 0, ROMTYPE_ARCADIAGAME, 0, 2 },
 
     { NULL }
 
@@ -262,7 +271,7 @@ struct romlist **getromlistbyident(int ver, int rev, int subver, int subrev, cha
     struct romlist **rdout, *rltmp;
     void *buf;
     static struct romlist rlstatic;
-    
+
     for (i = 0; roms[i].name; i++);
     if (all)
 	max = i;
@@ -273,7 +282,7 @@ struct romlist **getromlistbyident(int ver, int rev, int subver, int subrev, cha
     rltmp = (struct romlist*)((uae_u8*)buf + (i + 1) * sizeof (struct romlist*));
     out = 0;
     for (i = 0; i < max; i++) {
-        ok = 0;
+	ok = 0;
 	if (!all)
 	    rd = rl[i].rd;
 	else
@@ -406,7 +415,7 @@ int decode_cloanto_rom_do (uae_u8 *mem, int size, int real_size)
     uae_u8 *key;
 
     for (i = ROM_KEY_NUM - 1; i >= 0; i--) {
-        keysize = keyring[i].size;
+	keysize = keyring[i].size;
 	key = keyring[i].key;
 	if (!key)
 	    continue;
@@ -472,7 +481,7 @@ int load_keyring (struct uae_prefs *p, char *path)
     keybuf = target_load_keyfile(p, path, &keysize, tmp);
     addkey(&keyid, keybuf, keysize, tmp);
     for (i = 0; keyids[i] >= 0 && keyid < ROM_KEY_NUM; i++) {
-        struct romdata *rd = getromdatabyid (keyids[i]);
+	struct romdata *rd = getromdatabyid (keyids[i]);
 	char *s;
 	if (rd) {
 	    s = romlist_get (rd);
@@ -492,10 +501,10 @@ int load_keyring (struct uae_prefs *p, char *path)
 	    }
 	}
     }
-    
+
     cnt = 0;
     for (;;) {
-        keybuf = NULL;
+	keybuf = NULL;
 	keysize = 0;
 	tmp[0] = 0;
 	switch (cnt)
@@ -718,7 +727,7 @@ void getromname	(struct romdata *rd, char *name)
 struct romlist *getromlistbyromdata(struct romdata *rd)
 {
     int ids[2];
-    
+
     ids[0] = rd->id;
     ids[1] = 0;
     return getromlistbyids(ids);
@@ -756,11 +765,11 @@ void romwarning(int *ids)
 	struct romdata *rd = getromdatabyid (ids[i]);
 	getromname (rd, tmp1);
 	strcat (tmp2, "- ");
-        strcat (tmp2, tmp1);
-        strcat (tmp2, "\n");
+	strcat (tmp2, tmp1);
+	strcat (tmp2, "\n");
 	if (rd->type & (ROMTYPE_A2091BOOT | ROMTYPE_A4091BOOT))
 	    exp++;
-        i++;
+	i++;
     }
     translate_message (exp ? NUMSG_EXPROMNEED : NUMSG_ROMNEED, tmp3);
     gui_message (tmp3, tmp2);
@@ -807,7 +816,7 @@ int addr_valid(char *txt, uaecptr addr, uae_u32 len)
 {
     addrbank *ab = &get_mem_bank(addr);
     if (ab == 0 || !(ab->flags & ABFLAG_RAM) || addr < 0x100 || len < 0 || len > 16777215 || !valid_address(addr, len)) {
-    	write_log("corrupt %s pointer %x (%d) detected!\n", txt, addr, len);
+	write_log ("corrupt %s pointer %x (%d) detected!\n", txt, addr, len);
 	return 0;
     }
     return 1;
@@ -1698,7 +1707,7 @@ uae_u8 *REGPARAM2 default_xlate (uaecptr a)
 	    if (be_cnt < 3) {
 		int i, j;
 		uaecptr a2 = a - 32;
-		uaecptr a3 = m68k_getpc(&regs) - 32;
+		uaecptr a3 = m68k_getpc (&regs) - 32;
 		write_log ("Your Amiga program just did something terribly stupid %08.8X PC=%08.8X\n", a, M68K_GETPC);
 		m68k_dumpstate (0, 0);
 		for (i = 0; i < 10; i++) {
@@ -1741,12 +1750,6 @@ addrbank chipmem_bank = {
     chipmem_lget, chipmem_wget, ABFLAG_RAM
 };
 
-addrbank chipmem_agnus_bank = {
-    chipmem_agnus_lget, chipmem_agnus_wget, chipmem_agnus_bget,
-    chipmem_agnus_lput, chipmem_agnus_wput, chipmem_agnus_bput,
-    chipmem_xlate, chipmem_check, NULL, "Chip memory",
-    chipmem_agnus_lget, chipmem_agnus_wget, ABFLAG_RAM
-};
 
 #ifdef AGA
 addrbank chipmem_bank_ce2 = {
@@ -1831,7 +1834,7 @@ void a3000_fakekick(int map)
 			map_banks(&extendedkickmem_bank, 0xf0, 1, 1);
 			f0 = 1;
 		    } else {
-			write_log("A3000 Bonus hack: can't map bonus when uae boot rom is enabled\n");
+			write_log ("A3000 Bonus hack: can't map bonus when uae boot rom is enabled\n");
 		    }
 		}
 	    } else {
@@ -1934,7 +1937,7 @@ static int read_kickstart (struct zfile *f, uae_u8 *mem, int size, int dochecksu
 static int load_extendedkickstart (void)
 {
     struct zfile *f;
-    int size;
+    int size, off;
 
     if (strlen(currprefs.romextfile) == 0)
 	return 0;
@@ -1949,14 +1952,17 @@ static int load_extendedkickstart (void)
     }
     zfile_fseek (f, 0, SEEK_END);
     size = zfile_ftell (f);
+    off = 0;
     if (size > 300000) {
 	extendedkickmem_size = 524288;
 	extendedkickmem_type = EXTENDED_ROM_CD32;
+	if (size >= 524288 * 2)
+	    off = 524288;
     } else {
 	extendedkickmem_size = 262144;
 	extendedkickmem_type = EXTENDED_ROM_CDTV;
     }
-    zfile_fseek (f, 0, SEEK_SET);
+    zfile_fseek (f, off, SEEK_SET);
     switch (extendedkickmem_type) {
 
     case EXTENDED_ROM_CDTV:
@@ -2058,7 +2064,7 @@ static void patch_kick(void)
 {
     int patched = 0;
     if (kickmem_size >= 524288 && currprefs.kickshifter)
-        patched += patch_shapeshifter (kickmemory);
+	patched += patch_shapeshifter (kickmemory);
     patched += patch_residents (kickmemory, kickmem_size);
     if (extendedkickmemory) {
 	patched += patch_residents (extendedkickmemory, extendedkickmem_size);
@@ -2066,7 +2072,7 @@ static void patch_kick(void)
 	    kickstart_fix_checksum (extendedkickmemory, extendedkickmem_size);
     }
     if (patched)
-    	kickstart_fix_checksum (kickmemory, kickmem_size);
+	kickstart_fix_checksum (kickmemory, kickmem_size);
 }
 
 static int load_kickstart (void)
@@ -2138,7 +2144,7 @@ static int load_kickstart (void)
 	size = read_kickstart (f, kickmemory, maxsize, 1, &cloanto_rom);
 	if (size == 0)
 	    goto err;
-        kickmem_mask = size - 1;
+	kickmem_mask = size - 1;
 	kickmem_size = size;
 	if (filesize >= 524288 * 2 && !extendedkickmem_type) {
 	    extendedkickmem_size = 0x80000;
@@ -2344,7 +2350,7 @@ static void allocate_memory (void)
 	    write_log ("Fatal error: out of memory for chipmem.\n");
 	    allocated_chipmem = 0;
 	} else {
-	    memory_hardreset();
+	    need_hardreset = 1;
 	    if (memsize != allocated_chipmem)
 		memset (chipmemory + allocated_chipmem, 0xff, memsize - allocated_chipmem);
 	}
@@ -2353,7 +2359,7 @@ static void allocate_memory (void)
     currprefs.chipset_mask = changed_prefs.chipset_mask;
     chipmem_full_mask = allocated_chipmem - 1;
     if ((currprefs.chipset_mask & CSMASK_ECS_AGNUS) && allocated_chipmem < 0x100000)
-        chipmem_full_mask = 0x100000 - 1;
+	chipmem_full_mask = 0x100000 - 1;
 
     if (allocated_bogomem != currprefs.bogomem_size) {
 	if (bogomemory)
@@ -2370,7 +2376,7 @@ static void allocate_memory (void)
 		allocated_bogomem = 0;
 	    }
 	}
-	memory_hardreset();
+	need_hardreset = 1;
     }
     if (allocated_a3000lmem != currprefs.mbresmem_low_size) {
 	if (a3000lmemory)
@@ -2387,7 +2393,7 @@ static void allocate_memory (void)
 		allocated_a3000lmem = 0;
 	    }
 	}
-	memory_hardreset();
+	need_hardreset = 1;
     }
     if (allocated_a3000hmem != currprefs.mbresmem_high_size) {
 	if (a3000hmemory)
@@ -2404,7 +2410,7 @@ static void allocate_memory (void)
 		allocated_a3000hmem = 0;
 	    }
 	}
-	memory_hardreset();
+	need_hardreset = 1;
     }
     if (allocated_cardmem != currprefs.cs_cdtvcard * 1024) {
 	if (cardmemory)
@@ -2456,13 +2462,13 @@ void map_overlay (int chip)
 	map_banks (cb, 0, i, allocated_chipmem);
     else
 	map_banks (&kickmem_bank, 0, i, 0x80000);
-    if (savestate_state != STATE_RESTORE && savestate_state != STATE_REWIND)
-	m68k_setpc(&regs, m68k_getpc(&regs));
+    if (savestate_state != STATE_RESTORE && savestate_state != STATE_REWIND && valid_address (regs.pc, 4))
+	m68k_setpc (&regs, m68k_getpc (&regs));
 }
 
 void memory_reset (void)
 {
-    int bnk;
+    int bnk, bnk_end;
 
     be_cnt = 0;
     currprefs.chipmem_size = changed_prefs.chipmem_size;
@@ -2473,6 +2479,16 @@ void memory_reset (void)
     currprefs.cs_cdtvram = changed_prefs.cs_cdtvram;
     currprefs.cs_cdtvcard = changed_prefs.cs_cdtvcard;
     currprefs.cs_a1000ram = changed_prefs.cs_a1000ram;
+    currprefs.cs_ide = changed_prefs.cs_ide;
+    currprefs.cs_fatgaryrev = changed_prefs.cs_fatgaryrev;
+    currprefs.cs_ramseyrev = changed_prefs.cs_ramseyrev;
+
+    need_hardreset = 0;
+    /* Use changed_prefs, as m68k_reset is called later.  */
+    if (last_address_space_24 != changed_prefs.address_space_24)
+	need_hardreset = 1;
+
+    last_address_space_24 = changed_prefs.address_space_24;
 
     init_mem_banks ();
     allocate_memory ();
@@ -2485,10 +2501,10 @@ void memory_reset (void)
 	xfree (a1000_bootrom);
 	a1000_bootrom = 0;
 	a1000_kickstart_mode = 0;
+
 	memcpy (currprefs.romfile, changed_prefs.romfile, sizeof currprefs.romfile);
 	memcpy (currprefs.romextfile, changed_prefs.romextfile, sizeof currprefs.romextfile);
-	if (savestate_state != STATE_RESTORE)
-	    memory_hardreset();
+	need_hardreset = 1;
 	mapped_free (extendedkickmemory);
 	extendedkickmemory = 0;
 	extendedkickmem_size = 0;
@@ -2521,8 +2537,9 @@ void memory_reset (void)
 		}
 		if (rd->cloanto)
 		    cloanto_rom = 1;
-		if ((rd->cpu & 4) && currprefs.cs_compatible) { /* A4000 ROM = need ramsey, gary and ide */
-		    if (currprefs.cs_ramseyrev < 0) 
+		if ((rd->cpu & 4) && currprefs.cs_compatible) {
+		    /* A4000 ROM = need ramsey, gary and ide */
+		    if (currprefs.cs_ramseyrev < 0)
 			changed_prefs.cs_ramseyrev = currprefs.cs_ramseyrev = 0x0f;
 		    changed_prefs.cs_fatgaryrev = currprefs.cs_fatgaryrev = 0;
 		    if (currprefs.cs_ide != 2)
@@ -2539,13 +2556,15 @@ void memory_reset (void)
     map_banks (&custom_bank, 0xC0, 0xE0 - 0xC0, 0);
     map_banks (&cia_bank, 0xA0, 32, 0);
     if (!currprefs.cs_a1000ram)
-	map_banks (&dummy_bank, 0xD8, 6, 0); /* D80000 - DDFFFF not mapped (A1000 = custom chips) */
+	/* D80000 - DDFFFF not mapped (A1000 = custom chips) */
+	map_banks (&dummy_bank, 0xD8, 6, 0);
 
     /* map "nothing" to 0x200000 - 0x9FFFFF (0xBEFFFF if PCMCIA or AGA) */
     bnk = allocated_chipmem >> 16;
     if (bnk < 0x20 + (currprefs.fastmem_size >> 16))
 	bnk = 0x20 + (currprefs.fastmem_size >> 16);
-    map_banks (&dummy_bank, bnk, (((currprefs.chipset_mask & CSMASK_AGA) || currprefs.cs_pcmcia) ? 0xBF : 0xA0) - bnk, 0);
+    bnk_end = (((currprefs.chipset_mask & CSMASK_AGA) || currprefs.cs_pcmcia) ? 0xBF : 0xA0);
+    map_banks (&dummy_bank, bnk, bnk_end - bnk, 0);
     if (currprefs.chipset_mask & CSMASK_AGA)
 	map_banks (&dummy_bank, 0xc0, 0xd8 - 0xc0, 0);
 
@@ -2558,7 +2577,7 @@ void memory_reset (void)
 	map_banks (&bogomem_bank, 0xC0, t, 0);
     }
     if (currprefs.cs_ide) {
-	if(currprefs.cs_ide == 1) {
+	if (currprefs.cs_ide == 1) {
 	    map_banks (&gayle_bank, 0xD8, 6, 0);
 	    map_banks (&gayle2_bank, 0xDD, 2, 0);
 	    // map_banks (&gayle_attr_bank, 0xA0, 8, 0); only if PCMCIA card inserted */
@@ -2573,17 +2592,17 @@ void memory_reset (void)
     }
     if (currprefs.cs_rtc)
 	map_banks (&clock_bank, 0xDC, 1, 0);
-    if (currprefs.cs_fatgaryrev >= 0|| currprefs.cs_ramseyrev >= 0)
+    if (currprefs.cs_fatgaryrev >= 0 || currprefs.cs_ramseyrev >= 0)
 	map_banks (&mbres_bank, 0xDE, 1, 0);
     if (currprefs.cs_cd32c2p || currprefs.cs_cd32cd || currprefs.cs_cd32nvram)
 	map_banks (&akiko_bank, AKIKO_BASE >> 16, 1, 0);
     if (currprefs.cs_mbdmac == 1)
-	a3000scsi_reset();
+	a3000scsi_reset ();
 
     if (a3000lmemory != 0)
-        map_banks (&a3000lmem_bank, a3000lmem_start >> 16, allocated_a3000lmem >> 16, 0);
+	map_banks (&a3000lmem_bank, a3000lmem_start >> 16, allocated_a3000lmem >> 16, 0);
     if (a3000hmemory != 0)
-        map_banks (&a3000hmem_bank, a3000hmem_start >> 16, allocated_a3000hmem >> 16, 0);
+	map_banks (&a3000hmem_bank, a3000hmem_start >> 16, allocated_a3000hmem >> 16, 0);
     if (cardmemory != 0)
 	map_banks (&cardmem_bank, cardmem_start >> 16, allocated_cardmem >> 16, 0);
 
@@ -2613,9 +2632,7 @@ void memory_reset (void)
     /* Map the chipmem into all of the lower 8MB */
     map_overlay (1);
 
-    switch (extendedkickmem_type)
-    {
-
+    switch (extendedkickmem_type) {
     case EXTENDED_ROM_KS:
 	map_banks (&extendedkickmem_bank, 0xE0, 8, 0);
 	break;
@@ -2630,9 +2647,9 @@ void memory_reset (void)
 	break;
 #endif
     }
-    
+
     if ((cloanto_rom || currprefs.cs_ksmirror) && !currprefs.maprom && !extendedkickmem_type)
-        map_banks (&kickmem_bank, 0xE0, 8, 0);
+	map_banks (&kickmem_bank, 0xE0, 8, 0);
     if (currprefs.cs_ksmirror == 2) { /* unexpanded A1200 also maps ROM here.. */
 	struct romdata *rd = getromdatabypath(currprefs.cartfile);
 	if (!rd || rd->id != 63) {
@@ -2646,7 +2663,7 @@ void memory_reset (void)
 	    memcpy (currprefs.romextfile, changed_prefs.romextfile, sizeof currprefs.romextfile);
 	if (strcmp (currprefs.cartfile, changed_prefs.cartfile) != 0)
 	    memcpy (currprefs.cartfile, changed_prefs.cartfile, sizeof currprefs.cartfile);
-        arcadia_unmap ();
+	arcadia_unmap ();
 	is_arcadia_rom (currprefs.romextfile);
 	is_arcadia_rom (currprefs.cartfile);
 	arcadia_map_banks ();
@@ -2786,7 +2803,7 @@ void map_banks (addrbank *bank, int start, int size, int realsize)
 	return;
     }
 #endif
-    if (currprefs.address_space_24)
+    if (last_address_space_24)
 	endhioffs = 0x10000;
 #ifdef ADDRESS_SPACE_24BIT
     endhioffs = 0x100;
@@ -3006,12 +3023,12 @@ void memcpyah_safe (uae_u8 *dst, uaecptr src, int size)
     if (!addr_valid("memcpyah", src, size))
 	return;
     while (size--)
-	*dst++ = get_byte(src++);
+	*dst++ = get_byte (src++);
 }
 void memcpyah (uae_u8 *dst, uaecptr src, int size)
 {
     while (size--)
-	*dst++ = get_byte(src++);
+	*dst++ = get_byte (src++);
 }
 char *strcpyah_safe (char *dst, uaecptr src)
 {
@@ -3020,7 +3037,7 @@ char *strcpyah_safe (char *dst, uaecptr src)
     do {
 	if (!addr_valid("strcpyah", src, 1))
 	    return res;
-	b = get_byte(src++);
+	b = get_byte (src++);
 	*dst++ = b;
     } while (b);
     return res;

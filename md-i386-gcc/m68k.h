@@ -1,22 +1,22 @@
 #ifndef M68K_H
 #define M68K_H
 
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * MC68000 emulation - machine dependent bits
   *
   * Copyright 1996 Bernd Schmidt
   */
 
-#if 0 
+#if 0
 struct flag_struct {
     unsigned int c:1; /* first byte */
     int :5;
     unsigned int z:1;
     unsigned int n:1;
     int :3;           /* second, third & fourth byte */
-    unsigned int v:1; 
+    unsigned int v:1;
     int :20;
     unsigned int x:1; /* fifth */
     int :31;
@@ -87,7 +87,7 @@ static __inline__ int cctrue(int cc)
 	cznv &= 0xc001;
 	return (((cznv << 15) ^ cznv) & 0xc000) != 0; /* GET_ZFLG || (GET_NFLG != GET_VFLG);   LE */
     }
-    abort();
+    abort ();
     return 0;
 }
 
@@ -97,14 +97,14 @@ static __inline__ int cctrue(int cc)
   __asm__ __volatile__ ("andl %0,%0\n\t" \
 			"lahf\n\t" \
 			"seto %%al\n\t" \
-                        "movb %%al,regflags\n\t" \
+			"movb %%al,regflags\n\t" \
 			"movb %%ah,regflags+1\n\t" \
 			:: "r" (v) : "%eax","cc","memory")
 #define optflag_testw(v) \
   __asm__ __volatile__ ("andw %w0,%w0\n\t" \
 			"lahf\n\t" \
 			"seto %%al\n\t" \
-                        "movb %%al,regflags\n\t" \
+			"movb %%al,regflags\n\t" \
 			"movb %%ah,regflags+1\n\t" \
 			:: "r" (v) : "%eax","cc","memory")
 
@@ -112,7 +112,7 @@ static __inline__ int cctrue(int cc)
   __asm__ __volatile__ ("andb %b0,%b0\n\t" \
 			"lahf\n\t" \
 			"seto %%al\n\t" \
-                        "movb %%al,regflags\n\t" \
+			"movb %%al,regflags\n\t" \
 			"movb %%ah,regflags+1\n\t" \
 			:: "q" (v) : "%eax","cc","memory")
 
@@ -120,7 +120,7 @@ static __inline__ int cctrue(int cc)
   __asm__ __volatile__ ("addl %k1,%k0\n\t" \
 			"lahf\n\t" \
 			"seto %%al\n\t" \
-                        "movb %%al,regflags\n\t" \
+			"movb %%al,regflags\n\t" \
 			"movb %%ah,regflags+1\n\t" \
 			:"=r" (v) : "rmi" (s), "0" (d) : "%eax","cc","memory"); \
     COPY_CARRY; \
@@ -129,7 +129,7 @@ static __inline__ int cctrue(int cc)
   __asm__ __volatile__ ("addw %w1,%w0\n\t" \
 			"lahf\n\t" \
 			"seto %%al\n\t" \
-                        "movb %%al,regflags\n\t" \
+			"movb %%al,regflags\n\t" \
 			"movb %%ah,regflags+1\n\t" \
 			: "=r" (v) : "rmi" (s), "0" (d) : "%eax","cc","memory"); \
     COPY_CARRY; \
@@ -139,7 +139,7 @@ static __inline__ int cctrue(int cc)
   __asm__ __volatile__ ("addb %b1,%b0\n\t" \
 			"lahf\n\t" \
 			"seto %%al\n\t" \
-                        "movb %%al,regflags\n\t" \
+			"movb %%al,regflags\n\t" \
 			"movb %%ah,regflags+1\n\t" \
 			:"=q" (v) : "qmi" (s), "0" (d) : "%eax","cc","memory"); \
     COPY_CARRY; \
@@ -149,7 +149,7 @@ static __inline__ int cctrue(int cc)
   __asm__ __volatile__ ("subl %k1,%k0\n\t" \
 			"lahf\n\t" \
 			"seto %%al\n\t" \
-                        "movb %%al,regflags\n\t" \
+			"movb %%al,regflags\n\t" \
 			"movb %%ah,regflags+1\n\t" \
 			: "=r" (v) : "rmi" (s), "0" (d) : "%eax","cc","memory"); \
     COPY_CARRY; \
@@ -159,7 +159,7 @@ static __inline__ int cctrue(int cc)
   __asm__ __volatile__ ("subw %w1,%w0\n\t" \
 			"lahf\n\t" \
 			"seto %%al\n\t" \
-                        "movb %%al,regflags\n\t" \
+			"movb %%al,regflags\n\t" \
 			"movb %%ah,regflags+1\n\t" \
 			: "=r" (v) : "rmi" (s), "0" (d) : "%eax","cc","memory"); \
     COPY_CARRY; \
@@ -169,7 +169,7 @@ static __inline__ int cctrue(int cc)
    __asm__ __volatile__ ("subb %b1,%b0\n\t" \
 			"lahf\n\t" \
 			"seto %%al\n\t" \
-                        "movb %%al,regflags\n\t" \
+			"movb %%al,regflags\n\t" \
 			"movb %%ah,regflags+1\n\t" \
 			: "=q" (v) : "qmi" (s), "0" (d) : "%eax","cc","memory"); \
     COPY_CARRY; \
@@ -179,7 +179,7 @@ static __inline__ int cctrue(int cc)
   __asm__ __volatile__ ("cmpl %k0,%k1\n\t" \
 			"lahf\n\t" \
 			"seto %%al\n\t" \
-                        "movb %%al,regflags\n\t" \
+			"movb %%al,regflags\n\t" \
 			"movb %%ah,regflags+1\n\t" \
 			:: "rmi" (s), "r" (d) : "%eax","cc","memory")
 
@@ -187,7 +187,7 @@ static __inline__ int cctrue(int cc)
   __asm__ __volatile__ ("cmpw %w0,%w1\n\t" \
 			"lahf\n\t" \
 			"seto %%al\n\t" \
-                        "movb %%al,regflags\n\t" \
+			"movb %%al,regflags\n\t" \
 			"movb %%ah,regflags+1\n\t" \
 			:: "rmi" (s), "r" (d) : "%eax","cc","memory");
 
@@ -195,7 +195,7 @@ static __inline__ int cctrue(int cc)
   __asm__ __volatile__ ("cmpb %b0,%b1\n\t" \
 			"lahf\n\t" \
 			"seto %%al\n\t" \
-                        "movb %%al,regflags\n\t" \
+			"movb %%al,regflags\n\t" \
 			"movb %%ah,regflags+1\n\t" \
 			:: "qmi" (s), "q" (d) : "%eax","cc","memory")
 

@@ -105,7 +105,7 @@ static void state_incompatible_warn(void)
 #endif
 #ifdef FILESYS
     for(i = 0; i < currprefs.mountitems; i++) {
-        struct mountedinfo mi;
+	struct mountedinfo mi;
 	int type = get_filesys_unitconfig (&currprefs, i, &mi);
 	if (mi.ismounted && type != FILESYS_VIRTUAL && type != FILESYS_HARDFILE && type != FILESYS_HARDFILE_RDB)
 	    dowarn = 1;
@@ -147,10 +147,10 @@ void save_u8_func (uae_u8 **dstp, uae_u8 v)
     *dst++ = v;
     *dstp = dst;
 }
-void save_string_func (uae_u8 **dstp, char *from)
+void save_string_func (uae_u8 **dstp, const char *from)
 {
     uae_u8 *dst = *dstp;
-    while(from && *from)
+    while (from && *from)
 	*dst++ = *from++;
     *dst++ = 0;
     *dstp = dst;
@@ -285,8 +285,10 @@ static uae_u8 *restore_chunk (struct zfile *f, char *name, size_t *len, size_t *
     if (len2 < 0)
 	len2 = 0;
     *len = len2;
-    if (len2 == 0)
+    if (len2 == 0) {
+	*filepos = zfile_ftell (f);
 	return 0;
+    }
 
     /* chunk flags */
     zfile_fread (tmp, 1, 4, f);
@@ -296,7 +298,7 @@ static uae_u8 *restore_chunk (struct zfile *f, char *name, size_t *len, size_t *
     if (flags & 1) {
 	zfile_fread (tmp, 1, 4, f);
 	src = tmp;
-	*totallen = restore_u32();
+	*totallen = restore_u32 ();
 	*filepos = zfile_ftell (f) - 4 - 4 - 4;
 	len2 -= 4;
     } else {
@@ -340,13 +342,13 @@ void restore_ram (size_t filepos, uae_u8 *memory)
 
     zfile_fseek (savestate_file, filepos, SEEK_SET);
     zfile_fread (tmp, 1, sizeof(tmp), savestate_file);
-    size = restore_u32();
-    flags = restore_u32();
+    size = restore_u32 ();
+    flags = restore_u32 ();
     size -= 4 + 4 + 4;
     if (flags & 1) {
 	zfile_fread (tmp, 1, 4, savestate_file);
 	src = tmp;
-	fullsize = restore_u32();
+	fullsize = restore_u32 ();
 	size -= 4;
 	zfile_zuncompress (memory, fullsize, savestate_file, size);
     } else {
@@ -354,11 +356,18 @@ void restore_ram (size_t filepos, uae_u8 *memory)
     }
 }
 
+static uae_u8 *restore_log (uae_u8 *src)
+{
+    write_log (src);
+    src += strlen(src) + 1;
+    return src;
+}
+
 static void restore_header (uae_u8 *src)
 {
     char *emuname, *emuversion, *description;
 
-    restore_u32();
+    restore_u32 ();
     emuname = restore_string ();
     emuversion = restore_string ();
     description = restore_string ();
@@ -377,12 +386,15 @@ void restore_state (char *filename)
     uae_u8 *chunk,*end;
     char name[5];
     size_t len, totallen;
-    size_t filepos;
+    size_t filepos, filesize;
 
     chunk = 0;
     f = zfile_fopen (filename, "rb");
     if (!f)
 	goto error;
+    zfile_fseek (f, 0, SEEK_END);
+    filesize = zfile_ftell (f);
+    zfile_fseek (f, 0, SEEK_SET);
     savestate_init ();
 
     chunk = restore_chunk (f, name, &len, &totallen, &filepos);
@@ -396,6 +408,7 @@ void restore_state (char *filename)
     changed_prefs.bogomem_size = 0;
     changed_prefs.chipmem_size = 0;
     changed_prefs.fastmem_size = 0;
+    changed_prefs.z3fastmem_size = 0;
     changed_prefs.mbresmem_low_size = 0;
     changed_prefs.mbresmem_high_size = 0;
     savestate_state = STATE_RESTORE;
@@ -403,8 +416,13 @@ void restore_state (char *filename)
 	name[0] = 0;
 	chunk = end = restore_chunk (f, name, &len, &totallen, &filepos);
 	write_log ("Chunk '%s' size %d (%d)\n", name, len, totallen);
-	if (!strcmp (name, "END "))
+	if (!strcmp (name, "END ")) {
+#ifdef _DEBUG
+	    if (filesize > filepos + 8)
+		continue;
+#endif
 	    break;
+	}
 	if (!strcmp (name, "CRAM")) {
 	    restore_cram (totallen, filepos);
 	    continue;
@@ -507,6 +525,10 @@ void restore_state (char *filename)
 	else if (!strcmp (name, "FSYC"))
 	    end = restore_filesys_common (chunk);
 #endif
+#ifdef CD32
+	else if (!strcmp (name, "CD32"))
+	    end = restore_akiko (chunk);
+#endif
 	else if (!strcmp (name, "GAYL"))
 	    end = restore_gayle (chunk);
 	else if (!strcmp (name, "IDE "))
@@ -514,7 +536,7 @@ void restore_state (char *filename)
 	else if (!strcmp (name, "CONF"))
 	    end = restore_configuration (chunk);
 	else if (!strcmp (name, "LOG "))
-	    end = chunk + len;
+	    end = restore_log (chunk);
 	else {
 	    end = chunk + len;
 	    write_log ("unknown chunk '%s' size %d bytes\n", name, len);
@@ -525,6 +547,7 @@ void restore_state (char *filename)
 	xfree (chunk);
     }
     restore_blitter_finish();
+    restore_akiko_finish();
     return;
 
     error:
@@ -632,7 +655,7 @@ int save_state (char *filename, char *description)
 
     dst = header;
     save_u32 (0);
-    save_string("UAE");
+    save_string ("UAE");
     sprintf (tmp, "%d.%d.%d", UAEMAJOR, UAEMINOR, UAESUBREV);
     save_string (tmp);
     save_string (description);
@@ -715,6 +738,11 @@ int save_state (char *filename, char *description)
 	xfree (dst);
     } while ((dst = save_rom (0, &len, 0)));
 
+#ifdef CD32
+    dst = save_akiko (&len);
+    save_chunk (f, dst, len, "CD32", 0);
+    xfree (dst);
+#endif
 #ifdef ACTION_REPLAY
     dst = save_action_replay (&len, 0);
     save_chunk (f, dst, len, "ACTR", 1);
@@ -736,7 +764,7 @@ int save_state (char *filename, char *description)
 #endif
     dst = save_gayle(&len);
     if (dst) {
-        save_chunk (f, dst, len, "GAYL", 0);
+	save_chunk (f, dst, len, "GAYL", 0);
 	xfree(dst);
     }
     for (i = 0; i < 4; i++) {
@@ -1210,10 +1238,10 @@ CPU
 	BUSCR                   4
 	PCR                     4
 
-        All:
+	All:
 
 	Clock in KHz            4 (only if bit 31 in flags)
-	                        4 (spare, only if bit 31 in flags)
+				4 (spare, only if bit 31 in flags)
 
 
 FPU (only if used)
@@ -1228,7 +1256,7 @@ FPU (only if used)
 	FPIAR                   4
 
 	Clock in KHz            4 (only if bit 31 in flags)
-	                        4 (spare, only if bit 31 in flags)
+				4 (spare, only if bit 31 in flags)
 
 MMU (when and if MMU is supported in future..)
 

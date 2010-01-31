@@ -46,7 +46,7 @@
 static struct uae_input_device_kbr_default keytrans[] = {
 
     { DIK_ESCAPE, INPUTEVENT_KEY_ESC },
-    
+
     { DIK_F1, INPUTEVENT_KEY_F1 },
     { DIK_F2, INPUTEVENT_KEY_F2 },
     { DIK_F3, INPUTEVENT_KEY_F3 },
@@ -267,8 +267,8 @@ static int handlecdtv (int scancode, int state)
     int e = 0;
     switch (scancode)
     {
-        case DIK_UP:
-        if (specialpressed())
+	case DIK_UP:
+	if (specialpressed())
 	    e = INPUTEVENT_KEY_CDTV_PLAYPAUSE;
 	break;
 	case DIK_DOWN:
@@ -346,6 +346,9 @@ static int np[] = { DIK_NUMPAD0, 0, DIK_NUMPADPERIOD, 0, DIK_NUMPAD1, 1, DIK_NUM
     DIK_NUMPAD3, 3, DIK_NUMPAD4, 4, DIK_NUMPAD5, 5, DIK_NUMPAD6, 6, DIK_NUMPAD7, 7,
     DIK_NUMPAD8, 8, DIK_NUMPAD9, 9, -1 };
 
+int filesys_insert(int nr, char *volume, char *rootdir, int readonly, int flags);
+int filesys_eject(int nr);
+
 void my_kbd_handler (int keyboard, int scancode, int newstate)
 {
     int code = 0;
@@ -354,7 +357,7 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
     if (scancode == specialkeycode())
 	return;
 
-    //write_log( "keyboard = %d scancode = 0x%02.2x state = %d\n", keyboard, scancode, newstate ); 
+    //write_log ( "keyboard = %d scancode = 0x%02.2x state = %d\n", keyboard, scancode, newstate );
     if (newstate) {
 	switch (scancode)
 	{
@@ -381,10 +384,13 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 	    case DIK_F3:
 	    case DIK_F4:
 	    if (specialpressed ()) {
-		if (shiftpressed ())
-		    code = AKS_EFLOPPY0 + (scancode - DIK_F1);
-		else
-		    code = AKS_FLOPPY0 + (scancode - DIK_F1);
+		if (ctrlpressed ()) {
+		} else {
+		    if (shiftpressed ())
+			code = AKS_EFLOPPY0 + (scancode - DIK_F1);
+		    else
+			code = AKS_FLOPPY0 + (scancode - DIK_F1);
+		}
 	    }
 	    break;
 	    case DIK_F5:

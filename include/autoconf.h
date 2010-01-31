@@ -44,6 +44,7 @@ struct mountedinfo
 {
     uae_u64 size;
     int ismounted;
+    int ismedia;
     int nrcyls;
 };
 
@@ -51,6 +52,13 @@ extern int add_filesys_unitconfig (struct uae_prefs *p, int index, char *error);
 extern int get_filesys_unitconfig (struct uae_prefs *p, int index, struct mountedinfo*);
 extern int kill_filesys_unitconfig (struct uae_prefs *p, int nr);
 extern int move_filesys_unitconfig (struct uae_prefs *p, int nr, int to);
+
+int filesys_insert(int nr, char *volume, const char *rootdir, int readonly, int flags);
+int filesys_eject(int nr);
+int filesys_media_change (const char *rootdir, int inserted, struct uaedev_config_info *uci);
+
+extern char *filesys_createvolname (const char *volname, const char *rootdir, const char *def);
+extern int target_get_volume_name(struct uaedev_mount_info *mtinf, const char *volumepath, char *volumename, int size, int inserted, int fullcheck);
 
 extern int sprintf_filesys_unit (char *buffer, int num);
 
@@ -60,6 +68,7 @@ extern void filesys_prepare_reset (void);
 extern void filesys_start_threads (void);
 extern void filesys_flush_cache (void);
 extern void filesys_free_handles (void);
+extern void filesys_vsync (void);
 
 extern void filesys_install (void);
 extern void filesys_install_code (void);

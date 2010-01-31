@@ -348,20 +348,20 @@ static int set_ddraw (void)
 	goto oops;
 
     if (dxfullscreen)  {
-	write_log( "set_ddraw: Trying %dx%d, bits=%d, refreshrate=%d\n", width, height, bits, freq );
+	write_log ( "set_ddraw: Trying %dx%d, bits=%d, refreshrate=%d\n", width, height, bits, freq );
 	ddrval = DirectDraw_SetDisplayMode (width, height, bits, freq);
 	if (FAILED(ddrval)) {
 	    write_log ("set_ddraw: failed, trying without forced refresh rate\n");
 	    ddrval = DirectDraw_SetDisplayMode (width, height, bits, 0);
 	    if (FAILED(ddrval)) {
-		write_log( "set_ddraw: Couldn't SetDisplayMode()\n" );
+		write_log ( "set_ddraw: Couldn't SetDisplayMode()\n" );
 		goto oops;
 	    }
 	}
 
 	ddrval = DirectDraw_GetDisplayMode();
 	if (FAILED(ddrval)) {
-	    write_log( "set_ddraw: Couldn't GetDisplayMode()\n" );
+	    write_log ( "set_ddraw: Couldn't GetDisplayMode()\n" );
 	    goto oops;
 	}
     }
@@ -369,19 +369,19 @@ static int set_ddraw (void)
     if (dd) {
 	ddrval = DirectDraw_CreateClipper();
 	if (FAILED(ddrval)) {
-	    write_log( "set_ddraw: No clipping support\n" );
+	    write_log ( "set_ddraw: No clipping support\n" );
 	    goto oops;
 	}
 	ddrval = DirectDraw_CreateSurface (width, height);
 	if (FAILED(ddrval)) {
-	    write_log( "set_ddraw: Couldn't CreateSurface() for primary because %s.\n", DXError( ddrval ) );
+	    write_log ( "set_ddraw: Couldn't CreateSurface() for primary because %s.\n", DXError( ddrval ) );
 	    goto oops;
 	}
 	if (DirectDraw_GetPrimaryBitCount() != (unsigned)bits && overlay) {
 	    ddrval = DirectDraw_CreateOverlaySurface (width, height, bits, 0);
 	    if(FAILED(ddrval))
 	    {
-		write_log( "set_ddraw: Couldn't CreateOverlaySurface(%d,%d,%d) because %s.\n", width, height, bits, DXError( ddrval ) );
+		write_log ( "set_ddraw: Couldn't CreateOverlaySurface(%d,%d,%d) because %s.\n", width, height, bits, DXError( ddrval ) );
 		goto oops2;
 	    }
 	} else {
@@ -392,14 +392,14 @@ static int set_ddraw (void)
 
 	if (!DirectDraw_DetermineLocking (dxfullscreen))
 	{
-	    write_log( "set_ddraw: Couldn't determine locking.\n" );
+	    write_log ( "set_ddraw: Couldn't determine locking.\n" );
 	    goto oops;
 	}
 
 	ddrval = DirectDraw_SetClipper (hAmigaWnd);
 
 	if (FAILED(ddrval)) {
-	    write_log( "set_ddraw: Couldn't SetHWnd()\n" );
+	    write_log ( "set_ddraw: Couldn't SetHWnd()\n" );
 	    goto oops;
 	}
 
@@ -407,7 +407,7 @@ static int set_ddraw (void)
 	    ddrval = DirectDraw_CreatePalette (currentmode->pal);
 	    if (FAILED(ddrval))
 	    {
-		write_log( "set_ddraw: Couldn't CreatePalette()\n" );
+		write_log ( "set_ddraw: Couldn't CreatePalette()\n" );
 		goto oops;
 	    }
 	}
@@ -525,7 +525,7 @@ static void sortmodes (void)
 	    pw = DisplayModes[i].res.width;
 	    idx++;
 	}
-        DisplayModes[i].residx = idx;
+	DisplayModes[i].residx = idx;
     }
 }
 
@@ -539,11 +539,11 @@ static void modesList (void)
 	j = 0;
 	while (DisplayModes[i].refresh[j] > 0) {
 	    if (j > 0)
-		write_log(",");
+		write_log (",");
 	    write_log ("%d", DisplayModes[i].refresh[j]);
 	    j++;
 	}
-	write_log(")\n");
+	write_log (")\n");
 	i++;
     }
 }
@@ -552,30 +552,29 @@ BOOL CALLBACK displaysCallback (GUID *guid, LPSTR desc, LPSTR name, LPVOID ctx, 
 {
     struct MultiDisplay *md = Displays;
     MONITORINFOEX lpmi;
+    char tmp[200];
 
     while (md->name) {
 	if (md - Displays >= MAX_DISPLAYS)
 	    return 0;
 	md++;
     }
-    md->name = my_strdup (desc);
+    lpmi.cbSize = sizeof (lpmi);
     if (guid == 0) {
 	POINT pt = { 0, 0 };
 	md->primary = 1;
-        lpmi.cbSize = sizeof (lpmi);
 	GetMonitorInfo(MonitorFromPoint(pt, MONITOR_DEFAULTTOPRIMARY), (LPMONITORINFO)&lpmi);
-	md->rect = lpmi.rcMonitor;
     } else {
 	memcpy (&md->guid,  guid, sizeof (GUID));
+	GetMonitorInfo(hm, (LPMONITORINFO)&lpmi);
     }
+    md->rect = lpmi.rcMonitor;
+    if (md->rect.left == 0 && md->rect.top == 0)
+	sprintf (tmp, "%s (%d*%d)", desc, md->rect.right - md->rect.left, md->rect.bottom - md->rect.top);
+    else
+	sprintf (tmp, "%s (%d*%d) [%d*%d]", desc, md->rect.right - md->rect.left, md->rect.bottom - md->rect.top, md->rect.left, md->rect.top);
+    md->name = my_strdup (tmp);
     write_log ("'%s' '%s' %s\n", desc, name, outGUID(guid));
-    if ((strstr(desc, "X1900") || strstr(desc, "X1800") || strstr(desc, "X1600")) && !b0rken_ati_overlay) {
-	b0rken_ati_overlay = 1;
-	if (!os_vista) {
-	    write_log ("** Radeon X1x00 series display card detected, enabling overlay workaround.\n");
-	    write_log ("** (blank display with Catalyst 6.1 and newer). Use -disableowr to disable workaround.\n");
-	}
-    }
     return 1;
 }
 
@@ -607,6 +606,18 @@ void enumeratedisplays (int multi)
     }
 }
 
+static int makesort (struct MultiDisplay *md)
+{
+    int v;
+
+    v = md->rect.top * 65536 + md->rect.left;
+    if (md->primary)
+	v = 0x80000001;
+    if (md->rect.top == 0 && md->rect.left == 0)
+	v = 0x80000000;
+    return v;
+}
+
 void sortdisplays (void)
 {
     struct MultiDisplay *md1, *md2, tmp;
@@ -614,9 +625,11 @@ void sortdisplays (void)
 
     md1 = Displays;
     while (md1->name) {
+	int sort1 = makesort (md1);
 	md2 = md1 + 1;
 	while (md2->name) {
-	    if (md1->primary < md2->primary || (md1->primary == md2->primary && strcmp (md1->name, md2->name) > 0)) {
+	    int sort2 = makesort (md2);
+	    if (sort1 > sort2) {
 		memcpy (&tmp, md1, sizeof (tmp));
 		memcpy (md1, md2, sizeof (tmp));
 		memcpy (md2, &tmp, sizeof (tmp));
@@ -625,6 +638,7 @@ void sortdisplays (void)
 	}
 	md1++;
     }
+
     md1 = Displays;
     while (md1->name) {
 	DisplayModes = md1->DisplayModes = xmalloc (sizeof (struct PicassoResolution) * MAX_PICASSO_MODES);
@@ -667,7 +681,7 @@ int WIN32GFX_AdjustScreenmode(uae_u32 *pwidth, uae_u32 *pheight, uae_u32 *ppixbi
 			     : *ppixbits == 24 ? RGBMASK_24BIT
 			     : RGBMASK_32BIT);
     int pass, i = 0, index = 0;
-    
+
     for (pass = 0; pass < 2; pass++) {
 	struct PicassoResolution *dm;
 	uae_u32 mask = (pass == 0
@@ -960,10 +974,10 @@ void gfx_unlock_picasso (void)
 		relock = TRUE;
 		unlockscr();
 	    }
-	    DX_Blit (p96_double_buffer_firstx, p96_double_buffer_first, 
-		     p96_double_buffer_firstx, p96_double_buffer_first, 
+	    DX_Blit (p96_double_buffer_firstx, p96_double_buffer_first,
+		     p96_double_buffer_firstx, p96_double_buffer_first,
 		     p96_double_buffer_lastx - p96_double_buffer_firstx + 1,
-		     p96_double_buffer_last - p96_double_buffer_first + 1, 
+		     p96_double_buffer_last - p96_double_buffer_first + 1,
 		     BLIT_SRC);
 	    if (relock) {
 		lockscr();
@@ -989,8 +1003,10 @@ static void close_hwnds( void )
     AVIOutput_Restart ();
 #endif
     setmouseactive (0);
-    if (hMainWnd)
+    if (hMainWnd) {
+	addnotifications (hMainWnd, TRUE);
 	systray (hMainWnd, TRUE);
+    }
     if (hStatusWnd) {
 	ShowWindow (hStatusWnd, SW_HIDE);
 	DestroyWindow (hStatusWnd);
@@ -1108,7 +1124,7 @@ int check_prefs_changed_gfx (void)
     c |= currprefs.win32_borderless != changed_prefs.win32_borderless ? 1 : 0;
     c |= currprefs.win32_no_overlay != changed_prefs.win32_no_overlay ? 2 : 0;
 
-    if (display_change_requested || c) 
+    if (display_change_requested || c)
     {
 	cfgfile_configuration_change(1);
 	if (display_change_requested)
@@ -1153,17 +1169,17 @@ int check_prefs_changed_gfx (void)
 	currprefs.win32_borderless = changed_prefs.win32_borderless;
 	currprefs.win32_no_overlay = changed_prefs.win32_no_overlay;
 
-        inputdevice_unacquire ();
+	inputdevice_unacquire ();
 	if (c & 2) {
 	    close_windows ();
 	    graphics_init ();
 	}
-        init_custom ();
+	init_custom ();
 	if (c & 4) {
 	    pause_sound ();
 	    resume_sound ();
 	}
-        inputdevice_acquire ();
+	inputdevice_acquire ();
 	return 1;
     }
 
@@ -1247,7 +1263,7 @@ int check_prefs_changed_gfx (void)
 	closeprinter ();
 #endif
     }
-    if (strcmp (currprefs.sername, changed_prefs.sername) || 
+    if (strcmp (currprefs.sername, changed_prefs.sername) ||
 	currprefs.serial_hwctsrts != changed_prefs.serial_hwctsrts ||
 	currprefs.serial_direct != changed_prefs.serial_direct ||
 	currprefs.serial_demand != changed_prefs.serial_demand) {
@@ -1350,7 +1366,7 @@ void init_colors (void)
 	}
     }
     if (currentmode->current_depth > 8) {
-	if (!(currentmode->flags & DM_OPENGL|DM_D3D)) {
+	if (!(currentmode->flags & (DM_OPENGL|DM_D3D))) {
 	    if (currentmode->current_depth != currentmode->native_depth) {
 		if (currentmode->current_depth == 16) {
 		    red_bits = 5; green_bits = 6; blue_bits = 5;
@@ -1387,11 +1403,11 @@ void DX_SetPalette (int start, int count)
     if( picasso96_state.RGBFormat != RGBFB_CHUNKY )
 	return;
 
-    if (picasso_vidinfo.pixbytes != 1) 
+    if (picasso_vidinfo.pixbytes != 1)
     {
 	/* write_log ("DX Setpalette emulation\n"); */
 	/* This is the case when we're emulating a 256 color display.  */
-	while (count-- > 0) 
+	while (count-- > 0)
 	{
 	    int r = picasso96_state.CLUT[start].Red;
 	    int g = picasso96_state.CLUT[start].Green;
@@ -1424,7 +1440,7 @@ void DX_SetPalette (int start, int count)
 void DX_Invalidate (int x, int y, int width, int height)
 {
     int last, lastx;
-    
+
     if (y < 0 || height < 0) {
 	y = 0;
 	height = picasso_vidinfo.height;
@@ -1479,8 +1495,8 @@ void DX_Invalidate (int x, int y, int width, int height)
 	height = currentmode->current_height;
     }
     if (DirectDraw_GetLockableType() == secondary_surface) {
-        BOOL relock = FALSE;
-        if (DirectDraw_IsLocked()) {
+	BOOL relock = FALSE;
+	if (DirectDraw_IsLocked()) {
 	    relock = TRUE;
 	    unlockscr();
 	}
@@ -1512,7 +1528,7 @@ static COLORREF BuildColorRef(int color, RGBFTYPE pixelformat)
     return result;
 #if 0
     int r,g,b;
-    write_log( "DX_Blit() called to fill with color of 0x%x, rgbtype of 0x%x\n", color, pixelformat );
+    write_log ( "DX_Blit() called to fill with color of 0x%x, rgbtype of 0x%x\n", color, pixelformat );
 
     switch( pixelformat )
     {
@@ -1557,11 +1573,11 @@ static COLORREF BuildColorRef(int color, RGBFTYPE pixelformat)
 	    b = color & 0xFF000000 >> 24;
 	break;
 	default:
-	    write_log( "Uknown 0x%x pixel-format\n", pixelformat );
+	    write_log ( "Uknown 0x%x pixel-format\n", pixelformat );
 	break;
     }
     result = RGB(r,g,b);
-    write_log( "R = 0x%02x, G = 0x%02x, B = 0x%02x - result = 0x%08x\n", r, g, b, result );
+    write_log ( "R = 0x%02x, G = 0x%02x, B = 0x%02x - result = 0x%08x\n", r, g, b, result );
     return result;
 #endif
 }
@@ -1607,13 +1623,13 @@ int DX_Fill(int dstx, int dsty, int width, int height, uae_u32 color, RGBFTYPE r
 	    /* We've colour-filled the visible, but still need to colour-fill the offscreen */
 	    hr = DirectDraw_Blt(secondary_surface, &srcrect, invalid_surface, NULL, DDBLT_WAIT | DDBLT_COLORFILL, &ddbltfx);
 	    if (FAILED(hr)) {
-		write_log("DX_Fill2(%dx%d %d%d): %s\n", dstx, dsty, width, height, DXError(hr));
+		write_log ("DX_Fill2(%dx%d %d%d): %s\n", dstx, dsty, width, height, DXError(hr));
 		result = 0;
 	    }
 
 	}
     } else {
-	write_log("DX_Fill(%dx%d %d%d): %s\n", dstx, dsty, width, height, DXError(hr));
+	write_log ("DX_Fill(%dx%d %d%d): %s\n", dstx, dsty, width, height, DXError(hr));
     }
     return result;
 }
@@ -1663,13 +1679,13 @@ int DX_Blit(int srcx, int srcy, int dstx, int dsty, int width, int height, BLIT_
 
     /* Set up our destination rectangle, and adjust for blit to windowed display (if necessary ) */
     SetRect(&dstrect, dstx, dsty, dstx + width, dsty + height);
-    
+
     centerrect(&dstrect);
 
     /* Render our blit within the primary surface */
     result = DirectDraw_Blt(primary_surface, &dstrect, DirectDraw_GetLockableType(), &srcrect, DDBLT_WAIT | DDBLT_ROP, &fx);
     if (FAILED(result)) {
-	write_log("DX_Blit1(%d,%d,%d,%d) failed: %s\n", srcx, srcy, width, height, DXError(result));
+	write_log ("DX_Blit1(%d,%d,%d,%d) failed: %s\n", srcx, srcy, width, height, DXError(result));
 	return 0;
     } else if(DirectDraw_GetLockableType() == secondary_surface) {
 	/* We've just blitted from the offscreen to the visible, but still need to blit from offscreen to offscreen
@@ -1678,7 +1694,7 @@ int DX_Blit(int srcx, int srcy, int dstx, int dsty, int width, int height, BLIT_
 	    SetRect(&dstrect, dstx, dsty, dstx + width, dsty + height);
 	    result = DirectDraw_Blt(secondary_surface, &dstrect, secondary_surface, &srcrect, DDBLT_WAIT | DDBLT_ROP, &fx);
 	    if (FAILED(result)) {
-		write_log("DX_Blit2(%d,%d,%d,%d) failed: %s\n", srcx, srcy, width, height, DXError(result));
+		write_log ("DX_Blit2(%d,%d,%d,%d) failed: %s\n", srcx, srcy, width, height, DXError(result));
 	    }
 	}
     }
@@ -1915,6 +1931,31 @@ static void createstatuswindow (void)
     }
 }
 
+#if 0
+#include <dbt.h>
+
+static int createnotification (HWND hwnd)
+{
+    DEV_BROADCAST_DEVICEINTERFACE NotificationFilter;
+    HDEVNOTIFY hDevNotify;
+
+    ZeroMemory(&NotificationFilter, sizeof(NotificationFilter));
+    NotificationFilter.dbcc_size = sizeof(DEV_BROADCAST_DEVICEINTERFACE);
+    NotificationFilter.dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE;
+
+    hDevNotify = RegisterDeviceNotification(hMainWnd, 
+        &NotificationFilter, DEVICE_NOTIFY_ALL_INTERFACE_CLASSES);
+
+    if(!hDevNotify) 
+    {
+        write_log ("RegisterDeviceNotification failed: %d\n", GetLastError());
+        return FALSE;
+    }
+
+    return TRUE;
+}
+#endif
+
 static int create_windows (void)
 {
     int dxfs = currentmode->flags & (DM_DX_FULLSCREEN | DM_D3D_FULLSCREEN);
@@ -1963,7 +2004,7 @@ static int create_windows (void)
 		rc.left = 1;
 	    else
 		rc.left = stored_x;
-	    
+
 	    if (stored_y > GetSystemMetrics (SM_CYVIRTUALSCREEN))
 		rc.top = 1;
 	    else
@@ -2031,6 +2072,7 @@ static int create_windows (void)
     }
 
     systray (hMainWnd, FALSE);
+    addnotifications (hMainWnd, FALSE);
     if (hMainWnd != hAmigaWnd) {
 	ShowWindow (hMainWnd, SW_SHOWNORMAL);
 	UpdateWindow (hMainWnd);
@@ -2081,7 +2123,7 @@ static BOOL doInit (void)
 	currentmode->native_depth = 0;
 	tmp_depth = currentmode->current_depth;
 
-	write_log("W=%d H=%d B=%d CT=%d\n",
+	write_log ("W=%d H=%d B=%d CT=%d\n",
 	    DirectDraw_CurrentWidth (), DirectDraw_CurrentHeight (), DirectDraw_GetSurfaceBitCount (), colortype);
 
 	if (currentmode->current_depth < 15 && (currprefs.chipset_mask & CSMASK_AGA) && isfullscreen () > 0 && !WIN32GFX_IsPicassoScreen()) {
@@ -2108,7 +2150,7 @@ static BOOL doInit (void)
 	    modefallback (DM_OVERLAY);
 	    updatemodes ();
 	}
-    
+
 	if (colortype == RGBFB_NONE) {
 	    fs_warning = IDS_UNSUPPORTEDSCREENMODE_1;
 	} else if (colortype == RGBFB_CLUT && DirectDraw_GetSurfaceBitCount() != 8) {
@@ -2224,7 +2266,7 @@ static BOOL doInit (void)
 	flags = DirectDraw_GetPixelFormatFlags();
 	DirectDraw_SurfaceUnlock();
 	if (flags  & (DDPF_RGB | DDPF_PALETTEINDEXED8 | DDPF_RGBTOYUV)) {
-	    write_log("%s mode (bits: %d, pixbytes: %d)\n", currentmode->flags & DM_DX_FULLSCREEN ? "Full screen" : "Window",
+	    write_log ("%s mode (bits: %d, pixbytes: %d)\n", currentmode->flags & DM_DX_FULLSCREEN ? "Full screen" : "Window",
 		   DirectDraw_GetSurfaceBitCount(), currentmode->current_depth >> 3);
 	} else {
 	    char szMessage[MAX_DPATH];
@@ -2238,11 +2280,14 @@ static BOOL doInit (void)
 	gfxvidinfo.bufmem = gfxvidinfo.realbufmem;
 	gfxvidinfo.rowbytes = currentmode->amiga_width * gfxvidinfo.pixbytes;
     } else if (!(currentmode->flags & DM_D3D)) {
-	int size = (currentmode->amiga_width * 2) * (currentmode->amiga_height * 3) * gfxvidinfo.pixbytes;
+	int w = currentmode->amiga_width * 2;
+	int h = currentmode->amiga_height * 2;
+	int size = (w * 2) * (h * 3) * gfxvidinfo.pixbytes;
 	gfxvidinfo.realbufmem = xmalloc (size);
 	memset (gfxvidinfo.realbufmem, 0, size);
-	gfxvidinfo.bufmem = gfxvidinfo.realbufmem + (currentmode->amiga_width + (currentmode->amiga_width * 2) * currentmode->amiga_height) * gfxvidinfo.pixbytes;
-	gfxvidinfo.rowbytes = currentmode->amiga_width * 2 * gfxvidinfo.pixbytes;
+	gfxvidinfo.bufmem = gfxvidinfo.realbufmem + (w + (w * 2) * h) * gfxvidinfo.pixbytes;
+	gfxvidinfo.rowbytes = w * 2 * gfxvidinfo.pixbytes;
+	gfxvidinfo.bufmemend = gfxvidinfo.realbufmem + size - gfxvidinfo.rowbytes;
     }
 
     init_row_map ();

@@ -1,4 +1,201 @@
 
+Beta 9: RC2
+
+- deleting file, recycle bin support enabled and deletion fails:
+  return error code was wrong (SHFileOperation() is weird)
+- Action Replay 1/2/3 work again
+- bsdsocket froze if new configuration was loaded on the fly
+- filter crashes (old bug) if display was big, also centering code
+  is back to pre-b7
+
+Beta 8: (this is basically RC1 if bsdsocket is fixed)
+
+- ExAll ED_OWNER supported (return zero uid and gid) because
+  there are programs that ask for ED_OWNER and ignore
+  ERROR_BAD_NUMBER (as documented in autodocs)
+- possible fix for bsdsocket crash/issues after reset
+  (previously background threads weren't terminated properly and
+  caused random access errors, another ancient bug in bsdsocket..)
+  Also added some cleanup logging.
+
+Beta 7:
+
+- hq2x crash fix (too small temp buffer)
+- directory/archive dragndrop work now without empty spare drives
+- uaehf.device media insertion detection fixed
+- display size and position (if not 0*0) added to display name list
+- joystick direction does not get stuck anymore if active mouse and
+  joystick is configured to same port using input panel
+- allocate more temporary memory space for filesystem state saving
+- GUI add/remove directory filesystem work on the fly (hardfiles not
+  supported)
+
+Beta 6: (DO NOT USE OLDER BETAS, they are too broken)
+
+- real harddrive support improvements:
+  - empty drives are now listed in "Add Harddrive" GUI
+  - uaehf.device media change command support (CMD_ADDCHANGEINT,
+    CMD_REMCHANGEINT and CMD_CHANGESTATE are not no-ops anymore)
+  - drive parameters (includes size) is re-detected every time new
+    media is inserted
+  - automount on the fly but only if configured using "Add Harddrive"
+    (drive was empty or missing when emulation was started)
+    No RDB parsing.
+  - do not automount as a directory filesystem on the fly if drive is
+    in "Add Harddrive" list (for example: FATxx formatted zip disk/HD
+    mounted using Amiga-side fat filesystem driver)
+- configured directory drives always support automount (even if
+  "automount removable drives" is not checked). Also keep original
+  configured volume name. (do not replace with real volume label)
+- harddrive safety check slightly relaxed, do not complain if drive
+  is inserted on the fly and only complain once.
+- 'E' in harddrive panel means drive is mounted but empty
+- KS 1.3 directory filesystem WB HD icons appear again (instead of
+  hiding somewhere and corrupting memory)
+- KS 1.3 directory filesystem automount support
+- added "Restart" (better names?) button that closes running emulation
+  and returns back to GUI without changing current configuration
+- do not hide mouse pointer when GUI is active in fullscreen mode
+- ACTION_EXAMINE_ALL 2xbug fix. If last directory entry was filtered
+  with eac_MatchString/eac_MatchFunc, previous eac_Next was not
+  cleared (broke monitor driver loading if last dir entry was *.info
+  or vgaonly). eac_MatchString/eac_MatchFunc filtering didn't work
+  correctly, calculated number of bytes to copy in register D0, used
+  D1 in main copy loop... DO NOT USE OLDER BETAS.
+- hq2x filter support. I hope someone is happy now.
+- [still nothing done with bsdsocket problem, FS problems first]
+
+Beta 5:
+
+- "Add Harddrive" button was disabled on Windows 2000 ("full
+  administrator" test used function that was Windows XP+ only)
+- improved directory filesystem Windows-side media change detection,
+  detects now memory cards in card readers (stupid Windows having
+  multiple completely different ways to get media notifications)
+- added GUI "Add Harddrive" emulated HD controller selection
+- directory filesystem read+write/readonly on the fly status change
+  fixed
+- device node is now removed when removable drive gets ejected and if
+  drive was originally created on the fly. Note: device node is only
+  hidden (removed from dos list) and it will be reused later when new
+  disk is inserted. No KS 1.3 support yet.
+- added GUI option to enable/disable on the fly automounting
+- current configuration name added to window title bar
+- added two A4000 quickstart configurations (68030/68882 and 68040)
+- better CD32 audio end detection accuracy, last 1s was cut previously
+- ["bsdsocket breaks after reset if it was initialized before reset"
+  will be fixed soon]
+- [uaehf.device media changes may be implemented before next official
+  release but full support will be done later]
+
+Beta 4:
+
+- ACTION_EXAMINE_ALL_END implemented (forgot in b2..)
+- directory filesystem on the fly mount implemented without need for
+  spare empty devices. (I lied again, it was really simple after all..)
+  "empty slot" drives removed. USB memory sticks etc will always
+  mount on the fly automagically now. (if uae boot rom is available)
+  Device node ("RDHx") is never removed. My black magic skill level
+  is not high enough yet. Hardfile on the fly automount next..
+- enable uae boot rom if chip ram > 2M enabled (KS does not
+  detect more than 2MB of chip, the rest is mapped by boot rom)
+- 68040/060 FPU was always interpreted (no JIT) (b1)
+
+Beta 3:
+
+- do not cause hard reset if PC was in memory area that disappears
+  during reset ("Did something stupid.."-message appeared after soft
+  reset)
+- software reset didn't fully reset all subsystems. Do not use beta
+  1 or 2 anymore. Can cause random crashes etc..
+- added more ACTION_EXAMINE_ALL error codes (from SFS changelog, no
+  space for even one directory entry = ERROR_NO_FREE_STORE, unknown
+  or already finished directory scan = ERROR_OBJECT_WRONG_TYPE)
+- "real" removable drives supported, for example USB memory sticks
+  will get removed/mounted properly. (Restriction: new removable
+  drive needs empty drive slot because new Amiga-side drives can't be
+  created on the fly. Perhaps later but it would need major filesys
+  emulation changes..)
+- automatically adds 2 hidden empty drives if one or more directory
+  filesystem drives configured (RDH0: and RDH1:, reserved slots for
+  new removable drives) Testing, this might change in future..
+- CD drives can be again mounted easily without uaescsi.device,
+  checkbox added to GUI. (I didn't really want to do this but now it
+  really works as well as it can ever work.. No audio tracks and some
+  Amiga CDs really need Amiga-side CDFS but it still is much easier
+  to use..) Not really recommended if uaescsi.device is used..
+- compiled with MSVS 2005 again
+
+Beta 2:
+
+- 4-channel stereo mixing fixed (broke in b1)
+- Pro-Wizard updated (1.62)
+- directory filesystem ACTION_INHIBIT fixed (didn't really do much
+  and if it rarely did, result was infinite loop)
+- directory filesystem ACTION_EXAMINE_ALL implemented (more optimal
+  but also more complex way to read directory listing). Bugs possible,
+  please test it by running all kinds of new utilities. eac_MatchString
+  confirmed working, eac_MatchFunc not tested (no test program found)
+  Full logging currently enabled.
+- some removable directory drive fixes
+- Harddrives GUI can be used to eject and insert directory harddrives
+  on the fly (device name ignored)
+
+Beta 1:
+
+- ROM scan now always scans all detected ROM paths (skips duplicate
+  paths)
+- zero sized files inside archives could have caused illegal accesses
+  in some cases
+- return HFERR_NoBoard, not IOERR_OPENFAIL when opening non-existing
+  uaehf.device units. Fixes problem with <OS3.5 hdtoolbox versions
+  not detecting hardfiles that are not in topmost position in harddisk
+  panel.
+- if blitter line draw with onedot-mode enabled, blitter does not write
+  non-drawn pixel words back to chip ram (it becomes free bus cycle)
+- -datapath fixed, again and again, it seems to never work properly..
+- CD32 statefile support works again
+- paths-panel adjustments, "new" path (in All Users) is only created
+  if selected in paths-panel.
+- directory filesystem ACTION_WRITE_PROTECT packet implemented
+  (AmigaDOS Lock-command) Note: "hardware" lock (read-only status
+  in configuration file/GUI) can't be unlocked with Lock-command.
+- directory filesystem ACTION_INHIBIT implemented (not really needed
+  but it uses same functions as removable drive support)
+- directory filesystem ACTION_MORE_CACHE implemented (Addbuffers),
+  No-op, currently always returns 50 and flushes file/dir cache.
+- directory filesystem ACTION_FLUSH_CACHE implemented, flushes
+  file/dir cache.
+- possible filecomment leak/access error in fsdb/streams support
+- filesystem ACTION_WRITE optimized (no temporary buffer if memory
+  is directly accessable, optimization copied from ACTION_READ)
+- removable directory filesystem support added
+  - it is not possible to add new devices after emulation has been
+    started (workaround: add 1 or more empty drives = add new directory
+    without device/volume name or path)
+  - only volume name gets removed (like CD0: without CD inserted)
+  - GUI can't be used to insert/remove harddrives. Yet.
+    I don't know make it easy to use..
+  - drag'n'drop (directories or files/archives) to WinUAE's window is
+    currently the only way to test removable drive support. Note that
+    only drives that were empty when emulation was started will be
+    remounted. (It is quite bad idea to remove OS/boot drive..)
+  - weird things can happen if files are open when changing drive
+  - volume name is automatically generated from directory or file name
+  - very useful when installing software, just drag and drop
+    installation package (lha-archive for example) and run it.
+    No need for temporarily locations or worry about losing flags or
+    file comments.
+  - overrides normal (executables -> floppy drive, configuration file
+    -> restart emulation etc..) drag and drop function if GUI is not
+    active and dropped file/directory gets accepted by filesystem.
+- CPU emulation and other cleanups (Bernd Schmidt!)
+- X-Power Professional 500 v1.3 supported
+- Nordic Power v1.5 supported
+- compiled with MSVS 2008 (Orcas) Beta 2
+
+1.4.3
+
 Beta 13: (RC2)
 
 - Action Replay 1200 "cartridge support" credits added

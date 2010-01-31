@@ -4,22 +4,19 @@
   * Support for SDL sound
   *
   * Copyright 1997 Bernd Schmidt
-  * Copyright 2003 Richard Drummond
+  * Copyright 2003-2006 Richard Drummond
   */
 
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
-#include "custom.h"
 #include "gensound.h"
 #include "sounddep/sound.h"
 #include "threaddep/thread.h"
-#include "SDL_audio.h"
+#include <SDL_audio.h>
 
 static int have_sound = 0;
-static int obtainedfreq;
 
 uae_u16 sndbuffer[44100];
 uae_u16 *sndbufpt;
@@ -34,6 +31,12 @@ static int in_callback, closing_sound;
 static void clearbuffer (void)
 {
     memset (sndbuffer, (spec.format == AUDIO_U8) ? SOUND8_BASE_VAL : SOUND16_BASE_VAL, sizeof (sndbuffer));
+}
+
+/* This shouldn't be necessary . . . */
+static void dummy_callback (void *userdata, Uint8 *stream, int len)
+{
+  return;
 }
 
 static void sound_callback (void *userdata, Uint8 *stream, int len)
@@ -57,73 +60,40 @@ void finish_sound_buffer (void)
     uae_sem_wait (&callback_done_sem);
 }
 
-void update_sound (int freq)
-{
-    int scaled_sample_evtime_orig;
-    static int lastfreq =0;
-
-    if (freq < 0)
-        freq = lastfreq;
-    lastfreq = freq;
-    if (have_sound) {
-	if (currprefs.gfx_vsync && currprefs.gfx_afullscreen) {
-	    if (currprefs.ntscmode)
-		scaled_sample_evtime_orig = (unsigned long)(MAXHPOS_NTSC * MAXVPOS_NTSC * freq * CYCLE_UNIT + obtainedfreq - 1) / obtainedfreq;
-	else
-	    scaled_sample_evtime_orig = (unsigned long)(MAXHPOS_PAL * MAXVPOS_PAL * freq * CYCLE_UNIT + obtainedfreq - 1) / obtainedfreq;
-	} else {
-	    scaled_sample_evtime_orig = (unsigned long)(312.0 * 50 * CYCLE_UNIT / (obtainedfreq  / 227.0));
-	}
-	scaled_sample_evtime = scaled_sample_evtime_orig;
-    }
-}
-
-/* Try to determine whether sound is available.  This is only for GUI purposes.  */
+/* Try to determine whether sound is available. */
 int setup_sound (void)
 {
-    int size = currprefs.sound_maxbsiz;
+    int success = 0;
 
-    spec.freq = currprefs.sound_freq;
-    spec.format = currprefs.sound_bits == 8 ? AUDIO_U8 : AUDIO_S16SYS;
-    spec.channels = currprefs.stereo ? 2 : 1;
-    size >>= spec.channels - 1;
-    size >>= 1;
-    while (size & (size - 1))
-	size &= size - 1;
-    if (size < 512)
-	size = 512;
-    spec.samples = size;
-    spec.callback = sound_callback;
-    spec.userdata = 0;
+    if (SDL_InitSubSystem (SDL_INIT_AUDIO) == 0) {
+	spec.freq = currprefs.sound_freq;
+	spec.format = currprefs.sound_bits == 8 ? AUDIO_U8 : AUDIO_S16SYS;
+	spec.channels = currprefs.sound_stereo ? 2 : 1;
+	spec.callback = dummy_callback;
+	spec.samples  = spec.freq * currprefs.sound_latency / 1000;
+	spec.callback = sound_callback;
+	spec.userdata = 0;
 
-
-    if (SDL_OpenAudio (&spec, NULL) < 0) {
-	write_log ("Couldn't open audio: %s\n", SDL_GetError());
-	return 0;
+	if (SDL_OpenAudio (&spec, 0) < 0) {
+	    write_log ("Couldn't open audio: %s\n", SDL_GetError());
+	    SDL_QuitSubSystem (SDL_INIT_AUDIO);
+	} else {
+	    success = 1;
+	    SDL_CloseAudio ();
+	}
     }
-    sound_available = 1;
-    SDL_CloseAudio ();
-    return 1;
+
+    sound_available = success;
+
+    return sound_available;
 }
 
 static int open_sound (void)
 {
-    int size = currprefs.sound_maxbsiz;
-
     spec.freq = currprefs.sound_freq;
     spec.format = currprefs.sound_bits == 8 ? AUDIO_U8 : AUDIO_S16SYS;
-    spec.channels = currprefs.stereo ? 2 : 1;
-    /* Always interpret buffer size as number of samples, not as actual
-       buffer size.  Of course, since 8192 is the default, we'll have to
-       scale that to a sane value (assuming that otherwise 16 bits and
-       stereo would have been enabled and we'd have done the shift by
-       two anyway).  */
-    size >>= 2;
-    while (size & (size - 1))
-	size &= size - 1;
-    if (size < 512)
-	size = 512;
-    spec.samples = size;
+    spec.channels = currprefs.sound_stereo ? 2 : 1;
+    spec.samples  = spec.freq * currprefs.sound_latency / 1000;
     spec.callback = sound_callback;
     spec.userdata = 0;
 
@@ -135,20 +105,20 @@ static int open_sound (void)
 
     if (spec.format == AUDIO_S16SYS) {
 	init_sound_table16 ();
-	sample_handler = currprefs.stereo ? sample16s_handler : sample16_handler;
+	sample_handler = currprefs.sound_stereo ? sample16s_handler : sample16_handler;
     } else {
 	init_sound_table8 ();
-	sample_handler = currprefs.stereo ? sample8s_handler : sample_ulaw_handler;
+	sample_handler = currprefs.sound_stereo ? sample8s_handler : sample8_handler;
     }
     have_sound = 1;
 
-    update_sound(vblank_hz);
     sound_available = 1;
     obtainedfreq = currprefs.sound_freq;
-    write_log ("SDL sound driver found and configured for %d bits at %d Hz, buffer is %d samples\n",
-	currprefs.sound_bits, spec.freq, spec.samples);
-    sndbufpt = sndbuffer;
-    sndbufsize = size * currprefs.sound_bits / 8 * spec.channels;
+    sndbufsize = spec.samples * currprefs.sound_bits / 8 * spec.channels;
+    write_log ("SDL sound driver found and configured for %d bits at %d Hz, buffer is %d ms (%d bytes).\n",
+	currprefs.sound_bits, spec.freq, spec.samples * 1000 / spec.freq, sndbufsize);
+   sndbufpt = sndbuffer;
+
     return 1;
 }
 
@@ -235,3 +205,22 @@ void reset_sound (void)
    return;
 }
 
+void sound_volume (int dir)
+{
+}
+
+/*
+ * Handle audio specific cfgfile options
+ */
+void audio_default_options (struct uae_prefs *p)
+{
+}
+
+void audio_save_options (FILE *f, const struct uae_prefs *p)
+{
+}
+
+int audio_parse_option (struct uae_prefs *p, const char *option, const char *value)
+{
+    return 0;
+}
