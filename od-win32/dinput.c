@@ -71,6 +71,7 @@ struct didata {
 };
 
 #define DI_BUFFER 30
+#define DI_KBBUFFER 50
 
 static struct didata di_mouse[MAX_INPUT_DEVICES];
 static struct didata di_keyboard[MAX_INPUT_DEVICES];
@@ -605,31 +606,33 @@ static BOOL CALLBACK EnumObjectsCallback (const DIDEVICEOBJECTINSTANCE* pdidoi, 
 
 static BOOL CALLBACK di_enumcallback (LPCDIDEVICEINSTANCE lpddi, LPVOID *dd)
 {
-    struct didata *did = (struct didata*)dd;
+    struct didata *did;
     int i, len, type;
+    char *typetxt;
+
+    type = lpddi->dwDevType & 0xff;
+    if (type == DI8DEVTYPE_MOUSE || type == DI8DEVTYPE_SCREENPOINTER) {
+	did = di_mouse;
+	typetxt = "Mouse";
+    } else if (type == DI8DEVTYPE_GAMEPAD  || type == DI8DEVTYPE_JOYSTICK ||
+	type == DI8DEVTYPE_FLIGHT || type == DI8DEVTYPE_DRIVING || type == DI8DEVTYPE_1STPERSON) {
+	did = di_joystick;
+	typetxt = "Game controller";
+    } else if (type == DI8DEVTYPE_KEYBOARD) {
+	did = di_keyboard;
+	typetxt = "Keyboard";
+    } else {
+	did = NULL;
+	typetxt = "Unknown";
+    }
 
 #ifdef DI_DEBUG
     write_log ("GUID=%08.8X-%04.8X-%04.8X-%02.2X%02.2X%02.2X%02.2X%02.2X%02.2X%02.2X%02.2X:\n",
         lpddi->guidInstance.Data1, lpddi->guidInstance.Data2, lpddi->guidInstance.Data3,
         lpddi->guidInstance.Data4[0], lpddi->guidInstance.Data4[1], lpddi->guidInstance.Data4[2], lpddi->guidInstance.Data4[3],
         lpddi->guidInstance.Data4[4], lpddi->guidInstance.Data4[5], lpddi->guidInstance.Data4[6], lpddi->guidInstance.Data4[7]);
-    write_log ("'%s' '%s' %08.8X\n", lpddi->tszProductName, lpddi->tszInstanceName, lpddi->dwDevType);
+    write_log ("'%s' '%s' %08.8X (%s)\n", lpddi->tszProductName, lpddi->tszInstanceName, lpddi->dwDevType, typetxt);
 #endif
-
-    type = lpddi->dwDevType & 0xff;
-    if (type == DI8DEVTYPE_MOUSE || type == DI8DEVTYPE_SCREENPOINTER) {
-	did = di_mouse;
-    } else if (type == DI8DEVTYPE_GAMEPAD  || type == DI8DEVTYPE_JOYSTICK ||
-	type == DI8DEVTYPE_FLIGHT || type == DI8DEVTYPE_DRIVING || type == DI8DEVTYPE_1STPERSON) {
-	did = di_joystick;
-    } else if (type == DI8DEVTYPE_KEYBOARD) {
-	did = di_keyboard;
-    } else {
-#ifdef DI_DEBUG
-	write_log ("unknown device, ignored\n");
-#endif
-	return DIENUM_CONTINUE;
-    }
 
     if (did == di_mouse) {
 	if (num_mouse >= MAX_INPUT_DEVICES)
@@ -646,9 +649,8 @@ static BOOL CALLBACK di_enumcallback (LPCDIDEVICEINSTANCE lpddi, LPVOID *dd)
 	    return DIENUM_CONTINUE;
 	did += num_keyboard;
 	num_keyboard++;
-    } else {
+    } else
 	return DIENUM_CONTINUE;
-    }
 
     memset (did, 0, sizeof (*did));
     for (i = 0; i < MAX_MAPPINGS; i++) {
@@ -1080,11 +1082,12 @@ static int init_kb (void)
 		hr = IDirectInputDevice8_SetDataFormat(lpdi, &c_dfDIKeyboard); 
 		if (hr != DI_OK)
 		    write_log ("keyboard setdataformat failed, %s\n", DXError (hr));
+		memset (&dipdw, 0, sizeof (dipdw));
 		dipdw.diph.dwSize = sizeof(DIPROPDWORD);
 		dipdw.diph.dwHeaderSize = sizeof(DIPROPHEADER);
 		dipdw.diph.dwObj = 0;
 		dipdw.diph.dwHow = DIPH_DEVICE;
-		dipdw.dwData = DI_BUFFER;
+		dipdw.dwData = DI_KBBUFFER;
 		hr = IDirectInputDevice8_SetProperty (lpdi, DIPROP_BUFFERSIZE, &dipdw.diph);
 		if (hr != DI_OK)
 		    write_log ("keyboard setpropertry failed, %s\n", DXError (hr));
@@ -1261,7 +1264,7 @@ static int keyhack (int scancode,int pressed, int num)
 
 static void read_kb (void)
 {
-    DIDEVICEOBJECTDATA didod[DI_BUFFER];
+    DIDEVICEOBJECTDATA didod[DI_KBBUFFER];
     DWORD elements;
     HRESULT hr;
     LPDIRECTINPUTDEVICE8 lpdi;
@@ -1278,7 +1281,7 @@ static void read_kb (void)
 		continue;
 	    kb_do_refresh &= ~(1 << i);
 	}
-	elements = DI_BUFFER;
+	elements = DI_KBBUFFER;
 	hr = IDirectInputDevice8_GetDeviceData(lpdi, sizeof(DIDEVICEOBJECTDATA), didod, &elements, 0);
 	if (hr == DI_OK) {
 	    if (did->superdevice && (normalkb || rawkb))

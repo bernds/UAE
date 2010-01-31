@@ -12,6 +12,8 @@
 #define NATIVBUFFNUM 4
 #define RECORDBUFFER 50 //survive 9 sec of blocking at 44100
 
+#include "sysconfig.h"
+
 #ifdef __GNUC__
 #define INITGUID
 #endif 
@@ -25,7 +27,6 @@
 #include <sys/stat.h>
 #include <io.h>
 #include "winspool.h"
-#include "sysconfig.h"
 #include "sysdeps.h"
 
 #include "config.h"

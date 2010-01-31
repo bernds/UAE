@@ -100,3 +100,6 @@ extern int sys_command_scsi_direct (int unitnum, uaecptr request);
 
 void scsi_atapi_fixup_pre (uae_u8 *scsi_cmd, int *len, uae_u8 **data, int *datalen, int *parm);
 void scsi_atapi_fixup_post (uae_u8 *scsi_cmd, int len, uae_u8 *olddata, uae_u8 *data, int *datalen, int parm);
+
+void scsi_log_before (uae_u8 *cdb, int cdblen, uae_u8 *data, int datalen);
+void scsi_log_after (uae_u8 *data, int datalen, uae_u8 *sense, int senselen);

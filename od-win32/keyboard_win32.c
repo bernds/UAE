@@ -188,6 +188,15 @@ static int ctrlpressed (void)
 
 static int capslockstate;
 
+int getcapslockstate (void)
+{
+    return capslockstate;
+}
+void setcapslockstate (int state)
+{
+    capslockstate = state;
+}
+
 int getcapslock (void)
 {
     int newstate;
@@ -333,17 +342,10 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 	    screenshot (endpressed() ? 1 : 0);
 	    break;
 	    case DIK_PAUSE:
-	    if (endpressed ()) {
-		pause_emulation = 0;
-		turbo_emulation = turbo_emulation ? 0 : 1;
-		if (turbo_emulation)
-		    pause_sound ();
-		else
-		    resume_sound ();
-		compute_vsynctime ();
-	    } else {
-	        pause_emulation = pause_emulation ? 0 : 1;
-	    }
+	    if (endpressed ())
+		warpmode (-1);
+	    else
+		pausemode (-1);
 	    break;
 	    case DIK_SCROLL:
 	    toggle_inhibit_frame (IHF_SCROLLLOCK);
@@ -380,7 +382,7 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
     if (scancode == DIK_CAPITAL) {
 	if (!newstate)
 	    return;
-	capslockstate ^= 1;
+	capslockstate = capslockstate ? 0 : 1;
 	newstate = capslockstate;
     }
 

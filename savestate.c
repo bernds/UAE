@@ -438,6 +438,8 @@ void restore_state (char *filename)
 	    end = restore_disk (2, chunk);
 	else if (!strcmp (name, "DSK3"))
 	    end = restore_disk (3, chunk);
+	else if (!strcmp (name, "KEYB"))
+	    end = restore_keyboard (chunk);
 #ifdef AUTOCONFIG
 	else if (!strcmp (name, "EXPA"))
 	    end = restore_expansion (chunk);
@@ -605,6 +607,10 @@ void save_state (char *filename, char *description)
     save_chunk (f, dst, len, "CIAB", 0);
     free (dst);
 
+    dst = save_keyboard (&len);
+    save_chunk (f, dst, len, "KEYB", 0);
+    free (dst);
+
 #ifdef AUTOCONFIG
     dst = save_expansion (&len, 0);
     save_chunk (f, dst, len, "EXPA", 0);
@@ -621,7 +627,7 @@ void save_state (char *filename, char *description)
 
 #ifdef ACTION_REPLAY
     dst = save_action_replay (&len, 0);
-    save_chunk (f, dst, len, "ACTR", comp);
+    save_chunk (f, dst, len, "ACTR", 0);
 #endif
 
     zfile_fwrite ("END ", 1, 4, f);

@@ -38,6 +38,9 @@ static int do_skip;
 static int debug_rewind;
 static int memwatch_enabled, memwatch_triggered;
 int debugging;
+int exception_debugging;
+
+extern int audio_channel_mask;
 
 static FILE *logfile;
 
@@ -97,6 +100,7 @@ static char help[] = {
     "  T                     Show exec tasks and their PCs\n"
     "  h,?                   Show this help page\n"
     "  b                     Step to previous state capture position\n"
+    "  am <channel mask>     Enable or disable audio channels\n"                  
     "  q                     Quit the emulator. You don't want to use this command.\n\n"
 };
 
@@ -537,13 +541,14 @@ static struct memwatch_node mwhit;
 
 static int debug_mem_off (uaecptr addr)
 {
-    return (addr >> 16) & 0xff;
+    return (munge24 (addr) >> 16) & 0xff;
 }
 
 static void memwatch_func (uaecptr addr, int rw, int size, uae_u32 val)
 {
     int i, brk;
 
+    addr = munge24 (addr);
     for (i = 0; i < MEMWATCH_TOTAL; i++) {
 	uaecptr addr2 = mwnodes[i].addr;
 	uaecptr addr3 = addr2 + mwnodes[i].size;
@@ -632,11 +637,11 @@ static void debug_bput (uaecptr addr, uae_u32 v)
 }   
 static int debug_check (uaecptr addr, uae_u32 size)
 {
-    return debug_mem_banks[addr >> 16]->check (addr, size);
+    return debug_mem_banks[munge24 (addr) >> 16]->check (addr, size);
 }
 static uae_u8 *debug_xlate (uaecptr addr)
 {
-    return debug_mem_banks[addr >> 16]->xlateaddr (addr);
+    return debug_mem_banks[munge24 (addr) >> 16]->xlateaddr (addr);
 }
 
 static void deinitialize_memwatch (void)
@@ -756,6 +761,8 @@ static void memwatch (char **c)
 		mwn->rw = 1;
 	    else if (nc == 'R' && toupper(**c) != 'W')
 		mwn->rw = 0;
+	    else if (nc == 'R' && toupper(**c) == 'W')
+		next_char (c);
 	    ignore_ws (c);
 	    if (more_params (c)) {
 		if (toupper(**c) == 'M') {
@@ -1051,6 +1058,29 @@ static int staterecorder (char **cc)
     return 0;
 }
 
+static void m68k_modify (char **inptr)
+{
+    char c1, c2;
+    uae_u32 v;
+    
+    c1 = toupper (next_char (inptr));
+    if (!more_params (inptr))
+	return;
+    c2 = toupper (next_char (inptr));
+    if (c2 < '0' || c2 > '7')
+	return;
+    c2 -= '0';
+    v = readhex (inptr);
+    if (c1 == 'A')
+	regs.regs[8 + c2] = v;
+    else if (c1 == 'D')
+	regs.regs[c2] = v;
+    else if (c1 == 'P' && c2 == 0)
+	regs.irc = v;
+    else if (c1 == 'P' && c2 == 1)
+	regs.ir = v;
+}
+
 static void debug_1 (void)
 {
     char input[80];
@@ -1072,7 +1102,11 @@ static void debug_1 (void)
 	case 'c': dumpcia (); dumpdisk (); dumpcustom (); break;
 	case 'i': dump_vectors (); break;
 	case 'e': dump_custom_regs (); break;
-	case 'r': m68k_dumpstate (stdout, &nextpc); break;
+	case 'r': if (more_params(&inptr))
+		      m68k_modify (&inptr);
+		  else
+		      m68k_dumpstate (stdout, &nextpc);
+	break;
 	case 'M': modulesearch (); break;
 	case 'C': cheatsearch (&inptr); break; 
 	case 'W': writeintomem (&inptr); break;
@@ -1102,11 +1136,13 @@ static void debug_1 (void)
 	    if (skipaddr_doskip <= 0 || skipaddr_doskip > 10000)
 		skipaddr_doskip = 1;
 	    set_special (SPCFLAG_BRK);
+	    exception_debugging = 1;
 	    return;
 	case 'z':
 	    skipaddr_start = nextpc;
 	    skipaddr_doskip = 1;
 	    do_skip = 1;
+	    exception_debugging = 1;
 	    return;
 
 	case 'f':
@@ -1126,6 +1162,7 @@ static void debug_1 (void)
 	    }
 	    debugger_active = 0;
 	    debugging = 0;
+	    exception_debugging = 0;
 	    return;
 
 	case 'H':
@@ -1214,6 +1251,13 @@ static void debug_1 (void)
 	    if (staterecorder (&inptr))
 	        return;
 	    break;
+	case 'a':
+	    if (more_params (&inptr)) {
+		char nc = toupper((inptr)[0]);
+		if (nc == 'm')
+		    audio_channel_mask = readint (&inptr);
+	    }
+	    break;
 	case 'h':
 	case '?':
 	    debug_help ();
@@ -1252,7 +1296,7 @@ void debug (void)
 
     if (!memwatch_triggered) {
 	if (do_skip) {
-	    uae_u32 pc = m68k_getpc();
+	    uae_u32 pc = munge24 (m68k_getpc());
 	    uae_u16 opcode = (currprefs.cpu_compatible || currprefs.cpu_cycle_exact) ? regs.ir : get_word (pc);
 	    int bp = 0;
 
@@ -1316,11 +1360,14 @@ void debug (void)
     skipaddr_end = 0xffffffff;
     skipins = 0xffffffff;
     skipaddr_doskip = 0;
+    exception_debugging = 0;
     debug_rewind = 0;
+#if 0
     if (!currprefs.statecapture) {
 	changed_prefs.statecapture = currprefs.statecapture = 1;
 	savestate_init ();
     }
+#endif
     debug_1 ();
     if (!debug_rewind && !currprefs.cachesize
 #ifdef FILESYS
@@ -1342,7 +1389,7 @@ void debug (void)
 
 int notinrom (void)
 {
-    if (m68k_getpc() < 0xe0000)
+    if (munge24 (m68k_getpc()) < 0xe0000)
 	return 1;
     return 0;
 }
@@ -1351,7 +1398,7 @@ const char *debuginfo (int mode)
 {
     static char txt[100];
     uae_u32 pc = m68k_getpc();
-    sprintf (txt, "PC=%06.6X INS=%04.4X %04.4X %04.4X",
+    sprintf (txt, "PC=%08.8X INS=%04.4X %04.4X %04.4X",
 	pc, get_word(pc), get_word(pc+2), get_word(pc+4));
     return txt;
 }

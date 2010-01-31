@@ -388,7 +388,7 @@ static int start_thread (int unit)
     if (hfpd->thread_running)
         return 1;
     memset (hfpd, 0, sizeof (struct hardfileprivdata));
-    init_comm_pipe (&hfpd->requests, 10, 1);
+    init_comm_pipe (&hfpd->requests, 100, 1);
     uae_sem_init (&hfpd->sync_sem, 0, 0);
     uae_start_thread (hardfile_thread, hfpd, &hfpd->tid);
     uae_sem_wait (&hfpd->sync_sem);

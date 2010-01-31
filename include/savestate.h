@@ -71,6 +71,9 @@ extern uae_u8 *save_expansion (int *, uae_u8 *);
 extern uae_u8 *restore_p96 (uae_u8 *);
 extern uae_u8 *save_p96 (int *, uae_u8 *);
 
+extern uae_u8 *restore_keyboard (uae_u8 *);
+extern uae_u8 *save_keyboard (int *);
+
 extern void restore_cram (int, long);
 extern void restore_bram (int, long);
 extern void restore_fram (int, long);

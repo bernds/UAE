@@ -15,8 +15,8 @@ void WIN32GFX_ToggleFullScreen( void );
 void WIN32GFX_DisablePicasso( void );
 void WIN32GFX_EnablePicasso( void );
 void WIN32GFX_PaletteChange( void );
-void WIN32GFX_ClearPalette( void );
-void WIN32GFX_SetPalette( void );
+int WIN32GFX_ClearPalette( void );
+int WIN32GFX_SetPalette( void );
 void WIN32GFX_WindowMove ( void );
 
 int DX_Blit( int srcx, int srcy, int dstx, int dsty, int width, int height, BLIT_OPCODE opcode );

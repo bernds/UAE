@@ -24,6 +24,8 @@ extern int disk_getwriteprotect (const char *name);
 extern int disk_setwriteprotect (int num, const char *name, int protect);
 extern void disk_creatediskfile (char *name, int type, drive_type adftype);
 extern void dumpdisk (void);
+extern void DISK_history_add (const char *name, int idx);
+extern char *DISK_history_get (int idx);
 
 extern void DSKLEN (uae_u16 v, int hpos);
 extern uae_u16 DSKBYTR (int hpos);

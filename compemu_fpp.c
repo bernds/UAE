@@ -220,7 +220,7 @@ STATIC_INLINE int get_fp_value (uae_u32 opcode, uae_u16 extra)
 	fmov_rm(FS1,(uae_u32)(temp_fp));
 	break;
      case 6:
-	readbyte(ad,S2,S3);
+	readword(ad,S2,S3); /* fetch word but use only low 8-bits */
 	sign_extend_8_rr(S2,S2);
 	mov_l_mr((uae_u32)temp_fp,S2);
 	delay2;
@@ -747,7 +747,7 @@ void comp_fsave_opp (uae_u32 opcode)
 	return;
     }
 
-    if (currprefs.cpu_level == 4) {
+    if (currprefs.cpu_level >= 4) {
 	/* 4 byte 68040 IDLE frame.  */
 	if (incr < 0) {
 	    ad -= 4;
@@ -806,7 +806,7 @@ void comp_frestore_opp (uae_u32 opcode)
 	op_illg (opcode);
 	return;
     }
-    if (currprefs.cpu_level == 4) {
+    if (currprefs.cpu_level >= 4) {
 	/* 68040 */
 	if (incr < 0) {
 	    /* @@@ This may be wrong.  */

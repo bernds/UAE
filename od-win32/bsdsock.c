@@ -2070,16 +2070,19 @@ static unsigned int __stdcall thread_get(void *index2)
 					{
 					host = gethostbyaddr(name_rp,namelen,addrtype);
 					}
-				if (host == 0)
-					{
-					// Error occured 
-					SETERRNO;
-					TRACE(("failed (%d) - ",sb->sb_errno));
-					}
-				else
-					{
-					seterrno(sb,0);
-					memcpy(buf,host,sizeof(HOSTENT));
+				if (threadGetargs[index] != -1)
+					{ // No CTRL-C Signal
+					if (host == 0)
+						{
+						// Error occured 
+						SETERRNO;
+						TRACE(("failed (%d) - ",sb->sb_errno));
+						}
+					else
+						{
+						seterrno(sb,0);
+						memcpy(buf,host,sizeof(HOSTENT));
+						}
 					}
 				}
 			if (args[1] == 1)
@@ -2090,16 +2093,19 @@ static unsigned int __stdcall thread_get(void *index2)
 				buf = (char*) args[5];
 				name_rp = get_real_address(name);
 				proto = getprotobyname (name_rp);
-				if (proto == 0)
-					{
-					// Error occured 
-					SETERRNO;
-					TRACE(("failed (%d) - ",sb->sb_errno));
-					}
-				else
-					{
-					seterrno(sb,0);
-					memcpy(buf,proto,sizeof(struct protoent));
+				if (threadGetargs[index] != -1)
+					{ // No CTRL-C Signal
+					if (proto == 0)
+						{
+						// Error occured 
+						SETERRNO;
+						TRACE(("failed (%d) - ",sb->sb_errno));
+						}
+					else
+						{
+						seterrno(sb,0);
+						memcpy(buf,proto,sizeof(struct protoent));
+						}
 					}
 				}
 			if (args[1] == 2)
@@ -2126,26 +2132,29 @@ static unsigned int __stdcall thread_get(void *index2)
 					name_rp = get_real_address(nameport);
 					serv = getservbyname(name_rp,proto_rp);
 					}
-				if (serv == 0)
-					{
-					// Error occured 
-					SETERRNO;
-					TRACE(("failed (%d) - ",sb->sb_errno));
+				if (threadGetargs[index] != -1)
+					{ // No CTRL-C Signal
+					if (serv == 0)
+						{
+						// Error occured 
+						SETERRNO;
+						TRACE(("failed (%d) - ",sb->sb_errno));
+						}
+					else
+						{
+						seterrno(sb,0);
+						memcpy(buf,serv,sizeof(struct servent));
+						}
 					}
-				else
-					{
-					seterrno(sb,0);
-					memcpy(buf,serv,sizeof(struct servent));
-					}
-			}
+				}
 
 
 
 
 		    TRACE(("-> "));
 	    
-    
-		    SETSIGNAL;
+			if (threadGetargs[index] != -1)
+				SETSIGNAL;
 
 		    threadGetargs[index] = NULL;
 
@@ -2243,8 +2252,13 @@ void host_gethostbynameaddr(SB, uae_u32 name, uae_u32 namelen, long addrtype)
 
 		SetEvent(hGetEvents[i]);
 		}
-
-	while ( threadGetargs[i] != 0) WAITSIGNAL;
+	sb->eintr = 0;
+	while ( threadGetargs[i] != 0 && sb->eintr == 0) 
+		{	
+		WAITSIGNAL;
+		if (sb->eintr == 1)
+			threadGetargs[i] = -1;
+		}
 	
 	CANCELSIGNAL;
 	
@@ -2364,7 +2378,13 @@ void host_getprotobyname(SB, uae_u32 name)
 		SetEvent(hGetEvents[i]);
 		}
 
-	while ( threadGetargs[i] != 0) WAITSIGNAL;
+	sb->eintr = 0;
+	while ( threadGetargs[i] != 0 && sb->eintr == 0) 
+		{	
+		WAITSIGNAL;
+		if (sb->eintr == 1)
+			threadGetargs[i] = -1;
+		}
 
 	CANCELSIGNAL;
 
@@ -2483,7 +2503,13 @@ void host_getservbynameport(SB, uae_u32 nameport, uae_u32 proto, uae_u32 type)
 		SetEvent(hGetEvents[i]);
 		}
 
-	while ( threadGetargs[i] != 0) WAITSIGNAL;
+	sb->eintr = 0;
+	while ( threadGetargs[i] != 0 && sb->eintr == 0) 
+		{	
+		WAITSIGNAL;
+		if (sb->eintr == 1)
+			threadGetargs[i] = -1;
+		}
 
 	CANCELSIGNAL;
 

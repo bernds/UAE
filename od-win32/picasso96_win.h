@@ -482,7 +482,6 @@ extern void InitPicasso96 (void);
 extern int GetNumResolutions( void );
 extern int GetDisplayModeIndex( uae_u32 x, uae_u32 y, uae_u32 d);
 extern uae_u32 picasso_SetDisplay (void);
-extern uae_u32 picasso_WaitVerticalSync (void);
 extern uae_u32 picasso_CalculateBytesPerRow (void);
 extern uae_u32 picasso_FillRect (void);
 extern uae_u32 picasso_BlitRect (void);
@@ -524,12 +523,13 @@ extern void DX_Invalidate (int first, int last);
 extern int  DX_Flip( void );
 extern int  DX_Blit( int srcx, int srcy, int dstx, int dsty, int w, int h, BLIT_OPCODE opcode );
 extern int  DX_Fill( int dstx, int dsty, int width, int height, uae_u32 color, RGBFTYPE rgbtype );
-extern void DX_WaitVerticalSync(void);
 extern uae_u32 DX_ShowCursor( uae_u32 activate );
 extern uae_u32 DX_MoveCursor( uae_u32 x, uae_u32 y );
 extern void picasso_enablescreen (int on);
 extern void picasso_refresh (int);
 extern void picasso_handle_vsync (void);
+extern void init_hz_p96 (void);
+extern void picasso_handle_hsync (void);
 
 extern uae_u8 *gfxmemory;
 
@@ -554,6 +554,7 @@ extern void gfx_unlock_picasso (void);
 extern void picasso_clip_mouse (int *, int *);
 
 extern int p96refresh_active;
+extern int p96hsync_counter;
 
 #endif
 

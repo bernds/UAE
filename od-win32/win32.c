@@ -45,6 +45,7 @@
 #include "win32.h"
 #include "win32gfx.h"
 #include "win32gui.h"
+#include "resource.h"
 #include "autoconf.h"
 #include "gui.h"
 #include "newcpu.h"
@@ -56,6 +57,7 @@
 #include "ioport.h"
 #include "parser.h"
 #include "scsidev.h"
+#include "disk.h"
 
 extern void WIN32GFX_WindowMove ( void );
 extern void WIN32GFX_WindowSize ( void );
@@ -72,17 +74,18 @@ static int no_rdtsc;
 
 HINSTANCE hInst = NULL;
 HMODULE hUIDLL = NULL;
-
 HWND (WINAPI *pHtmlHelp)(HWND, LPCSTR, UINT, LPDWORD ) = NULL;
-
 HWND hAmigaWnd, hMainWnd;
 RECT amigawin_rect;
+static UINT TaskbarRestart;
+static int TaskbarRestartOk;
 
 char VersionStr[256];
 
-int in_sizemove = 0;
-int manual_painting_needed = 0;
-int win_x_diff = 0, win_y_diff = 0;
+int in_sizemove;
+int manual_painting_needed;
+int manual_palette_refresh_needed;
+int win_x_diff, win_y_diff;
 
 int toggle_sound;
 int paraport_mask;
@@ -101,6 +104,11 @@ int mouseactive, focus;
 static int mm_timerres;
 static int timermode, timeon;
 static HANDLE timehandle;
+
+char *start_path;
+char help_file[ MAX_PATH ];
+extern int harddrive_dangerous, do_rdbdump, aspi_allow_all, dsound_hardware_mixing, no_rawinput;
+int log_scsi;
 
 static int timeend (void)
 {
@@ -191,7 +199,7 @@ static int figure_processor_speed (void)
     uae_u64 clockrate, clockrateidle, qpfrate, ratea1, ratea2;
     uae_u32 rate1, rate2;
     double limit, clkdiv = 1, clockrate1000 = 0;
-    int i, ratecnt = 6;
+    int i, ratecnt = 5;
     LARGE_INTEGER freq;
     int qpc_avail = 0;
     int mmx = 0; 
@@ -245,6 +253,7 @@ static int figure_processor_speed (void)
     dummythread_die = -1;
 
     if (qpc_avail || rpt_available)  {
+	int qpfinit = 0;
 
 	if (rpt_available) {
 	    clockrateidle = win32_read_processor_time();
@@ -262,9 +271,15 @@ static int figure_processor_speed (void)
 	    clockrate >>= 6;
 	    clockrate1000 = clockrate / 1000.0;
 	}
-	if (((clkdiv <= 0.95 || clkdiv >= 1.05) && no_rdtsc == 0) || !rpt_available) {
+	if (rpt_available && qpc_avail && qpfrate / 950.0 >= clockrate1000) {
+	    write_log ("CLOCKFREQ: Using QPF (QPF ~>= RDTSC)\n");
+	    qpfinit = 1;
+	} else	if (((clkdiv <= 0.95 || clkdiv >= 1.05) && no_rdtsc == 0) || !rpt_available) {
 	    if (rpt_available)
 		write_log ("CLOCKFREQ: CPU throttling detected, using QPF instead of RDTSC\n");
+	    qpfinit = 1;
+	}
+	if (qpfinit) {
 	    useqpc = qpc_avail;
 	    rpt_available = 1;
 	    clkdiv = 1.0;
@@ -345,6 +360,7 @@ void setmouseactive (int active)
 {
     int oldactive = mouseactive;
     static int mousecapture, showcursor;
+    char txt[100], txt2[110];
 
     if (active > 0 && ievent_alive > 0) {
 	mousehack_set (mousehack_follow);
@@ -353,15 +369,15 @@ void setmouseactive (int active)
     mousehack_set (mousehack_dontcare);
     inputdevice_unacquire ();
     mouseactive = active;
+    strcpy (txt, "WinUAE");
     if (mouseactive > 0) {
 	focus = 1;
-        if( currprefs.win32_middle_mouse )
-	    SetWindowText (hMainWnd, "WinUAE - [Mouse active - press Alt-Tab or middle-button to cancel]");
-	else
-    	    SetWindowText (hMainWnd, "WinUAE - [Mouse active - press Alt-Tab to cancel]");
-    } else {
-	SetWindowText (hMainWnd, "WinUAE" );
+        WIN32GUI_LoadUIString (currprefs.win32_middle_mouse ? IDS_WINUAETITLE_MMB : IDS_WINUAETITLE_NORMAL,
+	    txt2, sizeof (txt2));
+	strcat (txt, " - ");
+	strcat (txt, txt2);
     }
+    SetWindowText (hMainWnd, txt);
     if (mousecapture) {
 	ClipCursor (0);
 	ReleaseCapture ();
@@ -395,14 +411,19 @@ static int avioutput_video = 0;
 
 void setpriority (int pri)
 {
+    static int priwarn;
     SetThreadPriority ( GetCurrentThread(), pri);
+    if (pri == 2 && priwarn == 0) {
+	priwarn = 1;
+	gui_message("Priority = 2!");
+    }
     write_log ("priority set to %d\n", pri);
 }
 
 static void winuae_active (HWND hWnd, int minimized)
 {
     int ot, pri;
-    
+
     /* without this returning from hibernate-mode causes wrong timing
      */
     ot = timermode;
@@ -446,6 +467,7 @@ static void winuae_active (HWND hWnd, int minimized)
     inputdevice_acquire (mouseactive);
     if (isfullscreen())
 	setmouseactive (1);
+    manual_palette_refresh_needed = 1;
 }
 
 static void winuae_inactive (HWND hWnd, int minimized)
@@ -502,7 +524,6 @@ static void winuae_inactive (HWND hWnd, int minimized)
 	}
     }
     setpriority (pri);
-    getcapslock ();
 #ifdef FILESYS
     filesys_flush_cache ();
 #endif
@@ -551,13 +572,14 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
     case WM_ACTIVATEAPP:
 	if (!wParam)
 	    setmouseactive (0);
+	else if (gui_active && isfullscreen())
+	    exit_gui (0);
+        manual_palette_refresh_needed = 1;
     break;
 
     case WM_PALETTECHANGED:
-        if( (HWND)wParam != hWnd ) {
-	    write_log( "WM_PALETTECHANGED Request\n" );
+        if( (HWND)wParam != hWnd )
 	    WIN32GFX_PaletteChange();
-	}
     break;
 
     case WM_KEYDOWN:
@@ -607,16 +629,19 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
         if (manual_painting_needed)
 	    updatedisplayarea ();
 	EndPaint (hWnd, &ps);
+	if (manual_palette_refresh_needed) {
+	    WIN32GFX_SetPalette();
+#ifdef PICASSO96
+	    DX_SetPalette (0, 256);
+#endif
+	    manual_palette_refresh_needed = 0;
+	}
     break;
 
     case WM_DROPFILES:
-	if (DragQueryFile ((HDROP) wParam, (UINT) - 1, NULL, 0)) {
-	    if (DragQueryFile ((HDROP) wParam, 0, NULL, 0) < 255)
-		DragQueryFile ((HDROP) wParam, 0, changed_prefs.df[0], sizeof (changed_prefs.df[0]));
-	}
-	DragFinish ((HDROP) wParam);
+	dragdrop (hWnd, (HDROP)wParam, &changed_prefs, -1);
     break;
-
+     
     case WM_TIMER:
 #ifdef PARALLEL_PORT
 	finishjob ();
@@ -737,7 +762,67 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
     handle_rawinput (lParam);
     break;
     
-    default:
+     case WM_USER + 1: /* Systray icon */
+	 switch (lParam)
+	 {
+	    case WM_LBUTTONDOWN:
+	    SetForegroundWindow (hWnd);
+	    break;
+	    case WM_LBUTTONDBLCLK:
+	    gui_display (-1);
+	    break;
+	    case WM_RBUTTONDOWN:
+	    if (!gui_active)
+		systraymenu (hWnd);
+	    else
+	        SetForegroundWindow (hWnd);
+	    break;
+	 }
+	break;
+     case WM_COMMAND:
+	switch (wParam & 0xffff)
+	{
+	    case ID_ST_CONFIGURATION:
+		gui_display (-1);
+	    break;
+	    case ID_ST_HELP:
+		if (pHtmlHelp)
+		    pHtmlHelp (NULL, help_file, 0, NULL);
+	    break;
+	    case ID_ST_QUIT:
+		uae_quit ();
+	    break;
+	    case ID_ST_RESET:
+		uae_reset (0);
+	    break;
+	    case ID_ST_EJECTALL:
+		disk_eject (0);
+		disk_eject (1);
+		disk_eject (2);
+		disk_eject (3);
+	    break;
+	    case ID_ST_DF0:
+		DiskSelection (hWnd, IDC_DF0, 0, &changed_prefs, 0);
+		disk_insert (0, changed_prefs.df[0]);
+	    break;
+	    case ID_ST_DF1:
+		DiskSelection (hWnd, IDC_DF1, 0, &changed_prefs, 0);
+		disk_insert (1, changed_prefs.df[0]);
+	    break;
+	    case ID_ST_DF2:
+		DiskSelection (hWnd, IDC_DF2, 0, &changed_prefs, 0);
+		disk_insert (2, changed_prefs.df[0]);
+	    break;
+	    case ID_ST_DF3:
+		DiskSelection (hWnd, IDC_DF3, 0, &changed_prefs, 0);
+		disk_insert (3, changed_prefs.df[0]);
+	    break;
+	}
+	break;
+
+     default:
+	 if (TaskbarRestartOk && message == TaskbarRestart)
+	     systray (hWnd, 0);
     break;
     }
 
@@ -783,6 +868,8 @@ static long FAR PASCAL MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, L
      case WM_HELP:
      case WM_DEVICECHANGE:
      case 0xff: // WM_INPUT
+     case WM_USER + 1:
+     case WM_COMMAND:
 	return AmigaWindowProc (hWnd, message, wParam, lParam);
 
      case WM_DISPLAYCHANGE:
@@ -835,14 +922,19 @@ static long FAR PASCAL MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, L
 	DrawEdge (hDC, &rc, EDGE_SUNKEN, BF_RECT);
 	EndPaint (hWnd, &ps);
 	break;
+
      case WM_NCLBUTTONDBLCLK:
 	if (wParam == HTCAPTION) {
 	    WIN32GFX_ToggleFullScreen();
 	    return 0;
 	}
 	break;
+
+
     default:
-    break;
+	if (TaskbarRestartOk && message == TaskbarRestart)
+	    return AmigaWindowProc (hWnd, message, wParam, lParam);
+	break;
 
     }
 
@@ -957,13 +1049,13 @@ int WIN32_CleanupLibraries( void )
 int WIN32_InitHtmlHelp( void )
 {
     int result = 0;
-    if( hHtmlHelp = LoadLibrary( "HHCTRL.OCX" ) )
-    {
-        pHtmlHelp = ( HWND(WINAPI *)(HWND, LPCSTR, UINT, LPDWORD ) )GetProcAddress( hHtmlHelp, "HtmlHelpA" );
-        result = 1;
+    if (zfile_exists (help_file)) {
+        if( hHtmlHelp = LoadLibrary( "HHCTRL.OCX" ) )
+	{
+	    pHtmlHelp = ( HWND(WINAPI *)(HWND, LPCSTR, UINT, LPDWORD ) )GetProcAddress( hHtmlHelp, "HtmlHelpA" );
+	    result = 1;
+	}
     }
-
-
     return result;
 }
 
@@ -1304,7 +1396,7 @@ void logging_init( void )
     write_log ( "%s", VersionStr );
     write_log (" (OS: %s %d.%d%s)", os_winnt ? "NT" : "W9X/ME", osVersion.dwMajorVersion, osVersion.dwMinorVersion, os_winnt_admin ? " Administrator privileges" : "");
     write_log ("\n(c) 1995-2001 Bernd Schmidt   - Core UAE concept and implementation."
-	       "\n(c) 1998-2003 Toni Wilen      - Win32 port, core code updates."
+	       "\n(c) 1998-2004 Toni Wilen      - Win32 port, core code updates."
 	       "\n(c) 1996-2001 Brian King      - Win32 port, Picasso96 RTG, and GUI."
 	       "\n(c) 1996-1999 Mathias Ortmann - Win32 port and bsdsocket support."
 	       "\n(c) 2000-2001 Bernd Meyer     - JIT engine."
@@ -1493,6 +1585,8 @@ static void WIN32_HandleRegistryStuff( void )
             RegSetValueEx( hWinUAEKey, "DisplayInfo", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
             RegSetValueEx( hWinUAEKey, "xPos", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
             RegSetValueEx( hWinUAEKey, "yPos", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
+            RegSetValueEx( hWinUAEKey, "xPosGUI", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
+            RegSetValueEx( hWinUAEKey, "yPosGUI", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
             RegSetValueEx( hWinUAEKey, "FloppyPath", 0, REG_SZ, (CONST BYTE *)start_path, strlen( start_path ) + 1 );
             RegSetValueEx( hWinUAEKey, "KickstartPath", 0, REG_SZ, (CONST BYTE *)start_path, strlen( start_path ) + 1 );
             RegSetValueEx( hWinUAEKey, "hdfPath", 0, REG_SZ, (CONST BYTE *)start_path, strlen( start_path ) + 1 );
@@ -1522,6 +1616,7 @@ static void WIN32_HandleRegistryStuff( void )
 			WIN32GFX_FigurePixelFormats( colortype );
 		}
 	}
+    read_disk_history ();
 }
 
 static void betamessage (void)
@@ -1634,12 +1729,7 @@ static int osdetect (void)
    }
 
 
-char *start_path;
-char help_file[ MAX_PATH ];
-extern int harddrive_dangerous, do_rdbdump, aspi_allow_all, dsound_hardware_mixing, no_rawinput;
-int log_scsi;
-
-int PASCAL WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
+static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
 		    int nCmdShow)
 {
     char *posn;
@@ -1699,7 +1789,10 @@ __asm{
 	if (!strcmp (arg, "-norawinput")) no_rawinput = 1;
 	if (!strcmp (arg, "-scsilog")) log_scsi = 1;
     }
-
+#if 0
+    argv = 0;
+    argv[0] = 0;
+#endif
     /* Get our executable's root-path */
     if( ( start_path = xmalloc( MAX_PATH ) ) )
     {
@@ -1744,7 +1837,6 @@ __asm{
 	    if( EnumDisplaySettings( NULL, ENUM_CURRENT_SETTINGS, (LPDEVMODE)&devmode ) )
 	    {
 		default_freq = devmode.actual_devmode.dmDisplayFrequency;
-		//write_log( "Your Windows desktop refresh frequency is %d Hz\n", default_freq );
 		if( default_freq >= 70 )
 		    default_freq = 70;
 		else
@@ -1752,13 +1844,7 @@ __asm{
 	    }
 
 	    WIN32_HandleRegistryStuff();
-	    if( WIN32_InitHtmlHelp() == 0 )
-	    {
-		char szMessage[ MAX_PATH ];
-		WIN32GUI_LoadUIString( IDS_NOHELP, szMessage, MAX_PATH );
-		write_log( szMessage );
-	    }
-
+	    WIN32_InitHtmlHelp();
 	    DirectDraw_Release();
 	    betamessage ();
 	    keyboard_settrans ();
@@ -1847,5 +1933,189 @@ int driveclick_loadresource (struct drvsample *s, int drivetype)
     return ok;
 }
 
+#if 0
+#include <errorrep.h>
+#endif
+#include <dbghelp.h>
+typedef BOOL (WINAPI *MINIDUMPWRITEDUMP)(HANDLE hProcess, DWORD dwPid, HANDLE hFile, MINIDUMP_TYPE DumpType,
+    CONST PMINIDUMP_EXCEPTION_INFORMATION ExceptionParam,
+    CONST PMINIDUMP_USER_STREAM_INFORMATION UserStreamParam,
+    CONST PMINIDUMP_CALLBACK_INFORMATION CallbackParam);
+
+/* Gah, don't look at this crap, please.. */
+static void efix (DWORD *regp, void *p, void *ps, int *got)
+{
+    DWORD reg = *regp;
+    if (p >= (void*)reg && p < (void*)(reg + 32)) {
+	*regp = (DWORD)ps;
+	*got = 1;
+    }
+}
+
+static LONG WINAPI ExceptionFilter( struct _EXCEPTION_POINTERS * pExceptionPointers, DWORD ec)
+{
+    LONG lRet = EXCEPTION_CONTINUE_SEARCH;
+    PEXCEPTION_RECORD er = pExceptionPointers->ExceptionRecord;
+    PCONTEXT ctx = pExceptionPointers->ContextRecord;
+
+    /* Check possible access violation in 68010+/compatible mode disabled if PC points to non-existing memory */
+    if (ec == EXCEPTION_ACCESS_VIOLATION && !er->ExceptionFlags &&
+	er->NumberParameters >= 2 && !er->ExceptionInformation[0] && regs.pc_p) {
+	    void *p = (void*)er->ExceptionInformation[1];
+	    if (p >= (void*)regs.pc_p && p < (void*)(regs.pc_p + 32)) {
+		int got = 0;
+		uaecptr opc = m68k_getpc();
+		void *ps = get_real_address (0);
+		m68k_dumpstate (0, 0);
+		efix (&ctx->Eax, p, ps, &got);
+		efix (&ctx->Ebx, p, ps, &got);
+		efix (&ctx->Ecx, p, ps, &got);
+		efix (&ctx->Edx, p, ps, &got);
+		efix (&ctx->Esi, p, ps, &got);
+		efix (&ctx->Edi, p, ps, &got);
+#if 0
+		gui_message ("Experimental access violation trap code activated\n"
+		    "Trying to prevent WinUAE crash.\nFix %s (68KPC=%08.8X HOSTADDR=%p)\n",
+			got ? "ok" : "failed", m68k_getpc(), p);
+#endif
+		write_log ("Access violation! (68KPC=%08.8X HOSTADDR=%p)\n", m68k_getpc(), p);
+		if (got == 0) {
+		    write_log ("failed to find and fix the problem (%p). crashing..\n", p);
+		} else {
+		    m68k_setpc (0);
+		    exception2 (opc, p);
+		    lRet = EXCEPTION_CONTINUE_EXECUTION;
+		}
+	    }
+    }
+#ifndef _DEBUG
+    if (lRet == EXCEPTION_CONTINUE_SEARCH) {
+	char path[_MAX_PATH];
+	char path2[_MAX_PATH];
+	char msg[1024];
+	char *p;
+	HMODULE dll = NULL;
+	struct tm when;
+	__time64_t now;
+	
+	_time64(&now);
+	when = *_localtime64(&now);
+	if (GetModuleFileName(NULL, path, _MAX_PATH)) {
+	    char *slash = strrchr (path, '\\');
+	    strcpy (path2, path);
+	    if (slash) {
+		strcpy (slash + 1, "DBGHELP.DLL");
+		dll = LoadLibrary (path);
+	    }
+	    slash = strrchr (path2, '\\');
+	    if (slash)
+		p = slash + 1;
+	    else
+		p = path2;
+	    sprintf (p, "winuae_%d%02d%02d_%02d%02d%02d.dmp",
+		when.tm_year + 1900, when.tm_mon + 1, when.tm_mday, when.tm_hour, when.tm_min, when.tm_sec);
+	    if (dll == NULL)
+		dll = LoadLibrary("DBGHELP.DLL");
+	    if (dll) {
+		MINIDUMPWRITEDUMP dump = (MINIDUMPWRITEDUMP)GetProcAddress(dll, "MiniDumpWriteDump");
+		if (dump) {
+		    HANDLE f = CreateFile(path2, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		    if (f != INVALID_HANDLE_VALUE) {
+			MINIDUMP_EXCEPTION_INFORMATION exinfo;
+			exinfo.ThreadId = GetCurrentThreadId();
+			exinfo.ExceptionPointers = pExceptionPointers;
+			exinfo.ClientPointers = 0;
+			dump (GetCurrentProcess(), GetCurrentProcessId(), f, MiniDumpNormal, &exinfo, NULL, NULL);
+			CloseHandle (f);
+			sprintf (msg, "Crash detected. MiniDump saved as:\n%s\n", path2);
+			MessageBox( NULL, msg, "Crash", MB_OK | MB_ICONWARNING | MB_TASKMODAL | MB_SETFOREGROUND );
+		    }
+		}
+	    }
+	}
+    }
+#endif
+#if 0
+	HMODULE hFaultRepDll = LoadLibrary("FaultRep.dll") ;
+	if ( hFaultRepDll )
+	{
+	    pfn_REPORTFAULT pfn = (pfn_REPORTFAULT)GetProcAddress( hFaultRepDll, "ReportFault");
+	    if ( pfn )
+	    {
+		EFaultRepRetVal rc = pfn( pExceptionPointers, 0) ;
+		lRet = EXCEPTION_EXECUTE_HANDLER;
+	    }
+	    FreeLibrary(hFaultRepDll );
+	}
+#endif
+    return lRet ;
+}
+
+void systray (HWND hwnd, int remove)
+{
+    NOTIFYICONDATA nid;
+
+    if (hwnd == NULL)
+	return;
+    if (!TaskbarRestartOk) {
+	TaskbarRestart = RegisterWindowMessage(TEXT("TaskbarCreated"));
+	TaskbarRestartOk = 1;
+    }
+    memset (&nid, 0, sizeof (nid));
+    nid.cbSize = sizeof (nid);
+    nid.hWnd = hwnd;
+    nid.hIcon = LoadIcon (hInst, (LPCSTR)MAKEINTRESOURCE(IDI_APPICON));
+    nid.uFlags = NIF_ICON | NIF_MESSAGE;
+    nid.uCallbackMessage = WM_USER + 1;
+    Shell_NotifyIcon (remove ? NIM_DELETE : NIM_ADD, &nid);
+}
+
+void systraymenu (HWND hwnd)
+{
+    POINT pt;
+    HMENU menu, menu2, drvmenu;
+    int drvs[] = { ID_ST_DF0, ID_ST_DF1, ID_ST_DF2, ID_ST_DF3, -1 };
+    int i;
+    char text[100];
+
+    winuae_inactive (hwnd, FALSE);
+    WIN32GUI_LoadUIString( IDS_STMENUNOFLOPPY, text, sizeof (text));
+    GetCursorPos (&pt);
+    menu = LoadMenu (hInst, MAKEINTRESOURCE (IDM_SYSTRAY));
+    if (!menu)
+	return;
+    menu2 = GetSubMenu (menu, 0);
+    drvmenu = GetSubMenu (menu2, 1);
+    EnableMenuItem (menu2, ID_ST_HELP, pHtmlHelp ? MF_ENABLED : MF_GRAYED);
+    i = 0;
+    while (drvs[i] >= 0) {
+	char s[MAX_PATH];
+	if (currprefs.df[i][0])
+	    sprintf (s, "DF%d: [%s]", i, currprefs.df[i]);
+	else
+	    sprintf (s, "DF%d: [%s]", i, text);
+	ModifyMenu (drvmenu, drvs[i], MF_BYCOMMAND | MF_STRING, drvs[i], s);
+	EnableMenuItem (menu2, drvs[i], currprefs.dfxtype[i] < 0 ? MF_GRAYED : MF_ENABLED);
+	i++;
+    }
+    if (!isfullscreen ())
+	SetForegroundWindow (hwnd);
+    TrackPopupMenu (menu2, TPM_LEFTALIGN | TPM_LEFTBUTTON | TPM_RIGHTBUTTON,
+        pt.x, pt.y, 0, hwnd, NULL);
+    PostMessage (hwnd, WM_NULL, 0, 0);
+    DestroyMenu (menu);
+    winuae_active (hwnd, FALSE);
+}
+
+int PASCAL WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
+		    int nCmdShow)
+{
+    __try {
+	WinMain2 (hInstance, hPrevInstance, lpCmdLine, nCmdShow);
+        } __except(ExceptionFilter(GetExceptionInformation(), GetExceptionCode()))
+    {
+    }
+    return FALSE;
+}
 
 

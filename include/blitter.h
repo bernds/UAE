@@ -29,10 +29,11 @@ extern enum blitter_states {
 
 extern struct bltinfo blt_info;
 
-extern uae_u16 bltsize, oldvblts;
+extern uae_u16 bltsize;
 extern uae_u16 bltcon0,bltcon1;
 extern int blinea_shift;
 extern uae_u32 bltapt,bltbpt,bltcpt,bltdpt;
+extern int blit_singlechannel;
 
 extern void maybe_blit (int, int);
 extern void reset_blit (int);

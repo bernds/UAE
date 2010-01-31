@@ -108,6 +108,9 @@ extern struct regstruct
     uae_u16 irc;
     uae_u16 ir;
 
+    uae_u8 panic;
+    uae_u32 panic_pc, panic_addr;
+
 } regs, lastint_regs;
 
 typedef struct {
@@ -132,6 +135,9 @@ STATIC_INLINE uae_u32 munge24(uae_u32 x)
     return x & regs.address_space_mask;
 }
 
+extern unsigned long irqcycles[15];
+extern int irqdelay[15];
+
 STATIC_INLINE void set_special (uae_u32 x)
 {
     regs.spcflags |= x;
@@ -149,7 +155,6 @@ STATIC_INLINE void unset_special (uae_u32 x)
 #if !defined USE_COMPILER
 STATIC_INLINE void m68k_setpc (uaecptr newpc)
 {
-    newpc &= ~1;
     regs.pc_p = regs.pc_oldp = get_real_address (newpc);
     regs.pc = newpc;
 }
@@ -247,8 +252,9 @@ extern void fbcc_opp (uae_u32, uaecptr, uae_u32);
 extern void fsave_opp (uae_u32);
 extern void frestore_opp (uae_u32);
 
-extern void exception3f (uae_u32 opcode, uaecptr addr, uaecptr fault, int writeaccess, int instructionaccess);
 extern void exception3 (uae_u32 opcode, uaecptr addr, uaecptr fault);
+extern void exception3i (uae_u32 opcode, uaecptr addr, uaecptr fault);
+extern void exception2 (uaecptr addr, uaecptr fault);
 extern void cpureset (void);
 
 extern void fill_prefetch_slow (void);

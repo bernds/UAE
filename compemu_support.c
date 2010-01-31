@@ -109,6 +109,8 @@ static void align_target(uae_u32 a);
 
 static uae_s32 nextused[VREGS];
 
+static uae_u8 *popallspace;
+
 uae_u32 m68k_pc_offset;
 
 /* Some arithmetic ooperations can be optimized away if the operands
@@ -5272,8 +5274,12 @@ void alloc_cache(void)
     if (compiled_code) {
 	flush_icache_hard(6);
 	cache_free(compiled_code);
+	cache_free(popallspace);
+	cache_free(veccode);
     }
+    popallspace = NULL;
     compiled_code=NULL;
+    veccode=NULL;
     if (currprefs.cachesize==0)
 	return;
 
@@ -5286,6 +5292,7 @@ void alloc_cache(void)
 	max_compile_start=compiled_code+currprefs.cachesize*1024-BYTES_PER_INST;
 	current_compile_p=compiled_code;
     }
+    veccode = cache_alloc (256);
 }
 
 extern unsigned long op_illg_1 (uae_u32 opcode) REGPARAM;
@@ -5443,12 +5450,11 @@ static void check_checksum(void)
 }
 
 
-static uae_u8 popallspace[1024]; /* That should be enough space */
-
 static __inline__ void create_popalls(void)
 {
   int i,r;
 
+  popallspace = cache_alloc (1024);
   current_compile_p=popallspace;
   set_target(current_compile_p);
 #if USE_PUSH_POP
@@ -5586,7 +5592,7 @@ void build_comp(void)
     struct cputbl* nftbl=op_smalltbl_0_comp_nf;
     int count;
 #ifdef NOFLAGS_SUPPORT
-    struct cputbl *nfctbl = (currprefs.cpu_level == 4 ? op_smalltbl_0_nf
+    struct cputbl *nfctbl = (currprefs.cpu_level >= 4 ? op_smalltbl_0_nf
 			     : currprefs.cpu_level == 3 ? op_smalltbl_1_nf
 			     : currprefs.cpu_level == 2 ? op_smalltbl_2_nf
 			     : currprefs.cpu_level == 1 ? op_smalltbl_3_nf

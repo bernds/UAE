@@ -43,8 +43,7 @@
 #include "newcpu.h"
 #include "xwin.h"
 #include "savestate.h"
-
-#include <ddraw.h>
+#include "autoconf.h"
 
 #include "dxwrap.h"
 #include "picasso96_win.h"
@@ -52,8 +51,10 @@
 
 int p96hack_vpos, p96hack_vpos2, p96refresh_active; 
 int have_done_picasso; /* For the JIT compiler */
-int picasso_is_special=PIC_WRITE; /* ditto */
-int picasso_is_special_read=PIC_READ; /* ditto */
+int picasso_is_special = PIC_WRITE; /* ditto */
+int picasso_is_special_read = PIC_READ; /* ditto */
+static int p96syncrate;
+int p96hsync_counter;
 #define SWAPSPEEDUP 
 #ifdef PICASSO96
 #ifdef DEBUG // Change this to _DEBUG for debugging
@@ -1853,7 +1854,7 @@ uae_u32 picasso_SetGC (void)
     P96TRACE(("SetGC(%d,%d,%d,%d)\n", picasso96_state.Width, picasso96_state.Height, picasso96_state.GC_Depth, border ));
     set_gc_called = 1;
     init_picasso_screen ();
-    
+    init_hz_p96 ();
     return 1;
 }
 
@@ -2844,16 +2845,36 @@ uae_u32 picasso_SetDisplay (void)
     return !state;
 }
 
-/*
-* WaitVerticalSync:
-* a0:	struct BoardInfo
-* This function waits for the next horizontal retrace.
-*/
-uae_u32 picasso_WaitVerticalSync (void)
+void picasso_handle_hsync (void)
 {
-    P96TRACE(("WaitVerticalSync()\n"));
-    DX_WaitVerticalSync();
-    return 1;
+    static int p96hsync;
+
+    if (WIN32GFX_IsPicassoScreen () && currprefs.gfx_pfullscreen && currprefs.gfx_vsync) {
+	if (DirectDraw_GetVerticalBlankStatus ())
+	    p96hsync = 0;
+    } else {
+	p96hsync--;
+    }
+    if (p96hsync <= 0) {
+	rtarea[get_long(RTAREA_BASE + 36) + 12 - 1]++;
+        p96hsync = p96syncrate;
+    }
+}
+
+void init_hz_p96 (void)
+{
+    int rate;
+    p96syncrate = maxvpos * vblank_hz;
+    if (isfullscreen ()) {
+	rate = DirectDraw_CurrentRefreshRate ();
+	if (rate == 0)
+	    rate = 60;
+    } else {
+	rate = currprefs.gfx_refreshrate;
+	if (rate <= 0)
+	    rate = 60;
+    }
+    p96syncrate /= rate;
 }
 
 /* NOTE: Watch for those planeptrs of 0x00000000 and 0xFFFFFFFF for all zero / all one bitmaps !!!! */

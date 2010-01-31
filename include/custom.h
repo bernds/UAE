@@ -57,7 +57,7 @@ STATIC_INLINE int dmaen (unsigned int dmamask)
 #define SPCFLAG_EXTRA_CYCLES 32
 #define SPCFLAG_TRACE 64
 #define SPCFLAG_DOTRACE 128
-#define SPCFLAG_DOINT 256
+/* #define SPCFLAG_DOINT 256 obsolete hack */
 #define SPCFLAG_BLTNASTY 512
 #define SPCFLAG_EXEC 1024
 #define SPCFLAG_ACTION_REPLAY 2048
@@ -108,14 +108,14 @@ extern unsigned long syncbase;
 #define DMA_MASTER    0x0200
 #define DMA_BLITPRI   0x0400
 
-#define CYCLE_REFRESH 1
-#define CYCLE_DISK 2
-#define CYCLE_AUDIO 4
-#define CYCLE_SPRITE 8
-#define CYCLE_BITPLANE 16
-#define CYCLE_COPPER 32
-#define CYCLE_BLITTER 64
-#define CYCLE_CPU 128
+#define CYCLE_REFRESH	0x01
+#define CYCLE_DISK	0x02
+#define CYCLE_AUDIO	0x04
+#define CYCLE_SPRITE	0x08
+#define CYCLE_BITPLANE	0x10
+#define CYCLE_COPPER	0x20
+#define CYCLE_BLITTER	0x40
+#define CYCLE_CPU	0x80
 
 extern unsigned long frametime, timeframes;
 extern int plfstrt, plfstop, plffirstline, plflastline;

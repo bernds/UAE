@@ -173,7 +173,7 @@ static int start_thread (struct devstruct *dev)
 {
     if (dev->thread_running)
         return 1;
-    init_comm_pipe (&dev->requests, 10, 1);
+    init_comm_pipe (&dev->requests, 100, 1);
     uae_sem_init (&dev->sync_sem, 0, 0);
     uae_start_thread (dev_thread, dev, &dev->tid);
     uae_sem_wait (&dev->sync_sem);
@@ -543,8 +543,7 @@ static uae_u32 dev_beginio (void)
     put_byte (request+31, 0);
     if ((flags & 1) && dev_canquick (dev, request)) {
 	if (dev_do_io (dev, request))
-	    if (log_scsi)
-		write_log ("device %s command %d bug with IO_QUICK\n", getdevname (pdev->type), command);
+	    write_log ("device %s command %d bug with IO_QUICK\n", getdevname (pdev->type), command);
 	return get_byte (request + 31);
     } else {
         add_async_request (dev, request, ASYNC_REQUEST_TEMP, 0);

@@ -128,7 +128,7 @@ struct customData custd[] =
     { "ADKCONR",  0xdff010 }, /* Audio,disk control register read */
     { "POT0DAT",  0xdff012 }, /* Pot counter pair 0 data (vert,horiz) */
     { "POT1DAT",  0xdff014 }, /* Pot counter pair 1 data (vert,horiz) */
-    { "POTINP",   0xdff016 }, /* Pot pin data read */
+    { "POTGOR",   0xdff016 }, /* Pot pin data read */
     { "SERDATR",  0xdff018 }, /* Serial port data and status read */
     { "DSKBYTR",  0xdff01A }, /* Disk data byte and status read */
     { "INTENAR",  0xdff01C }, /* Interrupt enable bits read */

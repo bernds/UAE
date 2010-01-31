@@ -79,7 +79,7 @@ char *colormodes[] = { "256 colors", "32768 colors", "65536 colors",
     "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""
 };
 
-void discard_prefs (struct uae_prefs *p)
+void discard_prefs (struct uae_prefs *p, int type)
 {
     struct strlist **ps = &p->all_lines;
     while (*ps) {
@@ -90,185 +90,10 @@ void discard_prefs (struct uae_prefs *p)
 	free (s);
     }
 #ifdef FILESYS
+    filesys_cleanup ();
     free_mountinfo (p->mountinfo);
     p->mountinfo = alloc_mountinfo ();
 #endif
-}
-
-static void default_prefs_mini (struct uae_prefs *p)
-{
-    strcpy (p->description, "UAE default A500 configuration");
-
-    p->nr_floppies = 1;
-    p->dfxtype[0] = 0;
-    p->dfxtype[1] = -1;
-    p->cpu_level = 0;
-    p->address_space_24 = 1;
-    p->chipmem_size = 0x00080000;
-    p->bogomem_size = 0x00080000;
-}
-
-void default_prefs (struct uae_prefs *p)
-{
-    memset (p, 0, sizeof (*p));
-    strcpy (p->description, "UAE default configuration");
-
-    p->start_gui = 1;
-    p->start_debugger = 0;
-
-    p->all_lines = 0;
-    /* Note to porters: please don't change any of these options! UAE is supposed
-     * to behave identically on all platforms if possible. */
-    p->illegal_mem = 0;
-    p->no_xhair = 0;
-    p->use_serial = 0;
-    p->serial_demand = 0;
-    p->serial_hwctsrts = 1;
-    p->parallel_demand = 0;
-
-    p->jport0 = 2;
-    p->jport1 = 0;
-    p->keyboard_lang = KBD_LANG_US;
-
-    p->produce_sound = 3;
-    p->stereo = 0;
-    p->sound_bits = DEFAULT_SOUND_BITS;
-    p->sound_freq = DEFAULT_SOUND_FREQ;
-    p->sound_maxbsiz = DEFAULT_SOUND_MAXB;
-    p->sound_interpol = 0;
-    p->sound_filter = 0;
-
-    p->comptrustbyte = 0;
-    p->comptrustword = 0;
-    p->comptrustlong = 0;
-    p->comptrustnaddr= 0;
-    p->compnf = 1;
-    p->comp_hardflush = 0;
-    p->comp_constjump = 1;
-    p->comp_oldsegv = 0;
-    p->compfpu = 1;
-    p->compforcesettings = 0;
-    p->cachesize = 0;
-    p->avoid_cmov = 0;
-    p->avoid_dga = 0;
-    p->avoid_vid = 0;
-    p->comp_midopt = 0;
-    p->comp_lowopt = 0;
-    p->override_dga_address = 0;
-    {
-	int i;
-	for (i = 0;i < 10; i++)
-	    p->optcount[i] = -1;
-	p->optcount[0] = 4; /* How often a block has to be executed before it
-			     is translated */
-	p->optcount[1] = 0; /* How often to use the naive translation */
-	p->optcount[2] = 0; 
-	p->optcount[3] = 0;
-	p->optcount[4] = 0;
-	p->optcount[5] = 0;
-    }
-    p->gfx_framerate = 1;
-    p->gfx_width_win = p->gfx_width_fs = 800;
-    p->gfx_height_win = p->gfx_height_fs = 600;
-    p->gfx_lores = 0;
-    p->gfx_linedbl = 2;
-    p->gfx_afullscreen = 0;
-    p->gfx_pfullscreen = 0;
-    p->gfx_correct_aspect = 0;
-    p->gfx_xcenter = 0;
-    p->gfx_ycenter = 0;
-    p->color_mode = 0;
-
-    p->x11_use_low_bandwidth = 0;
-    p->x11_use_mitshm = 0;
-    p->x11_hide_cursor = 1;
-
-    p->svga_no_linear = 0;
-
-    p->curses_reverse_video = 0;
-
-    target_default_options (p);
-
-    p->immediate_blits = 0;
-    p->collision_level = 2;
-    p->leds_on_screen = 0;
-    p->keyboard_leds_in_use = 0;
-    p->keyboard_leds[0] = p->keyboard_leds[1] = p->keyboard_leds[2] = 0;
-    p->fast_copper = 1;
-    p->scsi = 0;
-    p->cpu_idle = 0;
-    p->catweasel_io = 0;
-    p->tod_hack = 0;
-    p->maprom = 0;
-
-    p->gfx_filter = 0;
-    p->gfx_filter_filtermode = 1;
-    p->gfx_filter_scanlineratio = (1 << 4) | 1;
-
-    strcpy (p->df[0], "df0.adf");
-    strcpy (p->df[1], "df1.adf");
-    strcpy (p->df[2], "df2.adf");
-    strcpy (p->df[3], "df3.adf");
-
-    strcpy (p->romfile, "kick.rom");
-    strcpy (p->keyfile, "");
-    strcpy (p->romextfile, "");
-    strcpy (p->flashfile, "");
-    strcpy (p->cartfile, "");
-
-    strcpy (p->path_rom, "./");
-    strcpy (p->path_floppy, "./");
-    strcpy (p->path_hardfile, "./");
-
-    strcpy (p->prtname, DEFPRTNAME);
-    strcpy (p->sername, DEFSERNAME);
-
-#ifdef CPUEMU_68000_ONLY
-    p->cpu_level = 0;
-    p->m68k_speed = 0;
-#else
-    p->m68k_speed = -1;
-    p->cpu_level = 2;
-#endif
-#ifdef CPUEMU_0
-    p->cpu_compatible = 0;
-    p->address_space_24 = 0;
-#else
-    p->cpu_compatible = 1;
-    p->address_space_24 = 1;
-#endif
-    p->cpu_cycle_exact = 0;
-    p->blitter_cycle_exact = 0;
-    p->chipset_mask = CSMASK_ECS_AGNUS;
-
-    p->fastmem_size = 0x00000000;
-    p->a3000mem_size = 0x00000000;
-    p->z3fastmem_size = 0x00000000;
-    p->chipmem_size = 0x00200000;
-    p->bogomem_size = 0x00000000;
-    p->gfxmem_size = 0x00000000;
-
-    p->nr_floppies = 2;
-    p->dfxtype[0] = 0;
-    p->dfxtype[1] = 0;
-    p->dfxtype[2] = -1;
-    p->dfxtype[3] = -1;
-    p->floppy_speed = 100;
-    p->dfxclickvolume = 33;
-
-    p->statecapturebuffersize = 20 * 1024 * 1024;
-    p->statecapturerate = 5 * 50;
-    p->statecapture = 0;
-
-#ifdef FILESYS
-    p->mountinfo = alloc_mountinfo ();
-#endif
-
-#ifdef UAE_MINI
-    default_prefs_mini (p);
-#endif
-
-    inputdevice_default_prefs (p);
 }
 
 void fixup_prefs_dimensions (struct uae_prefs *prefs)
@@ -503,10 +328,11 @@ void uae_quit (void)
 	quit_program = -1;
 }
 
+/* 0 = normal, 1 = nogui, -1 = disable nogui */
 void uae_restart (int opengui, char *cfgfile)
 {
     uae_quit ();
-    restart_program = opengui ? 1 : 2;
+    restart_program = opengui > 0 ? 1 : (opengui == 0 ? 2 : 3);
     restart_config[0] = 0;
     if (cfgfile)
 	strcpy (restart_config, cfgfile);
@@ -563,7 +389,7 @@ static void parse_cmdline (int argc, char **argv)
             free_mountinfo (currprefs.mountinfo);
             currprefs.mountinfo = alloc_mountinfo ();
 #endif
-	    cfgfile_load (&currprefs, argv[i] + 8);
+	    cfgfile_load (&currprefs, argv[i] + 8, 0);
 	}
 	/* Check for new-style "-f xxx" argument, where xxx is config-file */
 	else if (strcmp (argv[i], "-f") == 0) {
@@ -574,13 +400,13 @@ static void parse_cmdline (int argc, char **argv)
                 free_mountinfo (currprefs.mountinfo);
 	        currprefs.mountinfo = alloc_mountinfo ();
 #endif
-		cfgfile_load (&currprefs, argv[++i]);
+		cfgfile_load (&currprefs, argv[++i], 0);
 	    }
 	} else if (strcmp (argv[i], "-s") == 0) {
 	    if (i + 1 == argc)
 		write_log ("Missing argument for '-s' option.\n");
 	    else
-		cfgfile_parse_line (&currprefs, argv[++i]);
+		cfgfile_parse_line (&currprefs, argv[++i], 0);
 	} else if (strcmp (argv[i], "-h") == 0 || strcmp (argv[i], "-help") == 0) {
 	    usage ();
 	    exit (0);
@@ -618,7 +444,7 @@ static void parse_cmdline_and_init_file (int argc, char **argv)
 
     strcat (optionsfile, restart_config);
 
-    if (! cfgfile_load (&currprefs, optionsfile)) {
+    if (! cfgfile_load (&currprefs, optionsfile, 0)) {
 	write_log ("failed to load config '%s'\n", optionsfile);
 #ifdef OPTIONS_IN_HOME
 	/* sam: if not found in $HOME then look in current directory */
@@ -691,6 +517,9 @@ void do_leave_program (void)
 #ifdef AUTOCONFIG
     expansion_cleanup ();
 #endif
+#ifdef FILESYS
+    filesys_cleanup ();
+#endif
     savestate_free ();
     memory_cleanup ();
     cfgfile_addcfgparam (0);
@@ -723,7 +552,7 @@ static void real_main2 (int argc, char **argv)
 	free_mountinfo (currprefs.mountinfo);
         currprefs.mountinfo = alloc_mountinfo ();
 #endif
-	default_prefs (&currprefs);
+	default_prefs (&currprefs, 0);
 	fix_options ();
     }
 
@@ -757,6 +586,8 @@ static void real_main2 (int argc, char **argv)
     no_gui = ! currprefs.start_gui;
     if (restart_program == 2)
 	no_gui = 1;
+    else if (restart_program == 3)
+	no_gui = 0;
     restart_program = 0;
     if (! no_gui) {
 	int err = gui_init ();

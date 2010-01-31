@@ -90,8 +90,12 @@ extern void compiler_flush_jsr_stack(void);
 
 STATIC_INLINE void m68k_do_rts(void)
 {
-    m68k_setpc(get_long(m68k_areg(regs, 7)));
+    uaecptr pc = get_long (m68k_areg(regs, 7));
     m68k_areg(regs, 7) += 4;
+    if (pc & 1)
+	exception3 (0x4e75, m68k_getpc(), pc);
+    else
+	m68k_setpc(pc);
 }
 
 STATIC_INLINE void m68k_do_bsr(uaecptr oldpc, uae_s32 offset)

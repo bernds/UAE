@@ -21,7 +21,6 @@
 
 #include <devioctl.h>
 #include <ntddcdrm.h>
-#include <ntdddisk.h>
 
 struct dev_info_ioctl {
     HANDLE h;

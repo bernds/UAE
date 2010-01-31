@@ -13,8 +13,8 @@ extern void a1000_reset (void);
 extern int special_mem;
 #define S_READ 1
 #define S_WRITE 2
-extern uae_u8 *cache_alloc (int);
-extern void cache_free (int);
+extern void *cache_alloc (int);
+extern void cache_free (void*);
 #endif
 
 typedef uae_u32 (*mem_get_func)(uaecptr) REGPARAM;

@@ -47,6 +47,20 @@ static int flipinterval_supported;
 
 #define dxwrite_log
 
+static int restoresurface (LPDIRECTDRAWSURFACE7 surface)
+{
+    HRESULT hr = IDirectDrawSurface7_Restore (surface);
+    if (hr == DD_OK) {
+	HRESULT hr2;
+	DDBLTFX bltfx;
+	memset (&bltfx, 0, sizeof (bltfx));
+	bltfx.dwSize = sizeof (bltfx);
+	hr2 = IDirectDrawSurface7_Blt (surface, NULL, NULL, NULL, DDBLT_COLORFILL | DDBLT_WAIT, &bltfx);
+	if (hr2 != DD_OK)
+	    write_log("Surface clear failed: %s\n", DXError (hr2));
+    }
+    return hr;
+}
 /*
  * FUNCTION:ShowDDCaps
  *
@@ -209,7 +223,7 @@ static int LockStub( surface_type_e type )
                                                 NULL ) ) != DD_OK )
     {
         if (ddrval == DDERR_SURFACELOST) {
-    	    ddrval = IDirectDrawSurface7_Restore( surface );
+    	    ddrval = restoresurface (surface);
             if (ddrval != DD_OK)
             {
                 result = 0;
@@ -1365,9 +1379,17 @@ BYTE DirectDraw_GetBytesPerPixel( void )
 HRESULT DirectDraw_SetPalette( int remove )
 {
     HRESULT ddrval;
-    if (DirectDrawState.primary.surface == NULL) return 0;
-    ddrval = IDirectDrawSurface7_SetPalette( DirectDrawState.primary.surface,
-                                             remove ? NULL : DirectDrawState.lpDDP );
+    if (DirectDrawState.primary.surface == NULL)
+	return DDERR_SURFACELOST;
+    ddrval = IDirectDrawSurface7_SetPalette (DirectDrawState.primary.surface,
+	remove ? NULL : DirectDrawState.lpDDP);
+    if (ddrval == DDERR_SURFACELOST) {
+	ddrval = restoresurface (DirectDrawState.primary.surface);
+	if (ddrval == DD_OK) {
+	    ddrval = IDirectDrawSurface7_SetPalette (DirectDrawState.primary.surface,
+		remove ? NULL : DirectDrawState.lpDDP);
+	}
+    }
     return ddrval;
 }
 
@@ -1391,8 +1413,7 @@ HRESULT DirectDraw_CreatePalette( LPPALETTEENTRY pal )
     HRESULT ddrval;
     ddrval = IDirectDraw_CreatePalette( DirectDrawState.directdraw.dd,
                                         DDPCAPS_8BIT | DDPCAPS_ALLOW256,
-                                        pal,
-                                        &DirectDrawState.lpDDP, NULL);
+                                        pal, &DirectDrawState.lpDDP, NULL);
     if( ddrval == DD_OK )
     {
         ddrval = DirectDraw_SetPalette(0);
@@ -1418,6 +1439,7 @@ HRESULT DirectDraw_CreatePalette( LPPALETTEENTRY pal )
 HRESULT DirectDraw_SetPaletteEntries( int start, int count, PALETTEENTRY *palette )
 {
     HRESULT ddrval = DDERR_NOPALETTEATTACHED;
+    int i;
     if( DirectDrawState.lpDDP )
         ddrval = IDirectDrawPalette_SetEntries( DirectDrawState.lpDDP, 0, start, count, palette );
     return ddrval;
@@ -1572,6 +1594,14 @@ DWORD DirectDraw_CurrentHeight( void )
     return height;
 }
 
+int DirectDraw_GetVerticalBlankStatus (void)
+{
+    BOOL status;
+    if (IDirectDraw7_GetVerticalBlankStatus (DirectDrawState.directdraw.dd, &status) != DD_OK)
+	return -1;
+    return status;
+}
+
 DWORD DirectDraw_CurrentRefreshRate( void )
 {
     DWORD height;
@@ -1603,7 +1633,7 @@ static int DirectDraw_BltFastStub4( LPDIRECTDRAWSURFACE7 dstsurf, DWORD x, DWORD
     {
         if (ddrval == DDERR_SURFACELOST) 
         {
-    	    ddrval = IDirectDrawSurface7_Restore( dstsurf );
+    	    ddrval = restoresurface ( dstsurf );
             if (ddrval != DD_OK)
             {
                 break;
@@ -1689,7 +1719,7 @@ static int DirectDraw_BltStub( LPDIRECTDRAWSURFACE7 dstsurf, LPRECT dstrect, LPD
 	    if (errcnt > 10)
 		break;
 	    errcnt++;
-    	    ddrval = IDirectDrawSurface7_Restore( dstsurf );
+    	    ddrval = restoresurface ( dstsurf );
             if (ddrval != DD_OK)
             {
                 break;

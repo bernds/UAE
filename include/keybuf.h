@@ -12,3 +12,5 @@ extern int keys_available (void);
 extern void record_key (int);
 extern void keybuf_init (void);
 extern void joystick_setting_changed (void);
+extern int getcapslockstate (void);
+extern void setcapslockstate (int);

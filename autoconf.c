@@ -245,7 +245,7 @@ uaecptr EXPANSION_cddevice;
 
 /* ROM tag area memory access */
 
-static uae_u8 *rtarea;
+uae_u8 *rtarea;
 
 static uae_u32 rtarea_lget (uaecptr) REGPARAM;
 static uae_u32 rtarea_wget (uaecptr) REGPARAM;

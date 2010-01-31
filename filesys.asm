@@ -41,6 +41,8 @@ start:
 	dc.l bootcode-start
 	dc.l setup_exter-start
 
+	dc.l p96vsyncfix1-start
+
 bootcode:
 	lea.l doslibname(pc),a1
 	jsr -96(a6) ; FindResident
@@ -52,7 +54,6 @@ bootcode:
 
 filesys_init:
 	movem.l d0-d7/a0-a6,-(sp)
-	bsr.w setup_exter
 	move.l 4.w,a6
 	move.w #$FFFC,d0 ; filesys base
 	bsr getrtbase
@@ -199,7 +200,7 @@ setup_exter:
 	move.l a0,14(a1)
 	lea.l exter_server(pc),a0
 	move.l a0,18(a1)
-	move.w #$0201,8(a1)
+	move.w #$0214,8(a1)
 	moveq.l #3,d0
 	jsr -168(a6) ; AddIntServer
 	movem.l (sp)+,d0-d1/a0-a1
@@ -735,8 +736,32 @@ getrtbase:
 	add.l d0,a0
 	rts
 
+p96flag	dc.w 0
+p96vsyncfix1
+	cmp.l #34,8(sp) ; picasso_WaitVerticalSync?
+	bne.s p961
+	movem.l d0-d1/a0-a2/a6,-(sp)
+	move.l 4.w,a6
+	sub.l a1,a1
+	jsr -$126(a6) ; FindTask
+	move.l d0,a2
+	move.l a2,a1
+	moveq #-20,d0
+	jsr -$12c(a6) ; SetTaskPri
+	lea p96flag(pc),a0
+	move.w (a0),d1
+p962	cmp.w (a0),d1
+	beq.s p962
+	move.l a2,a1
+	jsr -$12c(a6) ; SetTaskPri
+	moveq #1,d1
+	movem.l (sp)+,d0-d1/a0-a2/a6
+	addq.l #4,sp ; return directly to caller
+p961	rts
+
+
 exter_name: dc.b 'UAE filesystem',0
 doslibname: dc.b 'dos.library',0
 explibname: dc.b 'expansion.library',0
-fsresname:	dc.b 'FileSystem.resource',0
+fsresname: dc.b 'FileSystem.resource',0
 	END

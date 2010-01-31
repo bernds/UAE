@@ -345,7 +345,7 @@ STATIC_INLINE int get_fp_value (uae_u32 opcode, uae_u16 extra, fptype *src)
 	}
 	break;
     case 6:
-	*src = (fptype) (uae_s8) get_byte (ad);
+	*src = (fptype) (uae_s8) get_byte (ad + 1);
 	break;
     default:
 	return 0;
@@ -729,7 +729,7 @@ void fsave_opp (uae_u32 opcode)
 	return;
     }
 
-    if (currprefs.cpu_level == 4) {
+    if (currprefs.cpu_level >= 4) {
 	/* 4 byte 68040 IDLE frame.  */
 	if (incr < 0) {
 	    ad -= 4;
@@ -780,7 +780,7 @@ void frestore_opp (uae_u32 opcode)
 	op_illg (opcode);
 	return;
     }
-    if (currprefs.cpu_level == 4) {
+    if (currprefs.cpu_level >= 4) {
 	/* 68040 */
 	if (incr < 0) {
 	    /* @@@ This may be wrong.  */
@@ -1425,6 +1425,9 @@ uae_u8 *save_fpu (int *len, uae_u8 *dstptr)
 	break;
 	case 4:
 	model = 68040;
+	break;
+	case 6:
+	model = 68060;
 	break;
 	default:
 	return 0;

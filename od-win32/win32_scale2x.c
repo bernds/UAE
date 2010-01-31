@@ -7,7 +7,7 @@
 #include "dxwrap.h"
 #include "win32.h"
 #include "win32gfx.h"
-#include "filter.h"
+#include "gfxfilter.h"
 
 struct uae_filter uaefilters[] =
 {

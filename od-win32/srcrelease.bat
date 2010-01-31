@@ -1,12 +1,9 @@
-del winuae.zip
+cd c:\projects\winuae_bak
 rm -rf bak
 mkdir bak
-cp d:/projects/winuae bak/ -r
+copy /s c:\projects\winuae\src\*.* c:\projects\winuae_bak\bak\
 cd bak
-cd winuae
-rm -rf distribution
 del *.obj *.ilk *.exe *.pdb *.pch *.idb /s
-cd src
 
 del cpudefs.c
 del blit.h
@@ -81,12 +78,12 @@ cd resourcedll
 rm -rf debug
 rm -rf release
 cd ..
-
-rmdir bak
-cd ..
-cd ..
 cd ..
 
 zip -9 -r winuaesrc *
 
 move winuaesrc.zip d:\amiga
+cd c:\projects\winuae\src\od-win32
+
+zip -9 winuaedebug winuae_msvc\debug\winuae.pdb
+zip -9 winuaedebug winuae_msvc\release\winuae.pdb

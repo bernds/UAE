@@ -38,19 +38,12 @@ extern drive_specs drives[NUM_DRIVES];
 #define CONFIG_LOAD_FULL 3
 #define CONFIG_DELETE 4
 
-typedef struct
-{
-    char  Name[ MAX_PATH ];
-    char  Description[ CFG_DESCRIPTION_LENGTH ];
-} ConfigStruct, *ConfigStructPtr;
-
 void WIN32GUI_LoadUIString( DWORD id, char *string, DWORD dwStringLen );
-extern int GetSettings (int all_options);
-extern int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs );
-ConfigStructPtr AllocateConfigStruct( void );
-void FreeConfigStruct( ConfigStructPtr cfgptr );
-ConfigStructPtr GetFirstConfigEntry( HANDLE *file_handle, LPWIN32_FIND_DATA find_data );
-ConfigStructPtr GetNextConfigEntry( HANDLE *file_handle, LPWIN32_FIND_DATA find_data );
+extern int GetSettings (int all_options, HWND);
+extern int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, char *);
 void InitializeListView( HWND hDlg );
 extern void pre_gui_message (const char*,...);
+int dragdrop (HWND hDlg, HDROP hd, struct uae_prefs *prefs, int currentpage);
+HKEY read_disk_history (void);
+
 #endif

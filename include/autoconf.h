@@ -9,6 +9,7 @@
 typedef uae_u32 (*TrapFunction) (void);
 
 extern int lasttrap;
+extern uae_u8 *rtarea;
 extern void do_emultrap (int nr);
 
 extern uae_u32 addr (int);
@@ -66,6 +67,7 @@ extern struct uaedev_mount_info *dup_mountinfo (struct uaedev_mount_info *);
 extern void free_mountinfo (struct uaedev_mount_info *);
 
 extern void filesys_reset (void);
+extern void filesys_cleanup (void);
 extern void filesys_prepare_reset (void);
 extern void filesys_start_threads (void);
 extern void filesys_flush_cache (void);

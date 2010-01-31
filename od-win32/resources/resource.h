@@ -3,6 +3,7 @@
 // Used by winuae.rc
 //
 #define IDS_KICKSTART                   1
+#define IDS_DISK                        2
 #define IDS_DISPLAY                     3
 #define IDS_HARDDISK                    4
 #define IDS_FLOPPY                      5
@@ -55,22 +56,18 @@
 #define IDI_ABOUT                       125
 #define IDS_SELECTINFO                  125
 #define IDS_NONE                        126
-#define IDI_CDROM                       127
 #define IDS_VOLUME                      127
 #define IDI_HARDDISK                    128
 #define IDS_PATH                        128
 #define IDS_RW                          129
 #define IDI_SOUND                       130
 #define IDS_SECTORS                     130
-#define IDI_MEMORY                      131
 #define IDS_SURFACES                    131
-#define IDI_DISPLAY                     132
 #define IDS_RESERVED                    132
 #define IDS_BLOCKSIZE                   133
 #define IDI_FLOPPY                      134
 #define IDS_NAME                        134
 #define IDD_LOADSAVE                    135
-#define IDI_LOADSAVE                    135
 #define IDS_DESCRIPTION                 135
 #define IDS_ONEINSTANCE                 136
 #define IDI_PORTS                       137
@@ -117,7 +114,6 @@
 #define IDS_SELECTFILESYSROOT           160
 #define IDD_OPENGL                      160
 #define IDS_DEFAULTMIDIOUT              161
-#define IDI_OPENGL                      161
 #define IDS_DEFAULTMIDIIN               162
 #define IDS_CONTRIBUTORS1               163
 #define IDD_HARDDRIVE                   163
@@ -136,6 +132,7 @@
 #define IDS_INPUTHOSTWIDGET             171
 #define IDI_INPUT                       172
 #define IDS_INPUTAMIGAEVENT             172
+#define IDD_DISK                        172
 #define IDS_INPUTAUTOFIRE               173
 #define IDS_SAVEUSS                     174
 #define IDS_MIDIOVERFLOW                175
@@ -145,7 +142,16 @@
 #define IDS_WRONGDXVERSION              179
 #define IDI_MISC2                       180
 #define IDR_DRIVE_SNATCH_A500_1         181
+#define IDI_DISK                        182
 #define IDR_DRIVE_SPINND_A500_1         182
+#define IDD_PANEL                       183
+#define IDI_CONFIGFILE                  185
+#define IDM_SYSTRAY                     186
+#define IDI_FOLDER                      188
+#define IDI_DISPLAY                     190
+#define IDI_ROOT                        192
+#define IDI_ICON2                       194
+#define IDI_MEMORY                      194
 #define IDS_SOUND_MONO                  200
 #define IDS_SOUND_MIXED                 201
 #define IDS_SOUND_STEREO                202
@@ -164,8 +170,26 @@
 #define IDS_VSYNC_DEFAULT               215
 #define IDS_DRIVESOUND_NONE             216
 #define IDS_DRIVESOUND_DEFAULT_A500     217
-#define IDS_AVIOUT_NOCODEC              218
 #define IDS_AVIOUTPUT_NOCODEC           218
+#define IDS_DISK_IMAGENAME              219
+#define IDS_DISK_DRIVENAME              220
+#define IDS_AGA8BIT                     221
+#define IDS_UNSUPPORTEDSCREENMODE       222
+#define IDS_UNSUPPORTEDSCREENMODE_1     223
+#define IDS_UNSUPPORTEDSCREENMODE_2     224
+#define IDS_UNSUPPORTEDSCREENMODE_3     225
+#define IDS_UNSUPPORTEDSCREENMODE_4     226
+#define IDS_FLOPPYTYPE35DD              227
+#define IDS_FLOPPYTYPE35HD              228
+#define IDS_FLOPPYTYPE525SD             229
+#define IDS_FLOPPYTYPEDISABLED          230
+#define IDS_STMENUNOFLOPPY              231
+#define IDS_TREEVIEW_HARDWARE           232
+#define IDS_TREEVIEW_HOST               233
+#define IDS_TREEVIEW_MISC               234
+#define IDS_TREEVIEW_SETTINGS           235
+#define IDS_WINUAETITLE_MMB             236
+#define IDS_WINUAETITLE_NORMAL          237
 #define IDC_RESOLUTION                  1021
 #define IDC_SERIAL                      1022
 #define IDC_REFRESHRATE                 1022
@@ -292,6 +316,7 @@
 #define IDC_SNAPSHOT                    1285
 #define IDC_DOSAVESTATE                 1286
 #define IDC_DOLOADSTATE                 1287
+#define IDC_PROWIZARD                   1288
 #define IDC_PORT0_JOY0                  1300
 #define IDC_PORT0_JOY1                  1301
 #define IDC_PORT0_MOUSE                 1302
@@ -306,6 +331,8 @@
 #define IDC_PORT1_KBDC                  1311
 #define IDC_PORT0                       1312
 #define IDC_PORT1                       1313
+#define IDC_MIDIFRAME                   1314
+#define IDC_SERPARFRAME                 1315
 #define IDC_EDIT                        1334
 #define IDC_REMOVE                      1335
 #define IDC_VOLUMELIST                  1336
@@ -359,6 +386,7 @@
 #define IDC_QUICKSAVE                   1408
 #define IDC_QUICKLOAD                   1409
 #define IDC_EXIT                        1410
+#define IDC_EDITPATH                    1410
 #define IDC_CREATEHF                    1500
 #define IDC_HFSIZE                      1501
 #define IDC_LINEMODE                    1502
@@ -377,6 +405,7 @@
 #define IDC_HEIGHTTEXT                  1513
 #define IDC_SETTINGSTEXT                1514
 #define IDC_REFRESHTEXT                 1515
+#define IDC_SETTINGSTEXT2               1515
 #define IDC_DISABLE1                    1516
 #define IDC_DF1WP                       1516
 #define IDC_DISABLE2                    1517
@@ -503,6 +532,7 @@
 #define IDC_KILLWINKEYS                 1608
 #define IDC_SCSIDEVICE2                 1608
 #define IDC_CLOCKSYNC                   1608
+#define IDC_NOUAEFSDB                   1608
 #define IDC_AVIOUTPUT_FPS               1609
 #define IDC_INPUTDEVICE                 1609
 #define IDC_MAPROM                      1609
@@ -587,20 +617,42 @@
 #define IDC_KAILLERANOFPSLIMIT          1647
 #define IDC_STATE_BUFFERSIZE            1647
 #define IDC_SOUNDDRIVESELECT            1647
+#define IDC_PANELTREE                   1647
 #define IDC_AVIOUTPUT_DIMENSIONS_STATIC 1648
 #define IDC_STATE_BUFFERSIZE_TEXT       1648
+#define IDC_CONFIGTREE                  1648
 #define IDC_AVIOUTPUT_OPTIONS           1649
 #define IDC_STATE_RATE_TEXT             1649
+#define IDC_DISKLISTREMOVE              1649
 #define IDC_SOUNDCARD                   1650
+#define IDC_CS_SOUND0                   1650
 #define IDC_SOUNDCARDLIST               1651
+#define IDC_CS_SOUND1                   1651
 #define IDC_SOUNDFREQ                   1652
+#define IDC_CS_SOUND2                   1652
 #define IDC_SOUNDCARD2                  1653
 #define IDC_SOUNDFREQTXT                1653
+#define IDC_PANEL_FRAME                 1653
 #define IDC_SOUNDFILTERTXT              1654
+#define IDC_PANEL_FRAME_OUTER           1654
 #define IDC_SOUNDSTEREO                 1655
+#define IDC_CONFIGTYPE                  1655
 #define IDC_SOUNDDRIVETXT               1656
 #define IDC_SOUNDSTEREOTXT              1657
 #define IDC_SOUNDINTERPOLATIONTXT       1658
+#define IDC_DISK                        1659
+#define IDC_DISKLIST                    1659
+#define ID__FLOPPYDRIVES                40004
+#define ID_FLOPPYDRIVES_DF0             40005
+#define ID_ST_CONFIGURATION             40010
+#define ID_ST_HELP                      40011
+#define ID_ST_QUIT                      40012
+#define ID_ST_EJECTALL                  40013
+#define ID_ST_DF0                       40014
+#define ID_ST_DF1                       40015
+#define ID_ST_DF2                       40016
+#define ID_ST_DF3                       40017
+#define ID_ST_RESET                     40019
 
 // Next default values for new objects
 // 
@@ -608,9 +660,9 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
 #define _APS_3D_CONTROLS                     1
-#define _APS_NEXT_RESOURCE_VALUE        183
-#define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1646
+#define _APS_NEXT_RESOURCE_VALUE        196
+#define _APS_NEXT_COMMAND_VALUE         40020
+#define _APS_NEXT_CONTROL_VALUE         1656
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

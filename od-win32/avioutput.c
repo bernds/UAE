@@ -26,7 +26,7 @@
 #include "direct3d.h"
 #include "opengl.h"
 #include "sound.h"
-#include "filter.h"
+#include "gfxfilter.h"
 #include "xwin.h"
 #include "resource.h"
 #include "avioutput.h"

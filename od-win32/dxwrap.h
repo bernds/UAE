@@ -236,6 +236,8 @@ char *DirectDraw_GetSurfacePointer( void );
 LONG DirectDraw_GetSurfacePitch( void );
 DWORD DirectDraw_CurrentWidth( void );
 DWORD DirectDraw_CurrentHeight( void );
+DWORD DirectDraw_CurrentRefreshRate (void);
+int DirectDraw_GetVerticalBlankStatus (void);
 
 extern void ddraw_unlockscr (void);
 #define DirectDraw_SurfaceUnlock() ddraw_unlockscr()

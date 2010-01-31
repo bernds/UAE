@@ -10,7 +10,7 @@
 #include "dxwrap.h"
 #include "win32.h"
 #include "win32gfx.h"
-#include "filter.h"
+#include "gfxfilter.h"
 
 #include <d3d9.h>
 #include <d3dx9.h>

@@ -52,11 +52,9 @@ static int doscsi (HANDLE *h, SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER *swb, int *er
 
     *err = 0;
     if (log_scsi) {
-        write_log("SCSI, H=%08.8X: ",h);
-	for (i = 0; i < swb->spt.CdbLength; i++) {
-	    write_log("%s%02.2X", i > 0 ? "." : "", swb->spt.Cdb[i]);
-	}
-	write_log("\n");
+	write_log ("SCSI, H=%X: ", h);
+	scsi_log_before (swb->spt.Cdb, swb->spt.CdbLength,
+	    swb->spt.DataIn == SCSI_IOCTL_DATA_OUT ? swb->spt.DataBuffer : 0,swb->spt.DataTransferLength);
     }
     gui_cd_led (1);
     status = DeviceIoControl (h, IOCTL_SCSI_PASS_THROUGH_DIRECT,
@@ -66,22 +64,14 @@ static int doscsi (HANDLE *h, SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER *swb, int *er
     if (!status) {
 	int lasterror = GetLastError();
 	*err = lasterror;
-        write_log("SCSI ERROR, H=%08.8X: ",h);
-	for (i = 0; i < swb->spt.CdbLength; i++) {
-	    write_log("%s%02.2X", i > 0 ? "." : "", swb->spt.Cdb[i]);
-	}
-	write_log("\n");
+        write_log("SCSI ERROR, H=%X: ", h);
 	write_log("Error code = %d, LastError=%d\n", swb->spt.ScsiStatus, lasterror);
+	scsi_log_before (swb->spt.Cdb, swb->spt.CdbLength,
+	    swb->spt.DataIn == SCSI_IOCTL_DATA_OUT ? swb->spt.DataBuffer : 0,swb->spt.DataTransferLength);
     }
-    if (log_scsi) {
-        if (swb->spt.SenseInfoLength > 0) {
-	    write_log("SENSE: ");
-	    for (i = 0; i < swb->spt.SenseInfoLength && i < 32; i++) {
-		write_log("%s%02.2X", i > 0 ? "." : "", swb->SenseBuf[i]);
-	    }
-	    write_log("\n");
-	}
-    }
+    if (log_scsi)
+	scsi_log_after (swb->spt.DataIn == SCSI_IOCTL_DATA_IN ? swb->spt.DataBuffer : 0, swb->spt.DataTransferLength,
+	    swb->SenseBuf, swb->spt.SenseInfoLength);
     if (swb->spt.SenseInfoLength > 0)
 	return 0;
     gui_cd_led (1);
@@ -154,7 +144,6 @@ static int execscsicmd_direct (int unitnum, uaecptr acmd)
     /* the Amiga does not tell us how long the timeout shall be, so make it _very_ long (specified in seconds) */
     swb.spt.TimeOutValue = 80 * 60;
     scsi_datap = scsi_datap_org = scsi_len ? bank_data->xlateaddr (scsi_data) : 0;
-    swb.spt.DataTransferLength = scsi_len;
     swb.spt.DataIn = (scsi_flags & 1) ? SCSI_IOCTL_DATA_IN : SCSI_IOCTL_DATA_OUT;
     for (i = 0; i < scsi_cmd_len; i++)
 	swb.spt.Cdb[i] = get_byte (scsi_cmd + i);
@@ -166,6 +155,7 @@ static int execscsicmd_direct (int unitnum, uaecptr acmd)
     if (dev_info[unitnum].isatapi)
         scsi_atapi_fixup_pre (swb.spt.Cdb, &scsi_cmd_len, &scsi_datap, &scsi_len, &parm);
     swb.spt.CdbLength = (UCHAR)scsi_cmd_len;
+    swb.spt.DataTransferLength = scsi_len;
     swb.spt.DataBuffer = scsi_datap;
 
     status = doscsi (dev_info[unitnum].handle, &swb, &err);

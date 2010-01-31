@@ -36,6 +36,7 @@ extern int debuggable (void);
 extern int needmousehack (void);
 extern void togglemouse (void);
 extern void LED (int);
+extern void screenshot (int);
 
 extern int bits_in_mask (unsigned long mask);
 extern int mask_shift (unsigned long mask);

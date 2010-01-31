@@ -31,6 +31,7 @@ static BOOL (*pfnGetASPI32Buffer)(PASPI32BUFF);
 static BOOL (*pfnFreeASPI32Buffer)(PASPI32BUFF);
 static BOOL (*pfnTranslateASPI32Address)(PDWORD, PDWORD);
 static HANDLE hAspiLib;
+static int scanphase;
 
 struct scsi_info {
     int scsibus,target,lun;
@@ -276,17 +277,14 @@ static void closescsi (SCSI *scgp)
 
 static void scsi_debug (SCSI *scgp, SRB_ExecSCSICmd *s)
 {
-    if (log_scsi) {
-	int i;
-
-	if (scgp->scmd->cdb.g0_cdb.cmd == 0x12)
-	    return;
-	write_log ("ASPI EXEC_SCSI: cmd=%02.2X bus=%d,target=%d,lun=%d\n",scgp->scmd->cdb.g0_cdb.cmd,s->SRB_HaId,s->SRB_Target,s->SRB_Lun);
-	for (i = 0; i < scgp->scmd->cdb_len; i++) {
-	    write_log ("%s%02.2X", i > 0 ? "." : "", scgp->scmd->cdb.cmd_cdb[i]);
-	}
-	write_log ("\n");
-    }
+    if (!log_scsi)
+	return;
+    if (scanphase)
+	return;
+    write_log ("ASPI EXEC_SCSI: bus=%d,target=%d,lun=%d\n",
+	s->SRB_HaId, s->SRB_Target, s->SRB_Lun);
+    scsi_log_before (scgp->scmd->cdb.cmd_cdb, scgp->scmd->cdb_len,
+        (s->SRB_Flags & SRB_DIR_OUT) ? s->SRB_BufPointer : 0, s->SRB_BufLen);
 }
 
 
@@ -300,14 +298,6 @@ static void copy_sensedata(SRB_ExecSCSICmd *cp, struct scg_cmd *sp)
 	int len = sp->sense_len;
 	if (len > sizeof(sp->u_sense.Sense)) len = sizeof(sp->u_sense.Sense);
 	memcpy(&sp->u_sense.Sense, cp->SenseArea, len);
-	if (log_scsi) {
-	    int i;
-	    write_log ("ASPI SENSE:");
-	    for (i = 0; i < len; i++) {
-		write_log ("%s%02.2X", i > 0 ? "." : "", cp->SenseArea[i]);
-	    }
-	    write_log ("\n");
-	}
     }
     sp->u_scb.cmd_scb[0] = cp->SRB_TargStat;
 }
@@ -454,8 +444,6 @@ static int scsicmd(SCSI *scgp)
     s.SRB_PostProc	= Event; /* Post proc event */
     s.SRB_SenseLen	= SENSE_LEN; /* Lenght of sense buffer */
     
-    scsi_debug (scgp,&s);
-
     /*
      * Do we receive data from this ASPI command?
      */
@@ -468,6 +456,8 @@ static int scsicmd(SCSI *scgp)
     	if (sp->size > 0)
     	    s.SRB_Flags |= SRB_DIR_OUT;
     }
+
+    scsi_debug (scgp,&s);
 
     /*
      * ------------ Send SCSI command --------------------------
@@ -496,12 +486,16 @@ static int scsicmd(SCSI *scgp)
     /*
      * Check ASPI command status
      */
+
+    if (log_scsi && !scanphase)
+	scsi_log_after ((s.SRB_Flags & SRB_DIR_IN) ? s.SRB_BufPointer : 0, s.SRB_BufLen,
+	    sp->u_sense.cmd_sense, sp->sense_len);
+
     if (s.SRB_Status != SS_COMP) {
         if (log_scsi && s.SRB_Status != 0x82)
 	    write_log ("ASPI: Error in scgo_send: s.SRB_Status is 0x%x\n", s.SRB_Status);
 	set_error(&s, sp); /* Set error flags */
 	copy_sensedata(&s, sp); /* Copy sense and status */
-	
 	if (log_scsi && s.SRB_Status != 0x82)
 	    write_log ("ASPI: Mapped to: error %d errno: %d\n", sp->error, sp->ux_errno);
 	return 1;
@@ -546,6 +540,7 @@ static int scsierr(SCSI *scgp)
 static void scan_scsi_bus (SCSI *scgp, int flags)
 {
     /* add all units we find */
+    scanphase = 1;
     for (scgp->addr.scsibus=0; scgp->addr.scsibus < 8; scgp->addr.scsibus++) {
         if (!scsi_havebus(scgp, scgp->addr.scsibus))
             continue;
@@ -571,7 +566,7 @@ static void scan_scsi_bus (SCSI *scgp, int flags)
 			    write_log ("%d", inq.type);
 			    use = 1;
 			} else {
-			    write_log ("?");
+			    write_log ("<%d>", inq.type);
 			}
 			if (inq.ansi_version == 0) {
 			    write_log (",ATAPI");
@@ -594,6 +589,7 @@ static void scan_scsi_bus (SCSI *scgp, int flags)
             }
         }
     }
+    scanphase = 0;
 }
 
 static void aspi_led (int unitnum)

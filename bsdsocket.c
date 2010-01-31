@@ -123,7 +123,9 @@ static uae_u32 gettask (void)
 /* errno/herrno setting */
 void seterrno (SB, int sb_errno)
 {
-    sb->sb_errno = sb_errno;
+    sb->sb_errno = sb_errno;			
+	
+	if (sb->sb_errno >= 1001 && sb->sb_errno <= 1005) setherrno(sb,sb->sb_errno-1000);
 
     if (sb->errnoptr) {
 	switch (sb->errnosize) {
@@ -924,7 +926,7 @@ char *errortexts[] =
  "Read-only file system", "Too many links", "Broken pipe", "Numerical argument out of domain",
  "Result too large", "Resource temporarily unavailable", "Operation now in progress",
  "Operation already in progress", "Socket operation on non-socket", "Destination address required",
- "Messbge too long", "Protocol wrong type for socket", "Protocol not available",
+ "Message too long", "Protocol wrong type for socket", "Protocol not available",
  "Protocol not supported", "Socket type not supported", "Operation not supported",
  "Protocol family not supported", "Address family not supported by protocol family",
  "Address already in use", "Can't assign requested address", "Network is down",
@@ -936,11 +938,22 @@ char *errortexts[] =
  "Too many processes", "Too many users", "Disc quota exceeded", "Stale NFS file handle",
  "Too many levels of remote in path", "RPC struct is bad", "RPC version wrong",
  "RPC prog. not avail", "Program version wrong", "Bad procedure for program", "No locks available",
- "Function not implemented", "Inappropriate file type or format", "PError 0",
- "No error", "Unknown host", "Host name lookup failure", "Unknown server error",
- "No address associated with name"};
+ "Function not implemented", "Inappropriate file type or format", "PError 0"};
 
 uae_u32 errnotextptrs[sizeof (errortexts) / sizeof (*errortexts)];
+uae_u32 number_sys_error = sizeof (errortexts) / sizeof (*errortexts);
+
+
+char *herrortexts[] =
+ {"No error", "Unknown host", "Host name lookup failure", "Unknown server error",
+ "No address associated with name"};
+
+uae_u32 herrnotextptrs[sizeof (herrortexts) / sizeof (*herrortexts)];
+uae_u32 number_host_error = sizeof (herrortexts) / sizeof (*herrortexts);
+
+static const char * const strErr = "Errlist lookup error"; 
+uae_u32 strErrptr;
+
 
 #define TAG_DONE   (0L)		/* terminates array of TagItems. ti_Data unused */
 #define	TAG_IGNORE (1L)		/* ignore this item, not end of array               */
@@ -977,8 +990,8 @@ uae_u32 errnotextptrs[sizeof (errortexts) / sizeof (*errortexts)];
 #define SBTC_ERRNOSTRPTR    14	/* <sys/errno.h> */
 #define SBTC_HERRNOSTRPTR   15	/* <netdb.h> */
 #define SBTC_IOERRNOSTRPTR  16	/* <exec/errors.h> */
-#define SBTC_S2ERRNOSTRPTR  17	/* <devices/sbna2.h> */
-#define SBTC_S2WERRNOSTRPTR 18	/* <devices/sbna2.h> */
+#define SBTC_S2ERRNOSTRPTR  17	/* <devices/sana2.h> */
+#define SBTC_S2WERRNOSTRPTR 18	/* <devices/sana2.h> */
 #define SBTC_ERRNOBYTEPTR   21
 #define SBTC_ERRNOWORDPTR   22
 #define SBTC_ERRNOLONGPTR   24
@@ -1069,16 +1082,48 @@ static uae_u32 bsdsocklib_SocketBaseTagList (void)
 		    if (currtag & 1) {
 			TRACE (("ERRNOSTRPTR),invalid"));
 		    } else {
-			TRACE (("ERRNOSTRPTR),%d", currval));
-			put_long (tagptr + 4, errnotextptrs[currval]);
+			unsigned long ulTmp;
+			if (currtag & 0x8000)
+				{ /* SBTM_GETREF */
+				ulTmp = get_long(currval);
+				}
+			else
+				{ /* SBTM_GETVAL */
+				ulTmp = currval;
+				}
+			TRACE (("ERRNOSTRPTR),%d", ulTmp));
+			if (ulTmp < number_sys_error)
+				{ 
+				tagcopy (currtag, currval, tagptr, &errnotextptrs[ulTmp]);
+				}
+			else
+				{
+				tagcopy (currtag, currval, tagptr, &strErrptr);
+				}
 		    }
 		    break;
 		 case SBTC_HERRNOSTRPTR:
 		    if (currtag & 1) {
 			TRACE (("HERRNOSTRPTR),invalid"));
 		    } else {
-			TRACE (("HERRNOSTRPTR),%d", currval));
-			put_long (tagptr + 4, errnotextptrs[currval + sizeof (errortexts) / sizeof (*errortexts) - 6]);
+			unsigned long ulTmp;
+			if (currtag & 0x8000)
+				{ /* SBTM_GETREF */
+				ulTmp = get_long(currval);
+				}
+			else
+				{ /* SBTM_GETVAL */
+				ulTmp = currval;
+				}
+			TRACE (("HERRNOSTRPTR),%d", ulTmp));
+			if (ulTmp < number_host_error)
+				{
+				tagcopy (currtag, currval, tagptr, &herrnotextptrs[ulTmp]);
+				}
+			else
+				{
+				tagcopy (currtag, currval, tagptr, &strErrptr);
+				}
 		    }
 		    break;
 		 case SBTC_ERRNOBYTEPTR:
@@ -1189,8 +1234,14 @@ static uae_u32 bsdsocklib_init (void)
 #endif
 
     /* Install error strings in Amiga memory */
-    for (tmp1 = i = sizeof (errortexts) / sizeof (*errortexts); i--;)
-	tmp1 += strlen (errortexts[i]);
+	tmp1 = 0;
+    for (i = number_sys_error; i--;)
+		tmp1 += strlen (errortexts[i])+1;
+
+	for (i = number_host_error; i--;)
+		tmp1 += strlen (herrortexts[i])+1;
+
+	tmp1 += strlen(strErr)+1;
 
     m68k_dreg (regs, 0) = tmp1;
     m68k_dreg (regs, 1) = 0;
@@ -1200,8 +1251,13 @@ static uae_u32 bsdsocklib_init (void)
 	write_log ("bsdsocket: FATAL: Ran out of memory while creating bsdsocket.library!\n");
 	return 0;
     }
-    for (i = 0; i < (int) (sizeof (errortexts) / sizeof (*errortexts)); i++)
-	errnotextptrs[i] = addstr (&tmp1, errortexts[i]);
+    for (i = 0; i < (int) (number_sys_error); i++)
+		errnotextptrs[i] = addstr (&tmp1, errortexts[i]);
+
+	for (i = 0; i < (int) (number_host_error); i++)
+		herrnotextptrs[i] = addstr (&tmp1, herrortexts[i]);
+
+	strErrptr = addstr (&tmp1, strErr);
 
     /* @@@ someone please implement a proper interrupt handler setup here :) */
     tmp1 = here ();

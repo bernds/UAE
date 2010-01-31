@@ -22,4 +22,13 @@ extern int execute_command (char *);
 extern int zfile_iscompressed (struct zfile *z);
 extern int zfile_zcompress (struct zfile *dst, void *src, int size);
 extern int zfile_zuncompress (void *dst, int dstsize, struct zfile *src, int srcsize);
+extern int zfile_gettype (struct zfile *z);
 
+#define ZFILE_UNKNOWN 0
+#define ZFILE_CONFIGURATION 1
+#define ZFILE_DISKIMAGE 2
+#define ZFILE_ROM 3
+#define ZFILE_KEY 4
+#define ZFILE_HDF 5
+#define ZFILE_STATEFILE 6
+#define ZFILE_NVR 7

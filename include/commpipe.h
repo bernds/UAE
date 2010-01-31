@@ -105,6 +105,7 @@ static __inline__ uae_pt read_comm_pipe_pt_blocking (smp_comm_pipe *p)
 
     /* We ignore chunks here. If this is a problem, make the size bigger in the init call. */
     if (p->writer_waiting) {
+	write_log ("read_comm_pipe_pt_blocking!\n");
 	p->writer_waiting = 0;
 	uae_sem_post (&p->writer_wait);
     }

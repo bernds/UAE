@@ -1842,7 +1842,7 @@ static __inline__ void raw_inc_sp(int off)
 #define SIG_WRITE 2
 
 static int in_handler=0;
-static uae_u8 veccode[256];
+static uae_u8 *veccode;
 
 #ifdef _WIN32
 int EvalException ( LPEXCEPTION_POINTERS blah, int n_except )
@@ -2384,18 +2384,19 @@ typedef struct {
 /* This could be so much easier if it could make assumptions about the
    compiler... */
 
-static uae_u8 cpuid_space[256];   
 static uae_u32 cpuid_ptr;
 static uae_u32 cpuid_level;
 
 static x86_regs cpuid(uae_u32 level)
 {
     x86_regs answer;
+    uae_u8 *cpuid_space;
     void* tmp=get_target();
 
     cpuid_ptr=(uae_u32)&answer;
     cpuid_level=level;
 
+    cpuid_space = cache_alloc (256);
     set_target(cpuid_space);
     raw_push_l_r(0); /* eax */
     raw_push_l_r(1); /* ecx */
@@ -2418,6 +2419,7 @@ static x86_regs cpuid(uae_u32 level)
     set_target(tmp);
 
     ((cpuop_func*)cpuid_space)(0);
+    cache_free (cpuid_space);
     return answer;
 }
 

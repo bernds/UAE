@@ -862,17 +862,41 @@ int REGPARAM2 default_check (uaecptr a, uae_u32 b)
     return 0;
 }
 
+static int be_cnt;
+
 uae_u8 REGPARAM2 *default_xlate (uaecptr a)
 {
     if (quit_program == 0) {
-	/* demo Purple by Warfalcons expects exception
-	   in this situation instead of reset... */
+	/* do this only in 68010+ mode, there are some tricky A500 programs.. */
 	if (currprefs.cpu_level > 0 || !currprefs.cpu_compatible) {
-	    write_log ("Your Amiga program just did something terribly stupid %p PC=%p\n", a, m68k_getpc());
-	    uae_reset (0);
+	    if (be_cnt < 3) {
+		int i, j;
+		uaecptr a2 = a - 32;
+		uaecptr a3 = m68k_getpc() - 32;
+		write_log ("Your Amiga program just did something terribly stupid %p PC=%p\n", a, m68k_getpc());
+		m68k_dumpstate (0, 0);
+		for (i = 0; i < 10; i++) {
+		    write_log ("%08.8X ", i >= 5 ? a3 : a2);
+		    for (j = 0; j < 16; j += 2) {
+			write_log (" %04.4X", get_word (i >= 5 ? a3 : a2));
+			if (i >= 5) a3 +=2; else a2 += 2;
+		    }
+		    write_log ("\n");
+		}
+	    }
+	    be_cnt++;
+	    if (be_cnt > 1000) {
+		uae_reset (0);
+		be_cnt = 0;
+	    } else {
+		regs.panic = 1;
+		regs.panic_pc = m68k_getpc ();
+		regs.panic_addr = a;
+		set_special (SPCFLAG_BRK);
+	    }
 	}
     }
-    return kickmem_xlate (get_long (0xF80000));	/* So we don't crash. */
+    return kickmem_xlate (0);	/* So we don't crash. */
 }
 
 /* Address banks */
@@ -1416,6 +1440,7 @@ void memory_reset (void)
 {
     int custom_start;
 
+    be_cnt = 0;
     currprefs.chipmem_size = changed_prefs.chipmem_size;
     currprefs.bogomem_size = changed_prefs.bogomem_size;
     currprefs.a3000mem_size = changed_prefs.a3000mem_size;

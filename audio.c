@@ -23,11 +23,15 @@
 #include "audio.h"
 #include "savestate.h"
 #include "driveclick.h"
+#ifdef AVIOUTPUT
 #include "avioutput.h"
+#endif
 
 #define MAX_EV ~0ul
 //#define DEBUG_AUDIO
 #define DEBUG_CHANNEL_MASK 15
+
+int audio_channel_mask = 15;
 
 static int debugchannel (int ch)
 {
@@ -47,7 +51,7 @@ struct audio_channel_data {
     int vol;
     int len, wlen;
     uae_u16 dat, dat2;
-    int request_word;
+    int request_word, request_word_skip;
 };
 
 STATIC_INLINE int current_hpos (void)
@@ -108,7 +112,6 @@ STATIC_INLINE void put_sound_word_right (uae_u32 w)
 	right_word_saved[saved_ptr] = w;
 	return;
     }
-
     PUT_SOUND_WORD_RIGHT (w);
 }
 
@@ -529,9 +532,11 @@ static void newsample (int nr, sample8_t sample)
 #ifdef DEBUG_AUDIO
     if (!debugchannel (nr)) sample = 0;
 #endif
+    if (!(audio_channel_mask & (1 << nr)))
+	sample = 0;
     cdp->last_sample = cdp->current_sample;
     cdp->current_sample = sample;
-}    
+}
 
 static void state23 (struct audio_channel_data *cdp)
 {
@@ -567,6 +572,7 @@ static void audio_handler (int nr, int timed)
     {
 	case 0:
 	    cdp->request_word = 0;
+	    cdp->request_word_skip = 0;
 	    cdp->intreq2 = 0;
 	    if (cdp->dmaen) {
 		cdp->state = 1;
@@ -597,11 +603,9 @@ static void audio_handler (int nr, int timed)
 	    cdp->state = 5;
 	    if (cdp->wlen != 1)
 	        cdp->wlen = (cdp->wlen - 1) & 0xFFFF;
-	    cdp->request_word = 0;
-	    if (currprefs.cpu_level < 2)
-		cdp->evtime = 80 * CYCLE_UNIT;
-	    else
-		cdp->request_word = 2;
+	    cdp->request_word = 2;
+	    if (current_hpos () > maxhpos - 20)
+	        cdp->request_word_skip = 1;
 	return;
 
 	case 5:
@@ -625,6 +629,14 @@ static void audio_handler (int nr, int timed)
 	case 2:
 	    if (currprefs.produce_sound == 0)
 		cdp->per = PERIOD_MAX;
+
+	    if (!cdp->dmaen && isirq (nr) && ((cdp->per <= 30 ) || (evtime == 0 || evtime == MAX_EV || evtime == cdp->per))) {
+	        cdp->state = 0;
+	        cdp->evtime = MAX_EV;
+	        cdp->request_word = 0;
+	        return;
+	    }
+
 	    state23 (cdp);
 	    cdp->state = 3;
 	    cdp->evtime = cdp->per;
@@ -660,16 +672,9 @@ static void audio_handler (int nr, int timed)
 	    if (cdp->dmaen) {
 		if (napnav)
 		    cdp->request_word = 1;
-	        if (cdp->intreq2 && napnav) {
+	        if (cdp->intreq2 && napnav)
 		    setirq (nr);
-		}
 	    } else {
-		if ((cdp->per <= 30 || isirq (nr)) && (evtime == 0 || evtime == MAX_EV || evtime == cdp->per)) {
-		    cdp->state = 0;
-		    cdp->evtime = MAX_EV;
-		    cdp->request_word = 0;
-		    return;
-		}
 		if (napnav)
 		    setirq (nr);
 	    }
@@ -740,7 +745,9 @@ STATIC_INLINE int sound_prefs_changed (void)
 
 void check_prefs_changed_audio (void)
 {
+#ifdef DRIVESOUND
     driveclick_check_prefs ();
+#endif
     if (sound_available && sound_prefs_changed ()) {
 	close_sound ();
 #ifdef AVIOUTPUT
@@ -876,6 +883,11 @@ void audio_hsync (int dmaaction)
 
         if (dmaaction && cdp->request_word > 0) {
 
+	    if (cdp->request_word_skip) {
+		cdp->request_word_skip = 0;
+		continue;
+	    }
+
 	    if (cdp->state == 5) {
 	        cdp->pt = cdp->lc;
 #ifdef DEBUG_AUDIO
@@ -898,13 +910,14 @@ void audio_hsync (int dmaaction)
 	}
 
 	if (cdp->dmaen != chan_ena) {
+#ifdef DEBUG_AUDIO
+	    if (debugchannel (nr))
+	        write_log ("AUD%dDMA %d->%d (%d) LEN=%d/%d %08.8X\n", nr, cdp->dmaen, chan_ena,
+		    cdp->state, cdp->wlen, cdp->len, m68k_getpc());
+#endif
 	    cdp->dmaen = chan_ena;
 	    if (cdp->dmaen)
 		handle2 = 1;
-#ifdef DEBUG_AUDIO
-	    if (debugchannel (nr))
-	        write_log ("AUD%dDMA %d (%d) %08.8X\n", nr, cdp->dmaen, cdp->state, m68k_getpc());
-#endif
 	}
 	if (handle2)
 	    audio_handler (nr, 0);
@@ -922,15 +935,16 @@ void AUDxDAT (int nr, uae_u16 v)
 
 #ifdef DEBUG_AUDIO
     if (debugchannel (nr))
-	write_log ("AUD%dDAT: %04.4X STATE=%d %p\n", nr, v, cdp->state, m68k_getpc());
+	write_log ("AUD%dDAT: %04.4X STATE=%d IRQ=%d %p\n", nr,
+	    v, cdp->state, isirq(nr) ? 1 : 0, m68k_getpc());
 #endif
     update_audio ();
     cdp->dat2 = v;
     cdp->request_word = -1;
-    if (cdp->state == 0 && !isirq (nr)) {
+    cdp->request_word_skip = 0;
+    if (cdp->state == 0) {
 	cdp->state = 2;
 	audio_handler (nr, 0);
-	setirq (nr);
         schedule_audio ();
 	events_schedule ();
     }

@@ -1573,7 +1573,6 @@ void action_replay_version()
 /* This function doesn't reset the Cart memory, it is just called during a memory reset */
 void action_replay_memory_reset(void)
 {
-    write_log_debug("action_replay_memory_reset()\n");
     #ifdef ACTION_REPLAY
     if ( armemory_rom )
     {

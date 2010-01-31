@@ -189,57 +189,67 @@ struct device_info *sys_command_info (int mode, int unitnum, struct device_info 
 #define MODE_SELECT_6 0x15
 #define MODE_SENSE_6 0x1a
 #define MODE_SELECT_10 0x55
-#define MODE_SENSE_10 0x5A
+#define MODE_SENSE_10 0x5a
 
-void scsi_atapi_fixup_pre (uae_u8 *scsi_cmd, int *len, uae_u8 **datap, int *datalen, int *parm)
+void scsi_atapi_fixup_pre (uae_u8 *scsi_cmd, int *len, uae_u8 **datap, int *datalenp, int *parm)
 {
     uae_u8 cmd, *p, *data = *datap;
+    int l, datalen = *datalenp;
 
     *parm = 0;
     cmd = scsi_cmd[0];
+    if (cmd != MODE_SELECT_6 && cmd != MODE_SENSE_6)
+	return;
+    l = scsi_cmd[4];
+    if (l > 4)
+	l += 4;
+    scsi_cmd[7] = l >> 8;
+    scsi_cmd[8] = l;
     if (cmd == MODE_SELECT_6) {
 	scsi_cmd[0] = MODE_SELECT_10;
-	scsi_cmd[8] = scsi_cmd[4];
 	scsi_cmd[9] = scsi_cmd[5];
-	scsi_cmd[2] = scsi_cmd[3] = scsi_cmd[4] = 0;
-	scsi_cmd[5] = scsi_cmd[6] = scsi_cmd[7] = 0;
+	scsi_cmd[2] = scsi_cmd[3] = scsi_cmd[4] = scsi_cmd[5] = scsi_cmd[6] = 0;
 	*len = 10;
-	p = xmalloc (*datalen + 4);
-	memcpy (p + 8, data + 4, (*datalen) - 4);
+	p = xmalloc (8 + datalen + 4);
+	if (datalen > 4)
+	    memcpy (p + 8, data + 4, datalen - 4);
 	p[0] = 0;
 	p[1] = data[0];
 	p[2] = data[1];
 	p[3] = data[2];
 	p[4] = p[5] = p[6] = 0;
 	p[7] = data[3];
-	*datalen += 4;
+	if (l > 8)
+	    datalen += 4;
 	*parm = MODE_SELECT_10;
 	*datap = p;
-	return;
-    } else if (cmd == MODE_SENSE_6) {
+    } else {
 	scsi_cmd[0] = MODE_SENSE_10;
-	scsi_cmd[8] = scsi_cmd[4];
 	scsi_cmd[9] = scsi_cmd[5];
-	scsi_cmd[3] = scsi_cmd[4] = scsi_cmd[5] = scsi_cmd[6] = scsi_cmd[7] = 0;
-	*datap = xmalloc (*datalen + 4);
+	scsi_cmd[3] = scsi_cmd[4] = scsi_cmd[5] = scsi_cmd[6] = 0;
+	if (l > 8)
+	    datalen += 4;
+	*datap = xmalloc (datalen);
 	*len = 10;
 	*parm = MODE_SENSE_10;
-	return;
     }
+    *datalenp = datalen;
 }
 
-void scsi_atapi_fixup_post (uae_u8 *scsi_cmd, int len, uae_u8 *olddata, uae_u8 *data, int *datalen, int parm)
+void scsi_atapi_fixup_post (uae_u8 *scsi_cmd, int len, uae_u8 *olddata, uae_u8 *data, int *datalenp, int parm)
 {
-    if (!data || !(*datalen))
+    int datalen = *datalenp;
+    if (!data || !datalen)
 	return;
     if (parm == MODE_SENSE_10) {
 	olddata[0] = data[1];
 	olddata[1] = data[2];
 	olddata[2] = data[3];
 	olddata[3] = data[7];
-	*datalen -= 4;
-	if (*datalen > 4)
-	    memcpy (olddata + 4, data + 8, (*datalen) - 4);
+        datalen -= 4;
+	if (datalen > 4)
+	    memcpy (olddata + 4, data + 8, datalen - 4);
+	*datalenp = datalen;
     }
 }
 
@@ -271,4 +281,39 @@ int sys_command_scsi_direct (int unitnum, uaecptr request)
     if (!ret && device_func[DF_SCSI]->isatapi(unitnum))
         scsi_atapi_fixup_inquiry (request);
     return ret;
+}
+
+void scsi_log_before (uae_u8 *cdb, int cdblen, uae_u8 *data, int datalen)
+{
+    int i;
+    for (i = 0; i < cdblen; i++) {
+        write_log("%s%02.2X", i > 0 ? "." : "", cdb[i]);
+    }
+    write_log("\n");
+    if (data) {
+	write_log ("DATAOUT: %d\n", datalen);
+        for (i = 0; i < datalen && i < 100; i++)
+	    write_log("%s%02.2X", i > 0 ? "." : "", data[i]);
+        if (datalen > 0)
+	    write_log("\n");
+    }
+}
+
+void scsi_log_after (uae_u8 *data, int datalen, uae_u8 *sense, int senselen)
+{
+    int i;
+    if (data) {
+	write_log ("DATAIN: %d\n", datalen);
+	for (i = 0; i < datalen && i < 100; i++)
+	    write_log("%s%02.2X", i > 0 ? "." : "", data[i]);
+	if (datalen > 0)
+	    write_log("\n");
+    }
+    if (senselen > 0) {
+        write_log("SENSE: ");
+        for (i = 0; i < senselen && i < 32; i++) {
+	    write_log("%s%02.2X", i > 0 ? "." : "", sense[i]);
+	}
+	write_log("\n");
+    }
 }

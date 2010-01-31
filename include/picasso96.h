@@ -1,3 +1,4 @@
+
 #ifdef WIN32
 
 #include "picasso96_win.h"
@@ -530,16 +531,17 @@ extern struct picasso96_state_struct picasso96_state;
 extern unsigned int timer_id;
 #endif
 
-extern int DX_FillRect (uaecptr mem, uae_u16 X, uae_u16 Y, uae_u16 Width, uae_u16 Height, uae_u32 Pen, uae_u8 Bpp);
-extern void DX_BlitRect (struct RenderInfo *ri, uae_u16 srcx, uae_u16 srcy, uae_u16 dstx, uae_u16 dsty, uae_u16 w, uae_u16 h);
+extern int DX_Fill (int dstx, int dsty, int width, int height, uae_u32 color, RGBFTYPE rgbtype);
+extern int DX_Blit (int srcx, int srcy, int dstx, int dsty, int width, int height, BLIT_OPCODE opcode);
 extern void DX_BlitRectFromBuffer (struct RenderInfo *ri, uae_u8* buffer, uae_u16 dstx, uae_u16 dsty, uae_u16 w, uae_u16 h);
 extern void DX_InvertRect (struct RenderInfo *ri, uae_u16 X, uae_u16 Y, uae_u16 Width, uae_u16 Height);
 extern void DX_SetPalette (int start, int count);
+extern void DX_SetPalette_vsync (void);
 extern int DX_FillResolutions (uae_u16 *);
 extern int DX_BitsPerCannon (void);
 extern void DX_Invalidate (int first, int last);
 extern void picasso_enablescreen (int on);
-extern void picasso_refresh (void);
+extern void picasso_refresh (int call_setpalette);
 extern void picasso_handle_vsync (void);
 
 extern uae_u8 *gfxmemory;
@@ -578,6 +580,8 @@ extern int NDX_BlitRectNoMaskComplete(struct RenderInfo* sri,struct RenderInfo* 
 extern int picasso_is_special;
 extern int picasso_is_special_read;
 
+extern int p96hack_vpos2;
+extern int p96refresh_active;
 #endif
 
 #endif

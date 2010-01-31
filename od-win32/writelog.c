@@ -108,7 +108,11 @@ void f_out (void *f, const char *format, ...)
     va_list parms;
     va_start (parms, format);
     count = _vsnprintf( buffer, WRITE_LOG_BUF_SIZE-1, format, parms );
-    openconsole();
-    WriteConsole(stdoutput,buffer,strlen(buffer),&numwritten,0);
-    va_end (parms);
+    if (f == 0) {
+	write_log (buffer);
+    } else {
+	openconsole();
+	WriteConsole(stdoutput,buffer,strlen(buffer),&numwritten,0);
+	va_end (parms);
+    }
 }

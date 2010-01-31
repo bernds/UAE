@@ -900,7 +900,25 @@ static uae_u16 handle_joystick_potgor (uae_u16 potgor)
     for (i = 0; i < 2; i++) {
 	uae_u16 mask8 = 0x0800 << (i * 4);
 	uae_u16 mask4 = 0x0400 << (i * 4);
+	uae_u16 mask2 = 0x0200 << (i * 4);
 	uae_u16 mask1 = 0x0100 << (i * 4);
+
+	if (mouse_port[i]) {
+	    /* mouse has pull-up resistors in button lines */
+	    if (!(potgor & mask2))
+		potgor |= mask1;
+	    if (!(potgor & mask8))
+		potgor |= mask4;
+	}
+        if (potgo_hsync < 0) {
+	    /* first 10 or so lines after potgo has started
+	     * forces input-lines to zero
+	     */
+	    if (!(potgor & mask2))
+		potgor &= ~mask1;
+	    if (!(potgor & mask8))
+		potgor &= ~mask4;
+	}
 
 	if (cd32_pad_enabled[i]) {
 	    if (!(potgor & mask8))
@@ -980,17 +998,18 @@ uae_u16 POT1DAT (void)
     return potdats[1];
 }
 
-/* direction=input, data pin is last value written when direction was ouput
+/* direction=input, data pin floating, last connected logic level or previous status
+                    written when direction was ouput
+ *                  otherwise it is currently connected logic level.
  * direction=output, data pin is current value, forced to zero if joystick button is pressed
- * it some tens of microseconds before data pin changes state
+ * it takes some tens of microseconds before data pin changes state
  */
 
 void POTGO (uae_u16 v)
 {
     int i;
 
-//    if (v != 0x0f00)
-//	write_log ("%04.4X %p\n", v, m68k_getpc());
+    //write_log ("W:%d: %04.4X %p\n", vpos, v, m68k_getpc());
 #ifdef DONGLE_DEBUG
     if (notinrom ())
 	write_log ("POTGO %04.4X %s\n", v, debuginfo(0));
@@ -1019,7 +1038,7 @@ uae_u16 POTGOR (void)
     if (notinrom ())
 	write_log ("POTGOR %04.4X %s\n", v, debuginfo(0));
 #endif
-    //write_log("R:%04.4X %d %p\n", v, cd32_shifter[1], m68k_getpc());
+    //write_log("R:%d:%04.4X %d %p\n", vpos, v, cd32_shifter[1], m68k_getpc());
     return v;
 }
 
@@ -1122,16 +1141,10 @@ void inputdevice_do_keyboard (int code, int state)
 	Interrupt (7);
 	break;
 	case AKS_PAUSE:
-        pause_emulation = pause_emulation ? 0 : 1;
+	pausemode (-1);
 	break;
 	case AKS_WARP:
-	turbo_emulation = turbo_emulation ? 0 : 1;
-	pause_emulation = 0;
-	if (turbo_emulation)
-	    pause_sound ();
-	else
-	    resume_sound ();
-	compute_vsynctime ();
+	warpmode (-1);
 	break;
 	case AKS_INHIBITSCREEN:
 	toggle_inhibit_frame (IHF_SCROLLLOCK);
@@ -1147,6 +1160,15 @@ void inputdevice_do_keyboard (int code, int state)
 	break;
 	case AKS_VOLMUTE:
 	sound_volume (0);
+	break;
+	case AKS_QUIT:
+	uae_quit ();
+	break;
+	case AKS_STATESAVE:
+	savestate_quick (0, 1);
+	break;
+	case AKS_STATERESTORE:
+	savestate_quick (0, 0);
 	break;
     }
 }
@@ -1834,6 +1856,8 @@ int inputdevice_get_widget_num (int devnum)
 
 static void get_ename (struct inputevent *ie, char *out)
 {
+    if (!out)
+	return;
     if (ie->allow_mask == AM_K)
         sprintf (out, "%s (0x%02.2X)", ie->name, ie->data);
     else
@@ -1902,7 +1926,8 @@ int inputdevice_get_mapped_name (int devnum, int num, int *pflags, char *name, i
     int flags = 0, flag, data;
     int devindex = inputdevice_get_device_index (devnum);
 
-    strcpy (name, "<none>");
+    if (name)
+	strcpy (name, "<none>");
     if (pflags)
 	*pflags = 0;
     if (uid == 0 || num < 0)
@@ -2194,5 +2219,35 @@ void setmousestate (int mouse, int axis, int data, int isabs)
 	handle_input_event (id->eventid[ID_AXIS_OFFSET + axis][i], v, 0, 0);
 }
 
+void warpmode (int mode)
+{
+    if (mode < 0) {
+	if (turbo_emulation) {
+	    changed_prefs.gfx_framerate = currprefs.gfx_framerate = turbo_emulation;
+	    turbo_emulation = 0;
+	}  else {
+	    turbo_emulation = currprefs.gfx_framerate;
+	}
+    } else if (mode == 0 && turbo_emulation > 0) {
+        changed_prefs.gfx_framerate = currprefs.gfx_framerate = turbo_emulation;
+	turbo_emulation = 0;
+    } else if (mode > 0 && !turbo_emulation) {
+        turbo_emulation = currprefs.gfx_framerate;
+    }
+    if (turbo_emulation) {
+	if (!currprefs.cpu_cycle_exact && !currprefs.blitter_cycle_exact)
+	    changed_prefs.gfx_framerate = currprefs.gfx_framerate = 10;
+        pause_sound ();
+    } else {
+        resume_sound ();
+    }
+    compute_vsynctime ();
+}
 
-
+void pausemode (int mode)
+{
+    if (mode < 0)
+	pause_emulation = pause_emulation ? 0 : 1;
+    else
+	pause_emulation = mode;
+}

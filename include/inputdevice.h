@@ -124,3 +124,6 @@ extern void inputdevice_acquire (int);
 extern void inputdevice_unacquire (void);
 
 extern void indicator_leds (int num, int state);
+
+extern void warpmode (int mode);
+extern void pausemode (int mode);

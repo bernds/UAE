@@ -33,8 +33,10 @@ static uae_u16 blinea, blineb;
 static uaecptr bltcnxlpt,bltdnxlpt;
 static int blitline, blitfc, blitfill, blitife, blitsing, blitdesc;
 static int blitonedot,blitsign;
-static int blit_ch, blit_add;
+static int blit_add;
 static int blit_modadda, blit_modaddb, blit_modaddc, blit_modaddd;
+static int blit_ch;
+int blit_singlechannel;
 
 #ifdef BLITTER_DEBUG
 static int blitter_dontdo;
@@ -175,8 +177,8 @@ static void blitter_done (void)
     eventtab[ev_blitter].active = 0;
     unset_special (SPCFLAG_BLTNASTY);
 #ifdef BLITTER_DEBUG
-    write_log ("cycles %d, missed %d, total %d\n",
-	blit_cyclecounter, blit_misscyclecounter, blit_cyclecounter + blit_misscyclecounter);
+    write_log ("vpos=%d, cycles %d, missed %d, total %d\n",
+	vpos, blit_cyclecounter, blit_misscyclecounter, blit_cyclecounter + blit_misscyclecounter);
 #endif
 }
 
@@ -599,6 +601,8 @@ STATIC_INLINE int blitter_doddma (void)
 	    if (blitter_vcounter2 > blitter_vcounter1)
 		blitter_vcounter1 = blitter_vcounter2;
 	}
+	if (blit_ch == 1)
+	    blitter_hcounter1 = blitter_hcounter2;
     }
     return wd;
 }
@@ -791,6 +795,9 @@ static void blit_bltset (int con)
     blitdesc = bltcon1 & 2;
     blit_ch = (bltcon0 & 0x0f00) >> 8;
 
+    blit_singlechannel = 0;
+    if (blit_ch == 0 || blit_ch == 1 || blit_ch == 2 || blit_ch == 4 || blit_ch == 8)
+	blit_singlechannel = 1;
     if (blitline) {
 	if (blt_info.hblitsize != 2)
 	    write_log ("weird hblitsize in linemode: %d vsize=%d PC%=%x\n", blt_info.hblitsize, blt_info.vblitsize, m68k_getpc());
@@ -817,6 +824,8 @@ static void blit_bltset (int con)
 	}
 	blit_diag = blitfill ? blit_cycle_diagram_fill[blit_ch] : blit_cycle_diagram[blit_ch];
     }
+    if ((bltcon1 & 0x80) && (currprefs.chipset_mask & CSMASK_ECS_AGNUS))
+	write_log("warning: BLTCON1 DOFF-bit set\n");
 
     blit_dmacount = blit_dmacount2 = 0;
     for (i = 0; i < blit_diag[1]; i++) {
@@ -1006,7 +1015,7 @@ void blitter_slowdown (int ddfstrt, int ddfstop, int totalcycles, int freecycles
     if (blit_slowdown < 0 || blitline || totalcycles == 0)
 	return;
     slow = cycles_used * blit_dmacount / blit_diag[1];
-    slow = slow * 3 / 10;
+    slow = slow * 7 / 10;
     if (slow <= 0)
 	return;
     blit_slowdown += slow;

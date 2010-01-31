@@ -306,12 +306,12 @@ int isnan( double x )
     return result;
 }
 
-void cache_free(uae_u8 *cache)
+void cache_free(void *cache)
 {
     VirtualFree (cache, 0, MEM_RELEASE);
 }
 
-uae_u8 *cache_alloc(int size)
+void *cache_alloc(int size)
 {
     uae_u8 *cache;
     cache = VirtualAlloc (NULL, size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);

@@ -18,7 +18,7 @@ STATIC_INLINE uae_u32 mem_access_delay_word_read_cycles (uaecptr addr, int *cycl
     if (addr < 0x200000 || (addr >= 0xc00000 && addr < 0xe00000)) {
 	return wait_cpu_cycle_read_cycles (addr, 1, cycles);
     } else if (!(addr >= 0xa00000 && addr < 0xc00000)) {
-	do_cycles (4 * CYCLE_UNIT / 2);
+	do_cycles_ce (4 * CYCLE_UNIT / 2);
 	*cycles = 4;
     }
     return get_word (addr);
@@ -28,7 +28,7 @@ STATIC_INLINE uae_u32 mem_access_delay_word_read (uaecptr addr)
     if (addr < 0x200000 || (addr >= 0xc00000 && addr < 0xe00000)) {
 	return wait_cpu_cycle_read (addr, 1);
     } else if (!(addr >= 0xa00000 && addr < 0xc00000)) {
-	do_cycles (4 * CYCLE_UNIT / 2);
+	do_cycles_ce (4 * CYCLE_UNIT / 2);
     }
     return get_word (addr);
 }
@@ -37,7 +37,7 @@ STATIC_INLINE uae_u32 mem_access_delay_byte_read (uaecptr addr)
     if (addr < 0x200000 || (addr >= 0xc00000 && addr < 0xe00000)) {
 	return wait_cpu_cycle_read (addr, 0);
     } else if (!(addr >= 0xa00000 && addr < 0xc00000)) {
-	do_cycles (4 * CYCLE_UNIT / 2);
+	do_cycles_ce (4 * CYCLE_UNIT / 2);
     }
     return get_byte (addr);
 }
@@ -47,7 +47,7 @@ STATIC_INLINE void mem_access_delay_byte_write (uaecptr addr, uae_u32 v)
 	wait_cpu_cycle_write (addr, 0, v);
 	return;
     } else if (!(addr >= 0xa00000 && addr < 0xc00000)) {
-	do_cycles (4 * CYCLE_UNIT / 2);
+	do_cycles_ce (4 * CYCLE_UNIT / 2);
     }
     put_byte (addr, v);
 }
@@ -57,7 +57,7 @@ STATIC_INLINE void mem_access_delay_word_write (uaecptr addr, uae_u32 v)
 	wait_cpu_cycle_write (addr, 1, v);
 	return;
     } else if (!(addr >= 0xa00000 && addr < 0xc00000)) {
-	do_cycles (4 * CYCLE_UNIT / 2);
+	do_cycles_ce (4 * CYCLE_UNIT / 2);
     }
     put_word (addr, v);
 }
@@ -101,8 +101,11 @@ STATIC_INLINE void m68k_do_rts_ce (void)
     uaecptr pc;
     pc = get_word_ce (m68k_areg (regs, 7)) << 16;
     pc |= get_word_ce (m68k_areg (regs, 7) + 2);
-    m68k_setpc (pc);
     m68k_areg (regs, 7) += 4;
+    if (pc & 1)
+	exception3 (0x4e75, m68k_getpc(), pc);
+    else
+	m68k_setpc (pc);
 }
 
 STATIC_INLINE void m68k_do_bsr_ce (uaecptr oldpc, uae_s32 offset)

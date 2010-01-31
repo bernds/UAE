@@ -277,7 +277,7 @@ static int cop_min_waittime;
  */
 
 /* Used also by bebox.cpp */
-unsigned long int frametime = 0, lastframetime = 0, timeframes = 0;
+unsigned long int frametime = 0, lastframetime = 0, timeframes = 0, hsync_counter = 0;
 unsigned long int idletime;
 int bogusframe;
 
@@ -737,7 +737,6 @@ static int delayoffset;
 STATIC_INLINE void compute_delay_offset (void)
 {
     delayoffset = ((plfstrt - HARD_DDF_START) & fetchstart_mask) << 1;
-    delayoffset &= ~7;
     if (delayoffset & 8)
 	delayoffset = 8;
     else if (delayoffset & 16)
@@ -1701,13 +1700,16 @@ static void do_sprite_collisions (void)
 	    /* Loop over number of playfields.  */
 	    for (k = 1; k >= 0; k--) {
 		int l;
+#ifdef AGA
 		int planes = (currprefs.chipset_mask & CSMASK_AGA) ? 8 : 6;
-
+#else
+		int planes = 6;
+#endif
 		if (bplcon0 & 0x400)
 		    match = 1;
 		for (l = k; match && l < planes; l += 2) {
+	            int t = 0;
 		    if (l < thisline_decision.nr_planes) {
-		        int t = 0;
 		        uae_u32 *ldata = (uae_u32 *)(line_data[next_lineno] + 2 * l * MAX_WORDS_PER_LINE);
 		        uae_u32 word = ldata[offs >> 5];
 		        t = (word >> (31 - (offs & 31))) & 1;
@@ -1719,11 +1721,11 @@ static void do_sprite_collisions (void)
 				ldata[(offs >> 5) + 1] |= 15 << (31 - (offs & 31));
 			    }
 			}
-#endif		    
-			if (clxcon_bpl_enable & (1 << l)) {
-			    if (t != ((clxcon_bpl_match >> l) & 1))
-				match = 0;
-			}
+#endif
+		    }
+		    if (clxcon_bpl_enable & (1 << l)) {
+		        if (t != ((clxcon_bpl_match >> l) & 1))
+			    match = 0;
 		    }
 		}
 		if (match) {
@@ -2208,6 +2210,9 @@ void init_hz (void)
 #ifdef OPENGL
     OGL_refresh ();
 #endif
+#ifdef PICASSO96
+    init_hz_p96 ();
+#endif
     write_log ("%s mode, %dHz\n", isntsc ? "NTSC" : "PAL", vblank_hz);
 }
 
@@ -2320,8 +2325,9 @@ STATIC_INLINE uae_u16 VPOSR (void)
     int vp = (vpos >> 8) & 7;
 #ifdef AGA
     csbit |= (currprefs.chipset_mask & CSMASK_AGA) ? 0x2300 : 0;
-#endif
+#else
     csbit |= (currprefs.chipset_mask & CSMASK_ECS_AGNUS) ? 0x2000 : 0;
+#endif
     if (!(currprefs.chipset_mask & CSMASK_ECS_AGNUS))
 	vp &= 1;
     vp = vp | lof | csbit;
@@ -2341,7 +2347,8 @@ static void VPOSW (uae_u16 v)
 
 STATIC_INLINE uae_u16 VHPOSR (void)
 {
-    return (vpos << 8) | current_hpos ();
+    uae_u16 v = (vpos << 8) | current_hpos ();
+    return v;
 }
 
 STATIC_INLINE void COP1LCH (uae_u16 v) { cop1lc = (cop1lc & 0xffff) | ((uae_u32)v << 16); }
@@ -2429,21 +2436,89 @@ static void DMACON (int hpos, uae_u16 v)
     events_schedule();
 }
 
+
+#define INTDELAY
+
+static int intlev_2 (void)
+{
+    uae_u16 imask = intreq & intena;
+    unsigned long cycles = get_cycles ();
+    int c = currprefs.cpu_level >= 2 ? 20 : 4;
+    int i;
+
+    if (!(imask && (intena & 0x4000))) {
+        unset_special (SPCFLAG_INT);
+	return -1;
+    }
+    for (i = 14; i >= 0; i--) {
+	if (imask & (1 << i)) {
+#ifdef INTDELAY
+	    if (
+#ifdef JIT
+	    compiled_code ||
+#endif
+	    !(irqdelay[i] && (cycles - irqcycles[i]) < c * CYCLE_UNIT)) {
+#endif
+		irqdelay[i] = 0;
+		if (i == 13 || i == 14)
+		    return 6;
+		else if (i == 11 || i == 12)
+		    return 5;
+		else if (i >= 7 && i <= 10)
+		    return 4;
+		else if (i >= 4 && i <= 6)
+		    return 3;
+		else if (i == 3)
+		    return 2;
+		else
+		    return 1;
+	    }
+#ifdef INTDELAY
+	}
+#endif
+    }
+    return -1;
+}
+
+int intlev (void)
+{
+    int il = intlev_2 ();
+    if (il >= 0 && il <= regs.intmask)
+	unset_special (SPCFLAG_INT);
+    return il;
+}
+
+static void doint (void)
+{
+    int i;
+    uae_u16 imask = intreq & intena;
+
+    set_special (SPCFLAG_INT);
+    if (imask && (intena & 0x4000)) {
+	for (i = 0; i < 14; i++) {
+	    if ((imask & (1 << i)) && irqdelay[i] == 0) {
+		irqdelay[i] = 1;
+		irqcycles[i] = get_cycles ();
+	    }
+	}
+    }
+}
+
 STATIC_INLINE void INTENA (uae_u16 v)
 {
     setclr (&intena,v);
-    if (v & 0x8000)
-	set_special (SPCFLAG_INT);
 #if 0
-    if (v & 0x80)
-	write_log("INTENA %04.4X %p\n", v, m68k_getpc());
+    if (v & 0x40)
+	write_log("INTENA %04.4X (%04.4X) %p\n", intena, v, m68k_getpc());
 #endif
+    if (v & 0x8000)
+	doint ();
 }
 
 void INTREQ_0 (uae_u16 v)
 {
     setclr (&intreq,v);
-    set_special (SPCFLAG_INT);
+    doint ();
 }
 
 void INTREQ (uae_u16 v)
@@ -2452,8 +2527,8 @@ void INTREQ (uae_u16 v)
     serial_check_irq ();
     rethink_cias ();
 #if 0
-    if (v & 0x80)
-	write_log("INTREQ %04.4X %p\n", v, m68k_getpc());
+    if (1 || (v & 0x100))
+	write_log("INTREQ %04.4X (%04.4X) %p\n", intreq, v, m68k_getpc());
 #endif
 }
 
@@ -2813,7 +2888,7 @@ static void BLTSIZV (uae_u16 v)
     if (! (currprefs.chipset_mask & CSMASK_ECS_AGNUS))
 	return;
     maybe_blit (current_hpos(), 0);
-    oldvblts = v & 0x7FFF;
+    blt_info.vblitsize = v & 0x7FFF;
 }
 
 static void BLTSIZH (uae_u16 v)
@@ -2822,7 +2897,6 @@ static void BLTSIZH (uae_u16 v)
 	return;
     maybe_blit (current_hpos(), 0);
     blt_info.hblitsize = v & 0x7FF;
-    blt_info.vblitsize = oldvblts;
     if (!blt_info.vblitsize) blt_info.vblitsize = 32768;
     if (!blt_info.hblitsize) blt_info.hblitsize = 0x800;
     do_blitter (current_hpos());
@@ -2948,8 +3022,9 @@ static void CLXCON (uae_u16 v)
     clxcon = v;
     clxcon_bpl_enable = (v >> 6) & 63;
     clxcon_bpl_match = v & 63;
-    //write_log("CLXCON: %04.4X\n", v);
+    //write_log("CLXCON: %04.4X PC=%x\n", v, m68k_getpc());
 }
+
 static void CLXCON2 (uae_u16 v)
 {
     if (!(currprefs.chipset_mask & CSMASK_AGA))
@@ -2963,7 +3038,7 @@ static void CLXCON2 (uae_u16 v)
 static uae_u16 CLXDAT (void)
 {
     uae_u16 v = clxdat | 0x8000;
-    //write_log("%d:CLXDAT %04.4X\n", vpos, v);
+    //write_log("%d:CLXDAT %04.4X PC=%x\n", vpos, v, m68k_getpc());
     clxdat = 0;
     return v;
 }
@@ -3281,7 +3356,6 @@ static void perform_copper_write (int old_hpos)
 
     if (test_copper_dangerous (address))
 	return;
-
     if (address == 0x88) {
 	cop_state.ip = cop1lc;
 	cop_state.state = COP_strobe_delay;
@@ -4096,6 +4170,10 @@ static __inline__ int trigger_frh(int v)
 
 extern int gonebad;
 
+static long int diff32(frame_time_t x, frame_time_t y)
+{
+    return (long int)(x-y);
+}
 static void frh_handler(void)
 {
     if (currprefs.m68k_speed == -1) {
@@ -4112,6 +4190,8 @@ static void frh_handler(void)
 	while (diff32 (curr_time, vsyncmintime + vsynctime) > 0) {
 	    vsyncmintime += vsynctime * N_LINES / maxvpos;
 	    gonebad++;
+	    if (turbo_emulation)
+		break;
 	}
     }
 }
@@ -4155,6 +4235,9 @@ static void hsync_handler (void)
     AKIKO_hsync_handler ();
 #endif
 
+#ifdef PICASSO96
+    picasso_handle_hsync ();
+#endif
     ciahsync++;
     if (ciahsync >= (currprefs.ntscmode ? MAXVPOS_NTSC : MAXVPOS_PAL) * MAXHPOS_PAL / maxhpos) { /* not so perfect.. */
         CIA_vsync_handler ();
@@ -4165,10 +4248,10 @@ static void hsync_handler (void)
     if (currprefs.cpu_cycle_exact || currprefs.blitter_cycle_exact) {
         decide_blitter (hpos);
 	memset (cycle_line, 0, MAXHPOS);
-	cycle_line[226] = CYCLE_REFRESH;
-	cycle_line[1] = CYCLE_REFRESH;
-	cycle_line[3] = CYCLE_REFRESH;
-	cycle_line[5] = CYCLE_REFRESH;
+	cycle_line[maxhpos - 1] = CYCLE_REFRESH;
+	cycle_line[0] = CYCLE_REFRESH;
+	cycle_line[2] = CYCLE_REFRESH;
+	cycle_line[4] = CYCLE_REFRESH;
     }
 #endif
     if ((currprefs.chipset_mask & CSMASK_AGA) || (!currprefs.chipset_mask & CSMASK_ECS_AGNUS))
@@ -4338,7 +4421,7 @@ void customreset (void)
     int i;
     int zero = 0;
 
-    write_log("reset at %x\n", m68k_getpc());
+    write_log ("reset at %x\n", m68k_getpc());
     if (! savestate_state) {
 	currprefs.chipset_mask = changed_prefs.chipset_mask;
 	if ((currprefs.chipset_mask & CSMASK_AGA) == 0) {
@@ -4346,8 +4429,8 @@ void customreset (void)
 		current_colors.color_regs_ecs[i] = 0;
 		current_colors.acolors[i] = xcolors[0];
 	    }
-	} else {
 #ifdef AGA
+	} else {
             for (i = 0; i < 256; i++) {
 		current_colors.color_regs_aga[i] = 0;
 		current_colors.acolors[i] = CONVERT_RGB (zero);
@@ -4462,8 +4545,8 @@ void customreset (void)
 		current_colors.color_regs_ecs[i] = vv;
 		current_colors.acolors[i] = xcolors[vv];
 	    }
-	} else {
 #ifdef AGA
+	} else {
 	    for(i = 0 ; i < 256 ; i++)  {
     		vv = current_colors.color_regs_aga[i];
 		current_colors.color_regs_aga[i] = -1;
@@ -4510,20 +4593,6 @@ void dumpcustom (void)
 	    write_log ("Skipped frames: %d\n", total_skipped);
     }
     /*for (i=0; i<256; i++) if (blitcount[i]) write_log ("minterm %x = %d\n",i,blitcount[i]);  blitter debug */
-}
-
-int intlev (void)
-{
-    uae_u16 imask = intreq & intena;
-    if (imask && (intena & 0x4000)){
-	if (imask & 0x6000) return 6;
-	if (imask & 0x1800) return 5;
-	if (imask & 0x0780) return 4;
-	if (imask & 0x0070) return 3;
-	if (imask & 0x0008) return 2;
-	if (imask & 0x0007) return 1;
-    }
-    return -1;
 }
 
 static void gen_custom_tables (void)
@@ -4641,6 +4710,8 @@ STATIC_INLINE uae_u32 REGPARAM2 custom_wget_1 (uaecptr addr, int noput)
      case 0x01E: v = INTREQR (); break;
      case 0x07C: v = DENISEID (); break;
 
+     case 0x02E: v = 0xffff; break; /* temporary hack */
+
 #ifdef AGA
      case 0x180: case 0x182: case 0x184: case 0x186: case 0x188: case 0x18A:
      case 0x18C: case 0x18E: case 0x190: case 0x192: case 0x194: case 0x196:
@@ -4732,6 +4803,8 @@ int REGPARAM2 custom_wput_1 (int hpos, uaecptr addr, uae_u32 value, int noget)
 #endif
     last_custom_value = value;
     switch (addr) {
+     case 0x00E: CLXDAT (); break;
+
      case 0x020: DSKPTH (value); break;
      case 0x022: DSKPTL (value); break;
      case 0x024: DSKLEN (value, hpos); break;
@@ -5021,8 +5094,8 @@ uae_u8 *restore_custom (uae_u8 *src)
     BLTDPTH(RL);		/* 054-057 BLTDPT */
     RW;				/* 058 BLTSIZE */
     RW;				/* 05A BLTCON0L */
-    oldvblts = RW;		/* 05C BLTSIZV */
-    RW;				/* 05E BLTSIZH */
+    blt_info.vblitsize = RW;	/* 05C BLTSIZV */
+    blt_info.hblitsize = RW;	/* 05E BLTSIZH */
     BLTCMOD(RW);		/* 060 BLTCMOD */
     BLTBMOD(RW);		/* 062 BLTBMOD */
     BLTAMOD(RW);		/* 064 BLTAMOD */
@@ -5171,7 +5244,7 @@ uae_u8 *save_custom (int *len, uae_u8 *dstptr, int full)
     SL (bltdpt);		/* 054-057 BLTCPT */
     SW (0);			/* 058 BLTSIZE */
     SW (0);			/* 05A BLTCON0L (use BLTCON0 instead) */
-    SW (oldvblts);		/* 05C BLTSIZV */
+    SW (blt_info.vblitsize);	/* 05C BLTSIZV */
     SW (blt_info.hblitsize);	/* 05E BLTSIZH */
     SW (blt_info.bltcmod);	/* 060 BLTCMOD */
     SW (blt_info.bltbmod);	/* 062 BLTBMOD */
@@ -5384,22 +5457,27 @@ STATIC_INLINE void sync_copper (int hpos)
 
 STATIC_INLINE int dma_cycle(void)
 {
-    int hpos, cycles = 0, blitnasty = 0;
+    int hpos, cycles = 0, bnasty = 0;
 
     for (;;) {
+	int bpldma;
+	int blitpri = dmaen (DMA_BLITPRI);
         do_cycles (1 * CYCLE_UNIT);
-	cycles++;
+	cycles += CYCLE_UNIT;
         hpos = current_hpos ();
 	sync_copper (hpos);
 	decide_line (hpos);
-	if (cycle_line[hpos] == 0 && !is_bitplane_dma (hpos)) {
-	    if (bltstate == BLT_done || blitnasty >= 3)
+	bpldma = is_bitplane_dma (hpos);
+	if (cycle_line[hpos] == 0 && !bpldma) {
+	    if (bltstate == BLT_done || bnasty >= 3)
 	        break;
 	    decide_blitter (hpos);
-	    if ((cycle_line[hpos] & CYCLE_BLITTER) && !dmaen (DMA_BLITPRI))
-		blitnasty++;
 	    if (cycle_line[hpos] == 0)
 	        break;
+	    if (!blitpri || blit_singlechannel)
+		bnasty++;
+	} else if (bpldma && (blit_singlechannel || !blitpri)) {
+	    bnasty++;
 	}
 	/* bus was allocated to dma channel, wait for next cycle.. */
     }
@@ -5422,7 +5500,7 @@ uae_u32 wait_cpu_cycle_read (uaecptr addr, int mode)
 uae_u32 wait_cpu_cycle_read_cycles (uaecptr addr, int mode, int *cycles)
 {
     uae_u32 v = 0;
-    *cycles = dma_cycle () + 1;
+    *cycles = dma_cycle () + CYCLE_UNIT;
     if (mode > 0)
 	v = get_word (addr);
     else if (mode == 0)
@@ -5438,6 +5516,22 @@ void wait_cpu_cycle_write (uaecptr addr, int mode, uae_u32 v)
 	put_word (addr, v);
     else if (mode == 0)
 	put_byte (addr, v);
+    do_cycles (1 * CYCLE_UNIT);
+}
+
+void do_cycles_ce (long cycles)
+{
+    int hpos, bpldma;
+    while (cycles > 0) {
+        do_cycles (1 * CYCLE_UNIT);
+	cycles -= CYCLE_UNIT;
+        hpos = current_hpos ();
+	sync_copper (hpos);
+	decide_line (hpos);
+	bpldma = is_bitplane_dma (hpos);
+	if (cycle_line[hpos] == 0 && !bpldma)
+	    decide_blitter (hpos);
+    }
 }
 
 #endif

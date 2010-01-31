@@ -543,6 +543,8 @@ static void expamem_init_catweasel (void)
  * CDTV DMAC
  */
 
+//#define CDTV_DEBUG
+
 static uae_u32 dmac_lget (uaecptr) REGPARAM;
 static uae_u32 dmac_wget (uaecptr) REGPARAM;
 static uae_u32 dmac_bget (uaecptr) REGPARAM;
@@ -553,13 +555,25 @@ static void dmac_bput (uaecptr, uae_u32) REGPARAM;
 static uae_u32 dmac_start = 0xe90000;
 static uae_u8 dmacmemory[0x100];
 
+static int cdtv_command_len;
+static uae_u8 cdtv_command_buf[6];
+
+static void cdtv_interrupt (int v)
+{
+    write_log ("cdtv int %d\n", v);
+    dmacmemory[0x41] = (1 << 4) | (1 << 6);
+    Interrupt (6);
+}
+
 uae_u32 REGPARAM2 dmac_lget (uaecptr addr)
 {
 #ifdef JIT
     special_mem |= S_READ;
 #endif
-//    write_log ("dmac_lget %08.8X\n", addr);
-    return 0;
+#ifdef CDTV_DEBUG
+    write_log ("dmac_lget %08.8X\n", addr);
+#endif
+    return (dmac_wget (addr) << 16) | dmac_wget (addr + 2);
 }
 
 uae_u32 REGPARAM2 dmac_wget (uaecptr addr)
@@ -567,8 +581,10 @@ uae_u32 REGPARAM2 dmac_wget (uaecptr addr)
 #ifdef JIT
     special_mem |= S_READ;
 #endif
-//    write_log ("dmac_wget %08.8X\n", addr);
-    return 0;
+#ifdef CDTV_DEBUG
+    write_log ("dmac_wget %08.8X PC=%X\n", addr, m68k_getpc());
+#endif
+    return (dmac_bget (addr) << 8) | dmac_bget (addr + 1);
 }
 
 uae_u32 REGPARAM2 dmac_bget (uaecptr addr)
@@ -576,10 +592,17 @@ uae_u32 REGPARAM2 dmac_bget (uaecptr addr)
 #ifdef JIT
     special_mem |= S_READ;
 #endif
-//    write_log ("dmac_bget %08.8X\n", addr);
+#ifdef CDTV_DEBUG
+    write_log ("dmac_bget %08.8X PC=%X\n", addr, m68k_getpc());
+#endif
     addr -= dmac_start;
     addr &= 65535;
-    return 0;//dmacmemory[addr];
+    switch (addr)
+    {
+	case 0xa3:
+	return 1;
+    }
+    return dmacmemory[addr];
 }
 
 static void REGPARAM2 dmac_lput (uaecptr addr, uae_u32 l)
@@ -587,7 +610,11 @@ static void REGPARAM2 dmac_lput (uaecptr addr, uae_u32 l)
 #ifdef JIT
     special_mem |= S_WRITE;
 #endif
-//    write_log ("dmac_lput %08.8X = %08.8X\n", addr, l);
+#ifdef CDTV_DEBUG
+    write_log ("dmac_lput %08.8X = %08.8X\n", addr, l);
+#endif
+    dmac_wput (addr, l >> 16);
+    dmac_wput (addr + 2, l);
 }
 
 static void REGPARAM2 dmac_wput (uaecptr addr, uae_u32 w)
@@ -595,7 +622,11 @@ static void REGPARAM2 dmac_wput (uaecptr addr, uae_u32 w)
 #ifdef JIT
     special_mem |= S_WRITE;
 #endif
-//    write_log ("dmac_wput %04.4X = %04.4X\n", addr, w & 65535);
+#ifdef CDTV_DEBUG
+    write_log ("dmac_wput %04.4X = %04.4X\n", addr, w & 65535);
+#endif
+    dmac_bput (addr, w >> 8);
+    dmac_bput (addr, w);
 }
 
 static void REGPARAM2 dmac_bput (uaecptr addr, uae_u32 b)
@@ -603,11 +634,33 @@ static void REGPARAM2 dmac_bput (uaecptr addr, uae_u32 b)
 #ifdef JIT
     special_mem |= S_WRITE;
 #endif
-//    write_log ("dmac_bput %08.8X = %02.2X\n", addr, b & 255);
+#ifdef CDTV_DEBUG
+    write_log ("dmac_bput %08.8X = %02.2X PC=%X\n", addr, b & 255, m68k_getpc());
+#endif
     addr -= dmac_start;
     addr &= 65535;
+#ifdef CDTV_DEBUG
     dmacmemory[addr] = b;
-    //activate_debugger();
+    switch (addr)
+    {
+	case 0xa1:
+	if (cdtv_command_len >= sizeof (cdtv_command_buf))
+	    cdtv_command_len = sizeof (cdtv_command_buf) - 1;
+	cdtv_command_buf[cdtv_command_len++] = b;
+	if (cdtv_command_len == 6) {
+	    cdtv_interrupt (1);
+	}
+	break;
+	case 0xa5:
+	cdtv_command_len = 0;
+	break;
+	case 0xe4:
+	dmacmemory[0x41] = 0;
+	write_log ("cdtv interrupt cleared\n");
+	activate_debugger();
+	break;
+    }
+#endif
 }
 
 addrbank dmac_bank = {
