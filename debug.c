@@ -43,6 +43,7 @@ static int memwatch_enabled, memwatch_triggered;
 int debugging;
 int exception_debugging;
 int debug_copper;
+int debug_sprite_mask = 0xff;
 static uaecptr debug_copper_pc;
 
 extern int audio_channel_mask;
@@ -105,6 +106,7 @@ static char help[] = {
     "  h,?                   Show this help page\n"
     "  b                     Step to previous state capture position\n"
     "  am <channel mask>     Enable or disable audio channels\n"
+    "  sm <sprite mask>      Enable or disable sprites\n"
     "  di <mode> [<track>]   Break on disk access. R=DMA read,W=write,RW=both,P=PIO\n"
     "                        Also enables extended disk logging\n"
     "  q                     Quit the emulator. You don't want to use this command.\n\n"
@@ -253,7 +255,7 @@ static void dumpmem (uaecptr addr, uaecptr *nxmem, int lines)
 	}
 	line[9 + cols * 5] = ' ';
 	line[9 + cols * 5 + 1 + 2 * cols] = 0;
-	console_out (line);
+	console_out ("%s", line);
 	console_out ("\n");
     }
     *nxmem = addr;
@@ -1255,7 +1257,7 @@ static void disk_debug(char **inptr)
     char parm[10];
     int i;
 
-    disk_debug_logging = 1;
+    disk_debug_logging = 2;
     disk_debug_mode = 0;
     disk_debug_track = -1;
     ignore_ws(inptr);
@@ -1363,6 +1365,11 @@ static void debug_1 (void)
 	case 's':
 	    if (*inptr == 'c') {
 		screenshot (1, 1);
+	    } else if (*inptr == 'm') {
+		next_char(&inptr);
+		if (more_params(&inptr))
+		    debug_sprite_mask = readint(&inptr);
+		console_out("sprite mask: %02.2X\n", debug_sprite_mask);
 	    } else {
 		searchmem (&inptr);
 	    }

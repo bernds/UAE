@@ -36,6 +36,8 @@ struct zfile {
 
 static struct zfile *zlist = 0;
 
+char *archive_extensions[] = { "zip", "rar", "7z", NULL };
+
 static struct zfile *zfile_create (void)
 {
     struct zfile *z;
@@ -339,7 +341,7 @@ static struct zfile *dms (struct zfile *z)
 static char *ignoreextensions[] =
     { ".gif", ".jpg", ".png", ".xml", ".pdf", ".txt", 0 };
 static char *diskimageextensions[] =
-    { ".adf", ".adz", ".ipf", ".fdi", 0 };
+    { ".adf", ".adz", ".ipf", ".fdi", ".exe", 0 };
 
 static int isdiskimage (char *name)
 {

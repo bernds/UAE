@@ -282,12 +282,12 @@ static int open_audio_ds (int size)
     if (DSCaps.dwFlags & DSCAPS_CONTINUOUSRATE) {
 	int minfreq = DSCaps.dwMinSecondarySampleRate;
 	int maxfreq = DSCaps.dwMaxSecondarySampleRate;
-	if (minfreq > freq) {
+	if (minfreq > freq && freq < 22050) {
 	    freq = minfreq;
 	    changed_prefs.sound_freq = currprefs.sound_freq = freq;
 	    write_log("SOUND: minimum supported frequency: %d\n", minfreq);
 	}
-	if (maxfreq < freq) {
+	if (maxfreq < freq && freq > 44100) {
 	    freq = maxfreq;
 	    changed_prefs.sound_freq = currprefs.sound_freq = freq;
 	    write_log("SOUND: maximum supported frequency: %d\n", maxfreq);
@@ -598,7 +598,7 @@ static void filtercheck (uae_s16 *sndbuffer, int len)
     static double cold[4];
     double old0, old1, v;
     
-    if (gui_data.powerled || currprefs.sound_filter == 2) {
+    if (gui_data.powerled || currprefs.sound_filter == FILTER_SOUND_ON_A500 || currprefs.sound_filter == FILTER_SOUND_ON_A1200) {
 	if (ch == 1) {
 	    old0 = cold[0];
 	    for (i = 0; i < len; i++) {
@@ -631,7 +631,7 @@ void finish_sound_buffer (void)
 {
     if (turbo_emulation)
 	return;
-    if (currprefs.sound_filter)
+    if (currprefs.sound_filter && currprefs.sound_freq != 44100)
         filtercheck((uae_s16*)sndbuffer, sndbufsize / 2);
     if (currprefs.sound_stereo == 1 && currprefs.sound_stereo_swap_paula)
         channelswap((uae_s16*)sndbuffer, sndbufsize / 2);

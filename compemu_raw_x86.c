@@ -97,7 +97,7 @@ static uae_u32 swap32(uae_u32 x)
 
 static __inline__ int isbyte(uae_s32 x)
 {
-  return (x>=-128 && x<=127);
+    return (x>=-128 && x<=127);
 }
 
 LOWFUNC(NONE,WRITE,1,raw_push_l_r,(R4 r))
@@ -573,8 +573,12 @@ LENDFUNC(NONE,NONE,2,raw_imul_32_32,(RW4 d, R4 s))
 
 LOWFUNC(NONE,NONE,2,raw_imul_64_32,(RW4 d, RW4 s))
 {
-    if (d!=MUL_NREG1 || s!=MUL_NREG2)
+#ifdef JIT_DEBUG
+    if (d!=MUL_NREG1 || s!=MUL_NREG2) {
+	printf("Bad register in IMUL: d=%d, s=%d\n",d,s);
 	abort();
+    }
+#endif
     emit_byte(0xf7);
     emit_byte(0xea);
 }
@@ -582,23 +586,16 @@ LENDFUNC(NONE,NONE,2,raw_imul_64_32,(RW4 d, RW4 s))
 
 LOWFUNC(NONE,NONE,2,raw_mul_64_32,(RW4 d, RW4 s))
 {
+#ifdef JIT_DEBUG
     if (d!=MUL_NREG1 || s!=MUL_NREG2) {
 	printf("Bad register in MUL: d=%d, s=%d\n",d,s);
 	abort();
     }
+#endif
     emit_byte(0xf7);
     emit_byte(0xe2);
 }
 LENDFUNC(NONE,NONE,2,raw_mul_64_32,(RW4 d, RW4 s))
-
-LOWFUNC(NONE,NONE,2,raw_mul_32_32,(RW4 d, R4 s))
-{
-    abort(); /* %^$&%^$%#^ x86! */
-    emit_byte(0x0f);
-    emit_byte(0xaf);
-    emit_byte(0xc0+8*d+s);
-}
-LENDFUNC(NONE,NONE,2,raw_mul_32_32,(RW4 d, R4 s))
 
 LOWFUNC(NONE,NONE,2,raw_mov_b_rr,(W1 d, R1 s))
 {
@@ -615,307 +612,118 @@ LOWFUNC(NONE,NONE,2,raw_mov_w_rr,(W2 d, R2 s))
 }
 LENDFUNC(NONE,NONE,2,raw_mov_w_rr,(W2 d, R2 s))
 
-LOWFUNC(NONE,READ,4,raw_mov_l_rrm_indexed,(W4 d,R4 baser, R4 index, IMM factor))
+LOWFUNC(NONE,READ,3,raw_mov_l_rrm_indexed,(W4 d, R4 baser, R4 index))
 {
-    int isebp=(baser==5)?0x40:0;
-    int fi;
-
-    switch(factor) {
-     case 1: fi=0; break;
-     case 2: fi=1; break;
-     case 4: fi=2; break;
-     case 8: fi=3; break;
-     default: abort();
+    emit_byte(0x8b);
+    if (baser==5) {
+	emit_byte(0x44+8*d);
+	emit_byte(8*index+baser);
+	emit_byte(0);
+	return;
     }
-
-
-    emit_byte(0x8b);
-    emit_byte(0x04+8*d+isebp);
-    emit_byte(baser+8*index+0x40*fi);
-    if (isebp)
-	emit_byte(0x00);
+    emit_byte(0x04+8*d);
+    emit_byte(8*index+baser);
 }
-LENDFUNC(NONE,READ,4,raw_mov_l_rrm_indexed,(W4 d,R4 baser, R4 index, IMM factor))
+LENDFUNC(NONE,READ,3,raw_mov_l_rrm_indexed,(W4 d, R4 baser, R4 index))
 
-LOWFUNC(NONE,READ,4,raw_mov_w_rrm_indexed,(W2 d, R4 baser, R4 index, IMM factor))
+LOWFUNC(NONE,READ,3,raw_mov_w_rrm_indexed,(W2 d, R4 baser, R4 index))
 {
-    int fi;
-    int isebp;
-
-    switch(factor) {
-     case 1: fi=0; break;
-     case 2: fi=1; break;
-     case 4: fi=2; break;
-     case 8: fi=3; break;
-     default: abort();
+    emit_byte(0x66);
+    emit_byte(0x8b);
+    if (baser==5) {
+	emit_byte(0x44+8*d);
+	emit_byte(8*index+baser);
+	emit_byte(0);
+	return;
     }
-    isebp=(baser==5)?0x40:0;
-
-    emit_byte(0x66);
-    emit_byte(0x8b);
-    emit_byte(0x04+8*d+isebp);
-    emit_byte(baser+8*index+0x40*fi);
-    if (isebp)
-	emit_byte(0x00);
+    emit_byte(0x04+8*d);
+    emit_byte(8*index+baser);
 }
-LENDFUNC(NONE,READ,4,raw_mov_w_rrm_indexed,(W2 d, R4 baser, R4 index, IMM factor))
+LENDFUNC(NONE,READ,3,raw_mov_w_rrm_indexed,(W2 d, R4 baser, R4 index))
 
-LOWFUNC(NONE,READ,4,raw_mov_b_rrm_indexed,(W1 d, R4 baser, R4 index, IMM factor))
+LOWFUNC(NONE,READ,3,raw_mov_b_rrm_indexed,(W1 d, R4 baser, R4 index))
 {
-   int fi;
-  int isebp;
-
-  switch(factor) {
-  case 1: fi=0; break;
-  case 2: fi=1; break;
-  case 4: fi=2; break;
-  case 8: fi=3; break;
-  default: abort();
-  }
-  isebp=(baser==5)?0x40:0;
-
-   emit_byte(0x8a);
-    emit_byte(0x04+8*d+isebp);
-    emit_byte(baser+8*index+0x40*fi);
-    if (isebp)
-	emit_byte(0x00);
-}
-LENDFUNC(NONE,READ,4,raw_mov_b_rrm_indexed,(W1 d, R4 baser, R4 index, IMM factor))
-
-LOWFUNC(NONE,WRITE,4,raw_mov_l_mrr_indexed,(R4 baser, R4 index, IMM factor, R4 s))
-{
-  int fi;
-  int isebp;
-
-  switch(factor) {
-  case 1: fi=0; break;
-  case 2: fi=1; break;
-  case 4: fi=2; break;
-  case 8: fi=3; break;
-  default: abort();
-  }
-
-
-  isebp=(baser==5)?0x40:0;
-
-    emit_byte(0x89);
-    emit_byte(0x04+8*s+isebp);
-    emit_byte(baser+8*index+0x40*fi);
-    if (isebp)
-	emit_byte(0x00);
-}
-LENDFUNC(NONE,WRITE,4,raw_mov_l_mrr_indexed,(R4 baser, R4 index, IMM factor, R4 s))
-
-LOWFUNC(NONE,WRITE,4,raw_mov_w_mrr_indexed,(R4 baser, R4 index, IMM factor, R2 s))
-{
-  int fi;
-  int isebp;
-
-  switch(factor) {
-  case 1: fi=0; break;
-  case 2: fi=1; break;
-  case 4: fi=2; break;
-  case 8: fi=3; break;
-  default: abort();
-  }
-  isebp=(baser==5)?0x40:0;
-
-    emit_byte(0x66);
-    emit_byte(0x89);
-    emit_byte(0x04+8*s+isebp);
-    emit_byte(baser+8*index+0x40*fi);
-    if (isebp)
-	emit_byte(0x00);
-}
-LENDFUNC(NONE,WRITE,4,raw_mov_w_mrr_indexed,(R4 baser, R4 index, IMM factor, R2 s))
-
-LOWFUNC(NONE,WRITE,4,raw_mov_b_mrr_indexed,(R4 baser, R4 index, IMM factor, R1 s))
-{
-  int fi;
-  int isebp;
-
-  switch(factor) {
-  case 1: fi=0; break;
-  case 2: fi=1; break;
-  case 4: fi=2; break;
-  case 8: fi=3; break;
-  default: abort();
-  }
-  isebp=(baser==5)?0x40:0;
-
-    emit_byte(0x88);
-    emit_byte(0x04+8*s+isebp);
-    emit_byte(baser+8*index+0x40*fi);
-    if (isebp)
-	emit_byte(0x00);
-}
-LENDFUNC(NONE,WRITE,4,raw_mov_b_mrr_indexed,(R4 baser, R4 index, IMM factor, R1 s))
-
-LOWFUNC(NONE,WRITE,5,raw_mov_l_bmrr_indexed,(IMM base, R4 baser, R4 index, IMM factor, R4 s))
-{
-  int fi;
-
-  switch(factor) {
-  case 1: fi=0; break;
-  case 2: fi=1; break;
-  case 4: fi=2; break;
-  case 8: fi=3; break;
-  default: abort();
-  }
-
-    emit_byte(0x89);
-    emit_byte(0x84+8*s);
-    emit_byte(baser+8*index+0x40*fi);
-    emit_long(base);
-}
-LENDFUNC(NONE,WRITE,5,raw_mov_l_bmrr_indexed,(IMM base, R4 baser, R4 index, IMM factor, R4 s))
-
-LOWFUNC(NONE,WRITE,5,raw_mov_w_bmrr_indexed,(IMM base, R4 baser, R4 index, IMM factor, R2 s))
-{
-  int fi;
-
-  switch(factor) {
-  case 1: fi=0; break;
-  case 2: fi=1; break;
-  case 4: fi=2; break;
-  case 8: fi=3; break;
-  default: abort();
-  }
-
-    emit_byte(0x66);
-    emit_byte(0x89);
-    emit_byte(0x84+8*s);
-    emit_byte(baser+8*index+0x40*fi);
-    emit_long(base);
-}
-LENDFUNC(NONE,WRITE,5,raw_mov_w_bmrr_indexed,(IMM base, R4 baser, R4 index, IMM factor, R2 s))
-
-LOWFUNC(NONE,WRITE,5,raw_mov_b_bmrr_indexed,(IMM base, R4 baser, R4 index, IMM factor, R1 s))
-{
-  int fi;
-
-  switch(factor) {
-  case 1: fi=0; break;
-  case 2: fi=1; break;
-  case 4: fi=2; break;
-  case 8: fi=3; break;
-  default: abort();
-  }
-
-    emit_byte(0x88);
-    emit_byte(0x84+8*s);
-    emit_byte(baser+8*index+0x40*fi);
-    emit_long(base);
-}
-LENDFUNC(NONE,WRITE,5,raw_mov_b_bmrr_indexed,(IMM base, R4 baser, R4 index, IMM factor, R1 s))
-
-LOWFUNC(NONE,READ,5,raw_mov_l_brrm_indexed,(W4 d, IMM base, R4 baser, R4 index, IMM factor))
-{
-  int fi;
-
-  switch(factor) {
-  case 1: fi=0; break;
-  case 2: fi=1; break;
-  case 4: fi=2; break;
-  case 8: fi=3; break;
-  default: abort();
-  }
-
-    emit_byte(0x8b);
-    emit_byte(0x84+8*d);
-    emit_byte(baser+8*index+0x40*fi);
-    emit_long(base);
-}
-LENDFUNC(NONE,READ,5,raw_mov_l_brrm_indexed,(W4 d, IMM base, R4 baser, R4 index, IMM factor))
-
-LOWFUNC(NONE,READ,5,raw_mov_w_brrm_indexed,(W2 d, IMM base, R4 baser, R4 index, IMM factor))
-{
-  int fi;
-
-  switch(factor) {
-  case 1: fi=0; break;
-  case 2: fi=1; break;
-  case 4: fi=2; break;
-  case 8: fi=3; break;
-  default: abort();
-  }
-
-    emit_byte(0x66);
-    emit_byte(0x8b);
-    emit_byte(0x84+8*d);
-    emit_byte(baser+8*index+0x40*fi);
-    emit_long(base);
-}
-LENDFUNC(NONE,READ,5,raw_mov_w_brrm_indexed,(W2 d, IMM base, R4 baser, R4 index, IMM factor))
-
-LOWFUNC(NONE,READ,5,raw_mov_b_brrm_indexed,(W1 d, IMM base, R4 baser, R4 index, IMM factor))
-{
-  int fi;
-
-  switch(factor) {
-  case 1: fi=0; break;
-  case 2: fi=1; break;
-  case 4: fi=2; break;
-  case 8: fi=3; break;
-  default: abort();
-  }
-
     emit_byte(0x8a);
-    emit_byte(0x84+8*d);
-    emit_byte(baser+8*index+0x40*fi);
-    emit_long(base);
+    if (baser==5) {
+	emit_byte(0x44+8*d);
+	emit_byte(8*index+baser);
+	emit_byte(0);
+	return;
+    }
+    emit_byte(0x04+8*d);
+    emit_byte(8*index+baser);
 }
-LENDFUNC(NONE,READ,5,raw_mov_b_brrm_indexed,(W1 d, IMM base, R4 baser, R4 index, IMM factor))
+LENDFUNC(NONE,READ,3,raw_mov_b_rrm_indexed,(W1 d, R4 baser, R4 index))
 
-LOWFUNC(NONE,READ,4,raw_mov_l_rm_indexed,(W4 d, IMM base, R4 index, IMM factor))
+LOWFUNC(NONE,WRITE,3,raw_mov_l_mrr_indexed,(R4 baser, R4 index, R4 s))
 {
-  int fi;
-  switch(factor) {
-  case 1: fi=0; break;
-  case 2: fi=1; break;
-  case 4: fi=2; break;
-  case 8: fi=3; break;
-  default:
-    fprintf(stderr,"Bad factor %d in mov_l_rm_indexed!\n",factor);
-    abort();
-  }
+    emit_byte(0x89);
+    if (baser==5) {
+	emit_byte(0x44+8*s);
+	emit_byte(8*index+baser);
+	emit_byte(0);
+	return;
+    }
+    emit_byte(0x04+8*s);
+    emit_byte(8*index+baser);
+}
+LENDFUNC(NONE,WRITE,3,raw_mov_l_mrr_indexed,(R4 baser, R4 index, R4 s))
+
+LOWFUNC(NONE,WRITE,3,raw_mov_w_mrr_indexed,(R4 baser, R4 index, R2 s))
+{
+    emit_byte(0x66);
+    emit_byte(0x89);
+    if (baser==5) {
+	emit_byte(0x44+8*s);
+	emit_byte(8*index+baser);
+	emit_byte(0);
+	return;
+    }
+    emit_byte(0x04+8*s);
+    emit_byte(8*index+baser);
+}
+LENDFUNC(NONE,WRITE,3,raw_mov_w_mrr_indexed,(R4 baser, R4 index, R2 s))
+
+LOWFUNC(NONE,WRITE,3,raw_mov_b_mrr_indexed,(R4 baser, R4 index, R1 s))
+{
+    emit_byte(0x88);
+    if (baser==5) {
+	emit_byte(0x44+8*s);
+	emit_byte(8*index+baser);
+	emit_byte(0);
+	return;
+    }
+    emit_byte(0x04+8*s);
+    emit_byte(8*index+baser);
+}
+LENDFUNC(NONE,WRITE,3,raw_mov_b_mrr_indexed,(R4 baser, R4 index, R1 s))
+
+LOWFUNC(NONE,READ,3,raw_mov_l_rm_indexed,(W4 d, IMM base, R4 index))
+{
     emit_byte(0x8b);
     emit_byte(0x04+8*d);
-    emit_byte(0x05+8*index+64*fi);
+    emit_byte(0x85+8*index);
     emit_long(base);
 }
-LENDFUNC(NONE,READ,4,raw_mov_l_rm_indexed,(W4 d, IMM base, R4 index, IMM factor))
+LENDFUNC(NONE,READ,3,raw_mov_l_rm_indexed,(W4 d, IMM base, R4 index))
 
-LOWFUNC(NONE,READ,5,raw_cmov_l_rm_indexed,(W4 d, IMM base, R4 index, IMM factor, IMM cond))
+LOWFUNC(NONE,READ,4,raw_cmov_l_rm_indexed,(W4 d, IMM base, R4 index, IMM cond))
 {
-    int fi;
-    switch(factor) {
-     case 1: fi=0; break;
-     case 2: fi=1; break;
-     case 4: fi=2; break;
-     case 8: fi=3; break;
-     default:
-	fprintf(stderr,"Bad factor %d in mov_l_rm_indexed!\n",factor);
-	abort();
-    }
     if (have_cmov) {
 	emit_byte(0x0f);
 	emit_byte(0x40+cond);
-	emit_byte(0x04+8*d);
-	emit_byte(0x05+8*index+64*fi);
-	emit_long(base);
     }
     else { /* replacement using branch and mov */
 	int uncc=(cond^1);
 	emit_byte(0x70+uncc);
 	emit_byte(7);  /* skip next 7 bytes if not cc=true */
 	emit_byte(0x8b);
-	emit_byte(0x04+8*d);
-	emit_byte(0x05+8*index+64*fi);
-	emit_long(base);
     }
+    emit_byte(0x04+8*d);
+    emit_byte(0x85+8*index);
+    emit_long(base);
 }
-LENDFUNC(NONE,READ,5,raw_cmov_l_rm_indexed,(W4 d, IMM base, R4 index, IMM factor, IMM cond))
+LENDFUNC(NONE,READ,4,raw_cmov_l_rm_indexed,(W4 d, IMM base, R4 index, IMM cond))
 
 LOWFUNC(NONE,READ,3,raw_cmov_l_rm,(W4 d, IMM mem, IMM cond))
 {
@@ -1049,43 +857,37 @@ LENDFUNC(NONE,NONE,3,raw_lea_l_brr,(W4 d, R4 s, IMM offset))
 
 LOWFUNC(NONE,NONE,5,raw_lea_l_brr_indexed,(W4 d, R4 s, R4 index, IMM factor, IMM offset))
 {
-  int fi;
-
-  switch(factor) {
-  case 1: fi=0; break;
-  case 2: fi=1; break;
-  case 4: fi=2; break;
-  case 8: fi=3; break;
-  default: abort();
-  }
-
     emit_byte(0x8d);
+    if (!offset) {
+	if (s!=5) {
+	    emit_byte(0x04+8*d);
+	    emit_byte(0x40*factor+8*index+s);
+	    return;
+	}
+	emit_byte(0x44+8*d);
+	emit_byte(0x40*factor+8*index+s);
+	emit_byte(0);
+	return;
+    }
     emit_byte(0x84+8*d);
-    emit_byte(0x40*fi+8*index+s);
+    emit_byte(0x40*factor+8*index+s);
     emit_long(offset);
 }
 LENDFUNC(NONE,NONE,5,raw_lea_l_brr_indexed,(W4 d, R4 s, R4 index, IMM factor, IMM offset))
 
-LOWFUNC(NONE,NONE,4,raw_lea_l_rr_indexed,(W4 d, R4 s, R4 index, IMM factor))
+LOWFUNC(NONE,NONE,3,raw_lea_l_rr_indexed,(W4 d, R4 s, R4 index))
 {
-  int isebp=(s==5)?0x40:0;
-  int fi;
-
-  switch(factor) {
-  case 1: fi=0; break;
-  case 2: fi=1; break;
-  case 4: fi=2; break;
-  case 8: fi=3; break;
-  default: abort();
-  }
-
     emit_byte(0x8d);
-    emit_byte(0x04+8*d+isebp);
-    emit_byte(0x40*fi+8*index+s);
-    if (isebp)
-      emit_byte(0);
+    if (s==5) {
+	emit_byte(0x44+8*d);
+	emit_byte(8*index+s);
+	emit_byte(0);
+	return;
+    }
+    emit_byte(0x04+8*d);
+    emit_byte(8*index+s);
 }
-LENDFUNC(NONE,NONE,4,raw_lea_l_rr_indexed,(W4 d, R4 s, R4 index, IMM factor))
+LENDFUNC(NONE,NONE,3,raw_lea_l_rr_indexed,(W4 d, R4 s, R4 index))
 
 LOWFUNC(NONE,WRITE,3,raw_mov_l_bRr,(R4 d, R4 s, IMM offset))
 {
@@ -1532,24 +1334,6 @@ LOWFUNC(WRITE,NONE,2,raw_cmp_b,(R1 d, R1 s))
 }
 LENDFUNC(WRITE,NONE,2,raw_cmp_b,(R1 d, R1 s))
 
-LOWFUNC(WRITE,READ,4,raw_cmp_l_rm_indexed,(R4 d, IMM offset, R4 index, IMM factor))
-{
-    int fi;
-
-    switch(factor) {
-     case 1: fi=0; break;
-     case 2: fi=1; break;
-     case 4: fi=2; break;
-     case 8: fi=3; break;
-     default: abort();
-    }
-    emit_byte(0x39);
-    emit_byte(0x04+8*d);
-    emit_byte(5+8*index+0x40*fi);
-    emit_long(offset);
-}
-LENDFUNC(WRITE,READ,4,raw_cmp_l_rm_indexed,(R4 d, IMM offset, R4 index, IMM factor))
-
 LOWFUNC(WRITE,NONE,2,raw_xor_l,(RW4 d, R4 s))
 {
     emit_byte(0x31);
@@ -1629,18 +1413,19 @@ static __inline__ void raw_jmp_r(R4 r)
 
 static __inline__ void raw_jmp_m_indexed(uae_u32 base, uae_u32 r, uae_u32 m)
 {
-    int mu;
-    switch(m) {
-     case 1: mu=0; break;
-     case 2: mu=1; break;
-     case 4: mu=2; break;
-     case 8: mu=3; break;
-     default: abort();
+    int sib;
+
+    switch (m) {
+	case 1: sib = 0x05; break;
+	case 2: sib = 0x45; break;
+	case 4: sib = 0x85; break;
+	case 8: sib = 0xC5; break;
+	default: abort();
     }
     lopt_emit_all();
     emit_byte(0xff);
     emit_byte(0x24);
-    emit_byte(0x05+8*r+0x40*mu);
+    emit_byte(8*r+sib);
     emit_long(base);
 }
 
@@ -1651,7 +1436,6 @@ static __inline__ void raw_jmp_m(uae_u32 base)
     emit_byte(0x25);
     emit_long(base);
 }
-
 
 static __inline__ void raw_call(uae_u32 t)
 {
@@ -1860,7 +1644,6 @@ int EvalException ( LPEXCEPTION_POINTERS blah, int n_except )
     int size=4;
     int dir=-1;
     int len=0;
-    int j;
 
     if( n_except != STATUS_ACCESS_VIOLATION || !canbang)
 	return EXCEPTION_CONTINUE_SEARCH;
@@ -2012,7 +1795,7 @@ int EvalException ( LPEXCEPTION_POINTERS blah, int n_except )
 		}
 #endif
 		if (dir==SIG_READ) {
-		    switch(size) {
+		    switch (size) {
 		    case 1: *((uae_u8*)pr)=get_byte(addr); break;
 		    case 2: *((uae_u16*)pr)=swap16(get_word(addr)); break;
 		    case 4: *((uae_u32*)pr)=swap32(get_long(addr)); break;
@@ -2020,7 +1803,7 @@ int EvalException ( LPEXCEPTION_POINTERS blah, int n_except )
 		    }
 		}
 		else { /* write */
-		    switch(size) {
+		    switch (size) {
 		    case 1: put_byte(addr,*((uae_u8*)pr)); break;
 		    case 2: put_word(addr,swap16(*((uae_u16*)pr))); break;
 		    case 4: put_long(addr,swap32(*((uae_u32*)pr))); break;
@@ -2136,6 +1919,8 @@ int EvalException ( LPEXCEPTION_POINTERS blah, int n_except )
 #if 0
     if (i)
     {
+	int j;
+
 	for (j=0;j<10;j++) {
 	    write_log("JIT: instruction byte %2d is 0x%02x\n",j,i[j]);
 	}
@@ -2526,7 +2311,7 @@ static void raw_init_cpu(void)
   c->x86_model = c->x86_mask = 0;	/* So far unknown... */
   c->x86_vendor_id[0] = '\0';		/* Unset */
   c->x86_hwcap = 0;
-  
+
   /* Get vendor name */
   c->x86_vendor_id[12] = '\0';
   cpuid(0x00000000,
@@ -2568,7 +2353,7 @@ static void raw_init_cpu(void)
 	  }
 	}
   }
-	  
+
   /* Canonicalize processor ID */
   switch (c->x86) {
   case 3:
@@ -2942,6 +2727,104 @@ LOWFUNC(NONE,WRITE,2,raw_fmovs_mr,(MEMW m, FR r))
 }
 LENDFUNC(NONE,WRITE,2,raw_fmovs_mr,(MEMW m, FR r))
 
+LOWFUNC(NONE,NONE,1,raw_fcuts_r,(FRW r))
+{
+    make_tos(r);     /* TOS = r */
+    emit_byte(0x83);
+    emit_byte(0xc4);
+    emit_byte(0xfc); /* add -4 to esp */
+    emit_byte(0xd9);
+    emit_byte(0x1c);
+    emit_byte(0x24); /* fstp store r as SINGLE to [esp] and pop */
+    emit_byte(0xd9);
+    emit_byte(0x04);
+    emit_byte(0x24); /* fld load r as SINGLE from [esp] */
+    emit_byte(0x83);
+    emit_byte(0xc4);
+    emit_byte(0x04); /* add +4 to esp */
+}
+LENDFUNC(NONE,NONE,1,raw_fcuts_r,(FRW r))
+
+LOWFUNC(NONE,NONE,1,raw_fcut_r,(FRW r))
+{
+    make_tos(r);     /* TOS = r */
+    emit_byte(0x83);
+    emit_byte(0xc4);
+    emit_byte(0xf8); /* add -8 to esp */
+    emit_byte(0xdd);
+    emit_byte(0x1c);
+    emit_byte(0x24); /* fstp store r as DOUBLE to [esp] and pop */
+    emit_byte(0xdd);
+    emit_byte(0x04);
+    emit_byte(0x24); /* fld load r as DOUBLE from [esp] */
+    emit_byte(0x83);
+    emit_byte(0xc4);
+    emit_byte(0x08); /* add +8 to esp */
+}
+LENDFUNC(NONE,NONE,1,raw_fcut_r,(FRW r))
+
+LOWFUNC(NONE,READ,2,raw_fmovl_ri,(FW r, IMMS i))
+{
+    emit_byte(0x68);
+    emit_long(i);    /* push immediate32 onto [esp] */
+    emit_byte(0xdb);
+    emit_byte(0x04);
+    emit_byte(0x24); /* fild load m32int from [esp] */
+    emit_byte(0x83);
+    emit_byte(0xc4);
+    emit_byte(0x04); /* add +4 to esp */
+    tos_make(r);
+}
+LENDFUNC(NONE,READ,2,raw_fmovl_ri,(FW r, IMMS i))
+
+LOWFUNC(NONE,READ,2,raw_fmovs_ri,(FW r, IMM i))
+{
+    emit_byte(0x68);
+    emit_long(i);    /* push immediate32 onto [esp] */
+    emit_byte(0xd9);
+    emit_byte(0x04);
+    emit_byte(0x24); /* fld load m32real from [esp] */
+    emit_byte(0x83);
+    emit_byte(0xc4);
+    emit_byte(0x04); /* add +4 to esp */
+    tos_make(r);
+}
+LENDFUNC(NONE,READ,2,raw_fmovs_ri,(FW r, IMM i))
+
+LOWFUNC(NONE,READ,3,raw_fmov_ri,(FW r, IMM i1, IMM i2))
+{
+    emit_byte(0x68);
+    emit_long(i2);   /* push immediate32 onto [esp] */
+    emit_byte(0x68);
+    emit_long(i1);   /* push immediate32 onto [esp] */
+    emit_byte(0xdd);
+    emit_byte(0x04);
+    emit_byte(0x24); /* fld load m64real from [esp] */
+    emit_byte(0x83);
+    emit_byte(0xc4);
+    emit_byte(0x08); /* add +8 to esp */
+    tos_make(r);
+}
+LENDFUNC(NONE,READ,3,raw_fmov_ri,(FW r, IMM i1, IMM i2))
+
+LOWFUNC(NONE,READ,4,raw_fmov_ext_ri,(FW r, IMM i1, IMM i2, IMM i3))
+{
+    emit_byte(0x68);
+    emit_long(i3);   /* push immediate32 onto [esp] */
+    emit_byte(0x68);
+    emit_long(i2);   /* push immediate32 onto [esp] */
+    emit_byte(0x68);
+    emit_long(i1);   /* push immediate32 onto [esp] */
+    emit_byte(0xdb);
+    emit_byte(0x2c);
+    emit_byte(0x24); /* fld load m80real from [esp] */
+    emit_byte(0x83);
+    emit_byte(0xc4);
+    emit_byte(0x0c); /* add +12 to esp */
+    tos_make(r);
+}
+LENDFUNC(NONE,READ,4,raw_fmov_ext_ri,(FW r, IMM i1, IMM i2, IMMi3))
+
 LOWFUNC(NONE,WRITE,2,raw_fmov_ext_mr,(MEMW m, FR r))
 {
     int rs;
@@ -2961,8 +2844,6 @@ LENDFUNC(NONE,WRITE,2,raw_fmov_ext_mr,(MEMW m, FR r))
 
 LOWFUNC(NONE,WRITE,2,raw_fmov_ext_mr_drop,(MEMW m, FR r))
 {
-    int rs;
-
     make_tos(r);
     emit_byte(0xdb);  /* store and pop it */
     emit_byte(0x3d);
@@ -3049,14 +2930,13 @@ LOWFUNC(NONE,NONE,2,raw_fmov_rr,(FW d, FR s))
 }
 LENDFUNC(NONE,NONE,2,raw_fmov_rr,(FW d, FR s))
 
-LOWFUNC(NONE,READ,4,raw_fldcw_m_indexed,(R4 index, IMM base))
+LOWFUNC(NONE,READ,2,raw_fldcw_m_indexed,(R4 index, IMM base))
 {
     emit_byte(0xd9);
     emit_byte(0xa8+index);
     emit_long(base);
 }
-LENDFUNC(NONE,READ,4,raw_fldcw_m_indexed,(R4 index, IMM base))
-
+LENDFUNC(NONE,READ,2,raw_fldcw_m_indexed,(R4 index, IMM base))
 
 LOWFUNC(NONE,NONE,2,raw_fsqrt_rr,(FW d, FR s))
 {
@@ -3234,28 +3114,38 @@ LOWFUNC(NONE,NONE,3,raw_fsincos_rr,(FW d, FW c, FR s))
 {
     int ds;
 
+    if (s==d) {
+	//write_log ("FSINCOS src = dest\n");
+	make_tos(s);
+	emit_byte(0xd9);
+	emit_byte(0xfb); /* fsincos sin(x) push cos(x) */
+	tos_make(c);     /* store cos(x) to c */
+	return;
+    }
+
     ds=stackpos(s);
     emit_byte(0xd9);
     emit_byte(0xc0+ds);  /* fld x */
     emit_byte(0xd9);
     emit_byte(0xfb);     /* fsincos sin(x) push cos(x) */
-    if ((live.spos[c]<0)&&(live.spos[d]<0)) {
-	live.tos++;
-	live.spos[d]=live.tos;
-	live.onstack[live.tos]=d; /* sin(x) comes first */
-	live.tos++;
-	live.spos[c]=live.tos;
-	live.onstack[live.tos]=c;
-	return;          /* occupy both regs directly */
-    }
     if (live.spos[c]<0) {
-	emit_byte(0xd9);
-	emit_byte(0xc9); /* fxch swap cos(x) with sin(x) */
-	emit_byte(0xdd); /* store sin(x) to d & pop */
-	emit_byte(0xd8+(live.tos+2)-live.spos[d]);
-	live.tos++;      /* occupy a reg for cos(x) here */
-	live.spos[c]=live.tos;
-	live.onstack[live.tos]=c;
+	if (live.spos[d]<0) { /* occupy both regs directly */
+	    live.tos++;
+	    live.spos[d]=live.tos;
+	    live.onstack[live.tos]=d; /* sin(x) comes first */
+	    live.tos++;
+	    live.spos[c]=live.tos;
+	    live.onstack[live.tos]=c;
+	}
+	else {
+	    emit_byte(0xd9);
+	    emit_byte(0xc9); /* fxch swap cos(x) with sin(x) */
+	    emit_byte(0xdd); /* store sin(x) to d & pop */
+	    emit_byte(0xd8+(live.tos+2)-live.spos[d]);
+	    live.tos++;      /* occupy a reg for cos(x) here */
+	    live.spos[c]=live.tos;
+	    live.onstack[live.tos]=c;
+	}
     }
     else {
 	emit_byte(0xdd); /* store cos(x) to c & pop */
@@ -3305,7 +3195,7 @@ LOWFUNC(NONE,NONE,2,raw_ftwotox_rr,(FW d, FR s))
     emit_byte(0xf0);    /* f2xm1 (2^frac(x))-1 */
     emit_byte(0xd8);
     emit_byte(0x05);
-    emit_long((uae_u32)&one);  /* fadd (2^frac(x))-1 + 1 */
+    emit_long((uae_u32)&one); /* fadd (2^frac(x))-1 + 1 */
     emit_byte(0xd9);
     emit_byte(0xfd);    /* fscale (2^frac(x))*2^int(x) */
     emit_byte(0xdd);
@@ -3318,9 +3208,13 @@ LOWFUNC(NONE,NONE,2,raw_fetox_rr,(FW d, FR s))
 {
     int ds;
 
-    ds=stackpos(s);
-    emit_byte(0xd9);
-    emit_byte(0xc0+ds); /* fld x */
+    if (s==d)
+	make_tos(s);
+    else {
+	ds=stackpos(s);
+	emit_byte(0xd9);
+	emit_byte(0xc0+ds); /* fld x */
+    }
     emit_byte(0xd9);
     emit_byte(0xea);    /* fldl2e log2(e) */
     emit_byte(0xd8);
@@ -3342,7 +3236,8 @@ LOWFUNC(NONE,NONE,2,raw_fetox_rr,(FW d, FR s))
     emit_byte(0xfd);    /* fscale (2^frac(x))*2^int(x*log2(e)) */
     emit_byte(0xdd);
     emit_byte(0xd9);    /* fstp copy & pop */
-    tos_make(d);        /* store y=e^x */
+    if (s!=d)
+	tos_make(d);    /* store y=e^x */
 }
 LENDFUNC(NONE,NONE,2,raw_fetox_rr,(FW d, FR s))
 
@@ -3350,9 +3245,13 @@ LOWFUNC(NONE,NONE,2,raw_fetoxM1_rr,(FW d, FR s))
 {
     int ds;
 
-    ds=stackpos(s);
-    emit_byte(0xd9);
-    emit_byte(0xc0+ds); /* fld x */
+    if (s==d)
+	make_tos(s);
+    else {
+	ds=stackpos(s);
+	emit_byte(0xd9);
+	emit_byte(0xc0+ds); /* fld x */
+    }
     emit_byte(0xd9);
     emit_byte(0xea);    /* fldl2e log2(e) */
     emit_byte(0xd8);
@@ -3371,7 +3270,8 @@ LOWFUNC(NONE,NONE,2,raw_fetoxM1_rr,(FW d, FR s))
     emit_byte(0xfd);    /* fscale ((2^frac(x))-1)*2^int(x*log2(e)) */
     emit_byte(0xdd);
     emit_byte(0xd9);    /* fstp copy & pop */
-    tos_make(d);        /* store y=(e^x)-1 */
+    if (s!=d)
+	tos_make(d);    /* store y=(e^x)-1 */
 }
 LENDFUNC(NONE,NONE,2,raw_fetoxM1_rr,(FW d, FR s))
 
@@ -3379,9 +3279,13 @@ LOWFUNC(NONE,NONE,2,raw_ftentox_rr,(FW d, FR s))
 {
     int ds;
 
-    ds=stackpos(s);
-    emit_byte(0xd9);
-    emit_byte(0xc0+ds); /* fld x */
+    if (s==d)
+	make_tos(s);
+    else {
+	ds=stackpos(s);
+	emit_byte(0xd9);
+	emit_byte(0xc0+ds); /* fld x */
+    }
     emit_byte(0xd9);
     emit_byte(0xe9);    /* fldl2t log2(10) */
     emit_byte(0xd8);
@@ -3403,7 +3307,8 @@ LOWFUNC(NONE,NONE,2,raw_ftentox_rr,(FW d, FR s))
     emit_byte(0xfd);    /* fscale (2^frac(x))*2^int(x*log2(10)) */
     emit_byte(0xdd);
     emit_byte(0xd9);    /* fstp copy & pop */
-    tos_make(d);        /* store y=10^x */
+    if (s!=d)
+	tos_make(d);    /* store y=10^x */
 }
 LENDFUNC(NONE,NONE,2,raw_ftentox_rr,(FW d, FR s))
 
@@ -3411,16 +3316,21 @@ LOWFUNC(NONE,NONE,2,raw_flog2_rr,(FW d, FR s))
 {
     int ds;
 
-    ds=stackpos(s);
-    emit_byte(0xd9);
-    emit_byte(0xc0+ds); /* fld x */
+    if (s==d)
+	make_tos(s);
+    else {
+	ds=stackpos(s);
+	emit_byte(0xd9);
+	emit_byte(0xc0+ds); /* fld x */
+    }
     emit_byte(0xd9);
     emit_byte(0xe8);    /* fld1 1 */
     emit_byte(0xd9);
     emit_byte(0xc9);    /* fxch swap 1 with x */
     emit_byte(0xd9);
     emit_byte(0xf1);    /* fyl2x 1*log2(x) */
-    tos_make(d);        /* store y=log2(x) */
+    if (s!=d)
+	tos_make(d);    /* store y=log2(x) */
 }
 LENDFUNC(NONE,NONE,2,raw_flog2_rr,(FW d, FR s))
 
@@ -3428,16 +3338,21 @@ LOWFUNC(NONE,NONE,2,raw_flogN_rr,(FW d, FR s))
 {
     int ds;
 
-    ds=stackpos(s);
-    emit_byte(0xd9);
-    emit_byte(0xc0+ds); /* fld x */
+    if (s==d)
+	make_tos(s);
+    else {
+	ds=stackpos(s);
+	emit_byte(0xd9);
+	emit_byte(0xc0+ds); /* fld x */
+    }
     emit_byte(0xd9);
     emit_byte(0xed);    /* fldln2 logN(2) */
     emit_byte(0xd9);
     emit_byte(0xc9);    /* fxch swap logN(2) with x */
     emit_byte(0xd9);
     emit_byte(0xf1);    /* fyl2x logN(2)*log2(x) */
-    tos_make(d);        /* store y=logN(x) */
+    if (s!=d)
+	tos_make(d);    /* store y=logN(x) */
 }
 LENDFUNC(NONE,NONE,2,raw_flogN_rr,(FW d, FR s))
 
@@ -3445,16 +3360,21 @@ LOWFUNC(NONE,NONE,2,raw_flogNP1_rr,(FW d, FR s))
 {
     int ds;
 
-    ds=stackpos(s);
-    emit_byte(0xd9);
-    emit_byte(0xc0+ds); /* fld x */
+    if (s==d)
+	make_tos(s);
+    else {
+	ds=stackpos(s);
+	emit_byte(0xd9);
+	emit_byte(0xc0+ds); /* fld x */
+    }
     emit_byte(0xd9);
     emit_byte(0xed);    /* fldln2 logN(2) */
     emit_byte(0xd9);
     emit_byte(0xc9);    /* fxch swap logN(2) with x */
     emit_byte(0xd9);
     emit_byte(0xf9);    /* fyl2xp1 logN(2)*log2(x+1) */
-    tos_make(d);        /* store y=logN(x+1) */
+    if (s!=d)
+	tos_make(d);    /* store y=logN(x+1) */
 }
 LENDFUNC(NONE,NONE,2,raw_flogNP1_rr,(FW d, FR s))
 
@@ -3462,16 +3382,21 @@ LOWFUNC(NONE,NONE,2,raw_flog10_rr,(FW d, FR s))
 {
     int ds;
 
-    ds=stackpos(s);
-    emit_byte(0xd9);
-    emit_byte(0xc0+ds); /* fld x */
+    if (s==d)
+	make_tos(s);
+    else {
+	ds=stackpos(s);
+	emit_byte(0xd9);
+	emit_byte(0xc0+ds); /* fld x */
+    }
     emit_byte(0xd9);
     emit_byte(0xec);    /* fldlg2 log10(2) */
     emit_byte(0xd9);
     emit_byte(0xc9);    /* fxch swap log10(2) with x */
     emit_byte(0xd9);
     emit_byte(0xf1);    /* fyl2x log10(2)*log2(x) */
-    tos_make(d);        /* store y=log10(x) */
+    if (s!=d)
+	tos_make(d);    /* store y=log10(x) */
 }
 LENDFUNC(NONE,NONE,2,raw_flog10_rr,(FW d, FR s))
 
@@ -3500,29 +3425,33 @@ LOWFUNC(NONE,NONE,2,raw_fasin_rr,(FW d, FR s))
 }
 LENDFUNC(NONE,NONE,2,raw_fasin_rr,(FW d, FR s))
 
+static uae_u32 pihalf[] = {0x2168c234, 0xc90fdaa2, 0x3fff}; // LSB=0 to get acos(1)=0
 LOWFUNC(NONE,NONE,2,raw_facos_rr,(FW d, FR s))
 {
     int ds;
 
     ds=stackpos(s);
     emit_byte(0xd9);
-    emit_byte(0xe8);    /* fld 1.0 */
-    emit_byte(0xd9);
-    emit_byte(0xc1+ds); /* fld x */
+    emit_byte(0xc0+ds); /* fld x */
     emit_byte(0xd8);
     emit_byte(0xc8);    /* fmul x*x */
-    emit_byte(0xd8);
-    emit_byte(0xe9);    /* fsubr 1 - (x^2) */
+    emit_byte(0xd9);
+    emit_byte(0xe8);    /* fld 1.0 */
+    emit_byte(0xde);
+    emit_byte(0xe1);    /* fsubrp 1 - (x^2) */
     emit_byte(0xd9);
     emit_byte(0xfa);    /* fsqrt sqrt(1-(x^2)) */
     emit_byte(0xd9);
-    emit_byte(0xc9);    /* fxch swap with 1.0 */
-    emit_byte(0xd8);
-    emit_byte(0xc2+ds); /* fadd 1 + x */
+    emit_byte(0xc1+ds); /* fld x again */
     emit_byte(0xd9);
-    emit_byte(0xf3);    /* fpatan atan(sqrt(1-(x^2))/(1+x))  & pop */
-    emit_byte(0xd8);
-    emit_byte(0xc0);    /* fadd  2*atan(sqrt(1-(x^2))/(1+x)) */
+    emit_byte(0xc9);    /* fxch swap x with sqrt(1-(x^2))  */
+    emit_byte(0xd9);
+    emit_byte(0xf3);    /* fpatan atan(x/sqrt(1-(x^2))) & pop */
+    emit_byte(0xdb);
+    emit_byte(0x2d);
+    emit_long((uae_u32)&pihalf); /* fld load pi/2 from pihalf */
+    emit_byte(0xde);
+    emit_byte(0xe1);    /* fsubrp pi/2 - asin(x) & pop */
     tos_make(d);        /* store y=acos(x) */
 }
 LENDFUNC(NONE,NONE,2,raw_facos_rr,(FW d, FR s))
@@ -3531,14 +3460,19 @@ LOWFUNC(NONE,NONE,2,raw_fatan_rr,(FW d, FR s))
 {
     int ds;
 
-    ds=stackpos(s);
-    emit_byte(0xd9);
-    emit_byte(0xc0+ds); /* fld x */
+    if (s==d)
+	make_tos(s);
+    else {
+	ds=stackpos(s);
+	emit_byte(0xd9);
+	emit_byte(0xc0+ds); /* fld x */
+    }
     emit_byte(0xd9);
     emit_byte(0xe8);    /* fld 1.0 */
     emit_byte(0xd9);
     emit_byte(0xf3);    /* fpatan atan(x)/1  & pop*/
-    tos_make(d);        /* store y=atan(x) */
+    if (s!=d)
+	tos_make(d);    /* store y=atan(x) */
 }
 LENDFUNC(NONE,NONE,2,raw_fatan_rr,(FW d, FR s))
 
@@ -3582,9 +3516,13 @@ LOWFUNC(NONE,NONE,2,raw_fsinh_rr,(FW d, FR s))
     int ds,tr;
 
     tr=live.onstack[live.tos+3];
-    ds=stackpos(s);
-    emit_byte(0xd9);
-    emit_byte(0xc0+ds);  /* fld x */
+    if (s==d)
+	make_tos(s);
+    else {
+	ds=stackpos(s);
+	emit_byte(0xd9);
+	emit_byte(0xc0+ds); /* fld x */
+    }
     emit_byte(0xd9);
     emit_byte(0xea);     /* fldl2e log2(e) */
     emit_byte(0xd8);
@@ -3663,7 +3601,8 @@ LOWFUNC(NONE,NONE,2,raw_fsinh_rr,(FW d, FR s))
     emit_byte(0xfd);     /* fscale ((e^x)-(e^-x))/2 */
     emit_byte(0xdd);
     emit_byte(0xd9);     /* fstp copy & pop */
-    tos_make(d);         /* store y=sinh(x) */
+    if (s!=d)
+	tos_make(d);     /* store y=sinh(x) */
 }
 LENDFUNC(NONE,NONE,2,raw_fsinh_rr,(FW d, FR s))
 
@@ -3672,9 +3611,13 @@ LOWFUNC(NONE,NONE,2,raw_fcosh_rr,(FW d, FR s))
     int ds,tr;
 
     tr=live.onstack[live.tos+3];
-    ds=stackpos(s);
-    emit_byte(0xd9);
-    emit_byte(0xc0+ds);  /* fld x */
+    if (s==d)
+	make_tos(s);
+    else {
+	ds=stackpos(s);
+	emit_byte(0xd9);
+	emit_byte(0xc0+ds); /* fld x */
+    }
     emit_byte(0xd9);
     emit_byte(0xea);     /* fldl2e log2(e) */
     emit_byte(0xd8);
@@ -3749,7 +3692,8 @@ LOWFUNC(NONE,NONE,2,raw_fcosh_rr,(FW d, FR s))
     emit_byte(0xfd);     /* fscale ((e^x)+(e^-x))/2 */
     emit_byte(0xdd);
     emit_byte(0xd9);     /* fstp copy & pop */
-    tos_make(d);         /* store y=cosh(x) */
+    if (s!=d)
+	tos_make(d);     /* store y=cosh(x) */
 }
 LENDFUNC(NONE,NONE,2,raw_fcosh_rr,(FW d, FR s))
 
@@ -3758,9 +3702,13 @@ LOWFUNC(NONE,NONE,2,raw_ftanh_rr,(FW d, FR s))
     int ds,tr;
 
     tr=live.onstack[live.tos+3];
-    ds=stackpos(s);
-    emit_byte(0xd9);
-    emit_byte(0xc0+ds);  /* fld x */
+    if (s==d)
+	make_tos(s);
+    else {
+	ds=stackpos(s);
+	emit_byte(0xd9);
+	emit_byte(0xc0+ds); /* fld x */
+    }
     emit_byte(0xd9);
     emit_byte(0xea);     /* fldl2e log2(e) */
     emit_byte(0xd8);
@@ -3835,7 +3783,8 @@ LOWFUNC(NONE,NONE,2,raw_ftanh_rr,(FW d, FR s))
 	emit_byte(0xde);
 	emit_byte(0xf1); /* fdivrp ((e^x)-(e^-x))/((e^x)+(e^-x)) */
     }
-    tos_make(d);         /* store y=tanh(x) */
+    if (s!=d)
+	tos_make(d);     /* store y=tanh(x) */
 }
 LENDFUNC(NONE,NONE,2,raw_ftanh_rr,(FW d, FR s))
 
@@ -3993,7 +3942,6 @@ LOWFUNC(NONE,NONE,2,raw_frem1_rr,(FRW d, FR s))
 }
 LENDFUNC(NONE,NONE,2,raw_frem1_rr,(FRW d, FR s))
 
-
 LOWFUNC(NONE,NONE,1,raw_ftst_r,(FR r))
 {
     make_tos(r);
@@ -4014,17 +3962,17 @@ static __inline__ void raw_fflags_into_flags(int r)
     emit_byte(0xd9);
     emit_byte(0xc9+p); /* swap top two around */
     if (have_cmov) {
-	    // gb-- fucomi is for P6 cores only, not K6-2 then...
-    emit_byte(0xdb);
-    emit_byte(0xe9+p); /* fucomi them */
+	// gb-- fucomi is for P6 cores only, not K6-2 then...
+	emit_byte(0xdb);
+	emit_byte(0xe9+p); /* fucomi them */
     }
     else {
-	    emit_byte(0xdd);
-	    emit_byte(0xe1+p); /* fucom them */
-	    emit_byte(0x9b);
-	    emit_byte(0xdf);
-	    emit_byte(0xe0); /* fstsw ax */
-	    raw_sahf(0); /* sahf */
+	emit_byte(0xdd);
+	emit_byte(0xe1+p); /* fucom them */
+	emit_byte(0x9b);
+	emit_byte(0xdf);
+	emit_byte(0xe0); /* fstsw ax */
+	raw_sahf(0); /* sahf */
     }
     emit_byte(0xdd);
     emit_byte(0xd9+p);  /* store value back, and get rid of 0 */

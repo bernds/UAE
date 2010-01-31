@@ -4,7 +4,7 @@
   * Custom chip emulation
   *
   * (c) 1995 Bernd Schmidt, Alessandro Bissacco
-  * (c) 2002 - 2003 Toni Wilen
+  * (c) 2002 - 2005 Toni Wilen
   */
 
 //#define BLITTER_DEBUG
@@ -60,13 +60,13 @@ static int blit_cyclecounter, blit_maxcyclecounter, blit_slowdown;
 static int blit_linecyclecounter, blit_misscyclecounter;
 
 #ifdef CPUEMU_6
-extern int cycle_line[];
+extern uae_u8 cycle_line[];
 #endif
 
 static long blit_firstline_cycles;
 static long blit_first_cycle;
 static int blit_last_cycle, blit_dmacount, blit_dmacount2;
-static int blit_linecycles, blit_extracycles;
+static int blit_linecycles, blit_extracycles, blit_nod;
 static int *blit_diag;
 
 static uae_u16 ddat1, ddat2;
@@ -170,7 +170,7 @@ static int blit_cycle_diagram_fill[][10] =
 
 /*
 
-    line draw takes 4 cycles (two 2-cycle blits combined)
+    line draw takes 4 cycles (-X-X)
     it also have real idle cycles and only 2 dma fetches
     (read from C, write to D, but see below)
 
@@ -186,7 +186,7 @@ static int blit_cycle_diagram_fill[][10] =
 
 static int blit_cycle_diagram_line[] =
 {
-    0, 4, 3,5,4,5  /* guessed */
+    0, 4, 0,3,0,4, 0,0,0,0,0,0,0,0,0,0  /* guessed */
 };
 
 static int blit_cycle_diagram_finald[] =
@@ -258,7 +258,7 @@ STATIC_INLINE int canblit (int hpos)
 	return 0;
     if (cycle_line[hpos] == 0)
 	return 1;
-    if (cycle_line[hpos] & (CYCLE_REFRESH | CYCLE_SPRITE | CYCLE_MISC))
+    if (cycle_line[hpos] & CYCLE_REFRESH)
 	return -1;
     return 0;
 }
@@ -526,6 +526,10 @@ static void blitter_line(void)
 	blitahold = 0;
     blitonedot = 1;
     blt_info.bltddat = blit_func(blitahold, blitbhold, blitchold, bltcon0 & 0xFF);
+}
+
+static void blitter_line_proc(void)
+{
     if (!blitsign){
 	if (bltcon0 & 0x800)
 	    bltapt += (uae_s16)blt_info.bltamod;
@@ -570,7 +574,6 @@ STATIC_INLINE void blitter_nxline(void)
 
 static int blit_last_hpos;
 
-static int blitter_dma_cycles_line, blitter_dma_cycles_line_count;
 static int blitter_cyclecounter;
 static int blitter_hcounter1, blitter_hcounter2;
 static int blitter_vcounter1, blitter_vcounter2;
@@ -582,35 +585,31 @@ static void decide_blitter_line (int hpos)
 	while (blit_last_hpos < hpos) {
 	    int c = channel_state (blit_cyclecounter);
 	    for (;;) {
-
-		if (c == 5) {
-		    blit_cyclecounter++;
-		    break;
+		if (c) {
+		    if (!canblit(blit_last_hpos))
+			break;
 		}
-#if 1
-		if (c && canblit(blit_last_hpos) <= 0)
-		    break;
-#endif
-#if 1
-		if (c != 0)
-		    cycle_line[blit_last_hpos] |= CYCLE_BLITTER;
-#endif
 		blit_cyclecounter++;
-		if (c == 4) {
-		    /* believe it or not but try Cardamon or Cardamom without this.. */
-		    if (ddat1use)
-			bltdpt = bltcpt;
+		if (c == 3) {
 		    blitter_read();
-		    blitter_line();
-		    blitter_write();
-		    blitter_nxline();
+		    cycle_line[blit_last_hpos] |= CYCLE_BLITTER;
+		} else if (c == 4) {
+		    if (ddat1use) {
+			bltdpt = bltcpt;
+		    }
 		    ddat1use = 1;
+		    blitter_line();
+		    blitter_line_proc();
+		    blitter_nxline();
+		    blitter_write();
+		    cycle_line[blit_last_hpos] |= CYCLE_BLITTER;
 		    if (blt_info.vblitsize == 0) {
-			blitter_done();
-			return;
+			bltdpt = bltcpt;
+		        blitter_done();
+		        return;
 		    }
 		}
-		break;
+	        break;
 	    }
 	    blit_last_hpos++;
 	}
@@ -629,6 +628,7 @@ static void actually_do_blit(void)
 	do {
 	    blitter_read();
 	    blitter_line();
+	    blitter_line_proc();
 	    blitter_write();
 	    bltdpt = bltcpt;
 	    blitter_nxline();
@@ -952,12 +952,15 @@ static void blit_bltset (int con)
 
     ddat1use = ddat2use = 0;
     blit_dmacount = blit_dmacount2 = 0;
+    blit_nod = 1;
     for (i = 0; i < blit_diag[1]; i++) {
 	int v = blit_diag[2 + i];
 	if (v)
 	    blit_dmacount++;
 	if (v > 0 && v < 4)
 	    blit_dmacount2++;
+	if (v == 4)
+	    blit_nod = 0;
     }
 
     blt_info.blitashift = bltcon0 >> 12;
@@ -1049,13 +1052,11 @@ void do_blitter (int hpos)
 
     blit_maxcyclecounter = 0x7fffffff;
     if (blitter_cycle_exact) {
-	blitter_dma_cycles_line_count = 0;
 	blitter_hcounter1 = blitter_hcounter2 = 0;
 	blitter_vcounter1 = blitter_vcounter2 = 0;
-	if (blit_dmacount2 == blit_dmacount)
+	if (blit_nod)
 	    blitter_vcounter2 = blt_info.vblitsize;
 	blit_linecyclecounter = 0;
-	blitter_dma_cycles_line = blt_info.hblitsize * blit_dmacount2;
 	if (blit_ch == 0)
 	    blit_maxcyclecounter = blt_info.hblitsize * blt_info.vblitsize;
 	return;

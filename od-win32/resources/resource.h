@@ -5,6 +5,7 @@
 #define IDS_KICKSTART                   1
 #define IDS_DISK                        2
 #define IDS_DISPLAY                     3
+#define IDC_HARDDRIVE_IMAGE             3
 #define IDS_HARDDISK                    4
 #define IDS_FLOPPY                      5
 #define IDS_ABOUT                       6
@@ -181,7 +182,7 @@
 #define IDS_SOUND_INTERPOL_CRUX         205
 #define IDS_SOUND_FILTER_OFF            206
 #define IDS_SOUND_FILTER_EMULATED       207
-#define IDS_SOUND_FILTER_ON             208
+#define IDS_SOUND_FILTER_ON_A500        208
 #define IDS_INPUT_COMPATIBILITY         209
 #define IDS_INPUT_CUSTOM                210
 #define IDS_INPUT_COPY_DEFAULT          211
@@ -226,7 +227,12 @@
 #define IDD_FRONTEND                    249
 #define IDS_SOUND_SWAP_PAULA            249
 #define IDS_SOUND_SWAP_AHI              250
+#define IDD_PROGRESSBAR                 250
 #define IDS_SOUND_SWAP_BOTH             251
+#define IDB_BITMAP1                     252
+#define IDB_LCD160X43                   252
+#define IDS_SOUND_FILTER_ON_AGA         252
+#define IDS_SOUND_FILTER_ON             253
 #define IDS_NUMSG_NEEDEXT2              300
 #define IDS_NUMSG_NOROMKEY              301
 #define IDS_NUMSG_KSROMCRCERROR         302
@@ -255,6 +261,8 @@
 #define IDS_NUMSG_KICKREP               325
 #define IDS_NUMSG_KICKREPNO             326
 #define IDS_NUMSG_NOROM                 327
+#define IDS_HDCLONE_OK                  328
+#define IDS_HDCLONE_FAIL                329
 #define IDS_QS_MODELS                   1000
 #define IDS_QS_MODEL_A500               1001
 #define IDS_QS_MODEL_A500P              1002
@@ -278,6 +286,8 @@
 #define IDC_DISPLAYSELECT               1024
 #define IDC_AUTOCONFIG                  1025
 #define IDC_PRINTERLIST                 1025
+#define IDC_RESOLUTION3                 1025
+#define IDC_RESOLUTIONDEPTH             1025
 #define IDC_CHIPMEM                     1026
 #define IDC_CREATELOGFILE               1026
 #define IDC_PORT0_JOYS                  1026
@@ -304,6 +314,7 @@
 #define IDC_CAPS                        1077
 #define IDC_ABIME                       1078
 #define IDC_AMIGASYS                    1079
+#define IDC_AMIKIT                      1080
 #define IDC_RICHEDIT1                   1091
 #define IDC_RICHEDIT2                   1092
 #define IDC_CONTRIBUTORS                1124
@@ -313,6 +324,7 @@
 #define IDC_LORES                       1176
 #define IDC_VSYNC                       1177
 #define IDC_AFULLSCREEN                 1178
+#define IDC_LORES_SMOOTHED              1179
 #define IDC_FRAMERATE                   1185
 #define IDC_RATETEXT                    1186
 #define IDC_XSIZE                       1187
@@ -629,7 +641,6 @@
 #define IDC_SCSIDEVICE                  1606
 #define IDC_FLASHTEXT2                  1606
 #define IDC_AVIOUTPUT_PAL               1607
-#define IDC_ASPI                        1607
 #define IDC_INPUTTYPE                   1607
 #define IDC_AVIOUTPUT_NTSC              1608
 #define IDC_INPUTSELECTTEXT             1608
@@ -648,6 +659,8 @@
 #define IDC_CATWEASEL                   1611
 #define IDC_AVIOUTPUT_FPS_STATIC        1612
 #define IDC_INPUTAMIGA                  1612
+#define IDC_ALWAYSONTOP2                1612
+#define IDC_BORDERLESS                  1612
 #define IDC_AVIOUTPUT_VIDEO             1613
 #define IDC_INPUTAUTOFIRE               1613
 #define IDC_AVIOUTPUT_AUDIO             1614
@@ -685,6 +698,7 @@
 #define IDC_OPENGLSLR                   1625
 #define IDC_FILTERSLR                   1625
 #define IDC_OPENGLSLV                   1626
+#define IDC_FILTERHZMULT                1626
 #define IDC_OPENGLBITS                  1627
 #define IDC_OPENGLMODE                  1627
 #define IDC_FILTERMODE                  1627
@@ -707,6 +721,8 @@
 #define IDC_FILTERPRESETDELETE          1634
 #define IDC_HARDDRIVE                   1635
 #define IDC_INACTIVE_PRI                1635
+#define IDC_FILTERSLR3                  1635
+#define IDC_FILTERVZMULT                1635
 #define IDC_SOUNDPRIMARY                1636
 #define IDC_MINIMIZED_PRI               1636
 #define IDC_VOLUME_BOOTPRI_TEXT         1637
@@ -818,6 +834,11 @@
 #define IDC_FE_SCREENSHOT               1702
 #define IDC_PATHS_DEFAULTTYPE           1704
 #define IDC_SCSIMODE                    1705
+#define IDC_PROGRESS1                   1705
+#define IDC_PROGRESSBAR                 1705
+#define IDC_PROGRESSBAR_TEXT            1706
+#define IDC_SCSIMODE2                   1706
+#define IDC_LANGUAGE                    1706
 #define ID__FLOPPYDRIVES                40004
 #define ID_FLOPPYDRIVES_DF0             40005
 #define ID_ST_CONFIGURATION             40010
@@ -836,9 +857,9 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
 #define _APS_3D_CONTROLS                     1
-#define _APS_NEXT_RESOURCE_VALUE        249
+#define _APS_NEXT_RESOURCE_VALUE        253
 #define _APS_NEXT_COMMAND_VALUE         40021
-#define _APS_NEXT_CONTROL_VALUE         1705
+#define _APS_NEXT_CONTROL_VALUE         1707
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

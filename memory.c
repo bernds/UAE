@@ -308,6 +308,7 @@ uae_u8 *load_keyfile (struct uae_prefs *p, char *path, int *size)
 	    }
 	}
     }
+    keysize = 0;
     if (f) {
 	write_log("ROM.key loaded '%s'\n", tmp);
 	zfile_fseek (f, 0, SEEK_END);
@@ -522,7 +523,7 @@ uae_u32 REGPARAM2 dummy_wget (uaecptr addr)
 #ifdef JIT
     special_mem |= S_READ;
 #endif
-    if (currprefs.illegal_mem) {
+    if (currprefs.illegal_mem && addr < 0xf00000) {
 	if (illegal_count < MAX_ILG) {
 	    illegal_count++;
 	    write_log ("Illegal wget at %08lx PC=%x\n", addr, m68k_getpc());
@@ -1871,10 +1872,8 @@ static void allocate_memory (void)
 
 	memsize = allocated_chipmem = currprefs.chipmem_size;
 	chipmem_full_mask = chipmem_mask = allocated_chipmem - 1;
-	if ((currprefs.chipset_mask & CSMASK_ECS_AGNUS) && allocated_chipmem < 0x100000) {
-	    chipmem_full_mask = 0x100000 - 1;
-	    memsize *= 2;
-	}
+	if (memsize < 0x100000)
+	    memsize = 0x100000;
 	chipmemory = mapped_malloc (memsize, "chip");
 	if (chipmemory == 0) {
 	    write_log ("Fatal error: out of memory for chipmem.\n");
@@ -1885,6 +1884,11 @@ static void allocate_memory (void)
 		memset (chipmemory + allocated_chipmem, 0xff, memsize - allocated_chipmem);
 	}
     }
+
+    currprefs.chipset_mask = changed_prefs.chipset_mask;
+    chipmem_full_mask = allocated_chipmem - 1;
+    if ((currprefs.chipset_mask & CSMASK_ECS_AGNUS) && allocated_chipmem < 0x100000)
+        chipmem_full_mask = 0x100000 - 1;
 
     if (allocated_bogomem != currprefs.bogomem_size) {
 	if (bogomemory)

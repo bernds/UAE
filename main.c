@@ -40,6 +40,7 @@
 #include "akiko.h"
 #include "savestate.h"
 #include "filesys.h"
+#include "parallel.h"
 
 #ifdef USE_SDL
 #include "SDL.h"
@@ -486,6 +487,9 @@ void reset_all_systems (void)
     scsidev_reset ();
     scsidev_start_threads ();
 #endif
+#if defined (PARALLEL_PORT)
+    initparallel ();
+#endif
 }
 
 /* Okay, this stuff looks strange, but it is here to encourage people who
@@ -536,6 +540,7 @@ void do_leave_program (void)
     savestate_free ();
     memory_cleanup ();
     cfgfile_addcfgparam (0);
+    machdep_free ();
 }
 
 void start_program (void)

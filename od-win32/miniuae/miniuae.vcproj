@@ -5,7 +5,6 @@
 	Name="winuae_mini"
 	ProjectGUID="{AA96D0A2-4F40-4C51-9DBD-3C3CAFC7AAA7}"
 	Keyword="Win32Proj"
-	SignManifests="true"
 	>
 	<Platforms>
 		<Platform
@@ -484,6 +483,10 @@
 				RelativePath="..\resources\winuae.rc"
 				>
 			</File>
+			<File
+				RelativePath="..\resources\xarcade-winuae.bmp"
+				>
+			</File>
 		</Filter>
 		<Filter
 			Name="win32"
@@ -601,10 +604,6 @@
 				>
 			</File>
 		</Filter>
-		<File
-			RelativePath="..\1"
-			>
-		</File>
 		<File
 			RelativePath="..\resources\drive_click.wav"
 			>

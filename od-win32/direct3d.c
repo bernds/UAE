@@ -20,6 +20,20 @@
 
 #include "direct3d.h"
 
+#if 0
+typedef D3DXMATRIX (CALLBACK* D3DXMATRIXPERSPECTIVEFOVLH)
+    (D3DXMATRIX *pOut,FLOAT fovy,FLOAT Aspect,FLOAT zn,FLOAT zf);
+static D3DXMATRIXPERSPECTIVEFOVLH pD3DXMatrixPerspectiveFovLH;
+typedef HRESULT (CALLBACK* D3DXCREATETEXTURE)
+    (LPDIRECT3DDEVICE9 pDevice,UINT Width,UINT Height,UINT MipLevels,DWORD Usage,
+    D3DFORMAT Format,D3DPOOL Pool,LPDIRECT3DTEXTURE9 *ppTexture);
+static D3DXCREATETEXTURE pD3DXCreateTexture;
+typedef HRESULT (CALLBACK* D3DXCHECKTEXTUREREQUIREMENTS)
+    (LPDIRECT3DDEVICE9 pDevice,UINT *pWidth,UINT *pHeight,UINT *pNumMipLevels,
+    DWORD Usage,D3DFORMAT *pFormat,D3DPOOL Pool);
+static D3DXCHECKTEXTUREREQUIREMENTS pD3DXCheckTextureRequirements;
+#endif
+
 static int tformat;
 static int d3d_enabled, scanlines_ok;
 static HINSTANCE d3dDLL;
@@ -229,6 +243,10 @@ const char *D3D_init (HWND ahwnd, int w_w, int w_h, int t_w, int t_h, int depth)
     LPDIRECT3D9 (WINAPI *D3DCreate)(UINT);
     D3DDISPLAYMODE mode;
     D3DCAPS9 d3dCaps;
+#if 0
+    char d3dxdlls[100];
+    HINSTANCE d3dxDLL;
+#endif
 
     d3d_enabled = 0;
     scanlines_ok = 0;
@@ -242,6 +260,17 @@ const char *D3D_init (HWND ahwnd, int w_w, int w_h, int t_w, int t_h, int depth)
 	strcpy (errmsg, "Direct3D: DirectX 9 or newer required");
 	return errmsg;
     }
+
+#if 0
+    sprintf (d3dxdlls, "d3dx9_%d.dll", 27);
+    d3dxDLL = LoadLibrary(d3dxdlls);
+    pD3DXMatrixPerspectiveFovLH = (D3DXMATRIXPERSPECTIVEFOVLH)GetProcAddress(
+	d3dxDLL, "D3DXMatrixPerspectiveFovLH");
+    pD3DXCreateTexture = (D3DXCREATETEXTURE)GetProcAddress(
+	d3dxDLL, "D3DXCreateTexture");
+    pD3DXCheckTextureRequirements = (D3DXCHECKTEXTUREREQUIREMENTS)GetProcAddress(
+	d3dxDLL, "D3DXCheckTextureRequirements");
+#endif
     D3DCreate = (LPDIRECT3D9 (WINAPI *)(UINT))
 	GetProcAddress(d3dDLL, "Direct3DCreate9");
     if(D3DCreate == NULL) {
@@ -393,6 +422,74 @@ static void BlitRect(LPDIRECT3DDEVICE9 dev, LPDIRECT3DTEXTURE9 src,
 	write_log ("IDirect3DDevice9_DrawPrimitiveUP failed: %s\n", D3D_ErrorString (hr));
 }
 
+/*
+    window_ = display window size
+    tin_ = internal window size
+    twidth/theight = texture size
+*/
+#if 0
+static void calc (float *xp, float *yp, float *sxp, float *syp)
+{
+    float x, y, sx, sy, tx, ty;
+    double mx, my, fx, fy, mmx, mmy;
+
+    mmx = 1;
+    mmy = 1;//2.0 * window_h / tin_h;
+
+    fx = tin_w / 2;
+    fy = tin_h / 2;
+
+    fx = (twidth * window_w / tin_w) / 2;
+    fy = (theight * window_h / tin_h) / 2;
+
+    tx = ((currprefs.gfx_filter_horiz_zoom_mult + currprefs.gfx_filter_horiz_zoom / 4) / 1000.0);
+    ty = ((currprefs.gfx_filter_vert_zoom_mult + currprefs.gfx_filter_vert_zoom / 4) / 1000.0);
+
+    *sxp = (fx + fx / tx) * mmx;
+    *syp = (fy + fy / ty) * mmy;
+    *xp = (fx - fx / tx) * mmx;
+    *yp = (fy - fy / ty) * mmy;
+
+    mx = (currprefs.gfx_filter_horiz_offset / 1000.0) * fx;
+    my = (currprefs.gfx_filter_vert_offset / 1000.0) * fy;
+
+    *xp += mx;
+    *sxp += mx;
+    *yp += my;
+    *syp += my;
+
+    return;
+
+
+    fx = (twidth * window_w / tin_w) / 2;
+    fy = (theight * window_h / tin_h) / 2;
+
+    tx = fx / ((currprefs.gfx_filter_horiz_zoom_mult + currprefs.gfx_filter_horiz_zoom / 4) / 1000.0);
+    ty = fy / ((currprefs.gfx_filter_vert_zoom_mult + currprefs.gfx_filter_vert_zoom / 4) / 1000.0);
+
+    if (currprefs.gfx_lores)
+	tx /= 2;
+    if (!currprefs.gfx_linedbl)
+	ty /= 2;
+
+    mx = (currprefs.gfx_filter_horiz_offset / 1000.0) * fx;
+    my = (currprefs.gfx_filter_vert_offset / 1000.0) * fy;
+
+    x = -tx;
+    y = -ty;
+    sx = tx;
+    sy = ty;
+
+    x += fx + mx;
+    y += fy + my;
+    sx += tx + mx;
+    sy += ty + my;
+
+    *xp = x; *yp = y;
+    *sxp = sx; *syp = sy;
+}
+#endif
+#if 1
 static void calc (float *xp, float *yp, float *sxp, float *syp)
 {
     int xm, ym;
@@ -411,15 +508,16 @@ static void calc (float *xp, float *yp, float *sxp, float *syp)
 	ym /= 2;
     fx = (tin_w * xm - window_w) / 2;
     fy = (tin_h * ym - window_h) / 2;
-    x = (float)(window_w * currprefs.gfx_filter_horiz_offset / 100.0);
-    y = (float)(window_h * currprefs.gfx_filter_vert_offset / 100.0);
-    sx = x + (float)(twidth * window_w / tin_w) * ((currprefs.gfx_filter_horiz_zoom + 100) / 100.0);
-    sy = y + (float)(theight * window_h / tin_h) * ((currprefs.gfx_filter_vert_zoom + 100) / 100.0);
+    x = (float)(window_w * currprefs.gfx_filter_horiz_offset / 1000.0);
+    y = (float)(window_h * currprefs.gfx_filter_vert_offset / 1000.0);
+    sx = x + (float)(twidth * window_w / tin_w) * ((currprefs.gfx_filter_horiz_zoom + 1000) / 1000.0);
+    sy = y + (float)(theight * window_h / tin_h) * ((currprefs.gfx_filter_vert_zoom + 1000) / 1000.0);
     x -= fx; y -= fy;
     sx += 2 * fx; sy += 2 * fy;
     *xp = x; *yp = y;
     *sxp = sx; *syp = sy;
 }
+#endif
 
 void D3D_unlocktexture (void)
 {

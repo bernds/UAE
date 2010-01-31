@@ -1,12 +1,6 @@
-#ifdef DOS
-#include "..\include\globals.h"
-#include "..\include\extern.h"
-#endif
+#include "../rippers/globals.h"
+#include "../rippers/extern.h"
 
-#ifdef UNIX
-#include "../include/globals.h"
-#include "../include/extern.h"
-#endif
 
 /*
  * group of tests funcs that are common to most of test\*.c files

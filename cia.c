@@ -681,14 +681,15 @@ static void WriteCIAA (uae_u16 addr,uae_u8 val)
 #ifdef PARALLEL_PORT
 	if (isprinter() > 0) {
 	    doprinter (val);
+	    cia_parallelack ();
 	} else if (isprinter() < 0) {
 	    parallel_direct_write_data (val, ciaadrb);
+	    cia_parallelack ();
 #ifdef ARCADIA
 	} else if (arcadia_rom) {
 	    arcadia_parport (1, ciaaprb, ciaadrb);
 #endif
 	}
-	cia_parallelack ();
 #endif
 	break;
     case 2:
@@ -758,7 +759,7 @@ static void WriteCIAA (uae_u16 addr,uae_u8 val)
 	    ciaaalarm = (ciaaalarm & ~0xff00) | (val << 8);
 	} else {
 	    ciaatod = (ciaatod & ~0xff00) | (val << 8);
-	    ciaatodon = 0;
+	    //ciaatodon = 0;
 	}
 	break;
     case 10:
@@ -777,7 +778,7 @@ static void WriteCIAA (uae_u16 addr,uae_u8 val)
 	} else {
 	    ciaasdr_cnt = 0;
 	}
-	if ((ciaacra & 0x41) == 0x41)
+	if ((ciaacra & 0x41) == 0x41 && ciaasdr_cnt == 0)
 	    ciaasdr_cnt = 8 * 2;
 	CIA_calctimers ();
 	break;
@@ -898,7 +899,7 @@ static void WriteCIAB (uae_u16 addr,uae_u8 val)
 	    ciabalarm = (ciabalarm & ~0xff00) | (val << 8);
 	} else {
 	    ciabtod = (ciabtod & ~0xff00) | (val << 8);
-	    ciabtodon = 0;
+	    //ciabtodon = 0;
 	}
 	break;
     case 10:
@@ -912,10 +913,10 @@ static void WriteCIAB (uae_u16 addr,uae_u8 val)
     case 12:
 	CIA_update ();
 	ciabsdr = val;
-	if ((ciabcra & 0x41) == 0x41)
-	    ciabsdr_cnt = 8 * 2;
 	if ((ciabcra & 0x40) == 0)
 	    ciabsdr_cnt = 0;
+	if ((ciabcra & 0x41) == 0x41 && ciabsdr_cnt == 0)
+	    ciabsdr_cnt = 8 * 2;
 	CIA_calctimers ();
 	break;
     case 13:

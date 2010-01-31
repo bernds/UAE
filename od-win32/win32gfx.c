@@ -43,6 +43,7 @@
 #include "avioutput.h"
 #include "gfxfilter.h"
 #include "parser.h"
+#include "lcd.h"
 
 #define AMIGA_WIDTH_MAX 736
 #define AMIGA_HEIGHT_MAX 568
@@ -113,6 +114,7 @@ static struct winuae_modes wmodes[] =
     },
     {
 	1, "Fullscreen",
+//	DM_OVERLAY | DM_W_FULLSCREEN | DM_DX_DIRECT | DM_DDRAW,
 	DM_DX_FULLSCREEN | DM_DX_DIRECT | DM_DDRAW,
 	DM_DX_FULLSCREEN | DM_DX_DIRECT | DM_DDRAW | DM_PICASSO96
     },
@@ -337,11 +339,6 @@ static int set_ddraw (void)
 	    write_log( "set_ddraw: Couldn't GetDisplayMode()\n" );
 	    goto oops;
 	}
-#if 0
-    } else if (wfullscreen) {
-	if (!do_changedisplaysettings (width, height, bits, currentmode->frequency))
-	    goto oops2;
-#endif
     }
 
     if (dd) {
@@ -490,10 +487,19 @@ static int resolution_compare (const void *a, const void *b)
 }
 static void sortmodes (void)
 {
-    int	count = 0;
-    while (DisplayModes[count].depth >= 0)
-	count++;
-    qsort (DisplayModes, count, sizeof (struct PicassoResolution), resolution_compare);
+    int	i = 0, idx = -1;
+    int pw = -1, ph = -1;
+    while (DisplayModes[i].depth >= 0)
+	i++;
+    qsort (DisplayModes, i, sizeof (struct PicassoResolution), resolution_compare);
+    for (i = 0; DisplayModes[i].depth >= 0; i++) {
+	if (DisplayModes[i].res.height != ph || DisplayModes[i].res.width != pw) {
+	    ph = DisplayModes[i].res.height;
+	    pw = DisplayModes[i].res.width;
+	    idx++;
+	}
+        DisplayModes[i].residx = idx;
+    }
 }
 
 static void modesList (void)
@@ -518,6 +524,7 @@ static void modesList (void)
 BOOL CALLBACK displaysCallback (GUID *guid, LPSTR desc, LPSTR name, LPVOID ctx, HMONITOR hm)
 {
     struct MultiDisplay *md = Displays;
+    MONITORINFOEX lpmi;
 
     while (md->name) {
 	if (md - Displays >= MAX_DISPLAYS)
@@ -525,18 +532,39 @@ BOOL CALLBACK displaysCallback (GUID *guid, LPSTR desc, LPSTR name, LPVOID ctx, 
 	md++;
     }
     md->name = my_strdup (desc);
-    if (guid == 0)
+    if (guid == 0) {
+	POINT pt = { 0, 0 };
 	md->primary = 1;
-    else
+        lpmi.cbSize = sizeof (lpmi);
+	GetMonitorInfo(MonitorFromPoint(pt, MONITOR_DEFAULTTOPRIMARY), (LPMONITORINFO)&lpmi);
+	md->rect = lpmi.rcMonitor;
+    } else {
 	memcpy (&md->guid,  guid, sizeof (GUID));
+    }
     write_log ("'%s' '%s' %s\n", desc, name, outGUID(guid));
     return 1;
+}
+
+static BOOL CALLBACK monitorEnumProc(HMONITOR h, HDC hdc, LPRECT rect, LPARAM data)
+{
+    MONITORINFOEX lpmi;
+    int cnt = *((int*)data);
+    if (!Displays[cnt].name)
+	return FALSE;
+    lpmi.cbSize = sizeof (lpmi);
+    GetMonitorInfo(h, (LPMONITORINFO)&lpmi);
+    Displays[cnt].rect = *rect;
+    Displays[cnt].gdi = TRUE;
+    (*((int*)data))++;
+    return TRUE;
 }
 
 void enumeratedisplays (int multi)
 {
     if (multi) {
+	int cnt = 1;
 	DirectDraw_EnumDisplays (displaysCallback);
+	EnumDisplayMonitors(NULL, NULL, monitorEnumProc, (LPARAM)&cnt);
     } else {
 	Displays[0].primary = 1;
 	Displays[0].name = "Display";
@@ -1008,9 +1036,12 @@ int check_prefs_changed_gfx (void)
     c |= currprefs.gfx_filter != changed_prefs.gfx_filter ? 1 : 0;
     c |= currprefs.gfx_filter_filtermode != changed_prefs.gfx_filter_filtermode ? 1 : 0;
     c |= currprefs.gfx_lores != changed_prefs.gfx_lores ? 1 : 0;
+    c |= currprefs.gfx_lores_mode != changed_prefs.gfx_lores_mode ? 1 : 0;
     c |= currprefs.gfx_linedbl != changed_prefs.gfx_linedbl ? 1 : 0;
     c |= currprefs.gfx_display != changed_prefs.gfx_display ? 1 : 0;
     c |= currprefs.win32_alwaysontop != changed_prefs.win32_alwaysontop ? 1 : 0;
+    c |= currprefs.win32_borderless != changed_prefs.win32_borderless ? 1 : 0;
+    c |= currprefs.win32_no_overlay != changed_prefs.win32_no_overlay ? 1 : 0;
     if (display_change_requested || c) 
     {
 	if (!display_change_requested)
@@ -1030,9 +1061,12 @@ int check_prefs_changed_gfx (void)
 	currprefs.gfx_filter = changed_prefs.gfx_filter;
 	currprefs.gfx_filter_filtermode = changed_prefs.gfx_filter_filtermode;
 	currprefs.gfx_lores = changed_prefs.gfx_lores;
+	currprefs.gfx_lores_mode = changed_prefs.gfx_lores_mode;
 	currprefs.gfx_linedbl = changed_prefs.gfx_linedbl;
 	currprefs.gfx_display = changed_prefs.gfx_display;
 	currprefs.win32_alwaysontop = changed_prefs.win32_alwaysontop;
+	currprefs.win32_borderless = changed_prefs.win32_borderless;
+	currprefs.win32_no_overlay = changed_prefs.win32_no_overlay;
 	inputdevice_unacquire ();
 	close_windows ();
 	graphics_init ();
@@ -1060,6 +1094,18 @@ int check_prefs_changed_gfx (void)
 	currprefs.gfx_xcenter = changed_prefs.gfx_xcenter;
 	currprefs.gfx_ycenter = changed_prefs.gfx_ycenter;
 	return 1;
+    }
+
+    if (currprefs.win32_norecyclebin != changed_prefs.win32_norecyclebin) {
+	currprefs.win32_norecyclebin = changed_prefs.win32_norecyclebin;
+    }
+
+    if (currprefs.win32_logfile != changed_prefs.win32_logfile) {
+	currprefs.win32_logfile = changed_prefs.win32_logfile;
+	if (currprefs.win32_logfile)
+	    logging_open(0, 1);
+	else
+	    logging_cleanup();
     }
 
     if (currprefs.leds_on_screen != changed_prefs.leds_on_screen ||
@@ -1171,7 +1217,6 @@ static int get_color (int r, int g, int b, xcolnr * cnp)
 
 void init_colors (void)
 {
-    int i;
     HRESULT ddrval;
 
     if (ncols256 == 0) {
@@ -1231,23 +1276,6 @@ void init_colors (void)
 #ifdef AVIOUTPUT
 	AVIOutput_RGBinfo (red_bits, green_bits, blue_bits, red_shift, green_shift, blue_shift);
 #endif
-    }
-    
-    switch (gfxvidinfo.pixbytes) 
-    {
-     case 2:
-	for (i = 0; i < 4096; i++)
-	    xcolors[i] = xcolors[i] * 0x00010001;
-	gfxvidinfo.can_double = 1;
-	break;
-     case 1:
-	for (i = 0; i < 4096; i++)
-	    xcolors[i] = xcolors[i] * 0x01010101;
-	gfxvidinfo.can_double = 1;
-	break;
-     default:
-	gfxvidinfo.can_double = 0;
-	break;
     }
 }
 
@@ -1596,6 +1624,16 @@ void machdep_init (void)
     picasso_on = 0;
     screen_is_picasso = 0;
     memset (currentmode, 0, sizeof (*currentmode));
+#ifdef LOGITECHLCD
+    lcd_open();
+#endif
+}
+
+void machdep_free (void)
+{
+#ifdef LOGITECHLCD
+    lcd_close();
+#endif
 }
 
 int graphics_init (void)
@@ -1699,28 +1737,41 @@ static void createstatuswindow (void)
 
 static int create_windows (void)
 {
-    int fs = currentmode->flags & (DM_W_FULLSCREEN | DM_DX_FULLSCREEN | DM_D3D_FULLSCREEN);
+    int dxfs = currentmode->flags & (DM_DX_FULLSCREEN | DM_D3D_FULLSCREEN);
+    int fsw = currentmode->flags & (DM_W_FULLSCREEN);
     DWORD exstyle = currprefs.win32_notaskbarbutton ? 0 : WS_EX_APPWINDOW;
+    DWORD flags = 0;
     HWND hhWnd = currprefs.win32_notaskbarbutton ? hHiddenWnd : NULL;
+    int borderless = currprefs.win32_borderless;
+    DWORD style = NORMAL_WINDOW_STYLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
+    int cymenu = GetSystemMetrics (SM_CYMENU);
+    int cyborder = GetSystemMetrics (SM_CYBORDER);
+    int cxborder = GetSystemMetrics(SM_CXBORDER);
+    int gap = 3;
+    int x, y;
 
-    if (!fs)  {
+    hMainWnd = NULL;
+    x = 2; y = 2;
+    if (borderless)
+	cymenu = cyborder = cxborder = 0;
+
+    if (!dxfs)  {
 	RECT rc;
-	LONG stored_x = 1, stored_y = GetSystemMetrics (SM_CYMENU) + GetSystemMetrics (SM_CYBORDER);
+	LONG stored_x = 1, stored_y = cymenu + cyborder;
 	DWORD regkeytype;
 	DWORD regkeysize = sizeof (LONG);
-	int cx = GetSystemMetrics(SM_CXBORDER), cy = GetSystemMetrics(SM_CYBORDER);
 	int oldx, oldy;
 	int first = 2;
 
-	RegQueryValueEx( hWinUAEKey, "xPos", 0, &regkeytype, (LPBYTE)&stored_x, &regkeysize );
-	RegQueryValueEx( hWinUAEKey, "yPos", 0, &regkeytype, (LPBYTE)&stored_y, &regkeysize );
+	RegQueryValueEx(hWinUAEKey, "xPos", 0, &regkeytype, (LPBYTE)&stored_x, &regkeysize);
+	RegQueryValueEx(hWinUAEKey, "yPos", 0, &regkeytype, (LPBYTE)&stored_y, &regkeysize);
 
 	while (first) {
 	    first--;
 	    if (stored_x < GetSystemMetrics (SM_XVIRTUALSCREEN))
 		stored_x = GetSystemMetrics (SM_XVIRTUALSCREEN);
-	    if (stored_y < GetSystemMetrics (SM_YVIRTUALSCREEN) + GetSystemMetrics (SM_CYMENU) + cy)
-		stored_y = GetSystemMetrics (SM_YVIRTUALSCREEN) + GetSystemMetrics (SM_CYMENU) + cy;
+	    if (stored_y < GetSystemMetrics (SM_YVIRTUALSCREEN) + cymenu + cyborder)
+		stored_y = GetSystemMetrics (SM_YVIRTUALSCREEN) + cymenu + cyborder;
 
 	    if (stored_x > GetSystemMetrics (SM_CXVIRTUALSCREEN))
 		rc.left = 1;
@@ -1732,12 +1783,12 @@ static int create_windows (void)
 	    else
 		rc.top = stored_y;
 
-	    rc.right = rc.left + 2 + currentmode->current_width + 2;
-	    rc.bottom = rc.top + 2 + currentmode->current_height + 2 + GetSystemMetrics (SM_CYMENU) - 1;
+	    rc.right = rc.left + gap + currentmode->current_width + gap - 2;
+	    rc.bottom = rc.top + gap + currentmode->current_height + gap + cymenu - 1 - 2;
 
 	    oldx = rc.left;
 	    oldy = rc.top;
-	    AdjustWindowRect (&rc, NORMAL_WINDOW_STYLE, FALSE);
+	    AdjustWindowRect (&rc, borderless ? WS_POPUP : style, FALSE);
 	    win_x_diff = rc.left - oldx;
 	    win_y_diff = rc.top - oldy;
 
@@ -1749,32 +1800,45 @@ static int create_windows (void)
 	    break;
 	}
 
-	hMainWnd = CreateWindowEx (WS_EX_ACCEPTFILES | exstyle | (currprefs.win32_alwaysontop ? WS_EX_TOPMOST : 0),
-				"PCsuxRox", "WinUAE",
-				NORMAL_WINDOW_STYLE  | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
-				rc.left, rc.top,
-				rc.right - rc.left + 1, rc.bottom - rc.top + 1,
-				hhWnd, NULL, 0, NULL);
-
-	if (! hMainWnd) {
-	    write_log ("main window creation failed\n");
-	    return 0;
+	if (fsw) {
+	    rc = Displays[currprefs.gfx_display].rect;
+	    flags |= WS_EX_TOPMOST;
+	    style = WS_POPUP;
+	    currentmode->current_width = rc.right - rc.left;
+	    currentmode->current_height = rc.bottom - rc.top;
 	}
 
-	createstatuswindow ();
+	flags |= (currprefs.win32_alwaysontop ? WS_EX_TOPMOST : 0);
+
+	if (!borderless) {
+	    hMainWnd = CreateWindowEx (WS_EX_ACCEPTFILES | exstyle | flags,
+		"PCsuxRox", "WinUAE",
+		style,
+		rc.left, rc.top,
+		rc.right - rc.left + 1, rc.bottom - rc.top + 1,
+		hhWnd, NULL, 0, NULL);
+
+	    if (!hMainWnd) {
+		write_log ("main window creation failed\n");
+		return 0;
+	    }
+	    if (!(currentmode->flags & DM_W_FULLSCREEN))
+		createstatuswindow ();
+	} else {
+	    x = rc.left;
+	    y = rc.top;
+	}
 
     }
-    else
-	hMainWnd = NULL;
 
-    hAmigaWnd = CreateWindowEx (fs ? WS_EX_ACCEPTFILES | WS_EX_TOPMOST : WS_EX_ACCEPTFILES | exstyle | (currprefs.win32_alwaysontop ? WS_EX_TOPMOST : 0),
+    hAmigaWnd = CreateWindowEx (dxfs ? WS_EX_ACCEPTFILES | WS_EX_TOPMOST : WS_EX_ACCEPTFILES | exstyle | (currprefs.win32_alwaysontop ? WS_EX_TOPMOST : 0),
 				"AmigaPowah", "WinUAE",
 				WS_CLIPCHILDREN | WS_CLIPSIBLINGS | (hMainWnd ? WS_VISIBLE | WS_CHILD : WS_VISIBLE | WS_POPUP),
-				hMainWnd ? 2 : CW_USEDEFAULT, hMainWnd ? 2 : CW_USEDEFAULT,
+				x, y,
 				currentmode->current_width, currentmode->current_height,
 				hMainWnd ? hMainWnd : hhWnd, NULL, 0, NULL);
 
-    if (! hAmigaWnd) {
+    if (!hAmigaWnd) {
 	write_log ("creation of amiga window failed\n");
 	close_hwnds();
 	return 0;
@@ -1785,10 +1849,8 @@ static int create_windows (void)
 	ShowWindow (hMainWnd, SW_SHOWNORMAL);
 	UpdateWindow (hMainWnd);
     }
-    if (hAmigaWnd) {
-	UpdateWindow (hAmigaWnd);
-	ShowWindow (hAmigaWnd, SW_SHOWNORMAL);
-    }
+    UpdateWindow (hAmigaWnd);
+    ShowWindow (hAmigaWnd, SW_SHOWNORMAL);
 
     return 1;
 }
@@ -1808,17 +1870,20 @@ static void setoverlay(void)
 
     GetClientRect (hMainWnd, &dr);
     // adjust the dest-rect to avoid the status-bar
-    if( hStatusWnd )
-    {
+    if (hStatusWnd) {
 	if (GetWindowRect (hStatusWnd, &statusr))
 	    dr.bottom = dr.bottom - ( statusr.bottom - statusr.top );
     }
 
-    ClientToScreen( hMainWnd, &p );
-    dr.left = p.x + 2;
-    dr.top = p.y + 2;
-    dr.right += p.x;
-    dr.bottom += p.y;
+    ClientToScreen(hMainWnd, &p);
+    if (!currprefs.win32_borderless) {
+	p.x += 2;
+	p.y += 2;
+    }
+    dr.left = p.x;
+    dr.top = p.y;
+    dr.right += p.x + 1;
+    dr.bottom += p.y + 1;
     /* overlay's coordinates are relative to monitor's top/left-corner */
     dr.left -= mi.rcMonitor.left;
     dr.top -= mi.rcMonitor.top;
@@ -1830,19 +1895,14 @@ static void setoverlay(void)
 
     sr.left = 0;
     sr.top = 0;
-    sr.right = currentmode->current_width;
-    sr.bottom = currentmode->current_height;
+    sr.right = w;
+    sr.bottom = h;
 
     // Adjust our dst-rect to match the dimensions of our src-rect
     if (dr.right - dr.left > sr.right - sr.left)
 	dr.right = dr.left + sr.right - sr.left;
     if (dr.bottom - dr.top > sr.bottom - sr.top)
 	dr.bottom = dr.top + sr.bottom - sr.top;
-
-    sr.left = 0;
-    sr.top = 0;
-    sr.right = w;
-    sr.bottom = h;
 
     maxwidth = mi.rcMonitor.right - mi.rcMonitor.left;
     if (dr.right > maxwidth) {

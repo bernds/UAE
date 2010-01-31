@@ -97,6 +97,9 @@ static int dblpf_ind1_aga[256], dblpf_ind2_aga[256];
 static uae_u8 spriteagadpfpixels[1];
 static int dblpf_ind1_aga[1], dblpf_ind2_aga[1];
 #endif
+int xredcolor_s, xredcolor_b, xredcolor_m;
+int xgreencolor_s, xgreencolor_b, xgreencolor_m;
+int xbluecolor_s, xbluecolor_b, xbluecolor_m;
 
 struct color_entry colors_for_drawing;
 
@@ -204,7 +207,7 @@ int coord_native_to_amiga_x (int x)
 {
     x += visible_left_border;
     x <<= (1 - lores_shift);
-    return x + 2*DISPLAY_LEFT_SHIFT - 2*DIW_DDF_OFFSET;
+    return x + 2 * DISPLAY_LEFT_SHIFT - 2 * DIW_DDF_OFFSET;
 }
 
 int coord_native_to_amiga_y (int y)
@@ -353,23 +356,53 @@ static void pfield_init_linetoscr (void)
     }
 }
 
+static uae_u8 merge_2pixel8(uae_u8 p1, uae_u8 p2)
+{
+    return p1;
+}
+static uae_u16 merge_2pixel16(uae_u16 p1, uae_u16 p2)
+{
+    uae_u16 v = ((((p1 >> xredcolor_s) & xredcolor_m) + ((p2 >> xredcolor_s) & xredcolor_m)) / 2) << xredcolor_s;
+    v |= ((((p1 >> xbluecolor_s) & xbluecolor_m) + ((p2 >> xbluecolor_s) & xbluecolor_m)) / 2) << xbluecolor_s;
+    v |= ((((p1 >> xgreencolor_s) & xgreencolor_m) + ((p2 >> xgreencolor_s) & xgreencolor_m)) / 2) << xgreencolor_s;
+    return v;
+}
+static uae_u32 merge_2pixel32(uae_u32 p1, uae_u32 p2)
+{
+    uae_u32 v = ((((p1 >> 16) & 0xff) + ((p2 >> 16) & 0xff)) / 2) << 16;
+    v |= ((((p1 >> 8) & 0xff) + ((p2 >> 8) & 0xff)) / 2) << 8;
+    v |= ((((p1 >> 0) & 0xff) + ((p2 >> 0) & 0xff)) / 2) << 0;
+    return v;
+}
+
 /* If C++ compilers didn't suck, we'd use templates.  */
 
 #define TYPE uae_u8
+#define PMERGE merge_2pixel8
+
 #define LNAME linetoscr_8
 #define SRC_INC 1
 #define HDOUBLE 0
 #define AGAC 0
+#define HMERGE 0
 #include "linetoscr.c"
 #define LNAME linetoscr_8_stretch1
 #define SRC_INC 1
 #define HDOUBLE 1
 #define AGAC 0
+#define HMERGE 0
 #include "linetoscr.c"
 #define LNAME linetoscr_8_shrink1
 #define SRC_INC 2
 #define HDOUBLE 0
 #define AGAC 0
+#define HMERGE 0
+#include "linetoscr.c"
+#define LNAME linetoscr_8_shrink2
+#define SRC_INC 2
+#define HDOUBLE 0
+#define AGAC 0
+#define HMERGE 1
 #include "linetoscr.c"
 
 #ifdef AGA
@@ -377,36 +410,56 @@ static void pfield_init_linetoscr (void)
 #define SRC_INC 1
 #define HDOUBLE 0
 #define AGAC 1
+#define HMERGE 0
 #include "linetoscr.c"
 #define LNAME linetoscr_8_stretch1_aga
 #define SRC_INC 1
 #define HDOUBLE 1
 #define AGAC 1
+#define HMERGE 0
 #include "linetoscr.c"
 #define LNAME linetoscr_8_shrink1_aga
 #define SRC_INC 2
 #define HDOUBLE 0
 #define AGAC 1
+#define HMERGE 0
+#include "linetoscr.c"
+#define LNAME linetoscr_8_shrink2_aga
+#define SRC_INC 2
+#define HDOUBLE 0
+#define AGAC 1
+#define HMERGE 1
 #include "linetoscr.c"
 #endif
 
 #undef TYPE
-
+#undef PMERGE
 #define TYPE uae_u16
+#define PMERGE merge_2pixel16
+
 #define LNAME linetoscr_16
 #define SRC_INC 1
 #define HDOUBLE 0
 #define AGAC 0
+#define HMERGE 0
 #include "linetoscr.c"
 #define LNAME linetoscr_16_stretch1
 #define SRC_INC 1
 #define HDOUBLE 1
 #define AGAC 0
+#define HMERGE 0
 #include "linetoscr.c"
 #define LNAME linetoscr_16_shrink1
 #define SRC_INC 2
 #define HDOUBLE 0
 #define AGAC 0
+#define HMERGE 0
+#include "linetoscr.c"
+#define LNAME linetoscr_16_shrink2
+#define SRC_INC 2
+#define HDOUBLE 0
+#define AGAC 0
+#define HMERGE 1
 #include "linetoscr.c"
 
 #ifdef AGA
@@ -414,36 +467,56 @@ static void pfield_init_linetoscr (void)
 #define SRC_INC 1
 #define HDOUBLE 0
 #define AGAC 1
+#define HMERGE 0
 #include "linetoscr.c"
 #define LNAME linetoscr_16_stretch1_aga
 #define SRC_INC 1
 #define HDOUBLE 1
 #define AGAC 1
+#define HMERGE 0
 #include "linetoscr.c"
 #define LNAME linetoscr_16_shrink1_aga
 #define SRC_INC 2
 #define HDOUBLE 0
 #define AGAC 1
+#define HMERGE 0
+#include "linetoscr.c"
+#define LNAME linetoscr_16_shrink2_aga
+#define SRC_INC 2
+#define HDOUBLE 0
+#define AGAC 1
+#define HMERGE 1
 #include "linetoscr.c"
 #endif
 
 #undef TYPE
-
+#undef PMERGE
 #define TYPE uae_u32
+#define PMERGE merge_2pixel32
+
 #define LNAME linetoscr_32
 #define SRC_INC 1
 #define HDOUBLE 0
 #define AGAC 0
+#define HMERGE 0
 #include "linetoscr.c"
 #define LNAME linetoscr_32_stretch1
 #define SRC_INC 1
 #define HDOUBLE 1
 #define AGAC 0
+#define HMERGE 0
 #include "linetoscr.c"
 #define LNAME linetoscr_32_shrink1
 #define SRC_INC 2
 #define HDOUBLE 0
 #define AGAC 0
+#define HMERGE 0
+#include "linetoscr.c"
+#define LNAME linetoscr_32_shrink2
+#define SRC_INC 2
+#define HDOUBLE 0
+#define AGAC 0
+#define HMERGE 1
 #include "linetoscr.c"
 
 #ifdef AGA
@@ -451,16 +524,25 @@ static void pfield_init_linetoscr (void)
 #define SRC_INC 1
 #define HDOUBLE 0
 #define AGAC 1
+#define HMERGE 0
 #include "linetoscr.c"
 #define LNAME linetoscr_32_stretch1_aga
 #define SRC_INC 1
 #define HDOUBLE 1
 #define AGAC 1
+#define HMERGE 0
 #include "linetoscr.c"
 #define LNAME linetoscr_32_shrink1_aga
 #define SRC_INC 2
 #define HDOUBLE 0
 #define AGAC 1
+#define HMERGE 0
+#include "linetoscr.c"
+#define LNAME linetoscr_32_shrink2_aga
+#define SRC_INC 2
+#define HDOUBLE 0
+#define AGAC 1
+#define HMERGE 1
 #include "linetoscr.c"
 #endif
 
@@ -563,10 +645,18 @@ static void pfield_do_linetoscr (int start, int stop)
 	    case 4: src_pixel = linetoscr_32_stretch1_aga (src_pixel, start, stop); break;
 	    }
 	else if (res_shift < 0)
-	    switch (gfxvidinfo.pixbytes) {
-	    case 1: src_pixel = linetoscr_8_shrink1_aga (src_pixel, start, stop); break;
-	    case 2: src_pixel = linetoscr_16_shrink1_aga (src_pixel, start, stop); break;
-	    case 4: src_pixel = linetoscr_32_shrink1_aga (src_pixel, start, stop); break;
+	    if (currprefs.gfx_lores_mode) {
+		switch (gfxvidinfo.pixbytes) {
+		case 1: src_pixel = linetoscr_8_shrink2_aga (src_pixel, start, stop); break;
+		case 2: src_pixel = linetoscr_16_shrink2_aga (src_pixel, start, stop); break;
+		case 4: src_pixel = linetoscr_32_shrink2_aga (src_pixel, start, stop); break;
+		}
+	    } else {
+		switch (gfxvidinfo.pixbytes) {
+		case 1: src_pixel = linetoscr_8_shrink1_aga (src_pixel, start, stop); break;
+		case 2: src_pixel = linetoscr_16_shrink1_aga (src_pixel, start, stop); break;
+		case 4: src_pixel = linetoscr_32_shrink1_aga (src_pixel, start, stop); break;
+		}
 	    }
     } else {
 #endif
@@ -583,10 +673,18 @@ static void pfield_do_linetoscr (int start, int stop)
 	    case 4: src_pixel = linetoscr_32_stretch1 (src_pixel, start, stop); break;
 	    }
 	else if (res_shift < 0)
-	    switch (gfxvidinfo.pixbytes) {
-	    case 1: src_pixel = linetoscr_8_shrink1 (src_pixel, start, stop); break;
-	    case 2: src_pixel = linetoscr_16_shrink1 (src_pixel, start, stop); break;
-	    case 4: src_pixel = linetoscr_32_shrink1 (src_pixel, start, stop); break;
+	    if (currprefs.gfx_lores_mode) {
+		switch (gfxvidinfo.pixbytes) {
+		case 1: src_pixel = linetoscr_8_shrink2 (src_pixel, start, stop); break;
+		case 2: src_pixel = linetoscr_16_shrink2 (src_pixel, start, stop); break;
+		case 4: src_pixel = linetoscr_32_shrink2 (src_pixel, start, stop); break;
+		}
+	    } else {
+		switch (gfxvidinfo.pixbytes) {
+		case 1: src_pixel = linetoscr_8_shrink1 (src_pixel, start, stop); break;
+		case 2: src_pixel = linetoscr_16_shrink1 (src_pixel, start, stop); break;
+		case 4: src_pixel = linetoscr_32_shrink1 (src_pixel, start, stop); break;
+		}
 	    }
 #ifdef AGA
     }
@@ -835,7 +933,7 @@ STATIC_INLINE void draw_sprites_1 (struct sprite_entry *e, int ham, int dualpf,
 	    v >>= offs * 2;
 	    v &= 15;
 #if SPRITE_DEBUG > 0
-	    v |= 1 | 4;
+	    v ^= 8;
 #endif
 
 	    if (has_attach && (stbuf[pos] & (3 << offs))) {
@@ -1288,6 +1386,69 @@ static void adjust_drawing_colors (int ctable, int need_full)
     }
 }
 
+/* We only save hardware registers during the hardware frame. Now, when
+ * drawing the frame, we expand the data into a slightly more useful
+ * form. */
+static void pfield_expand_dp_bplcon (void)
+{
+    bplres = dp_for_drawing->bplres;
+    bplplanecnt = dp_for_drawing->nr_planes;
+    bplham = dp_for_drawing->ham_seen;
+
+    if (bplres > 0)
+	can_use_lores = 0;
+    if (currprefs.chipset_mask & CSMASK_AGA) {
+	/* The KILLEHB bit exists in ECS, but is apparently meant for Genlock
+	 * stuff, and it's set by some demos (e.g. Andromeda Seven Seas) */
+	bplehb = ((dp_for_drawing->bplcon0 & 0x7010) == 0x6000 && !(dp_for_drawing->bplcon2 & 0x200));
+    } else {
+	bplehb = (dp_for_drawing->bplcon0 & 0xFC00) == 0x6000;
+    }
+    plf1pri = dp_for_drawing->bplcon2 & 7;
+    plf2pri = (dp_for_drawing->bplcon2 >> 3) & 7;
+    plf_sprite_mask = 0xFFFF0000 << (4 * plf2pri);
+    plf_sprite_mask |= (0xFFFF << (4 * plf1pri)) & 0xFFFF;
+    bpldualpf = (dp_for_drawing->bplcon0 & 0x400) == 0x400;
+    bpldualpfpri = (dp_for_drawing->bplcon2 & 0x40) == 0x40;
+#ifdef AGA
+    bpldualpf2of = (dp_for_drawing->bplcon3 >> 10) & 7;
+    sbasecol[0] = ((dp_for_drawing->bplcon4 >> 4) & 15) << 4;
+    sbasecol[1] = ((dp_for_drawing->bplcon4 >> 0) & 15) << 4;
+
+    brdsprt = (currprefs.chipset_mask & CSMASK_AGA) && (dp_for_drawing->bplcon0 & 1) && (dp_for_drawing->bplcon3 & 0x02);
+    /* FIXME: we must update top and bottom borders when BRDBLANK changes */
+    brdblank = (currprefs.chipset_mask & CSMASK_ECS_DENISE) && (dp_for_drawing->bplcon0 & 1) && (dp_for_drawing->bplcon3 & 0x20);
+    if (brdblank)
+	brdsprt = 0;
+#endif
+}
+static void pfield_expand_dp_bplcon2(int regno, int v)
+{
+    regno -= 0x1000;
+    switch (regno)
+    {
+        case 0x100:
+        dp_for_drawing->bplcon0 = v;
+        dp_for_drawing->bplres = GET_RES(v);
+        dp_for_drawing->nr_planes = GET_PLANES(v);
+	dp_for_drawing->ham_seen = !! (v & 0x800);
+        break;
+        case 0x104:
+        dp_for_drawing->bplcon2 = v;
+        break;
+#ifdef AGA
+	case 0x106:
+        dp_for_drawing->bplcon3 = v;
+        break;
+        case 0x108:
+        dp_for_drawing->bplcon4 = v;
+        break;
+#endif
+    }
+    pfield_expand_dp_bplcon();
+    res_shift = lores_shift - bplres;
+}
+
 STATIC_INLINE void do_color_changes (line_draw_func worker_border, line_draw_func worker_pfield)
 {
     int i;
@@ -1327,9 +1488,9 @@ STATIC_INLINE void do_color_changes (line_draw_func worker_border, line_draw_fun
 	    lastpos = nextpos_in_range;
 	}
 	if (i != dip_for_drawing->last_color_change) {
-	    if (regno == -1)
-		bplham = value;
-	    else {
+	    if (regno >= 0x1000) {
+		pfield_expand_dp_bplcon2(regno, value);
+	    } else {
 		color_reg_set (&colors_for_drawing, regno, value);
 		colors_for_drawing.acolors[regno] = getxcolor (value);
 	    }
@@ -1339,41 +1500,29 @@ STATIC_INLINE void do_color_changes (line_draw_func worker_border, line_draw_fun
     }
 }
 
-/* We only save hardware registers during the hardware frame. Now, when
- * drawing the frame, we expand the data into a slightly more useful
- * form. */
-static void pfield_expand_dp_bplcon (void)
+/* move color changes in horizontal cycles 0 to HBLANK_OFFSET to previous line
+ * cycles 0 to HBLANK_OFFSET must be visible in right border
+ */
+static void mungedip(int lineno)
 {
-    bplres = dp_for_drawing->bplres;
-    bplplanecnt = dp_for_drawing->nr_planes;
-    bplham = dp_for_drawing->ham_at_start;
-
-    if (bplres > 0)
-	can_use_lores = 0;
-    if (currprefs.chipset_mask & CSMASK_AGA) {
-	/* The KILLEHB bit exists in ECS, but is apparently meant for Genlock
-	 * stuff, and it's set by some demos (e.g. Andromeda Seven Seas) */
-	bplehb = ((dp_for_drawing->bplcon0 & 0x7010) == 0x6000 && !(dp_for_drawing->bplcon2 & 0x200));
-    } else {
-	bplehb = (dp_for_drawing->bplcon0 & 0xFC00) == 0x6000;
+    int i = dip_for_drawing->last_color_change;
+    struct draw_info *dip_for_drawing_next = curr_drawinfo + (lineno + 1);
+    if (dip_for_drawing_next->first_color_change == 0)
+	dip_for_drawing_next = curr_drawinfo + (lineno + 2);
+    while (i < dip_for_drawing_next->last_color_change) {
+	int regno = curr_color_changes[i].regno;
+	int hpos = curr_color_changes[i].linepos;
+	if (regno < 0)
+	    break;
+	if (hpos >= HBLANK_OFFSET)
+	    break;
+	curr_color_changes[i].linepos += maxhpos + 2;
+	dip_for_drawing->last_color_change++;
+	dip_for_drawing->nr_color_changes++;
+	dip_for_drawing_next->first_color_change++;
+	dip_for_drawing_next->nr_color_changes--;
+	i++;
     }
-    plf1pri = dp_for_drawing->bplcon2 & 7;
-    plf2pri = (dp_for_drawing->bplcon2 >> 3) & 7;
-    plf_sprite_mask = 0xFFFF0000 << (4 * plf2pri);
-    plf_sprite_mask |= (0xFFFF << (4 * plf1pri)) & 0xFFFF;
-    bpldualpf = (dp_for_drawing->bplcon0 & 0x400) == 0x400;
-    bpldualpfpri = (dp_for_drawing->bplcon2 & 0x40) == 0x40;
-#ifdef AGA
-    bpldualpf2of = (dp_for_drawing->bplcon3 >> 10) & 7;
-    sbasecol[0] = ((dp_for_drawing->bplcon4 >> 4) & 15) << 4;
-    sbasecol[1] = ((dp_for_drawing->bplcon4 >> 0) & 15) << 4;
-
-    brdsprt = (currprefs.chipset_mask & CSMASK_AGA) && (dp_for_drawing->bplcon0 & 1) && (dp_for_drawing->bplcon3 & 0x02);
-    /* FIXME: we must update top and bottom borders when BRDBLANK changes */
-    brdblank = (currprefs.chipset_mask & CSMASK_ECS_DENISE) && (dp_for_drawing->bplcon0 & 1) && (dp_for_drawing->bplcon3 & 0x20);
-    if (brdblank)
-	brdsprt = 0;
-#endif
 }
 
 enum double_how {
@@ -1391,6 +1540,7 @@ STATIC_INLINE void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 
     dp_for_drawing = line_decisions + lineno;
     dip_for_drawing = curr_drawinfo + lineno;
+    mungedip(lineno);
     switch (linestate[lineno]) {
     case LINE_REMEMBERED_AS_PREVIOUS:
 	if (!warned)
@@ -1571,7 +1721,7 @@ static void center_image (void)
 	    visible_left_border = (max_diwstop - min_diwstart - w) / 2 + min_diwstart;
 	else
 	    visible_left_border = max_diwstop - w - (max_diwstop - min_diwstart - w) / 2;
-	visible_left_border &= ~1;
+	visible_left_border &= ~((1 << lores_shift) - 1);
 
 	/* Would the old value be good enough? If so, leave it as it is if we want to
 	 * be clever. */

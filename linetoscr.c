@@ -1,5 +1,5 @@
 
-static  NOINLINE int LNAME (int spix, int dpix, int stoppos)
+static NOINLINE int LNAME (int spix, int dpix, int stoppos)
 {
     TYPE *buf = ((TYPE *)xlinebuffer);
     uae_u8 xor_val;
@@ -79,6 +79,11 @@ static  NOINLINE int LNAME (int spix, int dpix, int stoppos)
 	while (dpix < stoppos) {
 	    TYPE d = (TYPE)(AGAC ? colors_for_drawing.acolors[pixdata.apixels[spix] ^ xor_val]
 		      : colors_for_drawing.acolors[pixdata.apixels[spix]]);
+	    if (HMERGE) {
+		TYPE d2 = (TYPE)(AGAC ? colors_for_drawing.acolors[pixdata.apixels[spix + 1] ^ xor_val]
+		      : colors_for_drawing.acolors[pixdata.apixels[spix + 1]]);
+		d = PMERGE(d, d2);
+	    }
 	    spix += SRC_INC;
 	    buf[dpix++] = d;
 	    if (HDOUBLE)
@@ -92,4 +97,5 @@ static  NOINLINE int LNAME (int spix, int dpix, int stoppos)
 #undef HDOUBLE
 #undef SRC_INC
 #undef AGAC
+#undef HMERGE
 

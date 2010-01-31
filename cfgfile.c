@@ -138,7 +138,8 @@ static const char *collmode[] = { "none", "sprites", "playfields", "full", 0 };
 static const char *compmode[] = { "direct", "indirect", "indirectKS", "afterPic", 0 };
 static const char *flushmode[] = { "soft", "hard", 0 };
 static const char *kbleds[] = { "none", "POWER", "DF0", "DF1", "DF2", "DF3", "HD", "CD", 0 };
-static const char *soundfiltermode[] = { "off", "emulated", "on", 0 };
+static const char *soundfiltermode[] = { "off", "emulated", "on", "on_aga", 0 };
+static const char *loresmode[] = { "normal", "filtered", 0 };
 #ifdef GFXFILTER
 static const char *filtermode1[] = { "no_16", "bilinear_16", "no_32", "bilinear_32", 0 };
 static const char *filtermode2[] = { "0x", "1x", "2x", "3x", "4x", 0 };
@@ -305,6 +306,7 @@ static void save_options (struct zfile *f, struct uae_prefs *p, int type)
     cfgfile_write (f, "comp_flushmode=%s\n", flushmode[p->comp_hardflush]);
     cfgfile_write (f, "compforcesettings=%s\n", p->compforcesettings ? "true" : "false");
     cfgfile_write (f, "compfpu=%s\n", p->compfpu ? "true" : "false");
+    cfgfile_write (f, "fpu_strict=%s\n", p->fpu_strict ? "true" : "false");
     cfgfile_write (f, "comp_midopt=%s\n", p->comp_midopt ? "true" : "false");
     cfgfile_write (f, "comp_lowopt=%s\n", p->comp_lowopt ? "true" : "false");
     cfgfile_write (f, "avoid_cmov=%s\n", p->avoid_cmov ? "true" : "false" );
@@ -352,6 +354,7 @@ static void save_options (struct zfile *f, struct uae_prefs *p, int type)
     cfgfile_write (f, "gfx_refreshrate=%d\n", p->gfx_refreshrate);
     cfgfile_write (f, "gfx_vsync=%s\n", p->gfx_vsync ? "true" : "false");
     cfgfile_write (f, "gfx_lores=%s\n", p->gfx_lores ? "true" : "false");
+    cfgfile_write (f, "gfx_lores_mode=%s\n", loresmode[p->gfx_lores_mode]);
     cfgfile_write (f, "gfx_linemode=%s\n", linemode1[p->gfx_linedbl]);
     cfgfile_write (f, "gfx_correct_aspect=%s\n", p->gfx_correct_aspect ? "true" : "false");
     cfgfile_write (f, "gfx_fullscreen_amiga=%s\n", p->gfx_afullscreen ? "true" : "false");
@@ -389,6 +392,8 @@ static void save_options (struct zfile *f, struct uae_prefs *p, int type)
 
     cfgfile_write (f, "gfx_filter_vert_zoom=%d\n", p->gfx_filter_vert_zoom);
     cfgfile_write (f, "gfx_filter_horiz_zoom=%d\n", p->gfx_filter_horiz_zoom);
+    cfgfile_write (f, "gfx_filter_vert_zoom_mult=%d\n", p->gfx_filter_vert_zoom_mult);
+    cfgfile_write (f, "gfx_filter_horiz_zoom_mult=%d\n", p->gfx_filter_horiz_zoom_mult);
     cfgfile_write (f, "gfx_filter_vert_offset=%d\n", p->gfx_filter_vert_offset);
     cfgfile_write (f, "gfx_filter_horiz_offset=%d\n", p->gfx_filter_horiz_offset);
     cfgfile_write (f, "gfx_filter_scanlines=%d\n", p->gfx_filter_scanlines);
@@ -646,6 +651,8 @@ static int cfgfile_parse_host (struct uae_prefs *p, char *option, char *value)
 #ifdef GFXFILTER
 	|| cfgfile_intval (option, value, "gfx_filter_vert_zoom", &p->gfx_filter_vert_zoom, 1)
 	|| cfgfile_intval (option, value, "gfx_filter_horiz_zoom", &p->gfx_filter_horiz_zoom, 1)
+	|| cfgfile_intval (option, value, "gfx_filter_vert_zoom_mult", &p->gfx_filter_vert_zoom_mult, 1)
+	|| cfgfile_intval (option, value, "gfx_filter_horiz_zoom_mult", &p->gfx_filter_horiz_zoom_mult, 1)
 	|| cfgfile_intval (option, value, "gfx_filter_vert_offset", &p->gfx_filter_vert_offset, 1)
 	|| cfgfile_intval (option, value, "gfx_filter_horiz_offset", &p->gfx_filter_horiz_offset, 1)
 	|| cfgfile_intval (option, value, "gfx_filter_scanlines", &p->gfx_filter_scanlines, 1)
@@ -692,6 +699,7 @@ static int cfgfile_parse_host (struct uae_prefs *p, char *option, char *value)
 	|| cfgfile_strval (option, value, "use_gui", &p->start_gui, guimode1, 1)
 	|| cfgfile_strval (option, value, "use_gui", &p->start_gui, guimode2, 1)
 	|| cfgfile_strval (option, value, "use_gui", &p->start_gui, guimode3, 0)
+	|| cfgfile_strval (option, value, "gfx_lores_mode", &p->gfx_lores_mode, loresmode, 0)
 	|| cfgfile_strval (option, value, "gfx_linemode", &p->gfx_linedbl, linemode1, 1)
 	|| cfgfile_strval (option, value, "gfx_linemode", &p->gfx_linedbl, linemode2, 0)
 	|| cfgfile_strval (option, value, "gfx_center_horizontal", &p->gfx_xcenter, centermode1, 1)
@@ -970,6 +978,7 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	|| cfgfile_yesno (option, value, "comp_oldsegv", &p->comp_oldsegv)
 	|| cfgfile_yesno (option, value, "compforcesettings", &p->compforcesettings)
 	|| cfgfile_yesno (option, value, "compfpu", &p->compfpu)
+	|| cfgfile_yesno (option, value, "fpu_strict", &p->fpu_strict)
 	|| cfgfile_yesno (option, value, "comp_midopt", &p->comp_midopt)
 	|| cfgfile_yesno (option, value, "comp_lowopt", &p->comp_lowopt)
 	|| cfgfile_yesno (option, value, "scsi", &p->scsi))
@@ -2319,7 +2328,7 @@ void default_prefs (struct uae_prefs *p, int type)
     p->sound_freq = DEFAULT_SOUND_FREQ;
     p->sound_maxbsiz = DEFAULT_SOUND_MAXB;
     p->sound_interpol = 0;
-    p->sound_filter = 1;
+    p->sound_filter = FILTER_SOUND_OFF;
 
     p->comptrustbyte = 0;
     p->comptrustword = 0;
@@ -2330,6 +2339,7 @@ void default_prefs (struct uae_prefs *p, int type)
     p->comp_constjump = 1;
     p->comp_oldsegv = 0;
     p->compfpu = 1;
+    p->fpu_strict = 0;
     p->compforcesettings = 0;
     p->cachesize = 0;
     p->avoid_cmov = 0;
@@ -2388,6 +2398,8 @@ void default_prefs (struct uae_prefs *p, int type)
     p->filesys_custom_uaefsdb = 1;
 
     p->gfx_filter = 0;
+    p->gfx_filter_horiz_zoom_mult = 1000;
+    p->gfx_filter_vert_zoom_mult = 1000;
     p->gfx_filter_filtermode = 1;
     p->gfx_filter_scanlineratio = (1 << 4) | 1;
 
@@ -2458,7 +2470,7 @@ static void buildin_default_prefs_68020 (struct uae_prefs *p)
 
 static void buildin_default_host_prefs (struct uae_prefs *p)
 {
-    p->sound_filter = 1;
+    p->sound_filter = FILTER_SOUND_OFF;
     p->sound_stereo = 1;
     p->sound_stereo_separation = 7;
     p->sound_mixed_stereo = 0;
@@ -2561,7 +2573,7 @@ static int bip_a1000 (struct uae_prefs *p, int config, int compa, int romcheck)
     roms[2] = -1;
     p->chipset_mask = 0;
     p->bogomem_size = 0;
-    p->sound_filter = 2;
+    p->sound_filter = FILTER_SOUND_ON_A500;
     if (config == 1)
 	p->chipmem_size = 0x40000;
     set_68000_compa (p, compa);

@@ -8,7 +8,7 @@
   */
 
 #define UAEMAJOR 1
-#define UAEMINOR 1
+#define UAEMINOR 2
 #define UAESUBREV 0
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
@@ -99,6 +99,7 @@ struct uae_prefs {
     int compfpu;
     int comp_midopt;
     int comp_lowopt;
+    int fpu_strict;
 
     int comp_hardflush;
     int comp_constjump;
@@ -120,6 +121,7 @@ struct uae_prefs {
     int gfx_refreshrate;
     int gfx_vsync;
     int gfx_lores;
+    int gfx_lores_mode;
     int gfx_linedbl;
     int gfx_correct_aspect;
     int gfx_afullscreen;
@@ -133,6 +135,7 @@ struct uae_prefs {
     int gfx_filter_scanlineratio;
     int gfx_filter_scanlinelevel;
     int gfx_filter_horiz_zoom, gfx_filter_vert_zoom;
+    int gfx_filter_horiz_zoom_mult, gfx_filter_vert_zoom_mult;
     int gfx_filter_horiz_offset, gfx_filter_vert_offset;
     int gfx_filter_filtermode;
     int color_mode;
@@ -220,6 +223,7 @@ struct uae_prefs {
     int win32_iconified_nosound;
 
     int win32_no_overlay; /* If this is set, we won't try and use any RGB overlays */
+    int win32_borderless;
     int win32_ctrl_F11_is_quit;
     int win32_automount_drives;
     int win32_automount_netdrives;
@@ -299,6 +303,7 @@ extern int check_prefs_changed_gfx (void);
 extern struct uae_prefs currprefs, changed_prefs;
 
 extern void machdep_init (void);
+extern void machdep_free (void);
 
 /* AIX doesn't think it is Unix. Neither do I. */
 #if defined(_ALL_SOURCE) || defined(_AIX)

@@ -769,7 +769,8 @@ static int diskfile_iswriteprotect (const char *fname, int *needwritefile, drive
     *needwritefile = 0;
     *drvtype = DRV_35_DD;
     zf1 = DISK_validate_filename (fname, 1, &wrprot1, NULL);
-    if (!zf1) return 1;
+    if (!zf1)
+	return 1;
     if (zfile_iscompressed (zf1)) {
 	wrprot1 = 1;
 	*needwritefile = 1;
@@ -1069,8 +1070,6 @@ static void drive_motor (drive * drv, int off)
 #endif
 	if (disk_debug_logging > 1)
 	    write_log (" ->motor on");
-	if (drv->indexhackmode > 0)
-	    drv->indexhack = 1;
     }
     if (!drv->motoroff && off) {
 	drv->drive_id_scnt = 0; /* Reset id shift reg counter */
@@ -1666,8 +1665,11 @@ int disk_setwriteprotect (int num, const char *name, int protect)
 
     oldprotect = diskfile_iswriteprotect (name, &needwritefile, &drvtype);
     zf1 = DISK_validate_filename (name, 1, &wrprot1, NULL);
-    if (!zf1) return 0;
-    if (zfile_iscompressed (zf1)) wrprot1 = 1;
+    if (!zf1)
+	return 0;
+    if (zfile_iscompressed (zf1))
+	wrprot1 = 1;
+    zfile_fclose (zf1);
     zf2 = getwritefile (name, &wrprot2);
     name2 = DISK_get_saveimagepath (name);
 
@@ -2034,7 +2036,7 @@ static int disk_sync_cycle;
 
 void DISK_handler (void)
 {
-    int i, flag = diskevent_flag;
+    int flag = diskevent_flag;
     eventtab[ev_disk].active = 0;
     DISK_update (disk_sync_cycle);
     if (flag & (DISK_REVOLUTION << 0))
@@ -2051,6 +2053,8 @@ void DISK_handler (void)
     if (flag & DISK_INDEXSYNC) {
 	cia_diskindex ();
 #if 0
+	{   
+	int i;
 	for (i = 0; i < MAX_FLOPPY_DRIVES; i++) {
 	    drive *drv = &floppy[i];
 	    if (drv->dskready_time) {
@@ -2061,6 +2065,7 @@ void DISK_handler (void)
 			 write_log ("%d: %d\n", i, drv->mfmpos);
 		}
 	    }
+	}
 	}
 #endif
     }
@@ -2141,10 +2146,12 @@ static void disk_doupdate_predict (drive * drv, int startcycle)
 	    updatetrackspeed (drv, mfmpos);
 	if (dskdmaen != 3) {
 	    tword <<= 1;
-	    if (unformatted (drv))
-		tword |= (rand() & 0x1000) ? 1 : 0;
-	    else
-		tword |= getonebit (drv->bigmfmbuf, mfmpos);
+	    if (!drive_empty (drv)) {
+		if (unformatted (drv))
+		    tword |= (rand() & 0x1000) ? 1 : 0;
+		else
+		    tword |= getonebit (drv->bigmfmbuf, mfmpos);
+	    }
 	    if ((tword & 0xffff) == dsksync)
 		diskevent_flag |= DISK_WORDSYNC;
 	}
@@ -2212,10 +2219,12 @@ static void disk_doupdate_read (drive * drv, int floppybits)
 	if (drv->tracktiming[0])
 	    updatetrackspeed (drv, drv->mfmpos);
 	word <<= 1;
-	if (unformatted (drv))
-	    word |= (rand() & 0x1000) ? 1 : 0;
-	else
-	    word |= getonebit (drv->bigmfmbuf, drv->mfmpos);
+        if (!drive_empty (drv)) {
+	    if (unformatted (drv))
+		word |= (rand() & 0x1000) ? 1 : 0;
+	    else
+		word |= getonebit (drv->bigmfmbuf, drv->mfmpos);
+	}
 	//write_log ("%08.8X bo=%d so=%d mfmpos=%d dma=%d\n", (word & 0xffffff), bitoffset, syncoffset, drv->mfmpos,dma_enable);
 	drv->mfmpos++;
 	drv->mfmpos %= drv->tracklen;
@@ -2439,7 +2448,7 @@ void DSKLEN (uae_u16 v, int hpos)
     }
     if (!(v & 0x8000)) {
 	if (dskdmaen) {
-	/* Megalomania and Knightmare does this */
+	    /* Megalomania and Knightmare does this */
 	    if (disk_debug_logging > 0 && dskdmaen == 2)
 		write_log ("warning: Disk read DMA aborted, %d words left PC=%x\n", dsklength, m68k_getpc());
 	    if (dskdmaen == 3)

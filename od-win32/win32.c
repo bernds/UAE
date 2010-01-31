@@ -63,6 +63,7 @@
 #include "scsidev.h"
 #include "disk.h"
 #include "catweasel.h"
+#include "lcd.h"
 
 extern FILE *debugfile;
 extern int console_logging;
@@ -93,7 +94,7 @@ int toggle_sound;
 int paraport_mask;
 
 HKEY hWinUAEKey = NULL;
-COLORREF g_dwBackgroundColor  = RGB(10, 0, 10);
+COLORREF g_dwBackgroundColor;
 
 static int emulation_paused;
 static int activatemouse = 1;
@@ -918,7 +919,7 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 			num -= 6;
 			if (nm->code == NM_RCLICK) {
 			    disk_eject (num);
-			} else {
+			} else if (changed_prefs.dfxtype[num] >= 0) {
 			    DiskSelection (hWnd, IDC_DF0 + num, 0, &changed_prefs, 0);
 			    disk_insert (num, changed_prefs.df[num]);
 			}
@@ -1170,8 +1171,10 @@ int WIN32_RegisterClasses( void )
 {
     WNDCLASS wc;
     HDC hDC;
-    
-    hDC = GetDC( NULL );
+    COLORREF black = RGB(0, 0, 0);
+
+    g_dwBackgroundColor = RGB(10, 0, 10);
+    hDC = GetDC (NULL);
     if (GetDeviceCaps (hDC, NUMCOLORS) != -1) 
 	g_dwBackgroundColor = RGB (255, 0, 255);
     ReleaseDC (NULL, hDC);
@@ -1196,7 +1199,7 @@ int WIN32_RegisterClasses( void )
     wc.hInstance = 0;
     wc.hIcon = LoadIcon (GetModuleHandle (NULL), MAKEINTRESOURCE (IDI_APPICON));
     wc.hCursor = LoadCursor (NULL, IDC_ARROW);
-    wc.hbrBackground = CreateSolidBrush (g_dwBackgroundColor);
+    wc.hbrBackground = CreateSolidBrush (black);
     wc.lpszMenuName = 0;
     wc.lpszClassName = "PCsuxRox";
     if (!RegisterClass (&wc))
@@ -1261,233 +1264,108 @@ int WIN32_InitHtmlHelp( void )
     return result;
 }
 
+struct winuae_lang langs[] =
+{
+    { LANG_AFRIKAANS, "Afrikaans" },
+    { LANG_ARABIC, "Arabic" },
+    { LANG_ARMENIAN, "Armenian" },
+    { LANG_ASSAMESE, "Assamese" },
+    { LANG_AZERI, "Azeri" },
+    { LANG_BASQUE, "Basque" },
+    { LANG_BELARUSIAN, "Belarusian" },
+    { LANG_BENGALI, "Bengali" },
+    { LANG_BULGARIAN, "Bulgarian" },
+    { LANG_CATALAN, "Catalan" },
+    { LANG_CHINESE, "Chinese" },
+    { LANG_CROATIAN, "Croatian" },
+    { LANG_CZECH, "Czech" },
+    { LANG_DANISH, "Danish" },
+    { LANG_DUTCH, "Dutch" },
+    { LANG_ESTONIAN, "Estoanian" },
+    { LANG_FAEROESE, "Faeroese" },
+    { LANG_FARSI, "Farsi" },
+    { LANG_FINNISH, "Finnish" },
+    { LANG_FRENCH, "French" },
+    { LANG_GEORGIAN, "Georgian" },
+    { LANG_GERMAN, "German" },
+    { LANG_GREEK, "Greek" },
+    { LANG_GUJARATI, "Gujarati" },
+    { LANG_HEBREW, "Hebrew" },
+    { LANG_HINDI, "Hindi" },
+    { LANG_HUNGARIAN, "Hungarian" },
+    { LANG_ICELANDIC, "Icelandic" },
+    { LANG_INDONESIAN, "Indonesian" },
+    { LANG_ITALIAN, "Italian" },
+    { LANG_JAPANESE, "Japanese" },
+    { LANG_KANNADA, "Kannada" },
+    { LANG_KASHMIRI, "Kashmiri" },
+    { LANG_KAZAK, "Kazak" },
+    { LANG_KONKANI, "Konkani" },
+    { LANG_KOREAN, "Korean" },
+    { LANG_LATVIAN, "Latvian" },
+    { LANG_LITHUANIAN, "Lithuanian" },
+    { LANG_MACEDONIAN, "Macedonian" },
+    { LANG_MALAY, "Malay" },
+    { LANG_MALAYALAM, "Malayalam" },
+    { LANG_MANIPURI, "Manipuri" },
+    { LANG_MARATHI, "Marathi" },
+    { LANG_NEPALI, "Nepali" },
+    { LANG_NORWEGIAN, "Norwegian" },
+    { LANG_ORIYA, "Oriya" },
+    { LANG_POLISH, "Polish" },
+    { LANG_PORTUGUESE, "Portuguese" },
+    { LANG_PUNJABI, "Punjabi" },
+    { LANG_ROMANIAN, "Romanian" },
+    { LANG_RUSSIAN, "Russian" },
+    { LANG_SANSKRIT, "Sanskrit" },
+    { LANG_SINDHI, "Sindhi" },
+    { LANG_SLOVAK, "Slovak" },
+    { LANG_SLOVENIAN, "Slovenian" },
+    { LANG_SPANISH, "Spanish" },
+    { LANG_SWAHILI, "Swahili" },
+    { LANG_SWEDISH, "Swedish" },
+    { LANG_TAMIL, "Tamil" },
+    { LANG_TATAR, "Tatar" },
+    { LANG_TELUGU, "Telugu" },
+    { LANG_THAI, "Thai" },
+    { LANG_TURKISH, "Turkish" },
+    { LANG_UKRAINIAN, "Ukrainian" },
+    { LANG_UZBEK, "Uzbek" },
+    { LANG_VIETNAMESE, "Vietnamese" },
+    { LANG_ENGLISH, "default" },
+    { 0x400, "guidll.dll"},
+    { 0, NULL }
+};
+static char *getlanguagename(DWORD id)
+{
+    int i;
+    for (i = 0; langs[i].name; i++) {
+	if (langs[i].id == id)
+	    return langs[i].name;
+    }
+    return NULL;
+}
+
 typedef LANGID (CALLBACK* PGETUSERDEFAULTUILANGUAGE)(void);
 static PGETUSERDEFAULTUILANGUAGE pGetUserDefaultUILanguage;
 
-static HMODULE LoadGUI( void )
+HMODULE language_load(WORD language)
 {
     HMODULE result = NULL;
-    LPCTSTR dllname = NULL;
     char dllbuf[MAX_DPATH];
-    LANGID language;
+    char *dllname;
 
-    /* new user-specific Windows ME/2K/XP method to get UI language */
-    pGetUserDefaultUILanguage = (PGETUSERDEFAULTUILANGUAGE)GetProcAddress(
-	GetModuleHandle("kernel32.dll"), "GetUserDefaultUILanguage");
-    language = GetUserDefaultLangID();
-    if (pGetUserDefaultUILanguage)
-	language = pGetUserDefaultUILanguage();
-    language &= 0x3ff; // low 9-bits form the primary-language ID
-
-    switch( language )
-    {
-    case LANG_AFRIKAANS:
-	dllname = "Afrikaans";
-	break;
-    case LANG_ARABIC:
-	dllname = "Arabic";
-	break;
-    case LANG_ARMENIAN:
-	dllname = "Armenian";
-	break;
-    case LANG_ASSAMESE:
-	dllname = "Assamese";
-	break;
-    case LANG_AZERI:
-	dllname = "Azeri";
-	break;
-    case LANG_BASQUE:
-	dllname = "Basque";
-	break;
-    case LANG_BELARUSIAN:
-	dllname = "Belarusian";
-	break;
-    case LANG_BENGALI:
-	dllname = "Bengali";
-	break;
-    case LANG_BULGARIAN:
-	dllname = "Bulgarian";
-	break;
-    case LANG_CATALAN:
-	dllname = "Catalan";
-	break;
-    case LANG_CHINESE:
-	dllname = "Chinese";
-	break;
-    case LANG_CROATIAN:
-	dllname = "CroatianSerbian";
-	break;
-    case LANG_CZECH:
-	dllname = "Czech";
-	break;
-    case LANG_DANISH:
-	dllname = "Danish";
-	break;
-    case LANG_DUTCH:
-	dllname = "Dutch";
-	break;
-    case LANG_ESTONIAN:
-	dllname = "Estonian";
-	break;
-    case LANG_FAEROESE:
-	dllname = "Faeroese";
-	break;
-    case LANG_FARSI:
-	dllname = "Farsi";
-	break;
-    case LANG_FINNISH:
-	dllname = "Finnish";
-	break;
-    case LANG_FRENCH:
-	dllname = "French";
-	break;
-    case LANG_GEORGIAN:
-	dllname = "Georgian";
-	break;
-    case LANG_GERMAN:
-	dllname = "German";
-	break;
-    case LANG_GREEK:
-	dllname = "Greek";
-	break;
-    case LANG_GUJARATI:
-	dllname = "Gujarati";
-	break;
-    case LANG_HEBREW:
-	dllname = "Hebrew";
-	break;
-    case LANG_HINDI:
-	dllname = "Hindi";
-	break;
-    case LANG_HUNGARIAN:
-	dllname = "Hungarian";
-	break;
-    case LANG_ICELANDIC:
-	dllname = "Icelandic";
-	break;
-    case LANG_INDONESIAN:
-	dllname = "Indonesian";
-	break;
-    case LANG_ITALIAN:
-	dllname = "Italian";
-	break;
-    case LANG_JAPANESE:
-	dllname = "Japanese";
-	break;
-    case LANG_KANNADA:
-	dllname = "Kannada";
-	break;
-    case LANG_KASHMIRI:
-	dllname = "Kashmiri";
-	break;
-    case LANG_KAZAK:
-	dllname = "Kazak";
-	break;
-    case LANG_KONKANI:
-	dllname = "Konkani";
-	break;
-    case LANG_KOREAN:
-	dllname = "Korean";
-	break;
-    case LANG_LATVIAN:
-	dllname = "Latvian";
-	break;
-    case LANG_LITHUANIAN:
-	dllname = "Lithuanian";
-	break;
-    case LANG_MACEDONIAN:
-	dllname = "Macedonian";
-	break;
-    case LANG_MALAY:
-	dllname = "Malay";
-	break;
-    case LANG_MALAYALAM:
-	dllname = "Malayalam";
-	break;
-    case LANG_MANIPURI:
-	dllname = "Manipuri";
-	break;
-    case LANG_MARATHI:
-	dllname = "Marathi";
-	break;
-    case LANG_NEPALI:
-	dllname = "Nepali";
-	break;
-    case LANG_NORWEGIAN:
-	dllname = "Norwegian";
-	break;
-    case LANG_ORIYA:
-	dllname = "Oriya";
-	break;
-    case LANG_POLISH:
-	dllname = "Polish";
-	break;
-    case LANG_PORTUGUESE:
-	dllname = "Portuguese";
-	break;
-    case LANG_PUNJABI:
-	dllname = "Punjabi";
-	break;
-    case LANG_ROMANIAN:
-	dllname = "Romanian";
-	break;
-    case LANG_RUSSIAN:
-	dllname = "Russian";
-	break;
-    case LANG_SANSKRIT:
-	dllname = "Sanskrit";
-	break;
-    case LANG_SINDHI:
-	dllname = "Sindhi";
-	break;
-    case LANG_SLOVAK:
-	dllname = "Slovak";
-	break;
-    case LANG_SLOVENIAN:
-	dllname = "Slovenian";
-	break;
-    case LANG_SPANISH:
-	dllname = "Spanish";
-	break;
-    case LANG_SWAHILI:
-	dllname = "Swahili";
-	break;
-    case LANG_SWEDISH:
-	dllname = "Swedish";
-	break;
-    case LANG_TAMIL:
-	dllname = "Tamil";
-	break;
-    case LANG_TATAR:
-	dllname = "Tatar";
-	break;
-    case LANG_TELUGU:
-	dllname = "Telugu";
-	break;
-    case LANG_THAI:
-	dllname = "Thai";
-	break;
-    case LANG_TURKISH:
-	dllname = "Turkish";
-	break;
-    case LANG_UKRAINIAN:
-	dllname = "Ukrainian";
-	break;
-    case LANG_URDU:
-	dllname = "Urdu";
-	break;
-    case LANG_UZBEK:
-	dllname = "Uzbek";
-	break;
-    case LANG_VIETNAMESE:
-	dllname = "Vietnamese";
-	break;
-    case 0x400:
-	dllname = "guidll.dll";
-	break;
+    if (language <= 0) {
+        /* new user-specific Windows ME/2K/XP method to get UI language */
+	pGetUserDefaultUILanguage = (PGETUSERDEFAULTUILANGUAGE)GetProcAddress(
+	    GetModuleHandle("kernel32.dll"), "GetUserDefaultUILanguage");
+	language = GetUserDefaultLangID();
+	if (pGetUserDefaultUILanguage)
+	    language = pGetUserDefaultUILanguage();
+	language &= 0x3ff; // low 9-bits form the primary-language ID
     }
-
-    if( dllname )
+    dllname = getlanguagename (language);
+    if (dllname)
     {
 	DWORD  dwVersionHandle, dwFileVersionInfoSize;
 	LPVOID lpFileVersionData = NULL;
@@ -1499,7 +1377,7 @@ static HMODULE LoadGUI( void )
 	else
 	    sprintf (dllbuf, "%sWinUAE_%s.dll", start_path_exe, dllname);
 	result = WIN32_LoadLibrary (dllbuf);
-	if( result) 
+	if (result) 
 	{
 	    dwFileVersionInfoSize = GetFileVersionInfoSize(dllbuf, &dwVersionHandle);
 	    if (dwFileVersionInfoSize)
@@ -1513,7 +1391,7 @@ static HMODULE LoadGUI( void )
 			fail = 0;
 			if (VerQueryValue(lpFileVersionData, TEXT("\\"), (void **)&vsFileInfo, &uLen))
 			{
-			    if( vsFileInfo &&
+			    if (vsFileInfo &&
 				HIWORD(vsFileInfo->dwProductVersionMS) == UAEMAJOR
 				&& LOWORD(vsFileInfo->dwProductVersionMS) == UAEMINOR
 				&& HIWORD(vsFileInfo->dwProductVersionLS) == UAESUBREV)
@@ -1532,15 +1410,16 @@ static HMODULE LoadGUI( void )
 		}
 	    }
 	}
-	if (fail)
-	    write_log ("Translation DLL '%s' failed to load, error %d\n", dllbuf, GetLastError ());
-	if( result && !success )
-	{
-	    FreeLibrary( result );
+	if (fail) {
+	    DWORD err = GetLastError();
+	    if (err != 126)
+		write_log ("Translation DLL '%s' failed to load, error %d\n", dllbuf, GetLastError ());
+	}
+	if (result && !success) {
+	    FreeLibrary(result);
 	    result = NULL;
 	}
     }
-
     return result;
 }
 
@@ -1563,8 +1442,20 @@ static void pritransla (void)
     }
 }
 
-/* try to load COMDLG32 and DDRAW, initialize csDraw */
-int WIN32_InitLibraries( void )
+static void WIN32_InitLang(void)
+{
+    WORD langid = -1;
+    if (hWinUAEKey) {
+	DWORD regkeytype;
+	DWORD regkeysize = sizeof(langid);
+        RegQueryValueEx (hWinUAEKey, "Language", 0, &regkeytype, (LPBYTE)&langid, &regkeysize);
+    }
+    hUIDLL = language_load(langid);
+    pritransla ();
+}
+
+ /* try to load COMDLG32 and DDRAW, initialize csDraw */
+static int WIN32_InitLibraries( void )
 {
     int result = 1;
     /* Determine our processor speed and capabilities */
@@ -1576,9 +1467,6 @@ int WIN32_InitLibraries( void )
     
     hRichEdit = LoadLibrary ("RICHED32.DLL");
     
-    hUIDLL = LoadGUI();
-    pritransla ();
-
     return result;
 }
 
@@ -1600,11 +1488,27 @@ void toggle_mousegrab (void)
 {
 }
 
-void logging_init( void )
+void logging_open(int bootlog, int append)
+{
+    char debugfilename[MAX_DPATH];
+
+    debugfilename[0] = 0;
+#ifndef	SINGLEFILE
+    if (currprefs.win32_logfile)
+	sprintf (debugfilename, "%swinuaelog.txt", start_path_data);
+    if (bootlog)
+	sprintf (debugfilename, "%swinuaebootlog.txt", start_path_data);
+    if (debugfilename[0]) {
+	if (!debugfile)
+	    debugfile = fopen (debugfilename, append ? "a" : "wt");
+    }
+#endif
+}
+
+void logging_init(void)
 {
     static int started;
     static int first;
-    char debugfilename[MAX_DPATH];
 
     if (first > 1) {
 	write_log ("** RESTART **\n");
@@ -1615,17 +1519,7 @@ void logging_init( void )
 	    fclose (debugfile);
 	debugfile = 0;
     }
-#ifndef	SINGLEFILE
-    if (currprefs.win32_logfile) {
-	sprintf (debugfilename, "%swinuaelog.txt", start_path_data);
-	if (!debugfile)
-	    debugfile = fopen (debugfilename, "wt");
-    } else if (!first) {
-	sprintf (debugfilename, "%swinuaebootlog.txt", start_path_data);
-	if (!debugfile)
-	    debugfile = fopen (debugfilename, "wt");
-    }
-#endif
+    logging_open(first ? 0 : 1, 0);
     first++;
     write_log ("%s (%s %d.%d %s%s%s)", VersionStr, os_winnt ? "NT" : "W9X/ME",
 	osVersion.dwMajorVersion, osVersion.dwMinorVersion, osVersion.szCSDVersion,
@@ -1637,7 +1531,7 @@ void logging_init( void )
 	SystemInfo.wProcessorLevel, SystemInfo.wProcessorRevision,
 	SystemInfo.dwNumberOfProcessors);
     write_log ("\n(c) 1995-2001 Bernd Schmidt   - Core UAE concept and implementation."
-	       "\n(c) 1998-2005 Toni Wilen      - Win32 port, core code updates."
+	       "\n(c) 1998-2006 Toni Wilen      - Win32 port, core code updates."
 	       "\n(c) 1996-2001 Brian King      - Win32 port, Picasso96 RTG, and GUI."
 	       "\n(c) 1996-1999 Mathias Ortmann - Win32 port and bsdsocket support."
 	       "\n(c) 2000-2001 Bernd Meyer     - JIT engine."
@@ -1683,7 +1577,7 @@ uae_u8 *target_load_keyfile (struct uae_prefs *p, char *path, int *sizep)
 }
 
 
-extern char *get_nero_aspi_path(void);
+extern char *get_aspi_path(int);
 
 void target_default_options (struct uae_prefs *p, int type)
 {
@@ -1706,7 +1600,8 @@ void target_default_options (struct uae_prefs *p, int type)
 	p->win32_automount_drives = 0;
 	p->win32_automount_netdrives = 0;
 	p->win32_kbledmode = 0;
-	p->win32_uaescsimode = get_nero_aspi_path() ? 2 : ((os_winnt && os_winnt_admin) ? 0 : 1);
+	p->win32_uaescsimode = get_aspi_path(1) ? 2 : ((os_winnt && os_winnt_admin) ? 0 : 1);
+	p->win32_borderless = 0;
     }
     if (type == 1 || type == 0) {
 	p->win32_midioutdev = -2;
@@ -1714,7 +1609,7 @@ void target_default_options (struct uae_prefs *p, int type)
     }
 }
 
-static const char *scsimode[] = { "SPTI", "AdaptecASPI", "NeroASPI", 0 };
+static const char *scsimode[] = { "SPTI", "SPTI+SCSISCAN", "AdaptecASPI", "NeroASPI", 0 };
 
 void target_save_options (struct zfile *f, struct uae_prefs *p)
 {
@@ -1737,6 +1632,7 @@ void target_save_options (struct zfile *f, struct uae_prefs *p)
     cfgfile_target_write (f, "midiout_device=%d\n", p->win32_midioutdev );
     cfgfile_target_write (f, "midiin_device=%d\n", p->win32_midiindev );
     cfgfile_target_write (f, "no_overlay=%s\n", p->win32_no_overlay ? "true" : "false" );
+    cfgfile_target_write (f, "borderless=%s\n", p->win32_borderless ? "true" : "false" );
     cfgfile_target_write (f, "uaescsimode=%s\n", scsimode[p->win32_uaescsimode]);
     cfgfile_target_write (f, "soundcard=%d\n", p->win32_soundcard );
     cfgfile_target_write (f, "cpu_idle=%d\n", p->cpu_idle);
@@ -1775,6 +1671,7 @@ int target_parse_option (struct uae_prefs *p, char *option, char *value)
 	    || cfgfile_yesno (option, value, "logfile", &p->win32_logfile)
 	    || cfgfile_yesno (option, value, "networking", &p->socket_emu)
 	    || cfgfile_yesno (option, value, "no_overlay", &p->win32_no_overlay)
+	    || cfgfile_yesno (option, value, "borderless", &p->win32_borderless)
 	    || cfgfile_yesno (option, value, "inactive_pause", &p->win32_inactive_pause)
 	    || cfgfile_yesno (option, value, "inactive_nosound", &p->win32_inactive_nosound)
 	    || cfgfile_yesno (option, value, "iconified_pause", &p->win32_iconified_pause)
@@ -1797,7 +1694,7 @@ int target_parse_option (struct uae_prefs *p, char *option, char *value)
     if (cfgfile_yesno (option, value, "aspi", &v)) {
 	p->win32_uaescsimode = 0;
 	if (v)
-	    p->win32_uaescsimode = get_nero_aspi_path() ? 2 : 1;
+	    p->win32_uaescsimode = get_aspi_path(1) ? 2 : 1;
 	return 1;
     }
 
@@ -1862,6 +1759,14 @@ static void strip_slashes (char *p)
     while (strlen (p) > 0 && (p[strlen (p) - 1] == '\\' || p[strlen (p) - 1] == '/'))
 	p[strlen (p) - 1] = 0;
 }
+static void fixtrailing(char *p)
+{
+    if (strlen(p) == 0)
+	return;
+    if (p[strlen(p) - 1] == '/' || p[strlen(p) - 1] == '\\')
+	return;
+    strcat(p, "\\");
+}
 
 void fetch_path (char *name, char *out, int size)
 {
@@ -1891,7 +1796,7 @@ void fetch_path (char *name, char *out, int size)
 	if (v == INVALID_FILE_ATTRIBUTES || !(v & FILE_ATTRIBUTE_DIRECTORY))
 	    strcpy (out, start_path_data);
     }
-    strncat (out, "\\", size);
+    fixtrailing (out);
 }
 void set_path (char *name, char *path)
 {
@@ -1925,7 +1830,7 @@ void set_path (char *name, char *path)
 	    strcat (tmp, "..\\shared\\rom");
 	}
     }
-    strcat (tmp, "\\");
+    fixtrailing (tmp);
 
     if (hWinUAEKey)
 	RegSetValueEx (hWinUAEKey, name, 0, REG_SZ, (CONST BYTE *)tmp, strlen (tmp) + 1);
@@ -2014,11 +1919,11 @@ static int checkversion (char *vs)
     return 1;
 }
 
-static void WIN32_HandleRegistryStuff( void )
+static void WIN32_HandleRegistryStuff(void)
 {
     RGBFTYPE colortype = RGBFB_NONE;
     DWORD dwType = REG_DWORD;
-    DWORD dwDisplayInfoSize = sizeof( colortype );
+    DWORD dwDisplayInfoSize = sizeof(colortype);
     DWORD size;
     DWORD disposition;
     char path[MAX_DPATH] = "";
@@ -2057,7 +1962,7 @@ static void WIN32_HandleRegistryStuff( void )
 			      KEY_WRITE | KEY_READ, NULL, &hWinUAEKeyLocal, &disposition) == ERROR_SUCCESS))
 	{
 	    /* Set our (default) sub-key to BE the "WinUAE" command for editing a configuration */
-	    sprintf(path, "%sWinUAE.exe -f \"%%1\" -s use_gui=yes", start_path_data);
+	    sprintf(path, "%sWinUAE.exe -f \"%%1\" -s use_gui=yes", start_path_exe);
 	    RegSetValueEx(hWinUAEKeyLocal, "", 0, REG_SZ, (CONST BYTE *)path, strlen(path) + 1);
 	    RegCloseKey(hWinUAEKeyLocal);
 	}
@@ -2066,7 +1971,7 @@ static void WIN32_HandleRegistryStuff( void )
 			      KEY_WRITE | KEY_READ, NULL, &hWinUAEKeyLocal, &disposition) == ERROR_SUCCESS))
 	{
 	    /* Set our (default) sub-key to BE the "WinUAE" command for launching a configuration */
-	    sprintf(path, "%sWinUAE.exe -f \"%%1\"", start_path_data);
+	    sprintf(path, "%sWinUAE.exe -f \"%%1\"", start_path_exe);
 	    RegSetValueEx(hWinUAEKeyLocal, "", 0, REG_SZ, (CONST BYTE *)path, strlen( path ) + 1);
 	    RegCloseKey(hWinUAEKeyLocal);
 	}
@@ -2101,6 +2006,8 @@ static void WIN32_HandleRegistryStuff( void )
 	if (RegQueryValueEx (hWinUAEKey, "Version", 0, &dwType, (LPBYTE)&version, &size) == ERROR_SUCCESS) {
 	    if (checkversion (version))
 		RegSetValueEx (hWinUAEKey, "Version", 0, REG_SZ, (CONST BYTE *)VersionStr, strlen (VersionStr) + 1);
+	} else {
+	    RegSetValueEx (hWinUAEKey, "Version", 0, REG_SZ, (CONST BYTE *)VersionStr, strlen (VersionStr) + 1);
 	}
 	size = sizeof (version);
 	dwType = REG_SZ;
@@ -2163,13 +2070,13 @@ static int dxdetect (void)
 #if !defined(WIN64)
     /* believe or not but this is MS supported way of detecting DX8+ */
     HMODULE h = LoadLibrary("D3D8.DLL");
-    char szWrongDXVersion[ MAX_DPATH ];
+    char szWrongDXVersion[MAX_DPATH];
     if (h) {
 	FreeLibrary (h);
 	return 1;
     }
-    WIN32GUI_LoadUIString( IDS_WRONGDXVERSION, szWrongDXVersion, MAX_DPATH );
-    pre_gui_message( szWrongDXVersion );
+    WIN32GUI_LoadUIString(IDS_WRONGDXVERSION, szWrongDXVersion, MAX_DPATH);
+    pre_gui_message(szWrongDXVersion);
     return 0;
 #else
     return 1;
@@ -2189,49 +2096,49 @@ static int isadminpriv (void)
     int isadmin = 0;
    
     // Open a handle to the access token for the calling process.
-    if (!OpenProcessToken( GetCurrentProcess(), TOKEN_QUERY, &hToken )) {
-	write_log ( "OpenProcessToken Error %u\n", GetLastError() );
+    if (!OpenProcessToken( GetCurrentProcess(), TOKEN_QUERY, &hToken)) {
+	write_log ("OpenProcessToken Error %u\n", GetLastError());
 	return FALSE;
     }
 
     // Call GetTokenInformation to get the buffer size.
     if(!GetTokenInformation(hToken, TokenGroups, NULL, dwSize, &dwSize)) {
 	dwResult = GetLastError();
-	if( dwResult != ERROR_INSUFFICIENT_BUFFER ) {
-	    write_log( "GetTokenInformation Error %u\n", dwResult );
+	if(dwResult != ERROR_INSUFFICIENT_BUFFER) {
+	    write_log("GetTokenInformation Error %u\n", dwResult);
 	    return FALSE;
 	}
     }
 
     // Allocate the buffer.
-    pGroupInfo = (PTOKEN_GROUPS) GlobalAlloc( GPTR, dwSize );
+    pGroupInfo = (PTOKEN_GROUPS)GlobalAlloc(GPTR, dwSize);
 
     // Call GetTokenInformation again to get the group information.
-    if(! GetTokenInformation(hToken, TokenGroups, pGroupInfo, dwSize, &dwSize ) ) {
-	write_log ( "GetTokenInformation Error %u\n", GetLastError() );
+    if(!GetTokenInformation(hToken, TokenGroups, pGroupInfo, dwSize, &dwSize)) {
+	write_log ("GetTokenInformation Error %u\n", GetLastError());
 	return FALSE;
     }
 
     // Create a SID for the BUILTIN\Administrators group.
-    if(! AllocateAndInitializeSid( &SIDAuth, 2,
+    if(!AllocateAndInitializeSid(&SIDAuth, 2,
 		 SECURITY_BUILTIN_DOMAIN_RID,
 		 DOMAIN_ALIAS_RID_ADMINS,
 		 0, 0, 0, 0, 0, 0,
-		 &pSID) ) {
+		 &pSID)) {
 	write_log( "AllocateAndInitializeSid Error %u\n", GetLastError() );
 	return FALSE;
    }
 
     // Loop through the group SIDs looking for the administrator SID.
-    for(i=0; i<pGroupInfo->GroupCount; i++) {
-	if ( EqualSid(pSID, pGroupInfo->Groups[i].Sid) )
+    for(i = 0; i < pGroupInfo->GroupCount; i++) {
+	if (EqualSid(pSID, pGroupInfo->Groups[i].Sid))
 	    isadmin = 1;
     }
     
     if (pSID)
 	FreeSid(pSID);
-    if ( pGroupInfo )
-	GlobalFree( pGroupInfo );
+    if (pGroupInfo)
+	GlobalFree(pGroupInfo);
     return isadmin;
 }
 
@@ -2278,7 +2185,7 @@ static void getstartpaths(int start_data)
     SHGETFOLDERPATH pSHGetFolderPath;
     SHGETSPECIALFOLDERPATH pSHGetSpecialFolderPath;
     char *posn, *p;
-    char tmp[MAX_DPATH], prevpath[MAX_DPATH];
+    char tmp[MAX_DPATH], tmp2[MAX_DPATH], prevpath[MAX_DPATH];
     DWORD v;
     HKEY key;
     DWORD dispo;
@@ -2300,7 +2207,7 @@ static void getstartpaths(int start_data)
     pSHGetSpecialFolderPath = (SHGETSPECIALFOLDERPATH)GetProcAddress(
 	GetModuleHandle("shell32.dll"), "SHGetSpecialFolderPathA");
     strcpy (start_path_exe, _pgmptr );
-    if((posn = strrchr (start_path_exe, '\\')))
+   if((posn = strrchr (start_path_exe, '\\')))
 	posn[1] = 0;
 
     strcpy (tmp, start_path_exe);
@@ -2341,40 +2248,48 @@ static void getstartpaths(int start_data)
     }
 
     p = getenv("AMIGAFOREVERDATA");
-    if (start_data == 0 && p ) {
+    if (p) {
 	strcpy (tmp, p);
+	fixtrailing(tmp);
 	strcpy (start_path_af, p);
+	fixtrailing(start_path_af);
 	v = GetFileAttributes(tmp);
 	if (v != INVALID_FILE_ATTRIBUTES && (v & FILE_ATTRIBUTE_DIRECTORY)) {
-	    if (path_done == 0) {
-		strcpy (start_path_data, start_path_af);
-		strcat (start_path_data, "WinUAE");
-		path_done = 1;
-	    }
-	    start_data = 1;
-	    af_path_2005 = 1;
-	}
-    }
-
-    if (start_data == 0) {
-	BOOL ok = FALSE;
-	if (pSHGetFolderPath)
-	    ok = SUCCEEDED(pSHGetFolderPath(NULL, CSIDL_COMMON_DOCUMENTS, NULL, 0, start_path_data));
-	else if (pSHGetSpecialFolderPath)
-	    ok = pSHGetSpecialFolderPath(NULL, start_path_data, CSIDL_COMMON_DOCUMENTS, 0);
-	if (ok) {
-	    strcpy (start_path_af, start_path_data);
-	    strcat (start_path_af, "\\Amiga Files\\");
-	    strcpy (tmp, start_path_af);
-	    strcat(tmp, "WinUAE");
-	    v = GetFileAttributes(tmp);
-	    if (v != INVALID_FILE_ATTRIBUTES && (v & FILE_ATTRIBUTE_DIRECTORY)) {
+	    if (start_data == 0) {
 		if (path_done == 0) {
 		    strcpy (start_path_data, start_path_af);
 		    strcat (start_path_data, "WinUAE");
 		    path_done = 1;
 		}
 		start_data = 1;
+	    }
+	    af_path_2005 = 1;
+	}
+    }
+
+    {
+	BOOL ok = FALSE;
+	if (pSHGetFolderPath)
+	    ok = SUCCEEDED(pSHGetFolderPath(NULL, CSIDL_COMMON_DOCUMENTS, NULL, 0, tmp));
+	else if (pSHGetSpecialFolderPath)
+	    ok = pSHGetSpecialFolderPath(NULL, tmp, CSIDL_COMMON_DOCUMENTS, 0);
+	if (ok) {
+	    fixtrailing(tmp);
+	    strcpy (tmp2, tmp);
+	    strcat (tmp2, "Amiga Files\\");
+	    strcpy (tmp, tmp2);
+	    strcat(tmp, "WinUAE");
+	    v = GetFileAttributes(tmp);
+	    if (v != INVALID_FILE_ATTRIBUTES && (v & FILE_ATTRIBUTE_DIRECTORY)) {
+		if (start_data == 0) {
+		    if (path_done == 0) {
+			strcpy (start_path_af, tmp2);
+			strcpy (start_path_data, start_path_af);
+			strcat (start_path_data, "WinUAE");
+			path_done = 1;
+		    }
+		    start_data = 1;
+		}
 		af_path_2005 = 1;
 	    }
 	}
@@ -2384,17 +2299,12 @@ static void getstartpaths(int start_data)
     if (v == INVALID_FILE_ATTRIBUTES || !(v & FILE_ATTRIBUTE_DIRECTORY) || start_data <= 0)
 	strcpy(start_path_data, start_path_exe);
 
-    if (strlen(start_path_data) > 0) {
-	p = start_path_data + strlen(start_path_data) - 1;
-	if (p[0] != '\\' && p[0] != '/')
-	    strcat(start_path_data, "\\");
-    }
+    fixtrailing(start_path_data);
 }
 
 
 extern void test (void);
-
-
+extern int screenshotmode;
 
 static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
 		    int nCmdShow)
@@ -2448,6 +2358,7 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
 	if (!strcmp (arg, "-scsilog")) log_scsi = 1;
 	if (!strcmp (arg, "-nomultidisplay")) multi_display = 0;
 	if (!strcmp (arg, "-legacypaths")) start_data = -1;
+	if (!strcmp (arg, "-screenshotbmp")) screenshotmode = 0;
 	if (!strcmp (arg, "-datapath") && i + 1 < argc) {
 	    strcpy(start_path_data, argv[i + 1]);
 	    start_data = 1;
@@ -2494,6 +2405,7 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
 		default_freq = 60;
 	}
 	WIN32_HandleRegistryStuff();
+	WIN32_InitLang();
 	WIN32_InitHtmlHelp();
 	DirectDraw_Release();
 	betamessage ();

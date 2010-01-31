@@ -108,7 +108,7 @@ typedef struct {
   double val;
   uae_u8 status;
   uae_u8 realreg;
-  uae_u8 realind;  
+  uae_u8 realind;
   uae_u8 needflush;
 } freg_status;
 
@@ -207,6 +207,7 @@ extern bigstate live;
 extern int touchcnt;
 
 
+#define IMMS uae_s32
 #define IMM uae_u32
 #define R1  uae_u32
 #define R2  uae_u32
@@ -226,11 +227,11 @@ extern int touchcnt;
 #define FRW  uae_u32
 
 #define MIDFUNC(nargs,func,args) void func args
-#define MENDFUNC(nargs,func,args) 
+#define MENDFUNC(nargs,func,args)
 #define COMPCALL(func) func
 
 #define LOWFUNC(flags,mem,nargs,func,args) static __inline__ void func args
-#define LENDFUNC(flags,mem,nargs,func,args) 
+#define LENDFUNC(flags,mem,nargs,func,args)
 
 #if USE_OPTIMIZER
 #define REGALLOC_O 2
@@ -307,22 +308,15 @@ DECLARE(zero_extend_8_rr(W4 d, R1 s));
 DECLARE(imul_64_32(RW4 d, RW4 s));
 DECLARE(mul_64_32(RW4 d, RW4 s));
 DECLARE(imul_32_32(RW4 d, R4 s));
-DECLARE(mul_32_32(RW4 d, R4 s));
 DECLARE(mov_b_rr(W1 d, R1 s));
 DECLARE(mov_w_rr(W2 d, R2 s));
-DECLARE(mov_l_rrm_indexed(W4 d,R4 baser, R4 index, IMM factor));
-DECLARE(mov_w_rrm_indexed(W2 d, R4 baser, R4 index, IMM factor));
-DECLARE(mov_b_rrm_indexed(W1 d, R4 baser, R4 index, IMM factor));
-DECLARE(mov_l_mrr_indexed(R4 baser, R4 index, IMM factor, R4 s));
-DECLARE(mov_w_mrr_indexed(R4 baser, R4 index, IMM factor, R2 s));
-DECLARE(mov_b_mrr_indexed(R4 baser, R4 index, IMM factor, R1 s));
-DECLARE(mov_l_bmrr_indexed(IMM base, R4 baser, R4 index, IMM factor, R4 s));
-DECLARE(mov_w_bmrr_indexed(IMM base, R4 baser, R4 index, IMM factor, R2 s));
-DECLARE(mov_b_bmrr_indexed(IMM base, R4 baser, R4 index, IMM factor, R1 s));
-DECLARE(mov_l_brrm_indexed(W4 d, IMM base, R4 baser, R4 index, IMM factor));
-DECLARE(mov_w_brrm_indexed(W2 d, IMM base, R4 baser, R4 index, IMM factor));
-DECLARE(mov_b_brrm_indexed(W1 d, IMM base, R4 baser, R4 index, IMM factor));
-DECLARE(mov_l_rm_indexed(W4 d, IMM base, R4 index, IMM factor));
+DECLARE(mov_l_rrm_indexed(W4 d, R4 baser, R4 index));
+DECLARE(mov_w_rrm_indexed(W2 d, R4 baser, R4 index));
+DECLARE(mov_b_rrm_indexed(W1 d, R4 baser, R4 index));
+DECLARE(mov_l_mrr_indexed(R4 baser, R4 index, R4 s));
+DECLARE(mov_w_mrr_indexed(R4 baser, R4 index, R2 s));
+DECLARE(mov_b_mrr_indexed(R4 baser, R4 index, R1 s));
+DECLARE(mov_l_rm_indexed(W4 d, IMM base, R4 index));
 DECLARE(mov_l_rR(W4 d, R4 s, IMM offset));
 DECLARE(mov_w_rR(W2 d, R4 s, IMM offset));
 DECLARE(mov_b_rR(W1 d, R4 s, IMM offset));
@@ -337,7 +331,6 @@ DECLARE(mov_w_Rr(R4 d, R2 s, IMM offset));
 DECLARE(mov_b_Rr(R4 d, R1 s, IMM offset));
 DECLARE(lea_l_brr(W4 d, R4 s, IMM offset));
 DECLARE(lea_l_brr_indexed(W4 d, R4 s, R4 index, IMM factor, IMM offset));
-DECLARE(lea_l_rr_indexed(W4 d, R4 s, R4 index, IMM factor));
 DECLARE(mov_l_bRr(R4 d, R4 s, IMM offset));
 DECLARE(mov_w_bRr(R4 d, R2 s, IMM offset));
 DECLARE(mov_b_bRr(R4 d, R1 s, IMM offset));
@@ -414,11 +407,17 @@ DECLARE(fmov_loge_2(FW r));
 DECLARE(fmov_1(FW r));
 DECLARE(fmov_0(FW r));
 DECLARE(fmov_rm(FW r, MEMR m));
+DECLARE(fmov_mr(MEMW m, FR r));
 DECLARE(fmovi_rm(FW r, MEMR m));
 DECLARE(fmovi_mr(MEMW m, FR r));
 DECLARE(fmovs_rm(FW r, MEMR m));
 DECLARE(fmovs_mr(MEMW m, FR r));
-DECLARE(fmov_mr(MEMW m, FR r));
+DECLARE(fcuts_r(FRW r));
+DECLARE(fcut_r(FRW r));
+DECLARE(fmovl_ri(FW r, IMMS i));
+DECLARE(fmovs_ri(FW r, IMM i));
+DECLARE(fmov_ri(FW r, IMM i1, IMM i2));
+DECLARE(fmov_ext_ri(FW r, IMM i1, IMM i2, IMM i3));
 DECLARE(fmov_ext_mr(MEMW m, FR r));
 DECLARE(fmov_ext_rm(FW r, MEMR m));
 DECLARE(fmov_rr(FW d, FR s));
@@ -505,7 +504,7 @@ typedef struct blockinfo_t {
     cpuop_func* handler_to_use;
     /* The direct handler does not check for the correct address */
 
-    cpuop_func* handler; 
+    cpuop_func* handler;
     cpuop_func* direct_handler;
 
     cpuop_func* direct_pen;
@@ -513,22 +512,22 @@ typedef struct blockinfo_t {
 
     uae_u8* nexthandler;
     uae_u8* pc_p;
-    
-    uae_u32 c1;     
+
+    uae_u32 c1;
     uae_u32 c2;
     uae_u32 len;
 
     struct blockinfo_t* next_same_cl;
-    struct blockinfo_t** prev_same_cl_p;  
+    struct blockinfo_t** prev_same_cl_p;
     struct blockinfo_t* next;
-    struct blockinfo_t** prev_p; 
+    struct blockinfo_t** prev_p;
 
-    uae_u32 min_pcp; 
-    uae_u8 optlevel;  
-    uae_u8 needed_flags;  
-    uae_u8 status;  
+    uae_u32 min_pcp;
+    uae_u8 optlevel;
+    uae_u8 needed_flags;
+    uae_u8 status;
     uae_u8 havestate;
-    
+
     dependency  dep[2];  /* Holds things we depend on */
     dependency* deplist; /* List of things that depend on this */
     smallstate  env;

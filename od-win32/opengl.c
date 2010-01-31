@@ -459,9 +459,36 @@ void OGL_resize (int width, int height)
 
 static void OGL_dorender (int newtex)
 {
-    float x1, y1, x2, y2;
     uae_u8 *data = gfxvidinfo.bufmem;
-    int fx, fy, xm, ym;
+    float x1, y1, x2, y2;
+    double fx, fy, xm, ym;
+
+#if 0
+    double mx, my, fx, fy, fx2, fy2, xm, ym;
+    float tx, ty;
+
+    xm = currprefs.gfx_lores ? 2 : 1;
+    ym = currprefs.gfx_linedbl ? 2 : 1;
+
+    fx = (required_texture_size * w_width / t_width) / 2.0;
+    fy = (required_texture_size * w_height / t_height) / 2.0;
+
+    tx = fx / ((currprefs.gfx_filter_horiz_zoom_mult + currprefs.gfx_filter_horiz_zoom / 4.0) / 1000.0);
+    ty = fy / ((currprefs.gfx_filter_vert_zoom_mult + currprefs.gfx_filter_vert_zoom / 4.0) / 1000.0);
+
+    mx = (currprefs.gfx_filter_horiz_offset / 1000.0) * fx;
+    my = (currprefs.gfx_filter_vert_offset / 1000.0) * fy;
+
+    x1 = -tx;
+    y1 = -ty;
+    x2 = tx;
+    y2 = ty;
+    x1 += fx + mx;
+    y1 += fy + my;
+    x2 += tx + mx;
+    y2 += ty + my;
+
+#else
 
     xm = currprefs.gfx_lores ? 2 : 1;
     ym = currprefs.gfx_linedbl ? 1 : 2;
@@ -476,19 +503,21 @@ static void OGL_dorender (int newtex)
     fx = (t_width * xm - w_width) / 2;
     fy = (t_height * ym - w_height) / 2;
 
+    x1 = (float)(w_width * currprefs.gfx_filter_horiz_offset / 1000.0);
+    y1 = (float)(w_height * currprefs.gfx_filter_vert_offset / 1000.0);
+    x2 = x1 + (float)((required_texture_size * w_width / t_width) * (currprefs.gfx_filter_horiz_zoom + 1000) / 1000.0);
+    y2 = y1 + (float)((required_texture_size * w_height / t_height) * (currprefs.gfx_filter_vert_zoom + 1000)/ 1000.0);
+    x1 -= fx; y1 -= fy;
+    x2 += 2 * fx; y2 += 2 * fy;
+
+#endif
+
 #ifdef FSAA
     glEnable (GL_MULTISAMPLE_ARB);
 #endif
     glClear (GL_COLOR_BUFFER_BIT);
     glMatrixMode (GL_MODELVIEW);
     glLoadIdentity ();
-
-    x1 = (float)(w_width * currprefs.gfx_filter_horiz_offset / 100.0);
-    y1 = (float)(w_height * currprefs.gfx_filter_vert_offset / 100.0);
-    x2 = x1 + (float)((required_texture_size * w_width / t_width) * (currprefs.gfx_filter_horiz_zoom + 100) / 100.0);
-    y2 = y1 + (float)((required_texture_size * w_height / t_height) * (currprefs.gfx_filter_vert_zoom + 100)/ 100.0);
-    x1 -= fx; y1 -= fy;
-    x2 += 2 * fx; y2 += 2 * fy;
 
     glBindTexture (GL_TEXTURE_2D, tex[0]);
     if (newtex)
