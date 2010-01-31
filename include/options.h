@@ -9,7 +9,7 @@
 
 #define UAEMAJOR 1
 #define UAEMINOR 5
-#define UAESUBREV 0
+#define UAESUBREV 1
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -115,7 +115,6 @@ struct uae_prefs {
     int sound_stereo;
     int sound_stereo_separation;
     int sound_mixed_stereo_delay;
-    int sound_bits;
     int sound_freq;
     int sound_maxbsiz;
     int sound_latency;
@@ -173,6 +172,7 @@ struct uae_prefs {
     int color_mode;
 
     int gfx_filter;
+    char gfx_filtershader[MAX_DPATH];
     int gfx_filter_scanlines;
     int gfx_filter_scanlineratio;
     int gfx_filter_scanlinelevel;
@@ -182,7 +182,7 @@ struct uae_prefs {
     int gfx_filter_filtermode;
     int gfx_filter_noise, gfx_filter_blur;
     int gfx_filter_saturation, gfx_filter_luminance, gfx_filter_contrast, gfx_filter_gamma;
-    int gfx_filter_aspect;
+    int gfx_filter_keep_aspect, gfx_filter_aspect;
 
     int immediate_blits;
     unsigned int chipset_mask;
@@ -314,6 +314,8 @@ struct uae_prefs {
 
     int win32_rtgmatchdepth;
     int win32_rtgscaleifsmall;
+    int win32_rtgallowscaling;
+    int win32_rtgscaleaspectratio;
     int win32_borderless;
     int win32_ctrl_F11_is_quit;
     int win32_automount_removable;

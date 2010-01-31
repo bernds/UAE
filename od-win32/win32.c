@@ -58,6 +58,7 @@
 #include "sys/mman.h"
 #include "avioutput.h"
 #include "ahidsound.h"
+#include "ahidsound_new.h"
 #include "zfile.h"
 #include "savestate.h"
 #include "ioport.h"
@@ -70,13 +71,14 @@
 #include "ar.h"
 #include "akiko.h"
 #include "cdtv.h"
+#include "direct3d.h"
 #ifdef RETROPLATFORM
 #include "rp.h"
 #endif
 
-extern int harddrive_dangerous, do_rdbdump, aspi_allow_all, no_rawinput;
+extern int harddrive_dangerous, do_rdbdump, aspi_allow_all, no_rawinput, rawkeyboard;
 int log_scsi, log_net, uaelib_debug;
-int pissoff_value = 10000;
+int pissoff_value = 25000;
 
 extern FILE *debugfile;
 extern int console_logging;
@@ -268,7 +270,7 @@ static void figure_processor_speed_rdtsc (void)
     oldpri = GetThreadPriority (th);
     SetThreadPriority (th, THREAD_PRIORITY_HIGHEST);
     dummythread_die = -1;
-    _beginthread (&dummythread, 0, 0);
+    CloseHandle((HANDLE)_beginthread (&dummythread, 0, 0));
     sleep_millis (500);
     clockrate = win32_read_processor_time ();
     sleep_millis (500);
@@ -312,7 +314,7 @@ static void figure_processor_speed (void)
 	figure_processor_speed_qpf ();
 }
 
-static void setcursor(int oldx, int oldy)
+static void setcursor (int oldx, int oldy)
 {
     int x = (amigawin_rect.right - amigawin_rect.left) / 2;
     int y = (amigawin_rect.bottom - amigawin_rect.top) / 2;
@@ -322,16 +324,35 @@ static void setcursor(int oldx, int oldy)
 	return;
     mouseposx = 0;
     mouseposy = 0;
+//    if (oldx < amigawin_rect.left || oldy < amigawin_rect.top || oldx > amigawin_rect.right || oldy > amigawin_rect.bottom) {
+    if (oldx < 0 || oldy < 0 || oldx > amigawin_rect.right - amigawin_rect.left || oldy > amigawin_rect.bottom - amigawin_rect.top) {
+	write_log ("Mouse out of range: %dx%d (%dx%d %dx%d)\n", oldx, oldy,
+	    amigawin_rect.left, amigawin_rect.top, amigawin_rect.right, amigawin_rect.bottom);
+	return;
+    }
     SetCursorPos (amigawin_rect.left + x, amigawin_rect.top + y);
 }
 
 static int pausemouseactive;
-void resumepaused (void)
+void resumesoundpaused (void)
 {
     resume_sound ();
 #ifdef AHI
     ahi_open_sound ();
+    ahi2_pause_sound (0);
 #endif
+}
+void setsoundpaused (void)
+{
+    pause_sound ();
+#ifdef AHI
+    ahi_close_sound ();
+    ahi2_pause_sound (1);
+#endif
+}
+void resumepaused (void)
+{
+    resumesoundpaused ();
 #ifdef CD32
     akiko_exitgui ();
 #endif
@@ -346,14 +367,10 @@ void resumepaused (void)
     rp_pause (pause_emulation);
 #endif
 }
-
 void setpaused (void)
 {
     pause_emulation = TRUE;
-    pause_sound ();
-#ifdef AHI
-    ahi_close_sound ();
-#endif
+    setsoundpaused ();
 #ifdef CD32
     akiko_entergui ();
 #endif
@@ -424,7 +441,7 @@ void setpriority (struct threadpriorities *pri)
     int err;
     err = SetPriorityClass (GetCurrentProcess (), pri->classvalue);
     if (!err)
-	write_log ("priority set failed, %08.8X\n", GetLastError ());
+	write_log ("priority set failed, %08X\n", GetLastError ());
 }
 
 static void releasecapture (void)
@@ -449,7 +466,7 @@ void setmouseactive (int active)
     mouseactive = active;
 
     mouseposx = mouseposy = 0;
-    write_log ("setmouseactive(%d)\n", active);
+    //write_log ("setmouseactive(%d)\n", active);
     releasecapture ();
     recapture = 0;
 #if 0
@@ -535,7 +552,10 @@ static void winuae_active (HWND hWnd, int minimized)
         clear_inhibit_frame (IHF_WINDOWHIDDEN);
     }
     if (sound_closed) {
-	resumepaused ();
+	if (sound_closed < 0)
+	    resumesoundpaused ();
+	else
+	    resumepaused ();
 	sound_closed = 0;
     }
     if (WIN32GFX_IsPicassoScreen ())
@@ -543,7 +563,7 @@ static void winuae_active (HWND hWnd, int minimized)
     getcapslock ();
     inputdevice_acquire (FALSE);
     wait_keyrelease ();
-    inputdevice_acquire (FALSE);
+    inputdevice_acquire (TRUE);
     if (isfullscreen() > 0 && !gui_active)
 	setmouseactive (1);
     manual_palette_refresh_needed = 1;
@@ -569,22 +589,23 @@ static void winuae_inactive (HWND hWnd, int minimized)
     if (!quit_program) {
 	if (minimized) {
 	    pri = &priorities[currprefs.win32_iconified_priority];
-	    if (currprefs.win32_iconified_nosound) {
-		setpaused ();
+	    if (currprefs.win32_iconified_pause) {
+	        setpaused ();
 		sound_closed = 1;
+	    } else if (currprefs.win32_iconified_nosound) {
+		setsoundpaused ();
+		sound_closed = -1;
 	    }
 	    if (!avioutput_video) {
 		set_inhibit_frame (IHF_WINDOWHIDDEN);
 	    }
-	    if (currprefs.win32_iconified_pause) {
-		if (!sound_closed)
-		    setpaused ();
-		sound_closed = 1;
-	    }
 	} else {
-	    if (currprefs.win32_inactive_nosound) {
+	    if (currprefs.win32_inactive_pause) {
 		setpaused ();
 		sound_closed = 1;
+	    } else if (currprefs.win32_inactive_nosound) {
+		setsoundpaused ();
+		sound_closed = -1;
 	    }
 	}
     }
@@ -817,17 +838,24 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 	uae_quit ();
     return 0;
 
+    case WM_SIZE:
+	if (hStatusWnd)
+	    SendMessage (hStatusWnd, WM_SIZE, wParam, lParam);
+    break;
+
     case WM_WINDOWPOSCHANGED:
     {
-	WINDOWPOS *wp = (WINDOWPOS *)lParam;
-	if (!IsIconic (hWnd)) {
-	    GetWindowRect (hWnd, &amigawin_rect);
-	    if (isfullscreen() == 0) {
-		changed_prefs.gfx_size_win.x = amigawin_rect.left;
-		changed_prefs.gfx_size_win.y = amigawin_rect.top;
+	WINDOWPOS *wp = (WINDOWPOS*)lParam;
+	if (isfullscreen () <= 0) {
+	    if (!IsIconic (hWnd) && hWnd == hAmigaWnd) {
+		GetWindowRect (hWnd, &amigawin_rect);
+		if (isfullscreen () == 0) {
+		    changed_prefs.gfx_size_win.x = amigawin_rect.left;
+		    changed_prefs.gfx_size_win.y = amigawin_rect.top;
+		}
 	    }
+	    notice_screen_contents_lost ();
 	}
-	notice_screen_contents_lost ();
     }
     break;
 
@@ -879,29 +907,12 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 	return lr;
     }
     case WM_MOVE:
-	WIN32GFX_WindowMove();
+	WIN32GFX_WindowMove ();
     return FALSE;
 
     case WM_ENABLE:
 	rp_set_enabledisable (wParam ? 1 : 0);
     return FALSE;
-
-#if 0
-    case WM_GETMINMAXINFO:
-    {
-	LPMINMAXINFO lpmmi;
-	RECT rect;
-	rect.left = 0;
-	rect.top = 0;
-	lpmmi = (LPMINMAXINFO)lParam;
-	rect.right = 320;
-	rect.bottom = 256;
-	//AdjustWindowRectEx(&rect,WSTYLE,0,0);
-	lpmmi->ptMinTrackSize.x = rect.right-rect.left;
-	lpmmi->ptMinTrackSize.y = rect.bottom-rect.top;
-    }
-    return 0;
-#endif
 
 #ifdef FILESYS
     case WM_USER + 2:
@@ -941,12 +952,12 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 
 	if (wParam == DBT_DEVNODES_CHANGED && lParam == 0) {
 	    if (waitfornext)
-		inputdevice_devicechange (&currprefs);
+		inputdevice_devicechange (&changed_prefs);
 	    waitfornext = 0;
 	} else if (pBHdr && pBHdr->dbch_devicetype == DBT_DEVTYP_DEVICEINTERFACE) {
 	    DEV_BROADCAST_DEVICEINTERFACE *dbd = (DEV_BROADCAST_DEVICEINTERFACE*)lParam;
 	    if (wParam == DBT_DEVICEREMOVECOMPLETE)
-		inputdevice_devicechange (&currprefs);
+		inputdevice_devicechange (&changed_prefs);
 	    else if (wParam == DBT_DEVICEARRIVAL)
 		waitfornext = 1;
 	} else if (pBHdr && pBHdr->dbch_devicetype == DBT_DEVTYP_VOLUME) {
@@ -962,7 +973,7 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 
 			    drive = 'A' + i;
 			    sprintf (drvname, "%c:\\", drive);
-			    type = GetDriveType(drvname);
+			    type = GetDriveType (drvname);
 			    if (wParam == DBT_DEVICEARRIVAL)
 				inserted = 1;
 			    else
@@ -1035,6 +1046,7 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 
     case WM_INPUT:
 	handle_rawinput (lParam);
+	DefWindowProc (hWnd, message, wParam, lParam);
     return 0;
 
     case WM_NOTIFY:
@@ -1078,6 +1090,17 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
     return DefWindowProc (hWnd, message, wParam, lParam);
 }
 
+static int canstretch (void)
+{
+    if (isfullscreen () != 0)
+	return 0;
+    if (!WIN32GFX_IsPicassoScreen ())
+	return 1;
+    if (currprefs.win32_rtgallowscaling)
+	return 1;
+    return 0;
+}
+
 static LRESULT CALLBACK MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     PAINTSTRUCT ps;
@@ -1117,7 +1140,6 @@ static LRESULT CALLBACK MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
      case WM_MOVE:
      case WM_SIZING:
      case WM_SIZE:
-     case WM_GETMINMAXINFO:
      case WM_DESTROY:
      case WM_CLOSE:
      case WM_HELP:
@@ -1131,30 +1153,45 @@ static LRESULT CALLBACK MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 	return AmigaWindowProc (hWnd, message, wParam, lParam);
 
     case WM_DISPLAYCHANGE:
-	if (isfullscreen() <= 0 && !currprefs.gfx_filter && (wParam + 7) / 8 != DirectDraw_GetBytesPerPixel())
+	if (isfullscreen() <= 0 && !currprefs.gfx_filter && (wParam + 7) / 8 != DirectDraw_GetBytesPerPixel ())
 	    WIN32GFX_DisplayChangeRequested();
 	break;
 
-     case WM_ENTERSIZEMOVE:
+    case WM_GETMINMAXINFO:
+    {
+	LPMINMAXINFO lpmmi;
+	lpmmi = (LPMINMAXINFO)lParam;
+	lpmmi->ptMinTrackSize.x = 160 + window_extra_width;
+	lpmmi->ptMinTrackSize.y = 128 + window_extra_height;
+	lpmmi->ptMaxTrackSize.x = 3072 + window_extra_width;
+	lpmmi->ptMaxTrackSize.y = 2048 + window_extra_height;
+    }
+    return 0;
+
+    case WM_ENTERSIZEMOVE:
 	in_sizemove++;
 	break;
 
-     case WM_EXITSIZEMOVE:
+    case WM_EXITSIZEMOVE:
 	in_sizemove--;
 	/* fall through */
 
-     case WM_WINDOWPOSCHANGED:
-	WIN32GFX_WindowMove();
-	if (hAmigaWnd && GetWindowRect(hAmigaWnd, &amigawin_rect)) {
+    case WM_WINDOWPOSCHANGED:
+	WIN32GFX_WindowMove ();
+	if (hAmigaWnd && isfullscreen () <= 0 && GetWindowRect (hAmigaWnd, &amigawin_rect)) {
+	    DWORD aw = amigawin_rect.right - amigawin_rect.left;
+	    DWORD ah = amigawin_rect.bottom - amigawin_rect.top;
 	    if (in_sizemove > 0)
 		break;
 
 	    if (isfullscreen() == 0 && hAmigaWnd) {
 		static int store_xy;
 		RECT rc2;
-		if (GetWindowRect(hMainWnd, &rc2)) {
+		if (GetWindowRect (hMainWnd, &rc2)) {
 		    DWORD left = rc2.left - win_x_diff;
 		    DWORD top = rc2.top - win_y_diff;
+		    DWORD width = rc2.right - rc2.left;
+		    DWORD height = rc2.bottom - rc2.top;
 		    if (amigawin_rect.left & 3) {
 			MoveWindow (hMainWnd, rc2.left + 4 - amigawin_rect.left % 4, rc2.top,
 				    rc2.right - rc2.left, rc2.bottom - rc2.top, TRUE);
@@ -1166,22 +1203,34 @@ static LRESULT CALLBACK MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 		    }
 		    changed_prefs.gfx_size_win.x = left;
 		    changed_prefs.gfx_size_win.y = top;
+		    if (canstretch ()) {
+			changed_prefs.gfx_size_win.width = width - window_extra_width;
+			changed_prefs.gfx_size_win.height = height - window_extra_height;
+		    }
 		}
 		return 0;
 	    }
 	}
 	break;
 
-     case WM_PAINT:
+    case WM_WINDOWPOSCHANGING:
+    {
+	WINDOWPOS *wp = (WINDOWPOS*)lParam;
+	if (!canstretch ())
+	    wp->flags |= SWP_NOSIZE;
+	break;
+    }
+
+    case WM_PAINT:
 	hDC = BeginPaint (hWnd, &ps);
 	GetClientRect (hWnd, &rc);
 	DrawEdge (hDC, &rc, EDGE_SUNKEN, BF_RECT);
 	EndPaint (hWnd, &ps);
 	return 0;
 
-     case WM_NCLBUTTONDBLCLK:
+    case WM_NCLBUTTONDBLCLK:
 	if (wParam == HTCAPTION) {
-	    WIN32GFX_ToggleFullScreen();
+	    WIN32GFX_ToggleFullScreen ();
 	    return 0;
 	}
 	break;
@@ -1408,7 +1457,7 @@ int WIN32_CleanupLibraries (void)
 
     if (hUIDLL)
 	FreeLibrary (hUIDLL);
-
+    CoUninitialize ();
     return 1;
 }
 
@@ -1557,7 +1606,7 @@ HMODULE language_load (WORD language)
 			    if (vsFileInfo &&
 				HIWORD(vsFileInfo->dwProductVersionMS) == UAEMAJOR
 				&& LOWORD(vsFileInfo->dwProductVersionMS) == UAEMINOR
-				&& (HIWORD(vsFileInfo->dwProductVersionLS) == UAESUBREV || HIWORD(vsFileInfo->dwProductVersionLS) == UAESUBREV - 1)) {
+				&& (HIWORD(vsFileInfo->dwProductVersionLS) == UAESUBREV)) {
 				success = TRUE;
 				write_log ("Translation DLL '%s' loaded and enabled\n", dllbuf);
 			    } else {
@@ -1620,6 +1669,7 @@ static int WIN32_InitLibraries( void )
 {
     LARGE_INTEGER freq;
 
+    CoInitialize (0);
     /* Determine our processor speed and capabilities */
     if (!init_mmtimer ()) {
 	pre_gui_message ("MMTimer initialization failed, exiting..");
@@ -1755,6 +1805,20 @@ uae_u8 *save_log (int bootlog, int *len)
     return dst;
 }
 
+static void strip_slashes (char *p)
+{
+    while (strlen (p) > 0 && (p[strlen (p) - 1] == '\\' || p[strlen (p) - 1] == '/'))
+	p[strlen (p) - 1] = 0;
+}
+static void fixtrailing(char *p)
+{
+    if (strlen(p) == 0)
+	return;
+    if (p[strlen(p) - 1] == '/' || p[strlen(p) - 1] == '\\')
+	return;
+    strcat(p, "\\");
+}
+
 typedef DWORD (STDAPICALLTYPE *PFN_GetKey)(LPVOID lpvBuffer, DWORD dwSize);
 uae_u8 *target_load_keyfile (struct uae_prefs *p, char *path, int *sizep, char *name)
 {
@@ -1769,8 +1833,18 @@ uae_u8 *target_load_keyfile (struct uae_prefs *p, char *path, int *sizep, char *
 	char path[MAX_DPATH];
 	sprintf (path, "%s..\\Player\\%s", start_path_exe, libname);
 	h = LoadLibrary (path);
-	if (!h)
-	    return NULL;
+	if (!h) {
+	    char *afr = getenv ("AMIGAFOREVERROOT");
+	    if (afr) {
+		char tmp[MAX_DPATH];
+		strcpy (tmp, afr);
+		fixtrailing (tmp);
+		sprintf (path, "%sPlayer\\%s", tmp, libname);
+		h = LoadLibrary (path);
+		if (!h)
+		    return NULL;
+	    }
+	}
     }
     GetModuleFileName (h, name, MAX_DPATH);
     pfnGetKey = (PFN_GetKey)GetProcAddress (h, "GetKey");
@@ -1854,6 +1928,8 @@ void target_default_options (struct uae_prefs *p, int type)
 	p->sana2 = 0;
 	p->win32_rtgmatchdepth = 1;
 	p->win32_rtgscaleifsmall = 1;
+	p->win32_rtgallowscaling = 0;
+	p->win32_rtgscaleaspectratio = -1;
     }
     if (type == 1 || type == 0) {
 	p->win32_uaescsimode = get_aspi (p->win32_uaescsimode);
@@ -1896,6 +1972,10 @@ void target_save_options (struct zfile *f, struct uae_prefs *p)
     cfgfile_target_dwrite (f, "midiin_device=%d\n", p->win32_midiindev );
     cfgfile_target_dwrite (f, "rtg_match_depth=%s\n", p->win32_rtgmatchdepth ? "true" : "false" );
     cfgfile_target_dwrite (f, "rtg_scale_small=%s\n", p->win32_rtgscaleifsmall ? "true" : "false" );
+    cfgfile_target_dwrite (f, "rtg_scale_allow=%s\n", p->win32_rtgallowscaling ? "true" : "false" );
+    cfgfile_target_dwrite (f, "rtg_scale_aspect_ratio=%d:%d\n",
+	p->win32_rtgscaleaspectratio >= 0 ? (p->win32_rtgscaleaspectratio >> 8) : -1,
+	p->win32_rtgscaleaspectratio >= 0 ? (p->win32_rtgscaleaspectratio & 0xff) : -1);
     cfgfile_target_dwrite (f, "borderless=%s\n", p->win32_borderless ? "true" : "false" );
     cfgfile_target_dwrite (f, "uaescsimode=%s\n", scsimode[p->win32_uaescsimode]);
     cfgfile_target_dwrite (f, "soundcard=%d\n", p->win32_soundcard );
@@ -1929,6 +2009,7 @@ static const char *obsolete[] = {
 
 int target_parse_option (struct uae_prefs *p, char *option, char *value)
 {
+    char tmpbuf[CONFIG_BLEN];
     int i, v;
     int result = (cfgfile_yesno (option, value, "middle_mouse", &p->win32_middle_mouse)
 	    || cfgfile_yesno (option, value, "map_drives", &p->win32_automount_drives)
@@ -1960,6 +2041,8 @@ int target_parse_option (struct uae_prefs *p, char *option, char *value)
 	return 1;
     if (cfgfile_yesno (option, value, "rtg_scale_small", &p->win32_rtgscaleifsmall))
 	return 1;
+    if (cfgfile_yesno (option, value, "rtg_scale_allow", &p->win32_rtgallowscaling))
+	return 1;
 
     if (cfgfile_yesno (option, value, "aspi", &v)) {
 	p->win32_uaescsimode = 0;
@@ -1967,6 +2050,25 @@ int target_parse_option (struct uae_prefs *p, char *option, char *value)
 	    p->win32_uaescsimode = get_aspi(0);
 	if (p->win32_uaescsimode < UAESCSI_ASPI_FIRST)
 	    p->win32_uaescsimode = UAESCSI_ADAPTECASPI;
+	return 1;
+    }
+
+    if (cfgfile_string (option, value, "rtg_scale_aspect_ratio", tmpbuf, sizeof tmpbuf)) {
+	int v1, v2;
+	char *s;
+	
+	p->gfx_filter_aspect = -1;
+	v1 = atol (tmpbuf);
+	s = strchr (tmpbuf, ':');
+	if (s) {
+	    v2 = atol (s + 1);
+	    if (v1 < 0 || v2 < 0)
+		p->gfx_filter_aspect = -1;
+	    else if (v1 == 0 || v2 == 0)
+		p->gfx_filter_aspect = 0;
+	    else
+		p->gfx_filter_aspect = (v1 << 8) | v2;
+	}
 	return 1;
     }
 
@@ -2043,20 +2145,6 @@ void fetch_screenshotpath (char *out, int size)
 void fetch_datapath (char *out, int size)
 {
     fetch_path (NULL, out, size);
-}
-
-static void strip_slashes (char *p)
-{
-    while (strlen (p) > 0 && (p[strlen (p) - 1] == '\\' || p[strlen (p) - 1] == '/'))
-	p[strlen (p) - 1] = 0;
-}
-static void fixtrailing(char *p)
-{
-    if (strlen(p) == 0)
-	return;
-    if (p[strlen(p) - 1] == '/' || p[strlen(p) - 1] == '\\')
-	return;
-    strcat(p, "\\");
 }
 
 static int isfilesindir(char *p)
@@ -2924,6 +3012,10 @@ static int process_arg(char **xargv)
 	    no_rawinput = 1;
 	    continue;
 	}
+	if (!strcmp (arg, "-rawkeyboard")) {
+	    rawkeyboard = 1;
+	    continue;
+	}
 	if (!strcmp (arg, "-scsilog")) {
 	    log_scsi = 1;
 	    continue;
@@ -2968,6 +3060,11 @@ static int process_arg(char **xargv)
 	}
         if (!strcmp (arg, "-forcerdtsc")) {
 	    userdtsc = 1;
+	    continue;
+	}
+	if (!strcmp (arg, "-ddsoftwarecolorkey")) {
+	    extern int ddsoftwarecolorkey;
+	    ddsoftwarecolorkey = 1;
 	    continue;
 	}
 
@@ -3124,13 +3221,14 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
 	enumeratedisplays (multi_display);
 	write_log ("Sorting devices and modes..\n");
 	sortdisplays ();
+	write_log ("Display buffer mode = %d\n", ddforceram);
 	write_log ("done\n");
 
 	memset (&devmode, 0, sizeof(devmode));
 	devmode.dmSize = sizeof (DEVMODE);
 	if (EnumDisplaySettings (NULL, ENUM_CURRENT_SETTINGS, &devmode)) {
 	    default_freq = devmode.dmDisplayFrequency;
-	    if(default_freq >= 70)
+	    if (default_freq >= 70)
 		default_freq = 70;
 	    else
 		default_freq = 60;
@@ -3153,7 +3251,7 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
 	}
     }
 
-    closeIPC();
+    closeIPC ();
     write_disk_history ();
     timeend ();
 #ifdef AVIOUTPUT
@@ -3319,7 +3417,7 @@ LONG WINAPI WIN32_ExceptionFilter (struct _EXCEPTION_POINTERS *pExceptionPointer
 		efix (&ctx->Edx, p, ps, &got);
 		efix (&ctx->Esi, p, ps, &got);
 		efix (&ctx->Edi, p, ps, &got);
-		write_log ("Access violation! (68KPC=%08.8X HOSTADDR=%p)\n", M68K_GETPC, p);
+		write_log ("Access violation! (68KPC=%08X HOSTADDR=%p)\n", M68K_GETPC, p);
 		if (got == 0) {
 		    write_log ("failed to find and fix the problem (%p). crashing..\n", p);
 		} else {
@@ -3367,9 +3465,9 @@ LONG WINAPI WIN32_ExceptionFilter (struct _EXCEPTION_POINTERS *pExceptionPointer
 		if (dump) {
 		    HANDLE f = CreateFile (path2, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 		    if (f != INVALID_HANDLE_VALUE) {
+			flush_log ();
 			savedump (dump, f, pExceptionPointers);
 			CloseHandle (f);
-			flush_log ();
 			if (isfullscreen () <= 0) {
 			    sprintf (msg, "Crash detected. MiniDump saved as:\n%s\n", path2);
 			    MessageBox (NULL, msg, "Crash", MB_OK | MB_ICONWARNING | MB_TASKMODAL | MB_SETFOREGROUND);

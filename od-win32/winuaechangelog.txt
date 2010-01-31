@@ -1,4 +1,216 @@
 
+Final
+
+- compiled with August 2008 DXSDK, shader files modified (old ones are
+  not compatible anymore) D3D filter now requires August 2008 or newer
+  DirectX. Shader support need pixel shader version 2.0 or later.
+- MSVC 2008 updated to final SP1
+
+RC4: (still waiting for fixed winuae.net..)
+
+- quickstart A1200: increase A1200 KS 3.1 priority over
+  Cloanto A4000 KS 3.1 (AF2008 finally includes real A1200 3.1 ROM)
+- multiple identical USB game controllers fix really works now
+- non-ce/non-immediate blitter timing calculation returned totally
+  bogus values if AGA fmode=3, wide sprites or sprite doublescan was
+  enabled (tiny blit could take few seconds to finish in worst case..)
+  Ancient bug.
+- input device re-enumeration cleanup after usb device insert/remove
+- crash when inserting or removing USB devices before emulation has
+  been started
+- inserting/removing USB devices does not anymore change currently
+  selected mouse or joystick in ports panel
+
+RC3:
+
+- bsdsocket broke in rc2
+- D3D filter does not crash if texture creation fails
+  (=non D3D9 compatible display card/driver)
+- shader filters renamed to "D3D: <name of filter>" in GUI
+
+RC2:
+
+- PAL filter was not selectable
+- direct3d fullscreen mode switching really works now
+  (non-flashing fullscreen d3d->other mode switching coming after 
+  1.5.1)
+- new autoswitching input handling got confused if multiple USB
+  game controller had same product GUID
+- fixed some harmless and ancient thread handle leaks
+
+RC1:
+
+- clear RTG screen when switching to different RTG mode
+- d9dx9_36.dll set to delay load, winuae now runs without recent DX
+  redistributable installed as long as D3D filter(s) aren't used
+- shaders moved to plugins\filtershaders\direct3d (perhaps opengl
+  shaders will be implemented someday..)
+- pixel shader filter on the fly change crashes fixed (I hope)
+- adf was not updated if disk write DMA was aborted (Cadaver save)
+
+Beta 8:
+
+- PAL filter preset fixed
+- fixed random copper problem introduced in b7
+- Direct3D filter updated to full D3D9, added pixel shader filter
+  support (http://www.si-gamer.net/gulikoza/) Pixel shader files
+  included with beta. Some filters will require PS3.0, some work with
+  PS2.0. Check the log for possible error messages. Pixel shader filters
+  are "free" as long as display card is modern enough.
+  NOTE: this beta may need recent DX9 redistributable, I'll try to
+  fix this later.. NOTE: on the fly switching can crash
+- include hardfile name in IDE identification command
+
+Beta 7:
+
+- PCMCIA SRAM can work as a memory expansion now (it was not possible
+  to execute 68K code in emulated SRAM previously..)
+- configuration files in subdirectories didn't load if configuration
+  cache was enabled
+- "refresh rates in parenthesis" handling fixed
+- on-screen leds do not disappear when switching filters
+- enable ini-mode if <name of winuae.exe>.ini (without .exe) is found
+  (previously winuae.ini was always used)
+- logic analyzer copper timing updates (thanks to yaqube for test
+  program) Not 100% correct yet, there seems to be unknown 2 cycle
+  offset between bitplane dma and copper, and also seems to break
+  Leander's right border (as I expected, something always breaks as
+  long as it isn't 100% full fix)
+- background color changes on very right edge of screen are now
+  visible
+- stop sound while inactive or minimized paused emulation
+- directory filesystem statefile restore didn't work without
+  restarting emulation
+
+Beta 6:
+
+- RAM limit update in previous beta wasn't working..
+- ddfstrt >= ddfstop "feature" emulated. OCS = display ends at "hard
+  stop". ECS/AGA = starts and ends immediately = not much to see.
+  Scroll text in intro "Latest News" by Abandon is now visible,
+  OCS-only, scroll text missing on ECS Amigas (except small graphics
+  garbage on left border)
+- uaescsi.device and uaehf.device read/write command parameter
+  validation improved (previously length = 0 was considered valid)
+- experimental rawkeyboard mode added, add -rawkeyboard command line
+  parameter to enable it (also disables directinput keyboard mode)
+  Normally not needed but may help if some keys are not working in
+  directinput mode. Windows XP or newer only.
+- added BIF_NEWDIALOGSTYLE to path selection dialogs
+- path selection dialogs autoselect old directory
+- added path selection dialog to "favorite path" feature (right click
+  on disk image select buttons)
+- filter aspect ratio selection added
+
+Beta 5:
+
+- avi recording crash if only audio recording was enabled
+- native dll support fixed
+- do not enable second Z3 board if RAM limit reached (=decrease Z3 size)
+  and Z3 size is smaller than 256M (4M+2M combination for example is
+  quite stupid..)
+- adjusted max RAM limit calculation (max RAM + max page file instead
+  of currently available RAM + max page file)
+- sound adjustments, previously it was possible to lock non-safe portion
+  of directsound sound buffer causing glitches in some cases (which may
+  or may have never happened)
+- SuperEagle, Super2xSaI and 2xSaI 32-bit color support added
+- disable filter if filter size multiplier is too big for configured
+  display size (instead of overflowing buffers..)
+- resolution and doubling setting change on the fly updates filter
+  centering
+- added -ddsoftwarecolorkey command line option. Workaround for buggy
+  Intel integrated laptop chipset Vista graphics driver causing non-
+  transparent (pink rectangle) RTG hardware cursor
+- (new AHI driver will be only available after 1.5.1)
+
+Beta 4:
+
+- input panel custom events in slots 2+ were not saved if previous
+  slot was empty
+- debugger memwatch points were still broken in byte and word modes
+- debugger movem was disassembled incorrectly (wrong source/dest
+  address shown) if addressing mode was not address register relative
+- raw mouse friendly names added (was easier said than done..),
+  defaults to old-style "RAW Mouse" if name can't be found
+- directdraw max surface size driver workaround fixed
+- game Lancaster ce-mode blank-screen tweak
+
+Beta 3:
+
+- corrected directinput keyboard enumeration, possible fix for
+  wrong keycodes (=non-working key) on some keyboard/driver
+  combinations. (bug since the beginning, I blame really bad keyboard
+  directinput documentation)
+- Picasso96 color space conversion color errors (b2)
+- Picasso96 now always keeps aspect ratio in scaled modes
+  (both windowed and full-window)
+- window resize worked strangely in some cases
+- full-window on the fly monitor change fixed
+- disappearing mouse cursor if scaled window was smaller than original
+  Picasso96 resolution
+- detect Amiga Forever 2008 Value Edition rom key when winuae is
+  located outside of AF install directory
+- fullscreen to fullscreen non resolution/depth changes won't
+  reopen the display anymore (except D3D/OGL<>other filter change)
+- fullscreen to fullscreen resolution/depth change speed improved
+- Windowed Picasso96 scaling fixed when native mode was set to
+  fullscreen or fullwindow
+- nasty memory corruption fixed in configuration handling introduced
+  in 1.5 betas. Causes random crash or memory corruption sooner or
+  later when saving configuration few times.
+
+Beta 2:
+
+- Picasso96 hardware mouse cursor may have been invisible (or wrong
+  graphics) in some cases after resolution change
+- borderblank switching does not corrupt graphics in interlaced modes
+  (this was already fixed in beta 1)
+- default JIT timing value increased to 25000, should help with some
+  PCs that had slowdown in 1.5.0 series, hopefully without side-effects
+- HRTMon works (again) if JIT is enabled
+- "Kickstart replacement" is compatible with new KS loader
+- interlace should work again in "normal" mode (no doubling or
+  scanlines) (broken since 1.3b2..)
+- interlace<>nonlace switching graphics problem fixed (1.5.0) 
+- window is now reopened only when switching to fullscreen. Every
+  on the fly windowed configuration change should never reopen the
+  window anymore.
+- full-window modes work again, filtered modes center properly
+- renamed Picasso96 option "Scale instead of switching resolution" to
+  "Scale if smaller than display size setting"
+- added Picasso96 option "Always scale in windowed mode", this option
+  causes window size to never resize when resolution changes. Also
+  enables manual window resizing. Just experimenting..
+- Picasso96 "Scale instead of switching resolution" in full-window modes
+  always scales to full screen
+- fixed possible crashes when switching Windows desktop resolution or
+  when using quick user switching (post message if there are still
+  problems, I rarely use these features)
+- some directdraw and direct3d memory leaks fixed
+
+Beta 1: (1.5.1 in few weeks)
+
+- windowed mode "instant" switching implemented (this was planned for
+  1.5.0 but it would have delayed release 2-3 more weeks)
+- windowed mode window sizing enabled (not available in P96 modes,
+  if enabled, what it should do? scale the image?)
+- A500 "Chipset extra" enables RTC if memory expansion configured
+- KS 1.3 hardfile mounting fixed (so far "worst" 1.5.0 bug found..)
+- rewritten full featured AHI driver coming soon
+
+
+  * all AHI sample types supported (8-bit, 16-bit, 32-bit)
+  * 7.1 supported (probably will convert to 5.1 if 7.1 not supported)
+  * rear speakers supported in stereo mode (negative panning value)
+  * "infinite" number of sounds supported (basically emulates sound
+    card with "infinite" memory)
+  * number of simultaneous sounds only limited by PC sound card/driver
+  * all mixing is done by Windows sound driver (old driver used
+    Amiga-side software mixing)
+
+1.5.0
+
 Beta 25: RC1
 
 - "non-standard" Picasso96 resolutions are available again
@@ -5502,7 +5714,7 @@ Beta 6:
 Beta 5:
 
 - ignore mouse events when WinUAE is not in focus
-- disk emulation track length/motor speed fix (István Fabian)
+- disk emulation track length/motor speed fix (Istv¯n Fabian)
 - filesystem "ghost"-file fix
   (but we still have one bug left in ACTION_RENAME that isn't so easy to fix)
 - F10 and ALT-keys don't freeze the emulation anymore
@@ -5877,7 +6089,7 @@ Beta 1: (VSync test beta)
 
 - joystick keyboard emulation do not anymore create normal key presses
 - sprite update (no more flashing bees in Superfrog)
-- CIA update (fixes Powermonger, thanks to István Fábián)
+- CIA update (fixes Powermonger, thanks to Istv¯n F¯bi¯n)
 - VSync and separate refresh rate selection added
   I had to implement this because I got too many requests :)
 - requires DirectX 7 or newer (was DX5 or newer)

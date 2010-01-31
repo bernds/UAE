@@ -174,7 +174,6 @@ struct devstruct {
     struct asyncreq *s2p;
     struct mcast *mc;
     smp_comm_pipe requests;
-    uae_thread_id tid;
     int thread_running;
     uae_sem_t sync_sem;
     void *sysdata;
@@ -246,7 +245,7 @@ static struct priv_devstruct *getpdevstruct (uaecptr request)
 {
     int i = get_long (request + 24);
     if (i < 0 || i >= MAX_OPEN_DEVICES || pdevst[i].inuse == 0) {
-	write_log ("%s: corrupt iorequest %08.8X %d\n", SANA2NAME, request, i);
+	write_log ("%s: corrupt iorequest %08X %d\n", SANA2NAME, request, i);
 	return 0;
     }
     return &pdevst[i];
@@ -259,7 +258,7 @@ static int start_thread (struct devstruct *dev)
 	return 1;
     init_comm_pipe (&dev->requests, 100, 1);
     uae_sem_init (&dev->sync_sem, 0, 0);
-    uae_start_thread (SANA2NAME, dev_thread, dev, &dev->tid);
+    uae_start_thread (SANA2NAME, dev_thread, dev, NULL);
     uae_sem_wait (&dev->sync_sem);
     return dev->thread_running;
 }
@@ -617,7 +616,7 @@ static void abort_async (struct devstruct *dev, uaecptr request)
 	return;
     }
     if (log_net)
-	write_log ("%s:%d asyncronous request=%08.8X aborted\n", getdevname(), dev->unit, request);
+	write_log ("%s:%d asyncronous request=%08X aborted\n", getdevname(), dev->unit, request);
     do_abort_async (dev, request);
 }
 
@@ -1352,7 +1351,7 @@ static void *dev_thread (void *devs)
 	    dev->thread_running = 0;
 	    uae_sem_post (&dev->sync_sem);
 	    uae_sem_post (&change_sem);
-	    write_log ("%s: dev_thread %d killed\n", getdevname (), dev->tid);
+	    write_log ("%s: dev_thread killed\n", getdevname ());
 	    return 0;
 	} else if (get_async_request (dev, request, 1)) {
 	    uae_ReplyMsg (request);

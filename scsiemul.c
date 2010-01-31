@@ -56,7 +56,6 @@ struct devstruct {
     struct device_info di;
 
     smp_comm_pipe requests;
-    uae_thread_id tid;
     int thread_running;
     uae_sem_t sync_sem;
 };
@@ -104,7 +103,7 @@ static struct priv_devstruct *getpdevstruct (uaecptr request)
 {
     int i = get_long (request + 24);
     if (i < 0 || i >= MAX_OPEN_DEVICES || pdevst[i].inuse == 0) {
-	write_log ("uaescsi.device: corrupt iorequest %08.8X %d\n", request, i);
+	write_log ("uaescsi.device: corrupt iorequest %08X %d\n", request, i);
 	return 0;
     }
     return &pdevst[i];
@@ -129,7 +128,7 @@ static int start_thread (struct devstruct *dev)
 	return 1;
     init_comm_pipe (&dev->requests, 100, 1);
     uae_sem_init (&dev->sync_sem, 0, 0);
-    uae_start_thread ("uaescsi", dev_thread, dev, &dev->tid);
+    uae_start_thread ("uaescsi", dev_thread, dev, NULL);
     uae_sem_wait (&dev->sync_sem);
     return dev->thread_running;
 }
@@ -158,7 +157,7 @@ static uae_u32 REGPARAM2 dev_close_2 (TrapContext *context)
 	return 0;
     dev = getdevstruct (pdev->unit);
     if (log_scsi)
-	write_log ("%s:%d close, req=%08.8X\n", getdevname (pdev->type), pdev->unit, request);
+	write_log ("%s:%d close, req=%08X\n", getdevname (pdev->type), pdev->unit, request);
     if (!dev)
 	return 0;
     dev_close_3 (dev, pdev);
@@ -193,7 +192,7 @@ static uae_u32 REGPARAM2 dev_open_2 (TrapContext *context, int type)
     int i;
 
     if (log_scsi)
-	write_log ("opening %s:%d ioreq=%08.8X\n", getdevname (type), unit, ioreq);
+	write_log ("opening %s:%d ioreq=%08X\n", getdevname (type), unit, ioreq);
     if (get_word (ioreq + 0x12) < IOSTDREQ_SIZE)
 	return openfail (ioreq, IOERR_BADLENGTH);
     if (!dev)
@@ -346,7 +345,7 @@ static void abort_async (struct devstruct *dev, uaecptr request, int errcode, in
     }
     i = release_async_request (dev, request);
     if (i >= 0 && log_scsi)
-	write_log ("asyncronous request=%08.8X aborted, error=%d\n", request, errcode);
+	write_log ("asyncronous request=%08X aborted, error=%d\n", request, errcode);
 }
 
 static int command_read (int mode, struct devstruct *dev, uaecptr data, uae_u64 offset, uae_u32 length, uae_u32 *io_actual)
@@ -449,8 +448,10 @@ static int dev_do_io (struct devstruct *dev, uaecptr request)
     switch (command)
     {
 	case CMD_READ:
-	if ((io_offset & bmask) || (io_length & bmask))
+	if ((io_offset & bmask) || bmask == 0 || io_data == 0)
 	    goto bad_command;
+	if ((io_length & bmask) || io_length == 0)
+	    goto bad_len;
 	if (dev->drivetype == INQ_ROMD)
 	    io_error = command_cd_read (pdev->mode, dev, io_data, io_offset, io_length, &io_actual);
 	else
@@ -459,8 +460,10 @@ static int dev_do_io (struct devstruct *dev, uaecptr request)
 	case TD_READ64:
 	case NSCMD_TD_READ64:
 	io_offset64 = get_long (request + 44) | ((uae_u64)get_long (request + 32) << 32);
-	if ((io_offset64 & bmask) || (io_length & bmask))
+	if ((io_offset64 & bmask) || bmask == 0 || io_data == 0)
 	    goto bad_command;
+	if ((io_length & bmask) || io_length == 0)
+	    goto bad_len;
 	if (dev->drivetype == INQ_ROMD)
 	    io_error = command_cd_read (pdev->mode, dev, io_data, io_offset64, io_length, &io_actual);
 	else
@@ -470,8 +473,10 @@ static int dev_do_io (struct devstruct *dev, uaecptr request)
 	case CMD_WRITE:
 	if (dev->di.write_protected || dev->drivetype == INQ_ROMD) {
 	    io_error = 28; /* writeprotect */
-	} else if ((io_offset & bmask) || (io_length & bmask)) {
+	} else if ((io_offset & bmask) || bmask == 0 || io_data == 0) {
 	    goto bad_command;
+	} else if ((io_length & bmask) || io_length == 0) {
+	    goto bad_len;
 	} else {
 	    io_error = command_write (pdev->mode, dev, io_data, io_offset, io_length, &io_actual);
 	}
@@ -481,8 +486,10 @@ static int dev_do_io (struct devstruct *dev, uaecptr request)
 	io_offset64 = get_long (request + 44) | ((uae_u64)get_long (request + 32) << 32);
 	if (dev->di.write_protected || dev->drivetype == INQ_ROMD) {
 	    io_error = 28; /* writeprotect */
-	} else if ((io_offset64 & bmask) || (io_length & bmask)) {
+	} else if ((io_offset64 & bmask) || bmask == 0 || io_data == 0) {
 	    goto bad_command;
+	} else if ((io_length & bmask) || io_length == 0) {
+	    goto bad_len;
 	} else {
 	    io_error = command_write (pdev->mode, dev, io_data, io_offset64, io_length, &io_actual);
 	}
@@ -491,8 +498,10 @@ static int dev_do_io (struct devstruct *dev, uaecptr request)
 	case CMD_FORMAT:
 	if (dev->di.write_protected || dev->drivetype == INQ_ROMD) {
 	    io_error = 28; /* writeprotect */
-	} else if ((io_offset & bmask) || (io_length & bmask)) {
+	} else if ((io_offset & bmask) || bmask == 0 || io_data == 0) {
 	    goto bad_command;
+	} else if ((io_length & bmask) || io_length == 0) {
+	    goto bad_len;
 	} else {
 	    io_error = command_write (pdev->mode, dev, io_data, io_offset, io_length, &io_actual);
 	}
@@ -502,8 +511,10 @@ static int dev_do_io (struct devstruct *dev, uaecptr request)
 	io_offset64 = get_long (request + 44) | ((uae_u64)get_long (request + 32) << 32);
 	if (dev->di.write_protected || dev->drivetype == INQ_ROMD) {
 	    io_error = 28; /* writeprotect */
-	} else if ((io_offset64 & bmask) || (io_length & bmask)) {
+	} else if ((io_offset64 & bmask) || bmask == 0 || io_data == 0) {
 	    goto bad_command;
+	} else if ((io_length & bmask) || io_length == 0) {
+	    goto bad_len;
 	} else {
 	    io_error = command_write (pdev->mode, dev, io_data, io_offset64, io_length, &io_actual);
 	}
@@ -577,6 +588,9 @@ static int dev_do_io (struct devstruct *dev, uaecptr request)
 	break;
 	default:
 	io_error = IOERR_NOCMD;
+	break;
+	bad_len:
+	io_error = IOERR_BADLENGTH;
 	break;
 	bad_command:
 	io_error = IOERR_BADADDRESS;
@@ -662,7 +676,7 @@ static void *dev_thread (void *devs)
 	    uae_ReplyMsg (request);
 	} else {
 	    if (log_scsi)
-		write_log ("%s:%d async request %08.8X\n", getdevname(0), dev->unitnum, request);
+		write_log ("%s:%d async request %08X\n", getdevname(0), dev->unitnum, request);
 	}
 	uae_sem_post (&change_sem);
     }
@@ -703,7 +717,7 @@ static uae_u32 REGPARAM2 dev_abortio (TrapContext *context)
     }
     put_byte (request + 31, IOERR_ABORTED);
     if (log_scsi)
-	write_log ("abortio %s unit=%d, request=%08.8X\n", getdevname (pdev->type), pdev->unit, request);
+	write_log ("abortio %s unit=%d, request=%08X\n", getdevname (pdev->type), pdev->unit, request);
     abort_async (dev, request, IOERR_ABORTED, 0);
     return 0;
 }

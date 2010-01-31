@@ -291,9 +291,9 @@ char *filesys_createvolname (const char *volname, const char *rootdir, const cha
     char *p = NULL;
 
     archivehd = -1;
-    if (my_existsfile(rootdir))
+    if (my_existsfile (rootdir))
         archivehd = 1;
-    else if (my_existsdir(rootdir))
+    else if (my_existsdir (rootdir))
         archivehd = 0;
 
     if ((!volname || strlen (volname) == 0) && rootdir && archivehd >= 0) {
@@ -331,7 +331,7 @@ char *filesys_createvolname (const char *volname, const char *rootdir, const cha
 	else
 	    nvol = my_strdup ("");
     }
-    stripsemicolon(nvol);
+    stripsemicolon (nvol);
     xfree (p);
     return nvol;
 }
@@ -397,15 +397,7 @@ static int set_filesys_unit_1 (int nr,
     }
 
     ui = &mountinfo.ui[nr];
-    ui->open = 0;
-    ui->devname = 0;
-    ui->volname = 0;
-    ui->rootdir = 0;
-    ui->unit_pipe = 0;
-    ui->back_pipe = 0;
-    ui->hf.handle_valid = 0;
-    ui->bootpri = 0;
-    ui->filesysdir = 0;
+    memset (ui, 0, sizeof (UnitInfo));
 
     if (volname != NULL) {
 	int flags = 0;
@@ -936,12 +928,12 @@ static void set_volume_name (Unit *unit)
     unit->rootnode.mountcount = unit->mountcount;
 }
 
-static int filesys_isvolume(Unit *unit)
+static int filesys_isvolume (Unit *unit)
 {
     return get_byte (unit->volume + 44);
 }
 
-static void clear_exkeys(Unit *unit)
+static void clear_exkeys (Unit *unit)
 {
     int i;
     a_inode *a;
@@ -1172,7 +1164,7 @@ int filesys_insert (int nr, char *volume, const char *rootdir, int readonly, int
 	return 0;
     if (u->reinsertdelay)
 	return -1;
-    if (is_hardfile(nr) != FILESYS_VIRTUAL)
+    if (is_hardfile (nr) != FILESYS_VIRTUAL)
 	return 0;
     if (filesys_isvolume (u)) {
 	filesys_delayed_change (u, 50, rootdir, volume, readonly, flags);
@@ -1182,7 +1174,7 @@ int filesys_insert (int nr, char *volume, const char *rootdir, int readonly, int
     clear_exkeys (u);
     xfree (u->ui.rootdir);
     ui->rootdir = u->ui.rootdir = my_strdup (rootdir);
-    flush_cache(u, -1);
+    flush_cache (u, -1);
     if (set_filesys_volume (rootdir, &flags, &readonly, &emptydrive, &u->zarchive) < 0)
 	return 0;
     if (emptydrive)
@@ -1199,7 +1191,7 @@ int filesys_insert (int nr, char *volume, const char *rootdir, int readonly, int
 	uci->readonly = ui->readonly = u->ui.readonly = readonly;
     put_byte (u->volume + 44, 0);
     put_byte (u->volume + 172 - 32, 1);
-    uae_Signal (get_long(u->volume + 176 - 32), 1 << 17);
+    uae_Signal (get_long (u->volume + 176 - 32), 1 << 17);
     return 100 + nr;
 }
 
@@ -1916,7 +1908,7 @@ static Unit *startup_create_unit (UnitInfo *uinfo, int num)
     int i;
     Unit *unit, *u;
 
-    unit = (Unit*)xcalloc (sizeof (Unit), 1);
+    unit = xcalloc (sizeof (Unit), 1);
     /* keep list in insertion order */
     u = units;
     if (u) {
@@ -2161,26 +2153,21 @@ static void free_key (Unit *unit, Key *k)
 static Key *lookup_key (Unit *unit, uae_u32 uniq)
 {
     Key *k;
+    unsigned int total = 0;
     /* It's hardly worthwhile to optimize this - most of the time there are
      * only one or zero keys. */
     for (k = unit->keys; k; k = k->next) {
+	total++;
 	if (uniq == k->uniq)
 	    return k;
     }
-    write_log ("Error: couldn't find key!\n");
-#if 0
-    exit(1);
-    /* NOTREACHED */
-#endif
-    /* There isn't much hope we will recover. Unix would kill the process,
-     * AmigaOS gets killed by it. */
-    write_log ("Better reset that Amiga - the system is messed up.\n");
+    write_log ("Error: couldn't find key %u / %u!\n", uniq, total);
     return 0;
 }
 
 static Key *new_key (Unit *unit)
 {
-    Key *k = (Key *) xmalloc (sizeof(Key));
+    Key *k = xmalloc (sizeof(Key));
     k->uniq = ++key_uniq;
     k->fd = NULL;
     k->file_pos = 0;
@@ -4725,14 +4712,10 @@ void filesys_free_handles(void)
     }
 }
 
-void filesys_reset (void)
+static void filesys_reset2 (void)
 {
     Unit *u, *u1;
 
-    /* We get called once from customreset at the beginning of the program
-     * before filesys_start_threads has been called. Survive that.  */
-    if (savestate_state == STATE_RESTORE)
-	return;
 
     filesys_free_handles ();
     for (u = units; u; u = u1) {
@@ -4746,14 +4729,19 @@ void filesys_reset (void)
     initialize_mountinfo ();
 }
 
-void filesys_prepare_reset (void)
+void filesys_reset (void)
+{
+    if (savestate_state == STATE_RESTORE)
+	return;
+    filesys_reset2 ();
+}
+
+static void filesys_prepare_reset2 (void)
 {
     UnitInfo *uip;
     Unit *u;
     int i;
 
-    if (savestate_state == STATE_RESTORE)
-	return;
     uip = mountinfo.ui;
 #ifdef UAE_FILESYS_THREADS
     for (i = 0; i < MAX_FILESYSTEM_UNITS; i++) {
@@ -4765,6 +4753,7 @@ void filesys_prepare_reset (void)
 	    write_comm_pipe_int (uip[i].unit_pipe, 0, 0);
 	    write_comm_pipe_int (uip[i].unit_pipe, 0, 1);
 	    uae_sem_wait (&uip[i].reset_sync_sem);
+	    uae_end_thread (&uip[i].tid);
 	}
     }
 #endif
@@ -4776,6 +4765,13 @@ void filesys_prepare_reset (void)
 	u->aino_cache_size = 0;
 	u = u->next;
     }
+}
+
+void filesys_prepare_reset (void)
+{
+    if (savestate_state == STATE_RESTORE)
+	return;
+    filesys_prepare_reset2 ();
 }
 
 static uae_u32 REGPARAM2 filesys_diagentry (TrapContext *context)
@@ -5294,7 +5290,7 @@ static int dofakefilesys (UnitInfo *uip, uaecptr parmpacket)
 	return -1;
     }
     write_log ("RDB: fakefilesys, trying to load '%s', dostype 0x%08X\n", tmp, dostype);
-    zf = zfile_fopen (tmp,"rb");
+    zf = zfile_fopen (tmp, "rb");
     if (!zf) {
 	write_log ("RDB: filesys not found\n");
 	if ((dostype & 0xffffff00) == 0x444f5300)
@@ -6006,9 +6002,9 @@ static uae_u8 *save_filesys_virtual (UnitInfo *ui, uae_u8 *dst)
 uae_u8 *save_filesys_common (int *len)
 {
     uae_u8 *dstbak, *dst;
-    if (nr_units() == 0)
+    if (nr_units () == 0)
 	return NULL;
-    dstbak = dst = (uae_u8*)xmalloc (1000);
+    dstbak = dst = xmalloc (1000);
     save_u32 (2);
     save_u64 (a_uniq);
     save_u64 (key_uniq);
@@ -6020,7 +6016,8 @@ uae_u8 *restore_filesys_common (uae_u8 *src)
 {
     if (restore_u32 () != 2)
 	return src;
-    free_mountinfo();
+    filesys_prepare_reset2 ();
+    filesys_reset2 ();
     a_uniq = restore_u64 ();
     key_uniq = restore_u64 ();
     return src;
@@ -6039,7 +6036,7 @@ uae_u8 *save_filesys (int num, int *len)
     if (type == FILESYS_VIRTUAL && (ui->self == NULL || ui->volname == NULL))
 	return NULL;
     write_log ("FS_FILESYS: '%s' '%s'\n", ui->devname, ui->volname);
-    dstbak = dst = (uae_u8*)xmalloc (100000);
+    dstbak = dst = xmalloc (100000);
     save_u32 (2); /* version */
     save_u32 (ui->devno);
     save_u16 (type);

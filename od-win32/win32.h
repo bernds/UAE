@@ -17,12 +17,12 @@
 
 #define WINUAEBETA 0
 #define WINUAEPUBLICBETA 0
-#define WINUAEDATE MAKEBD(2008, 6, 19)
+#define WINUAEDATE MAKEBD(2008, 8, 12)
 #define WINUAEEXTRA ""
 #define WINUAEREV ""
 
 #define IHF_WINDOWHIDDEN 6
-#define NORMAL_WINDOW_STYLE (WS_VISIBLE | WS_BORDER | WS_CAPTION | WS_MINIMIZEBOX | WS_SYSMENU)
+#define NORMAL_WINDOW_STYLE (WS_VISIBLE | WS_BORDER | WS_CAPTION | WS_MINIMIZEBOX | WS_SYSMENU | WS_SIZEBOX)
 
 extern HMODULE hUIDLL;
 extern HWND hAmigaWnd, hMainWnd, hHiddenWnd, hGUIWnd;
@@ -75,9 +75,10 @@ extern int gui_active;
 extern DWORD quickstart, configurationcache;
 
 extern HKEY hWinUAEKey;
-extern int screen_is_picasso;
+extern int screen_is_picasso, scalepicasso;
 extern HINSTANCE hInst;
 extern int win_x_diff, win_y_diff;
+extern int window_extra_width, window_extra_height;
 extern int af_path_2005, af_path_old;
 extern char start_path_af[MAX_DPATH], start_path_new1[MAX_DPATH], start_path_new2[MAX_DPATH];
 #define PATH_TYPE_WINUAE 0
@@ -137,5 +138,14 @@ extern void logging_open (int,int);
 extern void logging_cleanup (void);
 
 extern LONG WINAPI WIN32_ExceptionFilter (struct _EXCEPTION_POINTERS *pExceptionPointers, DWORD ec);
+
+#define MAX_SOUND_DEVICES 10
+struct sound_device
+{
+    GUID guid;
+    char *name;
+};
+extern struct sound_device sound_devices[MAX_SOUND_DEVICES];
+extern struct sound_device record_devices[MAX_SOUND_DEVICES];
 
 #endif

@@ -19,7 +19,7 @@ extern void resume_sound (void);
 extern void pause_sound (void);
 extern void reset_sound (void);
 extern void sound_setadjust (double);
-extern char **enumerate_sound_devices (int *total);
+extern int enumerate_sound_devices (void);
 extern int drivesound_init (void);
 extern void drivesound_free (void);
 extern void sound_mute (int);
@@ -81,3 +81,7 @@ STATIC_INLINE void clear_sound_buffers (void)
 #define FILTER_SOUND_TYPE_A500 0
 #define FILTER_SOUND_TYPE_A1200 1
 
+struct dsaudiomodes {
+    int ch;
+    DWORD ksmode;
+};

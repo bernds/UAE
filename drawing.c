@@ -209,7 +209,7 @@ uae_sem_t gui_sem;
 int inhibit_frame;
 
 int framecnt = 0;
-static int frame_redraw_necessary;
+int frame_redraw_necessary;
 static int picasso_redraw_necessary;
 
 #ifdef XLINECHECK
@@ -1487,8 +1487,8 @@ static void init_aspect_maps (void)
 	xfree (amiga2aspect_line_map);
 
     /* At least for this array the +1 is necessary. */
-    amiga2aspect_line_map = malloc (sizeof (int) * (MAXVPOS + 1) * 2 + 1);
-    native2amiga_line_map = malloc (sizeof (int) * gfxvidinfo.height);
+    amiga2aspect_line_map = xmalloc (sizeof (int) * (MAXVPOS + 1) * 2 + 1);
+    native2amiga_line_map = xmalloc (sizeof (int) * gfxvidinfo.height);
 
     if (currprefs.gfx_correct_aspect)
 	native_lines_per_amiga_line = ((double)gfxvidinfo.height
@@ -1538,7 +1538,7 @@ static void init_aspect_maps (void)
 	}
     }
 
-    for (i = maxl-1; i >= min_ypos_for_screen; i--) {
+    for (i = maxl - 1; i >= min_ypos_for_screen; i--) {
 	int j;
 	if (amiga2aspect_line_map[i] == -1)
 	    continue;
@@ -1591,7 +1591,7 @@ STATIC_INLINE void do_flush_screen (int start, int stop)
        Should be corrected.
        (sjo 26.9.99) */
 
-    xlinecheck(start, stop);
+    xlinecheck (start, stop);
     if (gfxvidinfo.maxblocklines != 0 && first_block_line != NO_BLOCK) {
 	flush_block (first_block_line, last_block_line);
     }
@@ -1755,32 +1755,6 @@ STATIC_INLINE void do_color_changes (line_draw_func worker_border, line_draw_fun
     }
 }
 
-/* Move color changes in horizontal cycles 0 to HBLANK_OFFSET - 1 to previous line.
- * Cycles 0 to HBLANK_OFFSET are visible in right border on real Amigas.
- */
-static void mungedip (int lineno, int next)
-{
-    int i = dip_for_drawing->last_color_change;
-    struct draw_info *dip_for_drawing_next = curr_drawinfo + (lineno + next);
-
-    if (dip_for_drawing_next->first_color_change == 0)
-	dip_for_drawing_next = curr_drawinfo + (lineno + 2);
-    while (i < dip_for_drawing_next->last_color_change) {
-	int regno = curr_color_changes[i].regno;
-	int hpos = curr_color_changes[i].linepos;
-	if (regno < 0)
-	    break;
-	if (hpos >= HBLANK_OFFSET)
-	    break;
-	curr_color_changes[i].linepos += maxhpos + 2;
-	dip_for_drawing->last_color_change++;
-	dip_for_drawing->nr_color_changes++;
-	dip_for_drawing_next->first_color_change++;
-	dip_for_drawing_next->nr_color_changes--;
-	i++;
-    }
-}
-
 enum double_how {
     dh_buf,
     dh_line,
@@ -1796,7 +1770,6 @@ static void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 
     dp_for_drawing = line_decisions + lineno;
     dip_for_drawing = curr_drawinfo + lineno;
-    mungedip (lineno, (dp_for_drawing->bplcon0 & 4) ? 2 : 1);
     switch (linestate[lineno]) {
     case LINE_REMEMBERED_AS_PREVIOUS:
 	if (!warned)
@@ -2306,7 +2279,7 @@ void draw_status_line_single (uae_u8 *buf, int bpp, int y, int totalwidth, uae_u
 	} else if (led == 8) {
 	    int idle = (gui_data.idle + 5) / 10;
 	    pos = 1;
-	    on = framecnt;
+	    on = framecnt && !picasso_on;
 	    on_rgb = 0xcc0000;
 	    off_rgb = 0x000000;
 	    num1 = idle / 100;
@@ -2368,7 +2341,7 @@ static void draw_status_line (int line)
     int bpp, y;
     uae_u8 *buf;
 
-    if (currprefs.leds_on_screen != STATUSLINE_BUILTIN)
+    if (!(currprefs.leds_on_screen & STATUSLINE_CHIPSET) || (currprefs.leds_on_screen & STATUSLINE_TARGET))
 	return;
     bpp = gfxvidinfo.pixbytes;
     y = line - (gfxvidinfo.height - TD_TOTAL_HEIGHT);
@@ -2534,8 +2507,7 @@ void finish_drawing_frame (void)
 #ifdef ECS_DENISE
     if (brdblank_changed) {
 	last_max_ypos = max_ypos_thisframe;
-	last_redraw_point = 10;
-	notice_screen_contents_lost();
+	notice_screen_contents_lost ();
 	brdblank_changed = 0;
     }
 #endif
@@ -2599,7 +2571,6 @@ void vsync_handle_redraw (int long_frame, int lof_changed)
 
 	if (framecnt == 0)
 	    finish_drawing_frame ();
-
 	interlace_seen = 0;
 
 	/* At this point, we have finished both the hardware and the

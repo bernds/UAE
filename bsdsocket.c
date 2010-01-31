@@ -265,7 +265,7 @@ void addtosigqueue (SB, int events)
     unlocksigqueue ();
 
     if (sts)
-	uae_Signal(ot, sts);
+	uae_Signal (ot, sts);
 #endif
 
 }
@@ -282,7 +282,7 @@ void bsdsock_fake_int_handler(void)
 
 	for (sb = sbsigqueue; sb; sb = sb->nextsig) {
 	    if (sb->dosignal == 1) {
-		uae_Signal(sb->ownertask, sb->sigstosend);
+		uae_Signal (sb->ownertask, sb->sigstosend);
 		sb->sigstosend = 0;
 	    }
 	    sb->dosignal = 0;
@@ -1283,7 +1283,7 @@ static uae_u32 REGPARAM2 bsdsocklib_SocketBaseTagList (TrapContext *context)
 		    sb->herrnosize = 4;
 		    break;
 		 default:
-		    write_log ("bsdsocket: WARNING: Unsupported tag type (%08.8x) in SocketBaseTagList(%x)\n",
+		    write_log ("bsdsocket: WARNING: Unsupported tag type (%08x) in SocketBaseTagList(%x)\n",
 			currtag, m68k_areg (&context->regs, 0));
 		    break;
 		}
@@ -1291,7 +1291,7 @@ static uae_u32 REGPARAM2 bsdsocklib_SocketBaseTagList (TrapContext *context)
 		TRACE (("TAG_UNKNOWN(0x%x)", currtag));
 		/* Aminetradio uses 0x00004e55 as an ending tag */
 		if ((currtag & 0xffff8000) == 0) {
-		    write_log ("bsdsocket: WARNING: Corrupted SocketBaseTagList(%x) tag detected (%08.8x)\n",
+		    write_log ("bsdsocket: WARNING: Corrupted SocketBaseTagList(%x) tag detected (%08x)\n",
 			m68k_areg (&context->regs, 0), currtag);
 		    goto done;
 		}

@@ -12,7 +12,6 @@ struct ddstuff
     int ddinit;
     int ddzeroguid;
     GUID ddguid;
-    LPDIRECTDRAW olddd;
     LPDIRECTDRAW7 maindd;
     LPDIRECTDRAWCLIPPER dclip;
     LPDIRECTDRAWSURFACE7 primary, secondary, flipping[2];
@@ -27,15 +26,24 @@ struct ddstuff
     int lockcnt;
     DWORD pitch;
     HWND hwnd;
-    int maxwidth, maxheight;
     uae_u32 colorkey;
     int islost, isoverlay;
 
     LPDIRECTDRAWSURFACE7 cursorsurface1;
     LPDIRECTDRAWSURFACE7 cursorsurface2;
+    LPDIRECTDRAWSURFACE7 statussurface;
+    int statuswidth, statusheight;
+
+};
+struct ddcaps
+{
     int cursorwidth, cursorheight;
+    int maxwidth, maxheight;
+    int cancolorkey;
+    int cannonlocalvidmem;
 };
 extern struct ddstuff dxdata;
+extern struct ddcaps dxcaps;
 
 struct ScreenResolution
 {
@@ -87,6 +95,7 @@ int locksurface (LPDIRECTDRAWSURFACE7 surf, LPDDSURFACEDESC2 desc);
 void unlocksurface (LPDIRECTDRAWSURFACE7 surf);
 HRESULT restoresurface (LPDIRECTDRAWSURFACE7 surf);
 LPDIRECTDRAWSURFACE7 allocsurface (int width, int height);
+LPDIRECTDRAWSURFACE7 allocsystemsurface (int width, int height);
 LPDIRECTDRAWSURFACE7 createsurface (uae_u8 *ptr, int pitch, int width, int height);
 void freesurface (LPDIRECTDRAWSURFACE7 surf);
 void DirectDraw_FreeMainSurface (void);
@@ -117,10 +126,12 @@ void DirectDraw_GetPrimaryPixelFormat (DDSURFACEDESC2 *desc);
 HRESULT DirectDraw_FlipToGDISurface (void);
 int DirectDraw_Flip (int doflip);
 int DirectDraw_BlitToPrimary (RECT *rect);
-int DirectDraw_BlitToPrimaryScale (RECT *rect);
-void DirectDraw_Blit (LPDIRECTDRAWSURFACE7 dst, LPDIRECTDRAWSURFACE7 src);
-void DirectDraw_BlitRect (LPDIRECTDRAWSURFACE7 dst, RECT *dstrect, LPDIRECTDRAWSURFACE7 src, RECT *scrrect);
+int DirectDraw_BlitToPrimaryScale (RECT *dstrect, RECT *srcrect);
+int DirectDraw_Blit (LPDIRECTDRAWSURFACE7 dst, LPDIRECTDRAWSURFACE7 src);
+int DirectDraw_BlitRect (LPDIRECTDRAWSURFACE7 dst, RECT *dstrect, LPDIRECTDRAWSURFACE7 src, RECT *scrrect);
+int DirectDraw_BlitRectCK (LPDIRECTDRAWSURFACE7 dst, RECT *dstrect, LPDIRECTDRAWSURFACE7 src, RECT *scrrect);
 void DirectDraw_Fill (RECT *rect, uae_u32 color);
+void DirectDraw_FillPrimary (void);
 
 HRESULT DirectDraw_SetPaletteEntries (int start, int count, PALETTEENTRY *palette);
 HRESULT DirectDraw_SetPalette (int remove);
