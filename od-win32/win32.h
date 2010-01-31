@@ -14,14 +14,14 @@
 #define NORMAL_WINDOW_STYLE (WS_VISIBLE | WS_BORDER | WS_CAPTION | WS_MINIMIZEBOX | WS_SYSMENU )
 
 extern HMODULE hUIDLL;
-extern HWND hAmigaWnd, hMainWnd;
+extern HWND hAmigaWnd, hMainWnd, hHiddenWnd;
 extern RECT amigawin_rect;
 extern int in_sizemove;
 extern int manual_painting_needed;
 extern int manual_palette_refresh_needed;
 extern int mouseactive, focus;
 #define WINUAEBETA 0
-#define WINUAEBETASTR " "
+#define WINUAEBETASTR ""
 
 extern void my_kbd_handler (int, int, int);
 extern void clearallkeys(void);
@@ -55,15 +55,7 @@ extern char VersionStr[256];
 extern int os_winnt, os_winnt_admin;
 extern int paraport_mask;
 extern int gui_active;
-
-/* For StatusBar when running in a Window */
-#define LED_NUM_PARTS 10
-#define LED_POWER_WIDTH 42
-#define LED_HD_WIDTH 24
-#define LED_CD_WIDTH 24
-#define LED_DRIVE_WIDTH 24
-#define LED_FPS_WIDTH 64
-#define LED_IDLE_WIDTH 64
+extern DWORD quickstart;
 
 extern HKEY hWinUAEKey;
 extern int screen_is_picasso;
@@ -75,7 +67,6 @@ extern void sleep_millis_busy (int ms);
 extern void screenshot(int mode);
 extern void wait_keyrelease (void);
 extern void keyboard_settrans (void);
-extern void setpriority (int pri);
 
 extern void handle_rawinput (DWORD lParam);
 
@@ -83,13 +74,20 @@ extern void handle_rawinput (DWORD lParam);
 struct threadpriorities {
     char *name;
     int value;
+    int classvalue;
 };
 extern struct threadpriorities priorities[];
+extern void setpriority (struct threadpriorities *pri);
+
 extern int dinput_wmkey (uae_u32 key);
 extern int dinput_winmouse (void);
+extern int dinput_winmousemode (void);
 
 void systray (HWND hwnd, int remove);
 void systraymenu (HWND hwnd);
 void exit_gui (int);
+void fetch_path (char *name, char *out, int size);
+void set_path (char *name, char *path);
+void read_rom_list (int);
 
 #endif

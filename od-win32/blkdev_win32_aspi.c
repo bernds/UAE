@@ -45,7 +45,7 @@ struct scsi_info {
 static struct scsi_info si[MAX_TOTAL_DEVICES];
 static int unitcnt;
 
-static int ha_inquiry(SCSI *scgp, int id, SRB_HAInquiry *ip)
+static int ha_inquiry (SCSI *scgp, int id, SRB_HAInquiry *ip)
 {
     DWORD Status;
 	
@@ -540,6 +540,7 @@ static int scsierr(SCSI *scgp)
 static void scan_scsi_bus (SCSI *scgp, int flags)
 {
     /* add all units we find */
+    write_log ("ASPI: SCSI scan starting..\n");
     scanphase = 1;
     for (scgp->addr.scsibus=0; scgp->addr.scsibus < 8; scgp->addr.scsibus++) {
         if (!scsi_havebus(scgp, scgp->addr.scsibus))
@@ -589,6 +590,7 @@ static void scan_scsi_bus (SCSI *scgp, int flags)
             }
         }
     }
+    write_log ("ASPI: SCSI scan ended\n");
     scanphase = 0;
 }
 
@@ -679,7 +681,7 @@ static int open_scsi_device (int unitnum)
     if (unitnum >= unitcnt)
 	return 0;
     if (log_scsi)
-	write_log ("ASPI: opening %d:%d:%d\n", si[unitnum].scsibus, si[unitnum].target, si[unitnum].lun);
+	write_log ("ASPI: opening %d:%d:%d (%d)\n", si[unitnum].scsibus, si[unitnum].target, si[unitnum].lun, unitnum);
     si[unitnum].handle = openscsi (si[unitnum].scsibus, si[unitnum].target, si[unitnum].lun);
     if (si[unitnum].handle)
 	si[unitnum].mediainserted = mediacheck (unitnum);

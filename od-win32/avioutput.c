@@ -55,7 +55,7 @@ int avioutput_width = 320, avioutput_height = 256, avioutput_bits = 24;
 int avioutput_fps = VBLANK_HZ_PAL;
 int avioutput_framelimiter = 0;
 
-char avioutput_filename[MAX_DPATH] = "output.avi";
+char avioutput_filename[MAX_DPATH];
 static char avioutput_filename_tmp[MAX_DPATH];
 
 extern struct uae_prefs workprefs;
@@ -173,13 +173,13 @@ LPSTR AVIOutput_ChooseAudioCodec(HWND hwnd)
 	
 	// set the source format
 	wfxSrc.wFormatTag = WAVE_FORMAT_PCM;
-	wfxSrc.nChannels = workprefs.stereo ? 2 : 1;
+	wfxSrc.nChannels = workprefs.sound_stereo ? 2 : 1;
 	wfxSrc.nSamplesPerSec = workprefs.sound_freq;
 	wfxSrc.nBlockAlign = wfxSrc.nChannels * (workprefs.sound_bits / 8);
 	wfxSrc.nAvgBytesPerSec = wfxSrc.nBlockAlign * wfxSrc.nSamplesPerSec;
 	wfxSrc.wBitsPerSample = workprefs.sound_bits;
 	wfxSrc.cbSize = 0;
-	
+
 	if(!(pwfxDst = (LPWAVEFORMATEX) malloc(wfxMaxFmtSize)))
 		return NULL;
 	
@@ -490,6 +490,7 @@ void AVIOutput_RGBinfo(int rb, int gb, int bb, int rs, int gs, int bs)
 	rgb_type = 0;
 }
 
+#if defined (GFXFILTER)
 extern int bufmem_width, bufmem_height;
 extern uae_u8 *bufmem_ptr;
 
@@ -528,7 +529,7 @@ static int getFromBuffer(LPBITMAPINFO lpbi)
     }
     return 1;
 }
-
+#endif
 
 void AVIOutput_WriteVideo(void)
 {
@@ -553,11 +554,14 @@ void AVIOutput_WriteVideo(void)
 	    actual_width = WIN32GFX_GetWidth();
 	    actual_height = WIN32GFX_GetHeight();
 	}
-
+#if defined (GFXFILTER)
 	if (!usedfilter || (usedfilter && usedfilter->x[0]) || WIN32GFX_IsPicassoScreen ())
 	    v = getFromDC((LPBITMAPINFO)lpbi);
 	else
 	    v = getFromBuffer((LPBITMAPINFO)lpbi);
+#else
+        v = getFromDC((LPBITMAPINFO)lpbi);
+#endif
 	if (!v)
 	    goto error;
 
@@ -613,7 +617,7 @@ static void writewavheader (uae_u32 size)
 {
     uae_u16 tw;
     uae_u32 tl;
-    int bits = 16, channels = currprefs.stereo ? 2 : 1;
+    int bits = 16, channels = currprefs.sound_stereo ? 2 : 1;
 
     fseek (wavfile, 0, SEEK_SET);
     fwrite ("RIFF", 1, 4, wavfile);

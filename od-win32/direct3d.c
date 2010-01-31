@@ -2,6 +2,9 @@
 #include <windows.h>
 #include "sysconfig.h"
 #include "sysdeps.h"
+
+#if defined (OPENGL) && defined (GFXFILTER)
+
 #include "config.h"
 #include "options.h"
 #include "xwin.h"
@@ -246,7 +249,7 @@ const char *D3D_init (HWND ahwnd, int w_w, int w_h, int t_w, int t_h, int depth)
 	strcpy (errmsg, "Direct3D: DirectX 9 or newer required");
 	return errmsg;
     }
-    d3d = D3DCreate(D3D_SDK_VERSION);
+    d3d = D3DCreate(D3D9b_SDK_VERSION);
     if (d3d == NULL) {
 	D3D_free ();
 	strcpy (errmsg, "Direct3D: failed to create D3D object");
@@ -552,8 +555,4 @@ int D3D_isenabled (void)
     return d3d_enabled;
 }
 
-
-
-
-
-
+#endif

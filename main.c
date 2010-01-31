@@ -32,7 +32,6 @@
 #include "autoconf.h"
 #include "osemu.h"
 #include "osdep/exectasks.h"
-#include "compiler.h"
 #include "picasso96.h"
 #include "bsdsocket.h"
 #include "uaeexe.h"
@@ -157,7 +156,7 @@ static void fix_options (void)
 	write_log ("Can't use a graphics card or Zorro III fastmem when using a 24 bit\n"
 		 "address space - sorry.\n");
     }
-    if (currprefs.bogomem_size != 0 && currprefs.bogomem_size != 0x80000 && currprefs.bogomem_size != 0x100000 && currprefs.bogomem_size != 0x180000)
+    if (currprefs.bogomem_size != 0 && currprefs.bogomem_size != 0x80000 && currprefs.bogomem_size != 0x100000 && currprefs.bogomem_size != 0x180000 && currprefs.bogomem_size != 0x1c0000)
     {
 	currprefs.bogomem_size = 0;
 	write_log ("Unsupported bogomem size!\n");
@@ -338,24 +337,6 @@ void uae_restart (int opengui, char *cfgfile)
 	strcpy (restart_config, cfgfile);
 }
 
-const char *gameport_state (int nr)
-{
-    if (JSEM_ISJOY0 (nr, &currprefs) && inputdevice_get_device_total (IDTYPE_JOYSTICK) > 0)
-	return "using joystick #0";
-    else if (JSEM_ISJOY1 (nr, &currprefs) && inputdevice_get_device_total (IDTYPE_JOYSTICK) > 1)
-	return "using joystick #1";
-    else if (JSEM_ISMOUSE (nr, &currprefs))
-	return "using mouse";
-    else if (JSEM_ISNUMPAD (nr, &currprefs))
-	return "using numeric pad as joystick";
-    else if (JSEM_ISCURSOR (nr, &currprefs))
-	return "using cursor keys as joystick";
-    else if (JSEM_ISSOMEWHEREELSE (nr, &currprefs))
-	return "using T/F/H/B/Alt as joystick";
-
-    return "not connected";
-}
-
 #ifndef DONT_PARSE_CMDLINE
 
 void usage (void)
@@ -376,20 +357,39 @@ static void parse_cmdline_2 (int argc, char **argv)
     }
 }
 
+static void parse_diskswapper (char *s)
+{
+    char *tmp = my_strdup (s);
+    char *delim = ",";
+    char *p1, *p2;
+    int num = 0;
+
+    p1 = tmp;
+    for(;;) {
+        p2 = strtok (p1, delim);
+        if (!p2)
+	    break;
+	p1 = NULL;
+	if (num >= MAX_SPARE_DRIVES)
+	    break;
+	strncpy (currprefs.dfxlist[num], p2, 255);
+	num++;
+    }
+    free (tmp);
+}
+
 static void parse_cmdline (int argc, char **argv)
 {
     int i;
 
     for (i = 1; i < argc; i++) {
-	if (strcmp (argv[i], "-cfgparam") == 0) {
+	if (!strncmp (argv[i], "-diskswapper=", 13)) {
+	    parse_diskswapper (argv[i] + 13);
+	} else if (strcmp (argv[i], "-cfgparam") == 0) {
 	    if (i + 1 < argc)
 		i++;
 	} else if (strncmp (argv[i], "-config=", 8) == 0) {
-#ifdef FILESYS
-            free_mountinfo (currprefs.mountinfo);
-            currprefs.mountinfo = alloc_mountinfo ();
-#endif
-	    cfgfile_load (&currprefs, argv[i] + 8, 0);
+	    target_cfgfile_load (&currprefs, argv[i] + 8, 0);
 	}
 	/* Check for new-style "-f xxx" argument, where xxx is config-file */
 	else if (strcmp (argv[i], "-f") == 0) {
@@ -400,7 +400,7 @@ static void parse_cmdline (int argc, char **argv)
                 free_mountinfo (currprefs.mountinfo);
 	        currprefs.mountinfo = alloc_mountinfo ();
 #endif
-		cfgfile_load (&currprefs, argv[++i], 0);
+		target_cfgfile_load (&currprefs, argv[++i], 0);
 	    }
 	} else if (strcmp (argv[i], "-s") == 0) {
 	    if (i + 1 == argc)
@@ -444,15 +444,13 @@ static void parse_cmdline_and_init_file (int argc, char **argv)
 
     strcat (optionsfile, restart_config);
 
-    if (! cfgfile_load (&currprefs, optionsfile, 0)) {
+    if (! target_cfgfile_load (&currprefs, optionsfile, 0)) {
 	write_log ("failed to load config '%s'\n", optionsfile);
 #ifdef OPTIONS_IN_HOME
 	/* sam: if not found in $HOME then look in current directory */
 	strcpy (optionsfile, restart_config);
-	cfgfile_load (&currprefs, optionsfile);
+	target_cfgfile_load (&currprefs, optionsfile);
 #endif
-    } else {
-	write_log ("loaded config '%s'\n", optionsfile);
     }
     fix_options ();
 
@@ -490,9 +488,12 @@ void reset_all_systems (void)
 
 void do_start_program (void)
 {
+    if (quit_program == -1)
+	return;
     /* Do a reset on startup. Whether this is elegant is debatable. */
     inputdevice_updateconfig (&currprefs);
-    quit_program = 2;
+    if (quit_program >= 0)
+	quit_program = 2;
     m68k_go (1);
 }
 
@@ -648,7 +649,6 @@ static void real_main2 (int argc, char **argv)
     reset_frame_rate_hack ();
     init_m68k(); /* must come after reset_frame_rate_hack (); */
 
-    compiler_init ();
     gui_update ();
 
     if (graphics_init ()) {
@@ -681,9 +681,7 @@ static void real_main2 (int argc, char **argv)
 void real_main (int argc, char **argv)
 {
     restart_program = 1;
-#ifdef _WIN32
-    sprintf (restart_config, "%sConfigurations\\", start_path);
-#endif
+    fetch_configurationpath (restart_config, sizeof (restart_config));
     strcat (restart_config, OPTIONSFILENAME);
     while (restart_program) {
 	changed_prefs = currprefs;

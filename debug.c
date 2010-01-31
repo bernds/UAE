@@ -31,9 +31,11 @@
 #include "savestate.h"
 #include "autoconf.h"
 #include "akiko.h"
+#include "inputdevice.h"
 
 static int debugger_active;
-static uaecptr skipaddr_start, skipaddr_end, skipaddr_doskip;
+static uaecptr skipaddr_start, skipaddr_end;
+static int skipaddr_doskip;
 static uae_u32 skipins;
 static int do_skip;
 static int debug_rewind;
@@ -541,6 +543,7 @@ static struct memwatch_node mwnodes[MEMWATCH_TOTAL];
 static struct memwatch_node mwhit;
 
 static uae_u8 *illgdebug;
+static int illgdebug_break;
 extern int cdtv_enabled, cd32_enabled;
 
 static void illg_init (void)
@@ -619,10 +622,16 @@ static void illg_debug_do (uaecptr addr, int rw, int size, uae_u32 val)
 		write_log ("RW: %08.8X=%02.2X %c PC=%08.8X\n", ad, v, rws, pc);
 	    else
 		write_log ("RW: %08.8X    %c PC=%08.8X\n", ad, rws, pc);
+	    if (illgdebug_break)
+    		activate_debugger ();
 	} else if ((mask & 1) && rw) {
 	    write_log ("RO: %08.8X=%02.2X %c PC=%08.8X\n", ad, v, rws, pc);
+	    if (illgdebug_break)
+    		activate_debugger ();
 	} else if ((mask & 2) && !rw) {
 	    write_log ("WO: %08.8X    %c PC=%08.8X\n", ad, rws, pc);
+	    if (illgdebug_break)
+    		activate_debugger ();
 	}
     }
 }
@@ -847,6 +856,10 @@ static void memwatch (char **c)
 	} else {
 	    illg_init ();
 	    console_out ("Illegal memory access logging enabled\n");
+	    ignore_ws (c);
+	    illgdebug_break = 0;
+	    if (more_params (c))
+		illgdebug_break = 1;
 	}
 	return;
     }
@@ -961,7 +974,7 @@ static int instruction_breakpoint (char **c)
 	    do_skip = 1;
 	    skipaddr_doskip = 1;
 	    return 1;
-	} else if (nc == 'D') {
+	} else if (nc == 'D' && (*c)[1] == 0) {
 	    for (i = 0; i < BREAKPOINT_TOTAL; i++)
 		bpnodes[i].enabled = 0;
 	    console_out ("All breakpoints removed\n");
@@ -1017,7 +1030,7 @@ static int instruction_breakpoint (char **c)
 	memcpy (&trace_prev_regs, &regs, sizeof regs);
     }
     do_skip = 1;
-    skipaddr_doskip = 1;
+    skipaddr_doskip = -1;
     return 1;
 }
 
@@ -1432,8 +1445,10 @@ void debug (void)
 			    bp = 1;
 		    } else if (opcode == skipins)
 			bp = 1;
-		} else if (skipaddr_start == 0xffffffff && skipaddr_doskip) {
+		} else if (skipaddr_start == 0xffffffff && skipaddr_doskip < 0) {
 		    if ((pc < 0xe00000 || pc >= 0x1000000) && opcode != 0x4ef9)
+			bp = 1;
+		} else if (skipaddr_start == 0xffffffff && skipaddr_doskip > 0) {
 			bp = 1;
 		} else if (skipaddr_end != 0xffffffff) {
 		    if (pc >= skipaddr_start && pc < skipaddr_end)
@@ -1468,6 +1483,7 @@ void debug (void)
     if (lasthist == firsthist) {
 	if (++firsthist == MAX_HIST) firsthist = 0;
     }
+    inputdevice_unacquire ();
     pause_sound ();
     do_skip = 0;
     skipaddr_start = 0xffffffff;
@@ -1499,6 +1515,7 @@ void debug (void)
 	debugging = 1;
     }
     resume_sound ();
+    inputdevice_acquire ();
 }
 
 int notinrom (void)

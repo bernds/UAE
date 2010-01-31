@@ -34,6 +34,8 @@ struct gui_info
     uae_u8 hd;			    /* harddrive */
     uae_u8 cd;			    /* CD */
     int fps, idle;
+    char df[4][256];		    /* inserted image */
+    uae_u32 crc32[4];		    /* crc32 of image */
 };
 #define NUM_LEDS (1 + 1 + 1 + 1 + 1 + 4)
 
@@ -41,3 +43,14 @@ extern struct gui_info gui_data;
 
 /* Functions to be called when prefs are changed by non-gui code.  */
 extern void gui_update_gfx (void);
+
+void notify_user (int msg);
+int translate_message (int msg, char *out);
+typedef enum {
+    NUMSG_NEEDEXT2, NUMSG_NOROM, NUMSG_NOROMKEY,
+    NUMSG_KSROMCRCERROR, NUMSG_KSROMREADERROR, NUMSG_NOEXTROM,
+    NUMSG_MODRIP_NOTFOUND, NUMSG_MODRIP_FINISHED, NUMSG_MODRIP_SAVE,
+    NUMSG_KS68EC020, NUMSG_KS68020, NUMSG_ROMNEED, NUMSG_NOZLIB, NUMSG_STATEHD,
+    NUMSG_NOCAPS, NUMSG_OLDCAPS, NUMSG_KICKREP, NUMSG_KICKREPNO
+} notify_user_msg;
+

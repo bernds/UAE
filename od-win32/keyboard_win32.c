@@ -338,7 +338,8 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 	    break;
 	    case DIK_PRIOR:
 #ifdef ACTION_REPLAY
-	    code = AKS_FREEZEBUTTON;
+	    if (armodel)
+		code = AKS_FREEZEBUTTON;
 #endif
 	    break;
 	    case DIK_NEXT:

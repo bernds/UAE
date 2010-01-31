@@ -16,7 +16,7 @@ extern void disk_eject (int num);
 extern int disk_empty (int num);
 extern void disk_insert (int num, const char *name);
 extern void DISK_check_change (void);
-extern struct zfile *DISK_validate_filename (const char *, int, int *);
+extern struct zfile *DISK_validate_filename (const char *, int, int *, uae_u32 *);
 extern void DISK_handler (void);
 extern void DISK_update (int hpos);
 extern void DISK_reset (void);
@@ -26,6 +26,9 @@ extern void disk_creatediskfile (char *name, int type, drive_type adftype);
 extern void dumpdisk (void);
 extern void DISK_history_add (const char *name, int idx);
 extern char *DISK_history_get (int idx);
+int DISK_examine_image (struct uae_prefs *p, int num, uae_u32 *crc32);
+extern char *DISK_get_saveimagepath (const char *name);
+extern void DISK_reinsert (int num);
 
 extern void DSKLEN (uae_u16 v, int hpos);
 extern uae_u16 DSKBYTR (int hpos);

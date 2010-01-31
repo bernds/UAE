@@ -16,6 +16,7 @@
 
 #include "config.h"
 #include "options.h"
+#include "uae.h"
 #include "memory.h"
 #include "events.h"
 #include "savestate.h"
@@ -359,6 +360,8 @@ static int sector_buffer_sector_1, sector_buffer_sector_2;
 static uae_u8 *sector_buffer_info_1, *sector_buffer_info_2;
 
 static int unitnum = -1;
+static int cdromok = 0;
+
 
 static uae_u8 frombcd (uae_u8 v)
 {
@@ -939,6 +942,7 @@ void AKIKO_hsync_handler (void)
 	    gui_cd_led (1);
 	cdrom_run_read ();
 	framecounter = 1000000 / (74 * 75 * cdrom_speed);
+	framecounter = 1000000 / (74 * 75 * cdrom_speed);
         cdrom_status1 |= CDSTATUS_FRAME;
     }
     akiko_internal ();
@@ -993,7 +997,7 @@ static void *akiko_thread (void *null)
 	    sector_buffer_sector_2 = tmp3;
 	}
         uae_sem_post (&akiko_sem);
-	Sleep (10);
+	sleep_millis (10);
     }
     akiko_thread_running = -1;
     return 0;
@@ -1251,6 +1255,22 @@ void akiko_lput (uaecptr addr, uae_u32 v)
 
 static uae_thread_id akiko_tid;
 
+static void akiko_cdrom_free (void)
+{
+    if (unitnum >= 0)
+	sys_cddev_close ();
+    unitnum = -1;
+    free (sector_buffer_1);
+    free (sector_buffer_2);
+    free (sector_buffer_info_1);
+    free (sector_buffer_info_2);
+    sector_buffer_1 = 0;
+    sector_buffer_2 = 0;
+    sector_buffer_info_1 = 0;
+    sector_buffer_info_2 = 0;
+    cdromok = 0;
+}
+
 void akiko_reset (void)
 {
     cdaudiostop ();
@@ -1268,6 +1288,7 @@ void akiko_reset (void)
 	    Sleep (10);
 	akiko_thread_running = 0;
     }
+    akiko_cdrom_free ();
 }
 
 extern uae_u32 extendedkickmemory;
@@ -1291,23 +1312,10 @@ static void patchrom (void)
     write_log ("couldn't patch extended rom\n");
 }
 
-static int cdromok = 0;
-
 void akiko_free (void)
 {
     akiko_reset ();
-    if (unitnum >= 0)
-	sys_cddev_close ();
-    unitnum = -1;
-    free (sector_buffer_1);
-    free (sector_buffer_2);
-    free (sector_buffer_info_1);
-    free (sector_buffer_info_2);
-    sector_buffer_1 = 0;
-    sector_buffer_2 = 0;
-    sector_buffer_info_1 = 0;
-    sector_buffer_info_2 = 0;
-    cdromok = 0;
+    akiko_cdrom_free ();
 }
 
 int akiko_init (void)

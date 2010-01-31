@@ -20,7 +20,6 @@
 #include "autoconf.h"
 #include "ersatz.h"
 #include "debug.h"
-#include "compiler.h"
 #include "gui.h"
 #include "savestate.h"
 #include "blitter.h"
@@ -819,9 +818,11 @@ static void exception_trace (int nr)
 
 static void exception_debug (int nr)
 {
+#ifdef DEBUGGER
     if (!exception_debugging)
 	return;
     console_out ("Exception %d, PC=%08.8X\n", nr, m68k_getpc()); 
+#endif
 }
 
 #ifdef CPUEMU_6
@@ -835,7 +836,6 @@ static void Exception_ce (int nr, uaecptr oldpc)
     int sv = regs.s;
 
     exception_debug (nr);
-    compiler_flush_jsr_stack();
     MakeSR();
 
     c = 0;
@@ -942,7 +942,6 @@ static void Exception_normal (int nr, uaecptr oldpc)
     int sv = regs.s;
 
     exception_debug (nr);
-    compiler_flush_jsr_stack();
     MakeSR();
 
     if (!regs.s) {
@@ -1103,7 +1102,8 @@ static int movec_illg (int regno)
     }
     if (currprefs.cpu_level == 2 || currprefs.cpu_level == 3) { /* 68020 */
 	if (regno == 3) return 1; /* 68040 only */
-	if (regno2 < 4)
+	 /* 4 is >=68040, but 0x804 is in 68020 */
+	 if (regno2 < 4 || regno == 0x804)
 	    return 0;
 	return 1;
     }
@@ -1516,7 +1516,6 @@ unsigned long REGPARAM2 op_illg (uae_u32 opcode)
 {
     uaecptr pc = m68k_getpc ();
     static int warned;
-    static int cpu68020;
 
     if (cloanto_rom && (opcode & 0xF100) == 0x7100) {
 	m68k_dreg (regs, (opcode >> 9) & 7) = (uae_s8)(opcode & 0xFF);
@@ -1525,10 +1524,9 @@ unsigned long REGPARAM2 op_illg (uae_u32 opcode)
 	return 4;
     }
 
-    compiler_flush_jsr_stack ();
-    if (opcode == 0x4E7B && get_long (0x10) == 0 && in_rom (pc) && !cpu68020) {
-	gui_message ("Your Kickstart requires a 68020 CPU");
-	cpu68020 = 1;
+    if (opcode == 0x4E7B && in_rom (pc) && get_long (0x10) == 0) {
+        notify_user (NUMSG_KS68020);
+	uae_restart (-1, NULL);
     }
 
 #ifdef AUTOCONFIG
@@ -1700,9 +1698,6 @@ static int do_specialties (int cycles)
 	    do_copper ();
     }
 
-#ifdef JIT
-    run_compiled_code();
-#endif
     if (regs.spcflags & SPCFLAG_DOTRACE) {
 	Exception (9,last_trace_ad);
     }
@@ -1799,6 +1794,8 @@ static void m68k_run_1 (void)
 	uae_u32 opcode = regs.ir;
 #if 0
 	int pc = m68k_getpc();
+	if (pc == 0xdff002)
+	    write_log("hip\n");
 	if (pc != pcs[0] && (pc < 0xd00000 || pc > 0x1000000)) {
 	    memmove (pcs + 1, pcs, 998 * 4);
 	    pcs[0] = pc;
@@ -2188,8 +2185,10 @@ void m68k_go (int may_quit)
             m68k_setpc (regs.pc);
 	}
 
+#ifdef DEBUGGER
 	if (debugging)
 	    debug ();
+#endif
 	if (regs.panic) {
 	    regs.panic = 0;
 	    /* program jumped to non-existing memory and cpu was >= 68020 */

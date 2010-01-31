@@ -10,6 +10,8 @@
 //#define BLITTER_DEBUG
 //#define BLITTER_SLOWDOWNDEBUG 4
 
+#define SPEEDUP
+
 #include "sysconfig.h"
 #include "sysdeps.h"
 
@@ -51,7 +53,7 @@ uae_u32 blit_masktable[BLITTER_MAX_WORDS];
 static uae_u16 blit_trashtable[BLITTER_MAX_WORDS];
 enum blitter_states bltstate;
 
-static int blit_cyclecounter, blit_maxcyclecounter, blit_slowdown, blit_cycles_total;
+static int blit_cyclecounter, blit_maxcyclecounter, blit_slowdown;
 static int blit_linecyclecounter, blit_misscyclecounter;
 
 #ifdef CPUEMU_6
@@ -114,7 +116,7 @@ static uae_u8 blit_cycle_diagram_fill[][10] =
 
 static uae_u8 blit_cycle_diagram_line[] =
 {
-    0, 4, 0,0,0,4 /* total guess.. */
+    0, 4, 0,0,3,4 /* total guess.. */
 };
 
 void build_blitfilltable(void)
@@ -207,9 +209,12 @@ static void blitter_dofast(void)
 	bltdpt += (blt_info.hblitsize*2 + blt_info.bltdmod)*blt_info.vblitsize;
     }
 
-    if (blitfunc_dofast[mt] && !blitfill)
+#ifdef SPEEDUP
+    if (blitfunc_dofast[mt] && !blitfill) {
 	(*blitfunc_dofast[mt])(bltadatptr, bltbdatptr, bltcdatptr, bltddatptr, &blt_info);
-    else {
+    } else
+#endif
+    {
 	uae_u32 blitbhold = blt_info.bltbhold;
 	uae_u32 preva = 0, prevb = 0;
 	uaecptr dstp = 0;
@@ -298,15 +303,17 @@ static void blitter_dofast_desc(void)
 	bltddatptr = bltdpt;
 	bltdpt -= (blt_info.hblitsize*2 + blt_info.bltdmod)*blt_info.vblitsize;
     }
-    if (blitfunc_dofast_desc[mt] && !blitfill)
+#ifdef SPEEDUP
+    if (blitfunc_dofast_desc[mt] && !blitfill) {
 	(*blitfunc_dofast_desc[mt])(bltadatptr, bltbdatptr, bltcdatptr, bltddatptr, &blt_info);
-    else {
+    } else
+#endif
+    {
 	uae_u32 blitbhold = blt_info.bltbhold;
 	uae_u32 preva = 0, prevb = 0;
 	uaecptr dstp = 0;
 	int dodst = 0;
 
-/*	if (!blitfill) write_log ("minterm %x not present\n",mt);*/
 	for (j = 0; j < blt_info.vblitsize; j++) {
 	    blitfc = !!(bltcon1 & 0x4);
 	    for (i = 0; i < blt_info.hblitsize; i++) {
@@ -800,6 +807,7 @@ static void blit_bltset (int con)
 	if (blt_info.hblitsize != 2)
 	    write_log ("weird hblitsize in linemode: %d vsize=%d PC%=%x\n", blt_info.hblitsize, blt_info.vblitsize, m68k_getpc());
         blit_diag = blit_cycle_diagram_line;
+	blit_singlechannel = 1;
     } else {
 	if (con & 2) {
 	    blitfc = !!(bltcon1 & 0x4);
@@ -809,7 +817,7 @@ static void blit_bltset (int con)
 		* negative effects. */
 		static int warn = 1;
 		if (warn)
-		    write_log ("warning: weird fill mode (further messages suppressed)\n");
+		    write_log ("warning: weird fill mode (further messages suppressed) PC=%x\n", m68k_getpc());
 		warn = 0;
 		blitife = 0;
 	    }
@@ -817,7 +825,7 @@ static void blit_bltset (int con)
 	if (blitfill && !blitdesc) {
 	    static int warn = 1;
 	    if (warn)
-	        write_log ("warning: blitter fill without desc (further messages suppressed)\n");
+	        write_log ("warning: blitter fill without desc (further messages suppressed) PC=%x\n", m68k_getpc());
 	    warn = 0;
 	}
 	blit_diag = blitfill ? blit_cycle_diagram_fill[blit_ch] : blit_cycle_diagram[blit_ch];
@@ -889,7 +897,6 @@ void do_blitter (int hpos)
         blit_firstline_cycles = blit_first_cycle + blit_diag[1] * blt_info.hblitsize * CYCLE_UNIT;
         cycles = blt_info.vblitsize * blt_info.hblitsize;
     }
-    blit_cycles_total = cycles;
 
 #ifdef BLITTER_DEBUG
     blitter_dontdo = 0;
@@ -990,33 +997,26 @@ int blitnasty (void)
 void blitter_slowdown (int ddfstrt, int ddfstop, int totalcycles, int freecycles)
 {
     static int oddfstrt, oddfstop, ototal, ofree;
-    static int cycles_used;
-    int slow;
+    static int slow;
     
+    if (!totalcycles)
+	return;
     if (ddfstrt != oddfstrt || ddfstop != oddfstop || totalcycles != ototal || ofree != freecycles) {
-	int linecycles = ddfstop - ddfstrt;
-        cycles_used = 0;
-        if (linecycles > blit_cycles_total)
-	    linecycles = blit_cycles_total;
-	if (linecycles < 0)
-	    linecycles = 0;
-	if (totalcycles == 0)
-	    return;
-	cycles_used = linecycles * (totalcycles - freecycles) / totalcycles;
+	int linecycles = ((ddfstop - ddfstrt + totalcycles - 1) / totalcycles) * totalcycles;
+	int freelinecycles = ((ddfstop - ddfstrt + totalcycles - 1) / totalcycles) * freecycles;
+	int dmacycles = (linecycles * blit_dmacount) / blit_diag[1];
 	oddfstrt = ddfstrt;
 	oddfstop = ddfstop;
 	ototal = totalcycles;
 	ofree = freecycles;
+	slow = 0;
+	if (dmacycles > freelinecycles)
+	    slow = dmacycles - freelinecycles;
     }
-    if (blit_slowdown < 0 || blitline || totalcycles == 0)
-	return;
-    slow = cycles_used * blit_dmacount / blit_diag[1];
-    slow = slow * 7 / 10;
-    if (slow <= 0)
+    if (blit_slowdown <= 0 || blitline)
 	return;
     blit_slowdown += slow;
     blit_misscyclecounter += slow;
-    blit_cycles_total -= maxhpos;
 }
 
 uae_u8 *restore_blitter (uae_u8 *src)

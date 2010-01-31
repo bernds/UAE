@@ -20,6 +20,8 @@
 
 #include "driveclick.h"
 
+#define CLICK_TRACKS 84
+
 static struct drvsample drvs[4][DS_END];
 static int freq = 44100;
 
@@ -123,6 +125,10 @@ void driveclick_init(void)
 		drvs[i][j].len <<= DS_SHIFT;
 	    drvs[i][DS_CLICK].pos = drvs[i][DS_CLICK].len;
 	    drvs[i][DS_SNATCH].pos = drvs[i][DS_SNATCH].len;
+	    if (drvs[i][DS_CLICK].len > (100000 << DS_SHIFT)) {
+		drvs[i][DS_CLICK].multisize = drvs[i][DS_CLICK].len / CLICK_TRACKS;
+		drvs[i][DS_CLICK].multilen = (drvs[i][DS_CLICK].multisize * 9) / 10;
+	    }
 	    vv += currprefs.dfxclick[i];
 	}
     }
@@ -205,7 +211,7 @@ static int clickcnt;
 
 static void mix (void)
 {
-    int total = ((uae_u8*)sndbufpt - (uae_u8*)sndbuffer) / (currprefs.stereo ? 4 : 2);
+    int total = ((uae_u8*)sndbufpt - (uae_u8*)sndbuffer) / (currprefs.sound_stereo ? 4 : 2);
     
     if (currprefs.dfxclickvolume > 0) {
 	while (clickcnt < total) {
@@ -235,7 +241,7 @@ void driveclick_mix (uae_s16 *sndbuffer, int size)
 	return;
     mix();
     clickcnt = 0;
-    if (currprefs.stereo) {
+    if (currprefs.sound_stereo) {
         for (i = 0; i < size / 2; i++) {
 	    uae_s16 s = clickbuffer[i];
 	    sndbuffer[0] = limit(((sndbuffer[0] + s) * 2) / 3);
@@ -250,16 +256,21 @@ void driveclick_mix (uae_s16 *sndbuffer, int size)
     }
 }
 
-void driveclick_click (int drive, int startOffset)
+void driveclick_click (int drive, int cyl)
 {
     if (!click_initialized)
 	return;
     if (!currprefs.dfxclick[drive])
 	return;
     mix();
-    drvs[drive][DS_CLICK].pos = (startOffset * 4) << DS_SHIFT;
-    if (drvs[drive][DS_CLICK].pos > drvs[drive][DS_CLICK].len / 2)
-	drvs[drive][DS_CLICK].pos = drvs[drive][DS_CLICK].len / 2;
+    if (drvs[drive][DS_CLICK].multisize) {
+	drvs[drive][DS_CLICK].pos = drvs[drive][DS_CLICK].multisize * cyl;
+	drvs[drive][DS_CLICK].len = drvs[drive][DS_CLICK].pos + drvs[drive][DS_CLICK].multilen;
+    } else {
+	drvs[drive][DS_CLICK].pos = (cyl * 4) << DS_SHIFT;
+	if (drvs[drive][DS_CLICK].pos > drvs[drive][DS_CLICK].len / 2)
+	    drvs[drive][DS_CLICK].pos = drvs[drive][DS_CLICK].len / 2;
+    }
 }
 
 void driveclick_motor (int drive, int running)

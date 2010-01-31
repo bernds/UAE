@@ -75,17 +75,22 @@ INPUTEVENT_END
 };
 #undef DEFEVENT
 
-enum mousestate { mousehack_unknown, mousehack_normal, mousehack_dontcare, mousehack_follow };
-
 extern void handle_cd32_joystick_cia (uae_u8, uae_u8);
 extern uae_u8 handle_parport_joystick (int port, uae_u8 pra, uae_u8 dra);
 extern uae_u8 handle_joystick_buttons (uae_u8);
 extern int getbuttonstate (int joy, int button);
 extern int getjoystate (int joy);
 
+enum mousestate { mousehack_unknown, mousehack_normal, mousehack_dontcare, mousehack_follow };
+
 extern void mousehack_set (enum mousestate);
+extern int mousehack_get (void);
 extern uae_u32 mousehack_helper (void);
 extern void mousehack_handle (int sprctl, int sprpos);
+extern int needmousehack (void);
+extern void togglemouse (void);
+extern int mousehack_alive (void);
+extern int mousehack_allowed (void);
 
 extern void setmousebuttonstateall (int mouse, uae_u32 buttonbits, uae_u32 buttonmask);
 extern void setjoybuttonstateall (int joy, uae_u32 buttonbits, uae_u32 buttonmask);
@@ -111,6 +116,7 @@ extern uae_u16 JOY1DAT (void);
 
 extern void inputdevice_vsync (void);
 extern void inputdevice_hsync (void);
+extern void inputdevice_reset (void);
 
 extern void write_inputdevice_config (struct uae_prefs *p, FILE *f);
 extern void read_inputdevice_config (struct uae_prefs *p, char *option, char *value);
@@ -120,7 +126,7 @@ extern void inputdevice_init (void);
 extern void inputdevice_close (void);
 extern void inputdevice_default_prefs (struct uae_prefs *p);
 
-extern void inputdevice_acquire (int);
+extern void inputdevice_acquire (void);
 extern void inputdevice_unacquire (void);
 
 extern void indicator_leds (int num, int state);
@@ -130,3 +136,18 @@ extern void pausemode (int mode);
 
 extern void inputdevice_add_inputcode (int code);
 extern void inputdevice_handle_inputcode (void);
+
+#define JSEM_KBDLAYOUT 0
+#define JSEM_JOYS 100
+#define JSEM_MICE 200
+#define JSEM_END 300
+#define JSEM_DECODEVAL(port,p) ((port) == 0 ? (p)->jport0 : (p)->jport1)
+#define JSEM_ISNUMPAD(port,p) (jsem_iskbdjoy(port,p) == JSEM_KBDLAYOUT)
+#define JSEM_ISCURSOR(port,p) (jsem_iskbdjoy(port,p) == JSEM_KBDLAYOUT + 1)
+#define JSEM_ISSOMEWHEREELSE(port,p) (jsem_iskbdjoy(port,p) == JSEM_KBDLAYOUT + 2)
+extern int compatibility_device[2];
+
+extern int jsem_isjoy (int port, struct uae_prefs *p);
+extern int jsem_ismouse (int port, struct uae_prefs *p);
+extern int jsem_iskbdjoy (int port, struct uae_prefs *p);
+

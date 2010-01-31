@@ -37,13 +37,13 @@
 #include "newcpu.h"
 #include "filesys.h"
 #include "autoconf.h"
-#include "compiler.h"
 #include "fsusage.h"
 #include "native2amiga.h"
 #include "scsidev.h"
 #include "fsdb.h"
 #include "zfile.h"
 #include "gui.h"
+#include "savestate.h"
 
 #define TRACING_ENABLED 0
 #if TRACING_ENABLED
@@ -53,11 +53,6 @@
 #define TRACE(x)
 #define DUMPLOCK(u,x)
 #endif
-
-void xfree (void *p)
-{
-    free (p);
-}
 
 static void aino_test (a_inode *aino)
 {
@@ -119,29 +114,6 @@ static long dos_errno(void)
     }
 }
 
-/*
- * This _should_ be no issue for us, but let's rather use a guaranteed
- * thread safe function if we have one.
- * This used to be broken in glibc versions <= 2.0.1 (I think). I hope
- * no one is using this these days.
- * Michael Krause says it's also broken in libc5. ARRRGHHHHHH!!!!
- */
-#if 0 && defined HAVE_READDIR_R
-
-static struct dirent *my_readdir (DIR *dirstream, struct dirent *space)
-{
-    struct dirent *loc;
-    if (readdir_r (dirstream, space, &loc) == 0) {
-	/* Success */
-	return loc;
-    }
-    return 0;
-}
-
-#else
-#define my_readdir(dirstream, space) readdir(dirstream)
-#endif
-
 uaecptr filesys_initcode;
 static uae_u32 fsdevname, filesys_configdev;
 
@@ -178,7 +150,6 @@ typedef struct {
     uae_u8 *rdb_filesysstore;
     int rdb_filesyssize;
     char *filesysdir;
-
 
 } UnitInfo;
 
@@ -443,17 +414,21 @@ void write_filesys_config (struct uaedev_mount_info *mountinfo,
 	if (uip[i].volname != 0) {
 	    fprintf (f, "filesystem2=%s,%s:%s:%s,%d\n", uip[i].readonly ? "ro" : "rw",
 		uip[i].devname ? uip[i].devname : "", uip[i].volname, str, uip[i].bootpri);
+#if 0
 	    fprintf (f, "filesystem=%s,%s:%s\n", uip[i].readonly ? "ro" : "rw",
 		uip[i].volname, str);
+#endif
 	} else {
 	    fprintf (f, "hardfile2=%s,%s:%s,%d,%d,%d,%d,%d,%s\n",
 		     uip[i].readonly ? "ro" : "rw",
 		     uip[i].devname ? uip[i].devname : "", str,
 		     uip[i].hf.secspertrack, uip[i].hf.surfaces, uip[i].hf.reservedblocks, uip[i].hf.blocksize,
 		     uip[i].bootpri,uip[i].filesysdir ? uip[i].filesysdir : "");
+#if 0
 	    fprintf (f, "hardfile=%s,%d,%d,%d,%d,%s\n",
 		     uip[i].readonly ? "ro" : "rw", uip[i].hf.secspertrack,
 		     uip[i].hf.surfaces, uip[i].hf.reservedblocks, uip[i].hf.blocksize, str);
+#endif
 	}
 	xfree (str);
     }
@@ -588,7 +563,7 @@ typedef struct key {
     struct key *next;
     a_inode *aino;
     uae_u32 uniq;
-    int fd;
+    void *fd;
     off_t file_pos;
     int dosmode;
     int createmode;
@@ -1134,7 +1109,10 @@ static a_inode *new_child_aino (Unit *unit, a_inode *base, char *rel)
 	aino->comment = 0;
 	aino->has_dbentry = 0;
 
-	fsdb_fill_file_attrs (aino);
+	if (!fsdb_fill_file_attrs (aino)) {
+	    xfree (aino);
+	    return 0;
+	}
 	if (aino->dir)
 	    fsdb_clean_dir (aino);
     }
@@ -1231,7 +1209,11 @@ static a_inode *lookup_child_aino_for_exnext (Unit *unit, a_inode *base, char *r
 	c->aname = get_aname (unit, base, rel);
 	c->comment = 0;
 	c->has_dbentry = 0;
-	fsdb_fill_file_attrs (c);
+	if (!fsdb_fill_file_attrs (c)) {
+	    xfree (c);
+	    *err = ERROR_NO_FREE_STORE;
+	    return 0;
+	}
 	if (c->dir)
 	    fsdb_clean_dir (c);
     }
@@ -1298,6 +1280,68 @@ static a_inode *get_aino (Unit *unit, a_inode *base, const char *rel, uae_u32 *e
     return curr;
 }
 
+static void startup_update_unit (Unit *unit, UnitInfo *uinfo)
+{
+    if (!unit)
+	return;
+    unit->ui.devname = uinfo->devname;
+    xfree (unit->ui.volname);
+    unit->ui.volname = my_strdup (uinfo->volname); /* might free later for rename */
+    unit->ui.rootdir = uinfo->rootdir;
+    unit->ui.readonly = uinfo->readonly;
+    unit->ui.unit_pipe = uinfo->unit_pipe;
+    unit->ui.back_pipe = uinfo->back_pipe;
+}
+
+static Unit *startup_create_unit (UnitInfo *uinfo)
+{
+    int i;
+    Unit *unit;
+
+    unit = (Unit *) xcalloc (sizeof (Unit), 1);
+    unit->next = units;
+    units = unit;
+    uinfo->self = unit;
+
+    unit->volume = 0;
+    unit->port = m68k_areg (regs, 5);
+    unit->unit = unit_num++;
+
+    startup_update_unit (unit, uinfo);
+
+    unit->cmds_complete = 0;
+    unit->cmds_sent = 0;
+    unit->cmds_acked = 0;
+    for (i = 0; i < EXKEYS; i++) {
+	unit->examine_keys[i].aino = 0;
+	unit->examine_keys[i].curr_file = 0;
+	unit->examine_keys[i].uniq = 0;
+    }
+    unit->total_locked_ainos = 0;
+    unit->next_exkey = 1;
+    unit->keys = 0;
+    unit->a_uniq = unit->key_uniq = 0;
+
+    unit->rootnode.aname = uinfo->volname;
+    unit->rootnode.nname = uinfo->rootdir;
+    unit->rootnode.sibling = 0;
+    unit->rootnode.next = unit->rootnode.prev = &unit->rootnode;
+    unit->rootnode.uniq = 0;
+    unit->rootnode.parent = 0;
+    unit->rootnode.child = 0;
+    unit->rootnode.dir = 1;
+    unit->rootnode.amigaos_mode = 0;
+    unit->rootnode.shlock = 0;
+    unit->rootnode.elock = 0;
+    unit->rootnode.comment = 0;
+    unit->rootnode.has_dbentry = 0;
+    aino_test_init (&unit->rootnode);
+    unit->aino_cache_size = 0;
+    for (i = 0; i < MAX_AINO_HASH; i++)
+	unit->aino_hash[i] = 0;
+    return unit;
+}
+
 static uae_u32 startup_handler (void)
 {
     /* Just got the startup packet. It's in A4. DosBase is in A2,
@@ -1336,52 +1380,7 @@ static uae_u32 startup_handler (void)
 	return 1;
     }
     uinfo = current_mountinfo->ui + i;
-
-    unit = (Unit *) xcalloc (sizeof (Unit), 1);
-    unit->next = units;
-    units = unit;
-    uinfo->self = unit;
-
-    unit->volume = 0;
-    unit->port = m68k_areg (regs, 5);
-    unit->unit = unit_num++;
-
-    unit->ui.devname = uinfo->devname;
-    unit->ui.volname = my_strdup (uinfo->volname); /* might free later for rename */
-    unit->ui.rootdir = uinfo->rootdir;
-    unit->ui.readonly = uinfo->readonly;
-    unit->ui.unit_pipe = uinfo->unit_pipe;
-    unit->ui.back_pipe = uinfo->back_pipe;
-    unit->cmds_complete = 0;
-    unit->cmds_sent = 0;
-    unit->cmds_acked = 0;
-    for (i = 0; i < EXKEYS; i++) {
-	unit->examine_keys[i].aino = 0;
-	unit->examine_keys[i].curr_file = 0;
-	unit->examine_keys[i].uniq = 0;
-    }
-    unit->total_locked_ainos = 0;
-    unit->next_exkey = 1;
-    unit->keys = 0;
-    unit->a_uniq = unit->key_uniq = 0;
-
-    unit->rootnode.aname = uinfo->volname;
-    unit->rootnode.nname = uinfo->rootdir;
-    unit->rootnode.sibling = 0;
-    unit->rootnode.next = unit->rootnode.prev = &unit->rootnode;
-    unit->rootnode.uniq = 0;
-    unit->rootnode.parent = 0;
-    unit->rootnode.child = 0;
-    unit->rootnode.dir = 1;
-    unit->rootnode.amigaos_mode = 0;
-    unit->rootnode.shlock = 0;
-    unit->rootnode.elock = 0;
-    unit->rootnode.comment = 0;
-    unit->rootnode.has_dbentry = 0;
-    aino_test_init (&unit->rootnode);
-    unit->aino_cache_size = 0;
-    for (i = 0; i < MAX_AINO_HASH; i++)
-	unit->aino_hash[i] = 0;
+    unit = startup_create_unit (uinfo);
 
 /*    write_comm_pipe_int (unit->ui.unit_pipe, -1, 1);*/
 
@@ -1483,7 +1482,7 @@ static void free_key (Unit *unit, Key *k)
     }
 
     if (k->fd >= 0)
-	close (k->fd);
+	my_close (k->fd);
 
     xfree(k);
 }
@@ -1512,7 +1511,7 @@ static Key *new_key (Unit *unit)
 {
     Key *k = (Key *) xmalloc(sizeof(Key));
     k->uniq = ++unit->key_uniq;
-    k->fd = -1;
+    k->fd = NULL;
     k->file_pos = 0;
     k->next = unit->keys;
     unit->keys = k;
@@ -2067,7 +2066,7 @@ static void action_examine_object (Unit *unit, dpacket packet)
 
 static void populate_directory (Unit *unit, a_inode *base)
 {
-    DIR *d = opendir (base->nname);
+    void *d = my_opendir (base->nname);
     a_inode *aino;
 
     if (!d)
@@ -2079,21 +2078,22 @@ static void populate_directory (Unit *unit, a_inode *base)
     TRACE(("Populating directory, child %p, locked_children %d\n",
 	   base->child, base->locked_children));
     for (;;) {
-	struct dirent *de;
+	char fn[MAX_DPATH];
+	int ok;
 	uae_u32 err;
 
 	/* Find next file that belongs to the Amiga fs (skipping things
 	   like "..", "." etc.  */
 	do {
-	    de = my_readdir (d, &de_space);
-	} while (de && fsdb_name_invalid (de->d_name));
-	if (! de)
+	    ok = my_readdir (d, fn);
+	} while (ok && fsdb_name_invalid (fn));
+	if (!ok)
 	    break;
 	/* This calls init_child_aino, which will notice that the parent is
 	   being ExNext()ed, and it will increment the locked counts.  */
-	aino = lookup_child_aino_for_exnext (unit, base, de->d_name, &err);
+	aino = lookup_child_aino_for_exnext (unit, base, fn, &err);
     }
-    closedir (d);
+    my_closedir (d);
 }
 
 static void do_examine (Unit *unit, dpacket packet, ExamineKey *ek, uaecptr info)
@@ -2170,7 +2170,7 @@ static void do_find (Unit *unit, dpacket packet, int mode, int create, int fallb
     uaecptr name = GET_PCK_ARG3 (packet) << 2;
     a_inode *aino;
     Key *k;
-    int fd;
+    void *fd;
     uae_u32 err;
     mode_t openmode;
     int aino_created = 0;
@@ -2252,9 +2252,9 @@ static void do_find (Unit *unit, dpacket packet, int mode, int create, int fallb
 		| (create ? O_CREAT : 0)
 		| (create == 2 ? O_TRUNC : 0));
 
-    fd = open (aino->nname, openmode | O_BINARY, 0777);
+    fd = my_open (aino->nname, openmode | O_BINARY);
 
-    if (fd < 0) {
+    if (fd == NULL) {
 	if (aino_created)
 	    delete_aino (unit, aino);
 	PUT_PCK_RES1 (packet, DOS_FALSE);
@@ -2284,7 +2284,7 @@ action_fh_from_lock (Unit *unit, dpacket packet)
     uaecptr lock = GET_PCK_ARG2 (packet) << 2;
     a_inode *aino;
     Key *k;
-    int fd;
+    void *fd;
     mode_t openmode;
     int mode;
 
@@ -2313,7 +2313,7 @@ action_fh_from_lock (Unit *unit, dpacket packet)
     if (unit->ui.readonly)
 	openmode = O_RDONLY;
 
-    fd = open (aino->nname, openmode | O_BINARY, 0777);
+    fd = my_open (aino->nname, openmode | O_BINARY);
 
     if (fd < 0) {
 	PUT_PCK_RES1 (packet, DOS_FALSE);
@@ -2426,9 +2426,9 @@ action_read (Unit *unit, dpacket packet)
      * Try to detect a LoadSeg() */
     if (k->file_pos == 0 && size >= 4) {
 	unsigned char buf[4];
-	off_t currpos = lseek(k->fd, 0, SEEK_CUR);
-	read(k->fd, buf, 4);
-	lseek(k->fd, currpos, SEEK_SET);
+	off_t currpos = my_lseek (k->fd, 0, SEEK_CUR);
+	my_read (k->fd, buf, 4);
+	my_lseek (k->fd, currpos, SEEK_SET);
 	if (buf[0] == 0 && buf[1] == 0 && buf[2] == 3 && buf[3] == 0xF3)
 	    possible_loadseg();
     }
@@ -2436,7 +2436,7 @@ action_read (Unit *unit, dpacket packet)
     if (valid_address (addr, size)) {
 	uae_u8 *realpt;
 	realpt = get_real_address (addr);
-	actual = read(k->fd, realpt, size);
+	actual = my_read (k->fd, realpt, size);
 
 	if (actual == 0) {
 	    PUT_PCK_RES1 (packet, 0);
@@ -2455,9 +2455,9 @@ action_read (Unit *unit, dpacket packet)
 	write_log ("unixfs warning: Bad pointer passed for read: %08x, size %d\n", addr, size);
 	/* ugh this is inefficient but easy */
 
-	old = lseek (k->fd, 0, SEEK_CUR);
-	filesize = lseek (k->fd, 0, SEEK_END);
-	lseek (k->fd, old, SEEK_SET);
+	old = my_lseek (k->fd, 0, SEEK_CUR);
+	filesize = my_lseek (k->fd, 0, SEEK_END);
+	my_lseek (k->fd, old, SEEK_SET);
 	if (size > filesize)
 	    size = filesize;
 
@@ -2467,7 +2467,7 @@ action_read (Unit *unit, dpacket packet)
 	    PUT_PCK_RES2 (packet, ERROR_NO_FREE_STORE);
 	    return;
 	}
-	actual = read(k->fd, buf, size);
+	actual = my_read (k->fd, buf, size);
 
 	if (actual < 0) {
 	    PUT_PCK_RES1 (packet, 0);
@@ -2518,7 +2518,7 @@ action_write (Unit *unit, dpacket packet)
     for (i = 0; i < size; i++)
 	buf[i] = get_byte(addr + i);
 
-    PUT_PCK_RES1 (packet, write(k->fd, buf, size));
+    PUT_PCK_RES1 (packet, my_write (k->fd, buf, size));
     if (GET_PCK_RES1 (packet) != size)
 	PUT_PCK_RES2 (packet, dos_errno ());
     if (GET_PCK_RES1 (packet) >= 0)
@@ -2549,11 +2549,11 @@ action_seek (Unit *unit, dpacket packet)
 
     TRACE(("ACTION_SEEK(%s,%d,%d)\n", k->aino->nname, pos, mode));
 
-    old = lseek (k->fd, 0, SEEK_CUR);
+    old = my_lseek (k->fd, 0, SEEK_CUR);
     {
 	uae_s32 temppos;
-	long filesize = lseek (k->fd, 0, SEEK_END);
-	lseek (k->fd, old, SEEK_SET);
+	long filesize = my_lseek (k->fd, 0, SEEK_END);
+	my_lseek (k->fd, old, SEEK_SET);
 
 	if (whence == SEEK_CUR) temppos = old + pos;
 	if (whence == SEEK_SET) temppos = pos;
@@ -2565,7 +2565,7 @@ action_seek (Unit *unit, dpacket packet)
 	    return;
 	}
     }
-    res = lseek (k->fd, pos, whence);
+    res = my_lseek (k->fd, pos, whence);
 
     if (-1 == res) {
 	PUT_PCK_RES1 (packet, res);
@@ -2824,7 +2824,7 @@ action_create_dir (Unit *unit, dpacket packet)
 	return;
     }
 
-    if (mkdir (aino->nname, 0777) == -1) {
+    if (my_mkdir (aino->nname) == -1) {
 	PUT_PCK_RES1 (packet, DOS_FALSE);
 	PUT_PCK_RES2 (packet, dos_errno());
 	return;
@@ -2894,17 +2894,17 @@ action_set_file_size (Unit *unit, dpacket packet)
     }
 
     /* Write one then truncate: that should give the right size in all cases.  */
-    offset = lseek (k->fd, offset, whence);
-    write (k->fd, /* whatever */(char *)&k1, 1);
+    offset = my_lseek (k->fd, offset, whence);
+    my_write (k->fd, /* whatever */(char *)&k1, 1);
     if (k->file_pos > offset)
 	k->file_pos = offset;
-    lseek (k->fd, k->file_pos, SEEK_SET);
+    my_lseek (k->fd, k->file_pos, SEEK_SET);
 
     /* Brian: no bug here; the file _must_ be one byte too large after writing
        The write is supposed to guarantee that the file can't be smaller than
        the requested size, the truncate guarantees that it can't be larger.
        If we were to write one byte earlier we'd clobber file data.  */
-    if (truncate (k->aino->nname, offset) == -1) {
+    if (my_truncate (k->aino->nname, offset) == -1) {
 	PUT_PCK_RES1 (packet, DOS_FALSE);
 	PUT_PCK_RES2 (packet, dos_errno ());
 	return;
@@ -2950,13 +2950,13 @@ action_delete_object (Unit *unit, dpacket packet)
     if (a->dir) {
 	/* This should take care of removing the fsdb if no files remain.  */
 	fsdb_dir_writeback (a);
-	if (rmdir (a->nname) == -1) {
+	if (my_rmdir (a->nname) == -1) {
 	    PUT_PCK_RES1 (packet, DOS_FALSE);
 	    PUT_PCK_RES2 (packet, dos_errno());
 	    return;
 	}
     } else {
-	if (unlink (a->nname) == -1) {
+	if (my_unlink (a->nname) == -1) {
             PUT_PCK_RES1 (packet, DOS_FALSE);
 	    PUT_PCK_RES2 (packet, dos_errno());
     	    return;
@@ -3067,7 +3067,7 @@ action_rename_object (Unit *unit, dpacket packet)
 	return;
     }
 
-    if (-1 == rename (a1->nname, a2->nname)) {
+    if (-1 == my_rename (a1->nname, a2->nname)) {
 	int ret = -1;
 	/* maybe we have open file handles that caused failure? */
 	write_log ("rename '%s' -> '%s' failed, trying relocking..\n", a1->nname, a2->nname);
@@ -3075,12 +3075,12 @@ action_rename_object (Unit *unit, dpacket packet)
 	    knext = k1->next;
 	    if (k1->aino == a1 && k1->fd >= 0) {
 		wehavekeys++;
-	        close (k1->fd);
+	        my_close (k1->fd);
 		write_log ("handle %d freed\n", k1->fd);
 	    }
         }
 	/* try again... */
-	ret = rename (a1->nname, a2->nname);
+	ret = my_rename (a1->nname, a2->nname);
 	for (k1 = unit->keys; k1; k1 = knext) {
 	    knext = k1->next;
 	    if (k1->aino == a1 && k1->fd >= 0) {
@@ -3088,19 +3088,19 @@ action_rename_object (Unit *unit, dpacket packet)
 		mode |= O_BINARY;
 		if (ret == -1) {
 		    /* rename still failed, restore fd */
-		    k1->fd = open (a1->nname, mode, 0777);
+		    k1->fd = my_open (a1->nname, mode);
 		    write_log ("restoring old handle '%s' %d\n", a1->nname, k1->dosmode);
 		} else {
 		    /* transfer fd to new name */
 		    k1->aino = a2;
-		    k1->fd = open (a2->nname, mode, 0777);
+		    k1->fd = my_open (a2->nname, mode);
 		    write_log ("restoring new handle '%s' %d\n", a2->nname, k1->dosmode);
 		}
 	        if (k1->fd < 0) {
 		    write_log ("relocking failed '%s' -> '%s'\n", a1->nname, a2->nname);
 		    free_key (unit, k1);
 		} else {
-		    lseek (k1->fd, k1->file_pos, SEEK_SET);
+		    my_lseek (k1->fd, k1->file_pos, SEEK_SET);
 		}
 	    }
         }
@@ -3479,20 +3479,33 @@ static uae_u32 filesys_handler (void)
     return 0;
 }
 
+static void init_filesys_diagentry (void)
+{
+    do_put_mem_long ((uae_u32 *)(filesysory + 0x2100), EXPANSION_explibname);
+    do_put_mem_long ((uae_u32 *)(filesysory + 0x2104), filesys_configdev);
+    do_put_mem_long ((uae_u32 *)(filesysory + 0x2108), EXPANSION_doslibname);
+    do_put_mem_long ((uae_u32 *)(filesysory + 0x210c), current_mountinfo->num_units);
+    native2amiga_startup();
+}
+
 void filesys_start_threads (void)
 {
     UnitInfo *uip;
     int i;
 
+    if (savestate_state == STATE_RESTORE)
+	init_filesys_diagentry ();
     current_mountinfo = currprefs.mountinfo;
     uip = current_mountinfo->ui;
     for (i = 0; i < current_mountinfo->num_units; i++) {
 	UnitInfo *ui = &uip[i];
 	ui->unit_pipe = 0;
 	ui->back_pipe = 0;
-	ui->startup = 0;
-	ui->reset_state = 0;
-	ui->self = 0;
+        ui->reset_state = FS_STARTUP;
+	if (savestate_state != STATE_RESTORE) {
+	    ui->startup = 0;
+	    ui->self = 0;
+	}
 #ifdef UAE_FILESYS_THREADS
 	if (is_hardfile (current_mountinfo, i) == FILESYS_VIRTUAL) {
 	    ui->unit_pipe = (smp_comm_pipe *)xmalloc (sizeof (smp_comm_pipe));
@@ -3502,6 +3515,8 @@ void filesys_start_threads (void)
 	    uae_start_thread (filesys_thread, (void *)(uip + i), &uip[i].tid);
 	}
 #endif
+	if (savestate_state == STATE_RESTORE)
+	    startup_update_unit (uip->self, uip);
     }
 }
 
@@ -3516,7 +3531,7 @@ void filesys_reset (void)
 
     /* We get called once from customreset at the beginning of the program
      * before filesys_start_threads has been called. Survive that.  */
-    if (current_mountinfo == 0)
+    if (current_mountinfo == 0 || savestate_state == STATE_RESTORE)
 	return;
 
     for (u = units; u; u = u1) {
@@ -3546,7 +3561,7 @@ void filesys_prepare_reset (void)
     Unit *u;
     int i;
 
-    if (!current_mountinfo)
+    if (!current_mountinfo || savestate_state == STATE_RESTORE)
 	return;
     uip = current_mountinfo->ui;
 #ifdef UAE_FILESYS_THREADS
@@ -3580,11 +3595,7 @@ static uae_u32 filesys_diagentry (void)
     TRACE (("filesystem: diagentry called\n"));
 
     filesys_configdev = m68k_areg (regs, 3);
-
-    do_put_mem_long ((uae_u32 *)(filesysory + 0x2100), EXPANSION_explibname);
-    do_put_mem_long ((uae_u32 *)(filesysory + 0x2104), filesys_configdev);
-    do_put_mem_long ((uae_u32 *)(filesysory + 0x2108), EXPANSION_doslibname);
-    do_put_mem_long ((uae_u32 *)(filesysory + 0x210c), current_mountinfo->num_units);
+    init_filesys_diagentry ();
 
     uae_sem_init (&singlethread_int_sem, 0, 1);
     if (ROM_hardfile_resid != 0) {
@@ -3611,7 +3622,6 @@ static uae_u32 filesys_diagentry (void)
      * diag entry. */
 
     resaddr = scsidev_startup(resaddr);
-    native2amiga_startup();
 
     /* scan for Residents and return pointer to array of them */
     residents = resaddr;
@@ -3718,7 +3728,7 @@ static int rl (uae_u8 *p)
     return (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | (p[3]);
 }
 
-static int rdb_checksum (char *id, uae_u8 *p, int block)
+int rdb_checksum (char *id, uae_u8 *p, int block)
 {
     uae_u32 sum = 0;
     int i, blocksize;
@@ -3774,6 +3784,18 @@ static char *device_dupfix (uaecptr expbase, char *devname)
     return strdup (newname);
 }
 
+static void dump_partinfo (char *name, int num, uaecptr pp)
+{
+    uae_u32 dostype = get_long (pp + 80);
+    write_log ("RDB: '%s' uaehf.device:%d, dostype=%08.8X\n", name, num, dostype);
+    write_log ("BlockSize: %d, Surfaces: %d, SectorsPerBlock %d\n",
+	get_long (pp + 20) * 4, get_long (pp + 28), get_long (pp + 32));
+    write_log ("SectorsPerTrack: %d, Reserved: %d, LowCyl %d, HighCyl %d\n",
+	get_long (pp + 36), get_long (pp + 40), get_long (pp + 52), get_long (pp + 56));
+    write_log ("Buffers: %d, BufMemType: %08.8x, MaxTransfer: %08.8x, BootPri: %d\n",
+	get_long (pp + 60), get_long (pp + 64), get_long (pp + 68), get_long (pp + 76));
+}
+
 static int rdb_mount (UnitInfo *uip, int unit_no, int partnum, uaecptr parmpacket)
 {
     int lastblock = 63, blocksize, readblocksize, badblock, driveinitblock;
@@ -3823,6 +3845,9 @@ static int rdb_mount (UnitInfo *uip, int unit_no, int partnum, uaecptr parmpacke
 	write_log ("RDB: driveinit is not yet supported. Contact the author.\n");
 	return -2;
     }
+    hfd->cylinders = rl (bufrdb + 64);
+    hfd->sectors = rl (bufrdb + 68);
+    hfd->heads = rl (bufrdb + 72);
     fileblock = rl (bufrdb + 32);
     partblock = rl (bufrdb + 28);
     buf = xmalloc (readblocksize);
@@ -3856,8 +3881,8 @@ static int rdb_mount (UnitInfo *uip, int unit_no, int partnum, uaecptr parmpacke
     put_long (parmpacket + 12, 0); /* Device flags */
     for (i = 0; i < PP_MAXSIZE; i++)
 	put_byte (parmpacket + 16 + i, buf[128 + i]);
+    dump_partinfo (buf + 37, uip->devno, parmpacket);
     dostype = get_long (parmpacket + 80);
-    write_log ("RDB: '%s' uaehf.device:%d, dostype=%08.8X\n", buf + 37, uip->devno, dostype);
 
     if (dostype == 0) {
 	err = -1;
@@ -4127,37 +4152,37 @@ void filesys_install_code (void)
  /* see filesys.asm for source */
 
  db(0x00); db(0x00); db(0x00); db(0x10); db(0x00); db(0x00); db(0x00); db(0x00);
- db(0x60); db(0x00); db(0x04); db(0xe0); db(0x00); db(0x00); db(0x03); db(0x9c);
+ db(0x60); db(0x00); db(0x04); db(0xf0); db(0x00); db(0x00); db(0x03); db(0xac);
  db(0x00); db(0x00); db(0x00); db(0x30); db(0x00); db(0x00); db(0x00); db(0xd0);
  db(0x00); db(0x00); db(0x00); db(0x1c); db(0x00); db(0x00); db(0x01); db(0x8a);
- db(0x00); db(0x00); db(0x06); db(0x98); db(0x43); db(0xfa); db(0x06); db(0xc5);
+ db(0x00); db(0x00); db(0x06); db(0xa8); db(0x43); db(0xfa); db(0x06); db(0xd5);
  db(0x4e); db(0xae); db(0xff); db(0xa0); db(0x20); db(0x40); db(0x20); db(0x28);
  db(0x00); db(0x16); db(0x20); db(0x40); db(0x4e); db(0x90); db(0x4e); db(0x75);
  db(0x48); db(0xe7); db(0xff); db(0xfe); db(0x2c); db(0x78); db(0x00); db(0x04);
- db(0x30); db(0x3c); db(0xff); db(0xfc); db(0x61); db(0x00); db(0x06); db(0x4a);
- db(0x2a); db(0x50); db(0x43); db(0xfa); db(0x06); db(0xab); db(0x70); db(0x24);
+ db(0x30); db(0x3c); db(0xff); db(0xfc); db(0x61); db(0x00); db(0x06); db(0x5a);
+ db(0x2a); db(0x50); db(0x43); db(0xfa); db(0x06); db(0xbb); db(0x70); db(0x24);
  db(0x7a); db(0x00); db(0x4e); db(0xae); db(0xfd); db(0xd8); db(0x4a); db(0x80);
- db(0x66); db(0x0c); db(0x43); db(0xfa); db(0x06); db(0x9b); db(0x70); db(0x00);
+ db(0x66); db(0x0c); db(0x43); db(0xfa); db(0x06); db(0xab); db(0x70); db(0x00);
  db(0x7a); db(0x01); db(0x4e); db(0xae); db(0xfd); db(0xd8); db(0x28); db(0x40);
  db(0x20); db(0x3c); db(0x00); db(0x00); db(0x02); db(0x2c); db(0x72); db(0x01);
  db(0x4e); db(0xae); db(0xff); db(0x3a); db(0x26); db(0x40); db(0x27); db(0x4c);
  db(0x01); db(0x9c); db(0x7c); db(0x00); db(0xbc); db(0xad); db(0x01); db(0x0c);
  db(0x64); db(0x24); db(0x2f); db(0x06); db(0x7e); db(0x01); db(0x2f); db(0x0b);
- db(0x20); db(0x4b); db(0x61); db(0x00); db(0x03); db(0x18); db(0x26); db(0x5f);
+ db(0x20); db(0x4b); db(0x61); db(0x00); db(0x03); db(0x28); db(0x26); db(0x5f);
  db(0x0c); db(0x80); db(0xff); db(0xff); db(0xff); db(0xfe); db(0x67); db(0x08);
  db(0x48); db(0x46); db(0x52); db(0x46); db(0x48); db(0x46); db(0x60); db(0xe4);
  db(0x2c); db(0x1f); db(0x52); db(0x46); db(0x60); db(0xd6); db(0x2c); db(0x78);
  db(0x00); db(0x04); db(0x22); db(0x4c); db(0x4e); db(0xae); db(0xfe); db(0x62);
- db(0x30); db(0x3c); db(0xff); db(0x80); db(0x61); db(0x00); db(0x05); db(0xda);
+ db(0x30); db(0x3c); db(0xff); db(0x80); db(0x61); db(0x00); db(0x05); db(0xea);
  db(0x4e); db(0x90); db(0x72); db(0x03); db(0x74); db(0xf6); db(0x20); db(0x7c);
  db(0x00); db(0x20); db(0x00); db(0x00); db(0x90); db(0x88); db(0x65); db(0x0a);
  db(0x67); db(0x08); db(0x78); db(0x00); db(0x22); db(0x44); db(0x4e); db(0xae);
  db(0xfd); db(0x96); db(0x4c); db(0xdf); db(0x7f); db(0xff); db(0x4e); db(0x75);
  db(0x48); db(0xe7); db(0x00); db(0x20); db(0x30); db(0x3c); db(0xff); db(0x50);
- db(0x61); db(0x00); db(0x05); db(0xae); db(0x70); db(0x00); db(0x4e); db(0x90);
+ db(0x61); db(0x00); db(0x05); db(0xbe); db(0x70); db(0x00); db(0x4e); db(0x90);
  db(0x4a); db(0x80); db(0x67); db(0x00); db(0x00); db(0xa0); db(0x2c); db(0x78);
  db(0x00); db(0x04); db(0x30); db(0x3c); db(0xff); db(0x50); db(0x61); db(0x00);
- db(0x05); db(0x98); db(0x70); db(0x02); db(0x4e); db(0x90); db(0x0c); db(0x40);
+ db(0x05); db(0xa8); db(0x70); db(0x02); db(0x4e); db(0x90); db(0x0c); db(0x40);
  db(0x00); db(0x01); db(0x6d); db(0x7a); db(0x6e); db(0x06); db(0x4e); db(0xae);
  db(0xfe); db(0x92); db(0x60); db(0xe6); db(0x0c); db(0x40); db(0x00); db(0x02);
  db(0x6e); db(0x08); db(0x20); db(0x01); db(0x4e); db(0xae); db(0xfe); db(0xbc);
@@ -4174,11 +4199,11 @@ void filesys_install_code (void)
  db(0x12); db(0x34); db(0x00); db(0x18); db(0x25); db(0x49); db(0x00); db(0x1a);
  db(0x20); db(0x69); db(0x00); db(0x10); db(0x22); db(0x4a); db(0x4e); db(0xae);
  db(0xfe); db(0x92); db(0x60); db(0x00); db(0xff); db(0x76); db(0x30); db(0x3c);
- db(0xff); db(0x50); db(0x61); db(0x00); db(0x05); db(0x0c); db(0x70); db(0x04);
+ db(0xff); db(0x50); db(0x61); db(0x00); db(0x05); db(0x1c); db(0x70); db(0x04);
  db(0x4e); db(0x90); db(0x70); db(0x01); db(0x4c); db(0xdf); db(0x04); db(0x00);
  db(0x4e); db(0x75); db(0x48); db(0xe7); db(0xc0); db(0xc0); db(0x70); db(0x1a);
  db(0x22); db(0x3c); db(0x00); db(0x01); db(0x00); db(0x01); db(0x4e); db(0xae);
- db(0xff); db(0x3a); db(0x22); db(0x40); db(0x41); db(0xfa); db(0x05); db(0x36);
+ db(0xff); db(0x3a); db(0x22); db(0x40); db(0x41); db(0xfa); db(0x05); db(0x46);
  db(0x23); db(0x48); db(0x00); db(0x0a); db(0x41); db(0xfa); db(0xff); db(0x2a);
  db(0x23); db(0x48); db(0x00); db(0x0e); db(0x41); db(0xfa); db(0xff); db(0x22);
  db(0x23); db(0x48); db(0x00); db(0x12); db(0x33); db(0x7c); db(0x02); db(0x14);
@@ -4191,12 +4216,12 @@ void filesys_install_code (void)
  db(0x01); db(0xa0); db(0x11); db(0xb1); db(0x00); db(0x00); db(0x00); db(0x0e);
  db(0x52); db(0x40); db(0x0c); db(0x40); db(0x00); db(0x8c); db(0x66); db(0xf2);
  db(0x20); db(0x0a); db(0xe4); db(0x88); db(0x21); db(0x40); db(0x00); db(0x36);
- db(0x22); db(0x48); db(0x41); db(0xfa); db(0x04); db(0xd0); db(0x23); db(0x48);
+ db(0x22); db(0x48); db(0x41); db(0xfa); db(0x04); db(0xe0); db(0x23); db(0x48);
  db(0x00); db(0x0a); db(0x20); db(0x6b); db(0x01); db(0x98); db(0x41); db(0xe8);
  db(0x00); db(0x12); db(0x4e); db(0xae); db(0xff); db(0x10); db(0x4c); db(0xdf);
  db(0x4f); db(0x03); db(0x4e); db(0x75); db(0x48); db(0xe7); db(0x7f); db(0x7e);
  db(0x2c); db(0x78); db(0x00); db(0x04); db(0x24); db(0x48); db(0x0c); db(0x9a);
- db(0x00); db(0x00); db(0x03); db(0xf3); db(0x66); db(0x00); db(0x00); db(0xdc);
+ db(0x00); db(0x00); db(0x03); db(0xf3); db(0x66); db(0x00); db(0x00); db(0xec);
  db(0x50); db(0x8a); db(0x2e); db(0x2a); db(0x00); db(0x04); db(0x9e); db(0x92);
  db(0x50); db(0x8a); db(0x52); db(0x87); db(0x26); db(0x4a); db(0x20); db(0x07);
  db(0xd0); db(0x80); db(0xd0); db(0x80); db(0xd7); db(0xc0); db(0x28); db(0x4a);
@@ -4206,23 +4231,25 @@ void filesys_install_code (void)
  db(0x08); db(0x83); db(0x00); db(0x1f); db(0x08); db(0x83); db(0x00); db(0x1e);
  db(0x20); db(0x02); db(0x66); db(0x04); db(0x42); db(0x9a); db(0x60); db(0x1e);
  db(0x50); db(0x80); db(0x4e); db(0xae); db(0xff); db(0x3a); db(0x4a); db(0x80);
- db(0x67); db(0x00); db(0x00); db(0x90); db(0x20); db(0x40); db(0x20); db(0xc2);
+ db(0x67); db(0x00); db(0x00); db(0xa0); db(0x20); db(0x40); db(0x20); db(0xc2);
  db(0x24); db(0xc8); db(0x22); db(0x0d); db(0x67); db(0x06); db(0x20); db(0x08);
  db(0xe4); db(0x88); db(0x2a); db(0x80); db(0x2a); db(0x48); db(0x52); db(0x86);
- db(0xbe); db(0x86); db(0x66); db(0xb8); db(0x7c); db(0x00); db(0x20); db(0x74);
- db(0x6c); db(0x00); db(0x58); db(0x88); db(0x26); db(0x1b); db(0x28); db(0x1b);
- db(0xe5); db(0x8c); db(0x0c); db(0x83); db(0x00); db(0x00); db(0x03); db(0xe9);
- db(0x67); db(0x08); db(0x0c); db(0x83); db(0x00); db(0x00); db(0x03); db(0xea);
- db(0x66); db(0x0c); db(0x20); db(0x04); db(0x4a); db(0x80); db(0x67); db(0x0e);
- db(0x10); db(0xdb); db(0x53); db(0x80); db(0x60); db(0xf6); db(0x0c); db(0x83);
- db(0x00); db(0x00); db(0x03); db(0xeb); db(0x66); db(0x44); db(0x26); db(0x1b);
- db(0x0c); db(0x83); db(0x00); db(0x00); db(0x03); db(0xec); db(0x66); db(0x1e);
- db(0x20); db(0x74); db(0x6c); db(0x00); db(0x58); db(0x88); db(0x20); db(0x1b);
- db(0x67); db(0xec); db(0x22); db(0x1b); db(0x26); db(0x34); db(0x1c); db(0x00);
+ db(0xbe); db(0x86); db(0x66); db(0xb8); db(0x7c); db(0x00); db(0x22); db(0x06);
+ db(0xd2); db(0x81); db(0xd2); db(0x81); db(0x20); db(0x74); db(0x18); db(0x00);
+ db(0x58); db(0x88); db(0x26); db(0x1b); db(0x28); db(0x1b); db(0xe5); db(0x8c);
+ db(0x0c); db(0x83); db(0x00); db(0x00); db(0x03); db(0xe9); db(0x67); db(0x08);
+ db(0x0c); db(0x83); db(0x00); db(0x00); db(0x03); db(0xea); db(0x66); db(0x0c);
+ db(0x20); db(0x04); db(0x4a); db(0x80); db(0x67); db(0x0e); db(0x10); db(0xdb);
+ db(0x53); db(0x80); db(0x60); db(0xf6); db(0x0c); db(0x83); db(0x00); db(0x00);
+ db(0x03); db(0xeb); db(0x66); db(0x4e); db(0x26); db(0x1b); db(0x0c); db(0x83);
+ db(0x00); db(0x00); db(0x03); db(0xec); db(0x66); db(0x28); db(0x22); db(0x06);
+ db(0xd2); db(0x81); db(0xd2); db(0x81); db(0x20); db(0x74); db(0x18); db(0x00);
+ db(0x58); db(0x88); db(0x20); db(0x1b); db(0x67); db(0xe6); db(0x22); db(0x1b);
+ db(0xd2); db(0x81); db(0xd2); db(0x81); db(0x26); db(0x34); db(0x18); db(0x00);
  db(0x58); db(0x83); db(0x24); db(0x1b); db(0xd7); db(0xb0); db(0x28); db(0x00);
- db(0x53); db(0x80); db(0x66); db(0xf6); db(0x60); db(0xe8); db(0x0c); db(0x83);
+ db(0x53); db(0x80); db(0x66); db(0xf6); db(0x60); db(0xe4); db(0x0c); db(0x83);
  db(0x00); db(0x00); db(0x03); db(0xf2); db(0x66); db(0x14); db(0x52); db(0x86);
- db(0xbe); db(0x86); db(0x66); db(0x00); db(0xff); db(0x9a); db(0x7e); db(0x01);
+ db(0xbe); db(0x86); db(0x66); db(0x00); db(0xff); db(0x8a); db(0x7e); db(0x01);
  db(0x20); db(0x54); db(0x20); db(0x07); db(0x4c); db(0xdf); db(0x7e); db(0xfe);
  db(0x4e); db(0x75); db(0x30); db(0x3c); db(0x75); db(0x30); db(0x33); db(0xfc);
  db(0x0f); db(0x00); db(0x00); db(0xdf); db(0xf1); db(0x80); db(0x33); db(0xfc);
@@ -4249,9 +4276,9 @@ void filesys_install_code (void)
  db(0x22); db(0x48); db(0x20); db(0x5f); db(0x42); db(0xa8); db(0x01); db(0x90);
  db(0x42); db(0xa8); db(0x01); db(0x94); db(0x4e); db(0x91); db(0x26); db(0x00);
  db(0x0c); db(0x83); db(0xff); db(0xff); db(0xff); db(0xfe); db(0x67); db(0x00);
- db(0xfc); db(0xfe); db(0x0c); db(0x83); db(0x00); db(0x00); db(0x00); db(0x02);
+ db(0xfc); db(0xee); db(0x0c); db(0x83); db(0x00); db(0x00); db(0x00); db(0x02);
  db(0x67); db(0x0c); db(0xc0); db(0x85); db(0x67); db(0x08); db(0x4a); db(0xa8);
- db(0x01); db(0x90); db(0x67); db(0x00); db(0xfc); db(0xea); db(0x20); db(0x28);
+ db(0x01); db(0x90); db(0x67); db(0x00); db(0xfc); db(0xda); db(0x20); db(0x28);
  db(0x01); db(0x90); db(0x67); db(0x12); db(0x2f); db(0x08); db(0x72); db(0x01);
  db(0x2c); db(0x78); db(0x00); db(0x04); db(0x4e); db(0xae); db(0xff); db(0x3a);
  db(0x20); db(0x5f); db(0x21); db(0x40); db(0x01); db(0x94); db(0x4a); db(0x83);
@@ -4263,16 +4290,16 @@ void filesys_install_code (void)
  db(0x4e); db(0x90); db(0x70); db(0x00); db(0x27); db(0x40); db(0x00); db(0x08);
  db(0x27); db(0x40); db(0x00); db(0x10); db(0x27); db(0x40); db(0x00); db(0x20);
  db(0x4a); db(0xa9); db(0x01); db(0x94); db(0x67); db(0x28); db(0x20); db(0x69);
- db(0x01); db(0x94); db(0x61); db(0x00); db(0xfd); db(0xd8); db(0x48); db(0xe7);
+ db(0x01); db(0x94); db(0x61); db(0x00); db(0xfd); db(0xc8); db(0x48); db(0xe7);
  db(0x80); db(0xc0); db(0x20); db(0x29); db(0x01); db(0x90); db(0x22); db(0x69);
  db(0x01); db(0x94); db(0x2c); db(0x78); db(0x00); db(0x04); db(0x4e); db(0xae);
  db(0xff); db(0x2e); db(0x4c); db(0xdf); db(0x03); db(0x01); db(0x4a); db(0x80);
- db(0x67); db(0x04); db(0x61); db(0x00); db(0xfd); db(0x62); db(0x4a); db(0x83);
- db(0x6b); db(0x00); db(0xfc); db(0x64); db(0x30); db(0x3c); db(0xff); db(0x18);
+ db(0x67); db(0x04); db(0x61); db(0x00); db(0xfd); db(0x52); db(0x4a); db(0x83);
+ db(0x6b); db(0x00); db(0xfc); db(0x54); db(0x30); db(0x3c); db(0xff); db(0x18);
  db(0x61); db(0x00); db(0x02); db(0x16); db(0x4e); db(0x90); db(0x20); db(0x03);
  db(0x16); db(0x29); db(0x00); db(0x4f); db(0x4a); db(0x80); db(0x66); db(0x1a);
  db(0x27); db(0x7c); db(0x00); db(0x00); db(0x0f); db(0xa0); db(0x00); db(0x14);
- db(0x43); db(0xfa); db(0xfb); db(0x72); db(0x20); db(0x09); db(0xe4); db(0x88);
+ db(0x43); db(0xfa); db(0xfb); db(0x62); db(0x20); db(0x09); db(0xe4); db(0x88);
  db(0x27); db(0x40); db(0x00); db(0x20); db(0x70); db(0xff); db(0x27); db(0x40);
  db(0x00); db(0x24); db(0x4a); db(0x87); db(0x67); db(0x36); db(0x2c); db(0x78);
  db(0x00); db(0x04); db(0x70); db(0x14); db(0x72); db(0x00); db(0x4e); db(0xae);
@@ -4336,7 +4363,7 @@ void filesys_install_code (void)
  db(0x24); db(0x51); db(0x70); db(0x18); db(0x4e); db(0xae); db(0xff); db(0x2e);
  db(0x06); db(0x86); db(0x00); db(0x01); db(0x00); db(0x00); db(0x20); db(0x0a);
  db(0x66); db(0xec); db(0x26); db(0x87); db(0x2a); db(0x1f); db(0x4e); db(0x75);
- db(0x41); db(0xfa); db(0xf9); db(0x6a); db(0x02); db(0x80); db(0x00); db(0x00);
+ db(0x41); db(0xfa); db(0xf9); db(0x5a); db(0x02); db(0x80); db(0x00); db(0x00);
  db(0xff); db(0xff); db(0xd1); db(0xc0); db(0x4e); db(0x75); db(0x00); db(0x00);
  db(0x0c); db(0xaf); db(0x00); db(0x00); db(0x00); db(0x22); db(0x00); db(0x08);
  db(0x66); db(0x30); db(0x48); db(0xe7); db(0xc0); db(0xe2); db(0x2c); db(0x78);
@@ -4359,3 +4386,121 @@ void filesys_install_code (void)
 }
 
 #include "od-win32/win32_filesys.c"
+
+static uae_u8 *restore_filesys_virtual (UnitInfo *ui, uae_u8 *src)
+{
+    Unit *u = startup_create_unit (ui);
+    int cnt;
+ 
+    u->a_uniq = restore_u64 ();
+    u->key_uniq = restore_u64 ();
+    u->dosbase = restore_u32 ();
+    u->volume = restore_u32 ();
+    u->port = restore_u32 ();
+    u->locklist = restore_u32 ();
+    u->dummy_message = restore_u32 ();
+    u->cmds_sent = restore_u64 ();
+    u->cmds_complete = restore_u64 ();
+    u->cmds_acked = restore_u64 ();
+    cnt = restore_u32 ();
+    while (cnt-- > 0) {
+	restore_u64 ();
+	restore_u32 ();
+	restore_u32 ();
+	restore_u32 ();
+	xfree (restore_string ());
+    }
+    return src;
+}
+
+static uae_u8 *save_filesys_virtual (UnitInfo *ui, uae_u8 *dst)
+{
+    Unit *u = ui->self;
+    Key *k;
+    int cnt;
+
+    save_u64 (u->a_uniq);
+    save_u64 (u->key_uniq);
+    save_u32 (u->dosbase);
+    save_u32 (u->volume);
+    save_u32 (u->port);
+    save_u32 (u->locklist);
+    save_u32 (u->dummy_message);
+    save_u64 (u->cmds_sent);
+    save_u64 (u->cmds_complete);
+    save_u64 (u->cmds_acked);
+    cnt = 0;
+    for (k = u->keys; k; k = k->next)
+	cnt++;
+    save_u32 (cnt);
+    for (k = u->keys; k; k = k->next) {
+	save_u64 (k->uniq);
+	save_u32 (k->file_pos);
+	save_u32 (k->createmode);
+	save_u32 (k->dosmode);
+	save_string (k->aino->nname);
+    }
+    return dst;
+}
+
+uae_u8 *save_filesys (int num, int *len)
+{
+    uae_u8 *dstbak, *dst;
+    UnitInfo *ui;
+    int type = is_hardfile (current_mountinfo, num);
+
+    dstbak = dst = malloc (10000);
+    ui = &current_mountinfo->ui[num];
+    save_u32 (1); /* version */
+    save_u32 (ui->devno);
+    save_u16 (type);
+    save_string (ui->rootdir);
+    save_string (ui->devname);
+    save_string (ui->volname);
+    save_string (ui->filesysdir);
+    save_u8 (ui->bootpri);
+    save_u8 (ui->readonly);
+    save_u32 (ui->startup);
+    save_u32 (filesys_configdev);
+    if (type == FILESYS_VIRTUAL)
+	dst = save_filesys_virtual (ui, dst);
+    *len = dst - dstbak;
+    return dstbak;
+}
+
+uae_u8 *restore_filesys (uae_u8 *src)
+{
+    int type, devno;
+    UnitInfo *ui;
+    char *devname = 0, *volname = 0, *rootdir = 0, *filesysdir = 0;
+    int bootpri, readonly;
+
+    if (restore_u32 () != 1)
+	return src;
+    devno = restore_u32 ();
+    if (devno >= current_mountinfo->num_units)
+	return src;
+    type = restore_u16 ();
+    rootdir = restore_string ();
+    devname = restore_string ();
+    volname = restore_string ();
+    filesysdir = restore_string ();
+    bootpri = restore_u8 ();
+    readonly = restore_u8 ();
+    if (set_filesys_unit (current_mountinfo, devno, devname, volname, rootdir, readonly,
+	0, 0, 0, 0, bootpri, filesysdir[0] ? filesysdir : NULL)) {
+	write_log ("filesys '%s' failed to restore\n", rootdir);
+	goto end;
+    }
+    ui = &current_mountinfo->ui[devno];
+    ui->startup = restore_u32 ();
+    filesys_configdev = restore_u32 ();
+    if (type == FILESYS_VIRTUAL)
+	src = restore_filesys_virtual (ui, src);
+end:
+    xfree (rootdir);
+    xfree (devname);
+    xfree (volname);
+    xfree (filesysdir);
+    return src;
+}

@@ -26,6 +26,7 @@ extern void notice_new_xcolors (void);
 extern void notice_screen_contents_lost (void);
 extern void init_row_map (void);
 extern void init_hz (void);
+extern void init_custom (void);
 
 extern int picasso_requested_on;
 extern int picasso_on;
@@ -74,9 +75,14 @@ extern void INTREQ_0 (uae_u16);
 extern uae_u16 INTREQR (void);
 
 /* maximums for statically allocated tables */
-
+#ifdef UAE_MINI
+/* absolute minimums for basic A500/A1200-emulation */
+#define MAXHPOS 227
+#define MAXVPOS 312
+#else
 #define MAXHPOS 256
 #define MAXVPOS 576
+#endif
 
 /* PAL/NTSC values */
 

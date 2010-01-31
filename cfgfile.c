@@ -23,6 +23,7 @@
 #include "gfxfilter.h"
 #include "savestate.h"
 #include "memory.h"
+#include "gui.h"
 
 #define CONFIG_BLEN 2560
 
@@ -121,16 +122,13 @@ static const char *cpumode[] = {
     "68000", "68000", "68010", "68010", "68ec020", "68020", "68ec020/68881", "68020/68881",
     "68040", "68040", "xxxxx", "xxxxx", "68060", "68060", 0
 };
-static const char *portmode[] = { "joy0", "joy1", "mouse", "kbd1", "kbd2", "kbd3", 0 };
 static const char *colormode1[] = { "8bit", "15bit", "16bit", "8bit_dither", "4bit_dither", "32bit", 0 };
 static const char *colormode2[] = { "8", "15", "16", "8d", "4d", "32", 0 };
 static const char *soundmode1[] = { "none", "interrupts", "normal", "exact", 0 };
 static const char *soundmode2[] = { "none", "interrupts", "good", "best", 0 };
 static const char *centermode1[] = { "none", "simple", "smart", 0 };
 static const char *centermode2[] = { "false", "true", "smart", 0 };
-static const char *stereomode1[] = { "mono", "stereo", "mixed", 0 };
-static const char *stereomode2[] = { "m", "s", "x", 0 };
-static const char *stereomode3[] = { "1", "2", "3", 0 };
+static const char *stereomode[] = { "mono", "stereo", "4ch", "mixed", 0 };
 static const char *interpolmode[] = { "none", "rh", "crux", 0 };
 static const char *collmode[] = { "none", "sprites", "playfields", "full", 0 };
 static const char *compmode[] = { "direct", "indirect", "indirectKS", "afterPic", 0 };
@@ -143,9 +141,9 @@ static const char *filtermode2[] = { "0x", "1x", "2x", "3x", "4x", 0 };
 #endif
 
 static const char *obsolete[] = {
-    "accuracy","gfx_opengl","gfx_32bit_blits","32bit_blits",
-    "gfx_immediate_blits","gfx_ntsc","win32",
-    "sound_pri_cutoff", "sound_pri_time", 0 };
+    "accuracy", "gfx_opengl", "gfx_32bit_blits", "32bit_blits",
+    "gfx_immediate_blits", "gfx_ntsc", "win32", "gfx_filter_bits",
+    "sound_pri_cutoff", "sound_pri_time", "sound_min_buff", 0 };
 
 #define UNEXPANDED "$(FILE_PATH)"
 
@@ -200,7 +198,9 @@ void save_options (FILE *f, struct uae_prefs *p, int type)
     if (p->info[0])
 	cfgfile_write (f, "config_info=%s\n", p->info);
     cfgfile_write (f, "config_version=%d.%d.%d\n", UAEMAJOR, UAEMINOR, UAESUBREV);
-
+    cfgfile_write (f, "config_hardware_path=%s\n", p->config_hardware_path);
+    cfgfile_write (f, "config_host_path=%s\n", p->config_host_path);
+   
     for (sl = p->all_lines; sl; sl = sl->next) {
 	if (sl->unknown)
 	    cfgfile_write (f, "%s=%s\n", sl->option, sl->value);
@@ -219,9 +219,6 @@ void save_options (FILE *f, struct uae_prefs *p, int type)
     free (str);
     str = cfgfile_subst_path (p->path_rom, UNEXPANDED, p->romextfile);
     cfgfile_write (f, "kickstart_ext_rom_file=%s\n", str);
-    free (str);
-    str = cfgfile_subst_path (p->path_rom, UNEXPANDED, p->keyfile);
-    cfgfile_write (f, "kickstart_key_file=%s\n", str);
     free (str);
     str = cfgfile_subst_path (p->path_rom, UNEXPANDED, p->flashfile);
     cfgfile_write (f, "flash_file=%s\n", str);
@@ -259,7 +256,10 @@ void save_options (FILE *f, struct uae_prefs *p, int type)
 
     cfgfile_write (f, "sound_output=%s\n", soundmode1[p->produce_sound]);
     cfgfile_write (f, "sound_bits=%d\n", p->sound_bits);
-    cfgfile_write (f, "sound_channels=%s\n", stereomode1[p->stereo + p->mixed_stereo]);
+    cfgfile_write (f, "sound_channels=%s\n", stereomode[p->sound_stereo]);
+    cfgfile_write (f, "sound_stereo_separation=%d\n", p->sound_stereo_separation);
+    cfgfile_write (f, "sound_stereo_mixing_delay=%d\n", p->sound_mixed_stereo >= 0 ? p->sound_mixed_stereo : 0);
+    
     cfgfile_write (f, "sound_max_buff=%d\n", p->sound_maxbsiz);
     cfgfile_write (f, "sound_frequency=%d\n", p->sound_freq);
     cfgfile_write (f, "sound_interpol=%s\n", interpolmode[p->sound_interpol]);
@@ -287,8 +287,21 @@ void save_options (FILE *f, struct uae_prefs *p, int type)
     if (p->override_dga_address)
 	cfgfile_write (f, "override_dga_address=0x%08x\n", p->override_dga_address);
 
-    cfgfile_write (f, "joyport0=%s\n", portmode[p->jport0]);
-    cfgfile_write (f, "joyport1=%s\n", portmode[p->jport1]);
+    for (i = 0; i < 2; i++) {
+	int v = i == 0 ? p->jport0 : p->jport1;
+        char tmp1[100], tmp2[50];
+        if (v < JSEM_JOYS) {
+	    sprintf (tmp2, "kbd%d", v + 1);
+	} else if (v < JSEM_MICE) {
+	    sprintf (tmp2, "joy%d", v - JSEM_JOYS);
+	} else {
+	    strcpy (tmp2, "mouse");
+	    if (v - JSEM_MICE > 0)
+		sprintf (tmp2, "mouse%d", v - JSEM_MICE);
+	}
+	sprintf (tmp1, "joyport%d=%s\n", i, tmp2);
+	cfgfile_write (f, tmp1);
+    }
 
     cfgfile_write (f, "bsdsocket_emu=%s\n", p->socket_emu ? "true" : "false");
 
@@ -578,6 +591,8 @@ static int cfgfile_parse_host (struct uae_prefs *p, char *option, char *value)
 	|| cfgfile_intval (option, value, "sound_frequency", &p->sound_freq, 1)
 	|| cfgfile_intval (option, value, "sound_adjust", &p->sound_adjust, 1)
 	|| cfgfile_intval (option, value, "sound_volume", &p->sound_volume, 1)
+	|| cfgfile_intval (option, value, "sound_stereo_separation", &p->sound_stereo_separation, 1)
+	|| cfgfile_intval (option, value, "sound_stereo_mixing_delay", &p->sound_mixed_stereo, 1)
 
 	|| cfgfile_intval (option, value, "gfx_display", &p->gfx_display, 1)
 	|| cfgfile_intval (option, value, "gfx_framerate", &p->gfx_framerate, 1)
@@ -633,8 +648,6 @@ static int cfgfile_parse_host (struct uae_prefs *p, char *option, char *value)
 	|| cfgfile_strval (option, value, "sound_output", &p->produce_sound, soundmode2, 0)
 	|| cfgfile_strval (option, value, "sound_interpol", &p->sound_interpol, interpolmode, 0)
 	|| cfgfile_strval (option, value, "sound_filter", &p->sound_filter, soundfiltermode, 0)
-	|| cfgfile_strval (option, value, "joyport0", &p->jport0, portmode, 0)
-	|| cfgfile_strval (option, value, "joyport1", &p->jport1, portmode, 0)
 	|| cfgfile_strval (option, value, "use_gui", &p->start_gui, guimode1, 1)
 	|| cfgfile_strval (option, value, "use_gui", &p->start_gui, guimode2, 1)
 	|| cfgfile_strval (option, value, "use_gui", &p->start_gui, guimode3, 0)
@@ -704,20 +717,48 @@ static int cfgfile_parse_host (struct uae_prefs *p, char *option, char *value)
 	return 1;
     }
 
+    if (strcmp (option, "joyport0") == 0 || strcmp (option, "joyport1") == 0) {
+	int port = strcmp (option, "joyport0") == 0 ? 0 : 1;
+	int start = -1;
+	char *pp = 0;
+	if (strncmp (value, "kbd", 3) == 0) {
+	    start = JSEM_KBDLAYOUT;
+	    pp = value + 3;
+	} else if (strncmp (value, "joy", 3) == 0) {
+	    start = JSEM_JOYS;
+	    pp = value + 3;
+	} else if (strncmp (value, "mouse", 5) == 0) {
+	    start = JSEM_MICE;
+	    pp = value + 5;
+	}
+	if (pp) {
+	    int v = atol (pp);
+	    if (start >= 0) {
+		if (start == JSEM_KBDLAYOUT)
+		    v--;
+		if (v >= 0) {
+		    start += v;
+		    if (port)
+			p->jport1 = start;
+		    else
+			p->jport0 = start;
+		}
+	    }
+	}
+	return 1;
+    }
+
     if (cfgfile_string (option, value, "statefile", tmpbuf, sizeof (tmpbuf))) {
 	savestate_state = STATE_DORESTORE;
 	strcpy (savestate_fname, tmpbuf);
 	return 1;
     }
 
-    if (cfgfile_strval (option, value, "sound_channels", &p->stereo, stereomode1, 1)
-	|| cfgfile_strval (option, value, "sound_channels", &p->stereo, stereomode2, 1)
-	|| cfgfile_strval (option, value, "sound_channels", &p->stereo, stereomode3, 0))
-    {
-	p->mixed_stereo = 0;
-	if (p->stereo == 2) {
-	    p->stereo = 1;
-	    p->mixed_stereo = 1;
+    if (cfgfile_strval (option, value, "sound_channels", &p->sound_stereo, stereomode, 1)) {
+	if (p->sound_stereo == 3) { /* "mixed stereo" compatibility hack */
+	    p->sound_stereo = 1;
+	    p->sound_mixed_stereo = 5;
+	    p->sound_stereo_separation = 7;
 	}
 	return 1;
     }
@@ -837,7 +878,6 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	return 1;
     if (cfgfile_string (option, value, "kickstart_rom_file", p->romfile, 256)
 	|| cfgfile_string (option, value, "kickstart_ext_rom_file", p->romextfile, 256)
-	|| cfgfile_string (option, value, "kickstart_key_file", p->keyfile, 256)
 	|| cfgfile_string (option, value, "flash_file", p->flashfile, 256)
 	|| cfgfile_string (option, value, "cart_file", p->cartfile, 256)
 	|| cfgfile_string (option, value, "pci_devices", p->pci_devices, 256))
@@ -1043,6 +1083,10 @@ int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value, int ty
 	return 1;
     if (!strcmp (option, "config_host"))
 	return 1;
+    if (cfgfile_string (option, value, "config_hardware_path", p->config_hardware_path, 256))
+	return 1;
+    if (cfgfile_string (option, value, "config_host_path", p->config_host_path, 256))
+	return 1;
     if (type == 0 || (type & CONFIG_TYPE_HARDWARE)) {
 	if (cfgfile_parse_hardware (p, option, value))
 	    return 1;
@@ -1236,6 +1280,8 @@ static int cfgfile_load_2 (struct uae_prefs *p, const char *filename, int real, 
 		cfgfile_parse_separated_line (p, line1b, line2b, askedtype);
 	    } else {
 		cfgfile_string (line1b, line2b, "config_description", p->description, 128);
+		cfgfile_string (line1b, line2b, "config_hardware_path", p->config_hardware_path, 128);
+		cfgfile_string (line1b, line2b, "config_host_path", p->config_host_path, 128);
 	    }
 	}
     }
@@ -1257,15 +1303,43 @@ static int cfgfile_load_2 (struct uae_prefs *p, const char *filename, int real, 
 	subst (p->path_floppy, p->df[i], sizeof p->df[i]);
     subst (p->path_rom, p->romfile, sizeof p->romfile);
     subst (p->path_rom, p->romextfile, sizeof p->romextfile);
-    subst (p->path_rom, p->keyfile, sizeof p->keyfile);
 
     return 1;
 }
 
-int cfgfile_load (struct uae_prefs *p, const char *filename, int *type)
+int cfgfile_load (struct uae_prefs *p, const char *filename, int *type, int ignorelink)
 {
-    write_log ("load config '%s'\n", filename);
-    return cfgfile_load_2 (p, filename, 1, type);
+    int v;
+    char tmp[MAX_DPATH];
+    int type2;
+    static int recursive;
+
+    if (recursive > 1)
+	return 0;
+    recursive++;
+    write_log ("load config '%s':%d\n", filename, type ? *type : -1);
+    v = cfgfile_load_2 (p, filename, 1, type);
+    if (!v) {
+	write_log ("load failed\n");
+	goto end;
+    }
+    if (!ignorelink) {
+	if (p->config_hardware_path[0]) {
+	    fetch_configurationpath (tmp, sizeof (tmp));
+	    strncat (tmp, p->config_hardware_path, sizeof (tmp));
+	    type2 = CONFIG_TYPE_HARDWARE;
+	    cfgfile_load (p, tmp, &type2, 1);
+	}
+	if (p->config_host_path[0]) {
+	    fetch_configurationpath (tmp, sizeof (tmp));
+	    strncat (tmp, p->config_host_path, sizeof (tmp));
+	    type2 = CONFIG_TYPE_HOST;
+	    cfgfile_load (p, tmp, &type2, 1);
+	}
+    }
+end:
+    recursive--;
+    return v;
 }
 
 int cfgfile_save (struct uae_prefs *p, const char *filename, int type)
@@ -1282,14 +1356,20 @@ int cfgfile_save (struct uae_prefs *p, const char *filename, int type)
     return 1;
 }
 
-int cfgfile_get_description (const char *filename, char *description, int *type)
+int cfgfile_get_description (const char *filename, char *description, char *hostlink, char *hardwarelink, int *type)
 {
     int result = 0;
     struct uae_prefs *p = xmalloc (sizeof (struct uae_prefs));
-    strcpy (p->description, "");
+    p->description[0] = 0;
+    p->config_host_path[0] = 0;
+    p->config_hardware_path[0] = 0;
     if (cfgfile_load_2 (p, filename, 0, type)) {
 	result = 1;
 	strcpy (description, p->description);
+	if (hostlink)
+	    strcpy (hostlink, p->config_host_path);
+	if (hardwarelink)
+	    strcpy (hardwarelink, p->config_hardware_path);
     }
     free (p);
     return result;
@@ -1370,13 +1450,14 @@ static void parse_sound_spec (struct uae_prefs *p, char *spec)
     }
     p->produce_sound = atoi (x0);
     if (x1) {
-	p->mixed_stereo = 0;
-	if (*x1 == 'S')
-	    p->stereo = p->mixed_stereo = 1;
-	else if (*x1 == 's')
-	    p->stereo = 1;
+	p->sound_stereo_separation = 16;
+	if (*x1 == 'S') {
+	    p->sound_stereo = 1;
+	    p->sound_stereo_separation = 10;
+	} else if (*x1 == 's')
+	    p->sound_stereo = 1;
 	else
-	    p->stereo = 0;
+	    p->sound_stereo = 0;
     }
     if (x2)
 	p->sound_bits = atoi (x2);
@@ -1396,22 +1477,22 @@ static void parse_joy_spec (struct uae_prefs *p, char *spec)
 	goto bad;
 
     switch (spec[0]) {
-     case '0': v0 = 0; break;
-     case '1': v0 = 1; break;
-     case 'M': case 'm': v0 = 2; break;
-     case 'A': case 'a': v0 = 3; break;
-     case 'B': case 'b': v0 = 4; break;
-     case 'C': case 'c': v0 = 5; break;
+     case '0': v0 = JSEM_JOYS; break;
+     case '1': v0 = JSEM_JOYS + 1; break;
+     case 'M': case 'm': v0 = JSEM_MICE; break;
+     case 'A': case 'a': v0 = JSEM_KBDLAYOUT; break;
+     case 'B': case 'b': v0 = JSEM_KBDLAYOUT + 1; break;
+     case 'C': case 'c': v0 = JSEM_KBDLAYOUT + 2; break;
      default: goto bad;
     }
 
     switch (spec[1]) {
-     case '0': v1 = 0; break;
-     case '1': v1 = 1; break;
-     case 'M': case 'm': v1 = 2; break;
-     case 'A': case 'a': v1 = 3; break;
-     case 'B': case 'b': v1 = 4; break;
-     case 'C': case 'c': v1 = 5; break;
+     case '0': v1 = JSEM_JOYS; break;
+     case '1': v1 = JSEM_JOYS + 1; break;
+     case 'M': case 'm': v1 = JSEM_MICE; break;
+     case 'A': case 'a': v1 = JSEM_KBDLAYOUT; break;
+     case 'B': case 'b': v1 = JSEM_KBDLAYOUT + 1; break;
+     case 'C': case 'c': v1 = JSEM_KBDLAYOUT + 2; break;
      default: goto bad;
     }
     if (v0 == v1)
@@ -1553,7 +1634,7 @@ int parse_cmdline_option (struct uae_prefs *p, char c, char *arg)
     case '2': strncpy (p->df[2], arg, 255); p->df[2][255] = 0; break;
     case '3': strncpy (p->df[3], arg, 255); p->df[3][255] = 0; break;
     case 'r': strncpy (p->romfile, arg, 255); p->romfile[255] = 0; break;
-    case 'K': strncpy (p->keyfile, arg, 255); p->keyfile[255] = 0; break;
+    case 'K': strncpy (p->romextfile, arg, 255); p->romextfile[255] = 0; break;
     case 'p': strncpy (p->prtname, arg, 255); p->prtname[255] = 0; break;
 	/*     case 'I': strncpy (p->sername, arg, 255); p->sername[255] = 0; currprefs.use_serial = 1; break; */
     case 'm': case 'M': parse_filesys_spec (c == 'M', arg); break;
@@ -1712,6 +1793,54 @@ uae_u32 cfgfile_uaelib(int mode, uae_u32 name, uae_u32 dst, uae_u32 maxlen)
     return 0;
 }
 
+static int configure_rom (struct uae_prefs *p, int *rom, int msg)
+{
+    struct romdata *rd;
+    char tmp1[MAX_DPATH], tmp2[MAX_DPATH];
+    char *path = 0;
+    int i;
+    
+    tmp2[0] = 0;
+    i = 0;
+    while (rom[i] >= 0) {
+        rd = getromdatabyid (rom[i]);
+	if (!rd) {
+	    i++;
+	    continue;
+	}
+	path = romlist_get (rd);
+	if (!path) {
+	    getromname (rd, tmp1);
+	    strcat (tmp2, "- ");
+	    strcat (tmp2, tmp1);
+	    strcat (tmp2, "\n");
+	    i++;
+	    continue;
+	}
+	break;
+    }
+    if (!path) {
+	if (msg) {
+	    char tmp3[MAX_DPATH];
+	    translate_message (NUMSG_ROMNEED, tmp3);
+	    gui_message (tmp3, tmp2);
+	}
+	return 0;
+    }
+    switch (rd->type)
+    {
+        case ROMTYPE_KICK:
+        case ROMTYPE_KICKCD32:
+	strcpy (p->romfile, path);
+	break;
+        case ROMTYPE_EXTCD32:
+        case ROMTYPE_EXTCDTV:
+	strcpy (p->romextfile, path);
+	break;
+    }
+    return 1;
+}
+
 static void default_prefs_mini (struct uae_prefs *p, int type)
 {
     strcpy (p->description, "UAE default A500 configuration");
@@ -1729,15 +1858,20 @@ static void default_prefs_mini (struct uae_prefs *p, int type)
 
 void default_prefs (struct uae_prefs *p, int type)
 {
+    int roms[] = { 6, 7, 8, 9, 10, 14, 5, 4, 3, 2, 1 };
+
     memset (p, 0, sizeof (*p));
     strcpy (p->description, "UAE default configuration");
+    p->config_hardware_path[0] = 0;
+    p->config_host_path[0] = 0;
 
     p->start_gui = 1;
     p->start_debugger = 0;
 
     p->all_lines = 0;
     /* Note to porters: please don't change any of these options! UAE is supposed
-     * to behave identically on all platforms if possible. */
+     * to behave identically on all platforms if possible.
+     * (TW says: maybe it is time to update default config..) */
     p->illegal_mem = 0;
     p->no_xhair = 0;
     p->use_serial = 0;
@@ -1745,17 +1879,19 @@ void default_prefs (struct uae_prefs *p, int type)
     p->serial_hwctsrts = 1;
     p->parallel_demand = 0;
 
-    p->jport0 = 2;
-    p->jport1 = 0;
+    p->jport0 = JSEM_MICE;
+    p->jport1 = JSEM_KBDLAYOUT;
     p->keyboard_lang = KBD_LANG_US;
 
     p->produce_sound = 3;
-    p->stereo = 0;
+    p->sound_stereo = 1;
+    p->sound_stereo_separation = 7;
+    p->sound_mixed_stereo = -1;
     p->sound_bits = DEFAULT_SOUND_BITS;
     p->sound_freq = DEFAULT_SOUND_FREQ;
     p->sound_maxbsiz = DEFAULT_SOUND_MAXB;
     p->sound_interpol = 0;
-    p->sound_filter = 0;
+    p->sound_filter = 1;
 
     p->comptrustbyte = 0;
     p->comptrustword = 0;
@@ -1787,16 +1923,18 @@ void default_prefs (struct uae_prefs *p, int type)
 	p->optcount[5] = 0;
     }
     p->gfx_framerate = 1;
-    p->gfx_width_win = p->gfx_width_fs = 800;
-    p->gfx_height_win = p->gfx_height_fs = 600;
+    p->gfx_width_fs = 800;
+    p->gfx_height_fs = 600;
+    p->gfx_width_win = 720;
+    p->gfx_height_win = 568;
     p->gfx_lores = 0;
-    p->gfx_linedbl = 2;
+    p->gfx_linedbl = 1;
     p->gfx_afullscreen = 0;
     p->gfx_pfullscreen = 0;
     p->gfx_correct_aspect = 0;
     p->gfx_xcenter = 0;
     p->gfx_ycenter = 0;
-    p->color_mode = 0;
+    p->color_mode = 2;
 
     p->x11_use_low_bandwidth = 0;
     p->x11_use_mitshm = 0;
@@ -1806,7 +1944,7 @@ void default_prefs (struct uae_prefs *p, int type)
 
     p->curses_reverse_video = 0;
 
-    target_default_options (p);
+    target_default_options (p, type);
 
     p->immediate_blits = 0;
     p->collision_level = 2;
@@ -1829,8 +1967,7 @@ void default_prefs (struct uae_prefs *p, int type)
     strcpy (p->df[2], "df2.adf");
     strcpy (p->df[3], "df3.adf");
 
-    strcpy (p->romfile, "kick.rom");
-    strcpy (p->keyfile, "");
+    configure_rom (p, roms, 0);
     strcpy (p->romextfile, "");
     strcpy (p->flashfile, "");
     strcpy (p->cartfile, "");
@@ -1842,20 +1979,10 @@ void default_prefs (struct uae_prefs *p, int type)
     strcpy (p->prtname, DEFPRTNAME);
     strcpy (p->sername, DEFSERNAME);
 
-#ifdef CPUEMU_68000_ONLY
     p->cpu_level = 0;
     p->m68k_speed = 0;
-#else
-    p->m68k_speed = -1;
-    p->cpu_level = 2;
-#endif
-#ifdef CPUEMU_0
-    p->cpu_compatible = 0;
-    p->address_space_24 = 0;
-#else
     p->cpu_compatible = 1;
     p->address_space_24 = 1;
-#endif
     p->cpu_cycle_exact = 0;
     p->blitter_cycle_exact = 0;
     p->chipset_mask = CSMASK_ECS_AGNUS;
@@ -1863,8 +1990,8 @@ void default_prefs (struct uae_prefs *p, int type)
     p->fastmem_size = 0x00000000;
     p->a3000mem_size = 0x00000000;
     p->z3fastmem_size = 0x00000000;
-    p->chipmem_size = 0x00200000;
-    p->bogomem_size = 0x00000000;
+    p->chipmem_size = 0x00080000;
+    p->bogomem_size = 0x00080000;
     p->gfxmem_size = 0x00000000;
 
     p->nr_floppies = 2;
@@ -1888,4 +2015,329 @@ void default_prefs (struct uae_prefs *p, int type)
 #endif
 
     inputdevice_default_prefs (p);
+}
+
+static void buildin_default_prefs_68020 (struct uae_prefs *p)
+{
+    p->cpu_level = 2;
+    p->cpu_compatible = 1;
+    p->chipset_mask = CSMASK_ECS_AGNUS | CSMASK_ECS_DENISE | CSMASK_AGA;
+    p->chipmem_size = 0x200000;
+    p->bogomem_size = 0;
+    p->m68k_speed = -1;
+}
+
+static void buildin_default_prefs (struct uae_prefs *p)
+{
+    p->nr_floppies = 2;
+    p->dfxtype[0] = 0;
+    p->dfxtype[1] = 0;
+    p->dfxtype[2] = -1;
+    p->dfxtype[3] = -1;
+    p->floppy_speed = 100;
+
+    p->cpu_level = 0;
+    p->m68k_speed = 0;
+    p->cpu_compatible = 1;
+    p->address_space_24 = 1;
+    p->cpu_cycle_exact = 0;
+    p->blitter_cycle_exact = 0;
+    p->chipset_mask = CSMASK_ECS_AGNUS;
+    p->immediate_blits = 0;
+    p->collision_level = 2;
+    p->fast_copper = 1;
+    p->produce_sound = 3;
+    p->scsi = 0;
+    p->cpu_idle = 0;
+    p->catweasel_io = 0;
+    p->tod_hack = 0;
+    p->maprom = 0;
+    p->sound_filter = 1;
+    p->sound_stereo = 1;
+    p->sound_stereo_separation = 7;
+    p->sound_mixed_stereo = -1;
+
+    p->chipmem_size = 0x00080000;
+    p->bogomem_size = 0x00080000;
+    p->fastmem_size = 0x00000000;
+    p->a3000mem_size = 0x00000000;
+    p->z3fastmem_size = 0x00000000;
+    p->gfxmem_size = 0x00000000;
+
+    strcpy (p->romfile, "");
+    strcpy (p->romextfile, "");
+    strcpy (p->flashfile, "");
+    strcpy (p->cartfile, "");
+    strcpy (p->prtname, DEFPRTNAME);
+    strcpy (p->sername, DEFSERNAME);
+    target_default_options (p, 1);
+}
+
+static void set_68020_compa (struct uae_prefs *p, int compa)
+{
+    if (compa == 0)
+	p->blitter_cycle_exact = 1;
+    if (compa > 0) {
+	p->cpu_compatible = 0;
+	p->address_space_24 = 0;
+	p->cachesize = 8192;
+    }
+    if (compa > 1) {
+	p->immediate_blits = 1;
+	p->produce_sound = 2;
+    }	
+}
+
+/* 0: cycle-exact
+ * 1: more compatible
+ * 2: no more compatible, no 100% sound
+ * 3: no more compatible, immediate blits, no 100% sound
+ */
+
+static void set_68000_compa (struct uae_prefs *p, int compa)
+{
+    switch (compa)
+    {
+	case 0:
+	p->cpu_cycle_exact = p->blitter_cycle_exact = 1;
+	p->fast_copper = 0;
+	break;
+	case 1:
+	break;
+	case 2:
+	p->cpu_compatible = 0;
+	break;
+	case 3:
+	p->immediate_blits = 1;
+	p->produce_sound = 2;
+	p->cpu_compatible = 0;
+	break;
+    }
+}
+
+static int bip_a1000 (struct uae_prefs *p, int config, int compa, int romcheck)
+{
+    int roms[4];
+
+    roms[0] = 24;
+    roms[1] = 23;
+    roms[2] = -1;
+    p->chipset_mask = 0;
+    p->bogomem_size = 0;
+    p->sound_filter = 2;
+    if (config == 1)
+	p->chipmem_size = 0x40000;
+    set_68000_compa (p, compa);
+    p->dfxtype[1] = -1;
+    return configure_rom (p, roms, romcheck);
+}    
+
+static int bip_cdtv (struct uae_prefs *p, int config, int compa, int romcheck)
+{
+    int roms[4];
+    
+    roms[0] = 6;
+    roms[1] = 32;
+    roms[2] = -1;
+    if (!configure_rom (p, roms, romcheck))
+	return 0;
+    roms[0] = 20;
+    roms[1] = 21;
+    roms[2] = 22;
+    roms[3] = -1;
+    if (!configure_rom (p, roms, romcheck))
+	return 0;
+    p->bogomem_size = 0;
+    p->chipmem_size = 0x100000;
+    p->chipset_mask = CSMASK_ECS_AGNUS | CSMASK_ECS_DENISE;
+    p->dfxtype[1] = -1;
+    set_68000_compa (p, compa);
+    return 1;
+}
+
+static int bip_cd32 (struct uae_prefs *p, int config, int compa, int romcheck)
+{
+    int roms[2];
+    
+    buildin_default_prefs_68020 (p);
+    roms[0] = 18;
+    roms[1] = -1;
+    if (!configure_rom (p, roms, romcheck))
+	return 0;
+    roms[0] = 19;
+    if (!configure_rom (p, roms, romcheck))
+	return 0;
+    p->nr_floppies = 0;
+    p->dfxtype[0] = -1;
+    p->dfxtype[1] = -1;
+    set_68020_compa (p, compa);
+    return 1;
+}
+
+static int bip_a1200 (struct uae_prefs *p, int config, int compa, int romcheck)
+{
+    int roms[4];
+
+    buildin_default_prefs_68020 (p);
+    roms[0] = 11;
+    roms[1] = 31;
+    roms[2] = 15;
+    roms[3] = -1;
+    if (config == 1)
+	p->fastmem_size = 0x400000;
+    set_68020_compa (p, compa);
+    return configure_rom (p, roms, romcheck);
+}
+
+static int bip_a600 (struct uae_prefs *p, int config, int compa, int romcheck)
+{
+    int roms[4];
+
+    roms[0] = 10;
+    roms[1] = 9;
+    roms[2] = 8;
+    roms[3] = -1;
+    p->bogomem_size = 0;
+    p->chipmem_size = 0x100000;
+    if (config == 1)
+	p->chipmem_size = 0x200000;
+    if (config == 2)
+	p->fastmem_size = 0x400000;
+    p->chipset_mask = CSMASK_ECS_AGNUS | CSMASK_ECS_DENISE;
+    set_68000_compa (p, compa);
+    return configure_rom (p, roms, romcheck);
+}
+
+static int bip_a500p (struct uae_prefs *p, int config, int compa, int romcheck)
+{
+    int roms[2];
+
+    roms[0] = 7;
+    roms[1] = -1;
+    p->bogomem_size = 0;
+    p->chipmem_size = 0x100000;
+    if (config == 1)
+	p->chipmem_size = 0x200000;
+    if (config == 2)
+	p->fastmem_size = 0x400000;
+    p->chipset_mask = CSMASK_ECS_AGNUS | CSMASK_ECS_DENISE;
+    set_68000_compa (p, compa);
+    return configure_rom (p, roms, romcheck);
+}
+static int bip_a500 (struct uae_prefs *p, int config, int compa, int romcheck)
+{
+    int roms[4];
+
+    roms[0] = roms[1] = roms[2] = roms[3] = -1;
+    switch (config)
+    {
+	case 0: // KS 1.3, OCS Agnus, 0.5M Chip + 0.5M Slow
+	roms[0] = 6;
+	roms[1] = 32;
+	p->chipset_mask = 0;
+	break;
+	case 1: // KS 1.3, ECS Agnus, 0.5M Chip + 0.5M Slow
+	roms[0] = 6;
+	roms[1] = 32;
+	break;
+	case 2: // KS 1.3, ECS Agnus, 1.0M Chip
+	roms[0] = 6;
+	roms[1] = 32;
+	p->bogomem_size = 0;
+	p->chipmem_size = 0x100000;
+	break;
+	case 3: // KS 1.3, OCS Agnus, 0.5M Chip
+	roms[0] = 6;
+	roms[1] = 32;
+	p->bogomem_size = 0;
+	p->chipset_mask = 0;
+        p->dfxtype[1] = -1;
+	break;
+	case 4: // KS 1.2, OCS Agnus, 0.5M Chip
+	roms[0] = 5;
+	roms[1] = 4;
+	roms[2] = 3;
+	p->bogomem_size = 0;
+	p->chipset_mask = 0;
+        p->dfxtype[1] = -1;
+	break;
+	case 5: // KS 1.2, OCS Agnus, 0.5M Chip + 0.5M Slow
+	roms[0] = 5;
+	roms[1] = 4;
+	roms[2] = 3;
+	p->chipset_mask = 0;
+	break;
+    }
+    set_68000_compa (p, compa);
+    return configure_rom (p, roms, romcheck);
+}
+
+static int bip_super (struct uae_prefs *p, int config, int compa, int romcheck)
+{
+    int roms[8];
+
+    roms[0] = 16;
+    roms[1] = 31;
+    roms[2] = 15;
+    roms[3] = 14;
+    roms[4] = 12;
+    roms[5] = 11;
+    roms[6] = -1;
+    p->bogomem_size = 0;
+    p->chipmem_size = 0x400000;
+    p->z3fastmem_size = 8 * 1024 * 1024;
+    p->gfxmem_size = 8 * 1024 * 1024;
+    p->cpu_level = 4;
+    p->chipset_mask = CSMASK_AGA | CSMASK_ECS_AGNUS | CSMASK_ECS_DENISE;
+    p->cpu_compatible = p->address_space_24 = 0;
+    p->m68k_speed = -1;
+    p->immediate_blits = 1;
+    p->produce_sound = 2;
+    p->cachesize = 8192;
+    p->dfxtype[0] = 1;
+    p->dfxtype[1] = 1;
+    p->floppy_speed = 0;
+    p->cpu_idle = 150;
+    p->scsi = 1;
+    p->socket_emu = 1;
+    return configure_rom (p, roms, romcheck);
+}
+
+
+int build_in_prefs (struct uae_prefs *p, int model, int config, int compa, int romcheck)
+{
+    int v = 0, i;
+    buildin_default_prefs (p);
+    switch (model)
+    {
+	case 0:
+	v = bip_a500 (p, config, compa, romcheck);
+	break;
+	case 1:
+	v = bip_a500p (p, config, compa, romcheck);
+	break;
+	case 2:
+	v = bip_a600 (p, config, compa, romcheck);
+	break;
+	case 3:
+	v = bip_a1000 (p, config, compa, romcheck);
+	break;
+	case 4:
+	v = bip_a1200 (p, config, compa, romcheck);
+	break;
+	case 5:
+	v = bip_cd32 (p, config, compa, romcheck);
+	break;
+	case 6:
+	v = bip_cdtv (p, config, compa, romcheck);
+	break;
+	case 10:
+	v = bip_super (p, config, compa, romcheck);
+	break;
+    }
+    for (i = 0; i < 4; i++) {
+	if (p->dfxtype[i] < 0)
+	    p->df[i][0] = 0;
+    }
+    return v;
 }

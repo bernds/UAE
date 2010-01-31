@@ -17,6 +17,8 @@
 #include <stdarg.h>
 #include <signal.h>
 
+#define _WIN32_WINNT 0x501 /* XButtons */
+
 #include <windows.h>
 #include <commctrl.h>
 #include <commdlg.h>
@@ -26,6 +28,7 @@
 #include <dbt.h>
 #include <math.h>
 #include <mmsystem.h>
+#include <shobjidl.h>
 
 #include "sysdeps.h"
 #include "options.h"
@@ -59,8 +62,6 @@
 #include "scsidev.h"
 #include "disk.h"
 
-extern void WIN32GFX_WindowMove ( void );
-extern void WIN32GFX_WindowSize ( void );
 unsigned long *win32_stackbase; 
 unsigned long *win32_freestack[42]; //EXTRA_STACK_SIZE
 
@@ -75,7 +76,7 @@ static int no_rdtsc;
 HINSTANCE hInst = NULL;
 HMODULE hUIDLL = NULL;
 HWND (WINAPI *pHtmlHelp)(HWND, LPCSTR, UINT, LPDWORD ) = NULL;
-HWND hAmigaWnd, hMainWnd;
+HWND hAmigaWnd, hMainWnd, hHiddenWnd;
 RECT amigawin_rect;
 static UINT TaskbarRestart;
 static int TaskbarRestartOk;
@@ -90,7 +91,7 @@ int win_x_diff, win_y_diff;
 int toggle_sound;
 int paraport_mask;
 
-HKEY hWinUAEKey    = NULL;
+HKEY hWinUAEKey = NULL;
 COLORREF g_dwBackgroundColor  = RGB(10, 0, 10);
 
 static int emulation_paused;
@@ -107,8 +108,10 @@ static HANDLE timehandle;
 
 char *start_path;
 char help_file[ MAX_DPATH ];
-extern int harddrive_dangerous, do_rdbdump, aspi_allow_all, dsound_hardware_mixing, no_rawinput;
+
+extern int harddrive_dangerous, do_rdbdump, aspi_allow_all, no_rawinput;
 int log_scsi;
+DWORD quickstart = 1;
 
 static int timeend (void)
 {
@@ -362,12 +365,15 @@ void setmouseactive (int active)
     static int mousecapture, showcursor;
     char txt[100], txt2[110];
 
-    if (active > 0 && ievent_alive > 0) {
+    if (active > 0 && mousehack_allowed () && mousehack_alive ()) {
 	mousehack_set (mousehack_follow);
-	return;
+	if (!isfullscreen ())
+	    return;
+    } else {
+	mousehack_set (mousehack_dontcare);
     }
-    mousehack_set (mousehack_dontcare);
     inputdevice_unacquire ();
+
     mouseactive = active;
     strcpy (txt, "WinUAE");
     if (mouseactive > 0) {
@@ -401,7 +407,7 @@ void setmouseactive (int active)
 	    }
 	    setcursor (-1, -1);
 	}
-	inputdevice_acquire (mouseactive);
+	inputdevice_acquire ();
     }
 }
 
@@ -409,17 +415,22 @@ void setmouseactive (int active)
 static int avioutput_video = 0;
 #endif
 
-void setpriority (int pri)
+void setpriority (struct threadpriorities *pri)
 {
-    if (pri >= 2)
-	pri = 1;
-    SetThreadPriority ( GetCurrentThread(), pri);
-    write_log ("priority set to %d\n", pri);
+    int err;
+    write_log ("changing priority to %s\n", pri->name);
+    if (os_winnt)
+	err = SetPriorityClass (GetCurrentProcess (), pri->classvalue);
+    else
+	err = SetThreadPriority (GetCurrentThread(), pri->value);
+    if (!err)
+	write_log ("priority set failed, %08.8X\n", GetLastError ());
 }
 
 static void winuae_active (HWND hWnd, int minimized)
 {
-    int ot, pri;
+    int ot;
+    struct threadpriorities *pri;
 
     /* without this returning from hibernate-mode causes wrong timing
      */
@@ -433,10 +444,10 @@ static void winuae_active (HWND hWnd, int minimized)
 
     focus = 1;
     write_log ("WinUAE now active via WM_ACTIVATE\n");
-    pri = priorities[currprefs.win32_inactive_priority].value;
+    pri = &priorities[currprefs.win32_inactive_priority];
 #ifndef _DEBUG
     if (!minimized)
-	pri = priorities[currprefs.win32_active_priority].value;
+	pri = &priorities[currprefs.win32_active_priority];
 #endif
     setpriority (pri);
 
@@ -459,17 +470,18 @@ static void winuae_active (HWND hWnd, int minimized)
     if (WIN32GFX_IsPicassoScreen ())
 	WIN32GFX_EnablePicasso();
     getcapslock ();
-    inputdevice_acquire (mouseactive);
+    inputdevice_acquire ();
     wait_keyrelease ();
-    inputdevice_acquire (mouseactive);
+    inputdevice_acquire ();
     if (isfullscreen())
 	setmouseactive (1);
     manual_palette_refresh_needed = 1;
+
 }
 
 static void winuae_inactive (HWND hWnd, int minimized)
 {
-    int pri;
+    struct threadpriorities *pri;
 
     focus = 0;
     write_log( "WinUAE now inactive via WM_ACTIVATE\n" );
@@ -483,11 +495,11 @@ static void winuae_inactive (HWND hWnd, int minimized)
 #ifdef AHI
     ahi_open_sound ();
 #endif
-    pri = priorities[currprefs.win32_inactive_priority].value;
+    pri = &priorities[currprefs.win32_inactive_priority];
     if (!quit_program) {
 	if (minimized) {
 	    inputdevice_unacquire ();
-	    pri = priorities[currprefs.win32_iconified_priority].value;
+	    pri = &priorities[currprefs.win32_iconified_priority];
 	    if (currprefs.win32_iconified_nosound) {
 		close_sound ();
     #ifdef AHI
@@ -540,16 +552,24 @@ void disablecapture (void)
 #endif
 }
 
+static void handleXbutton (WPARAM wParam, int updown)
+{
+    int b = GET_XBUTTON_WPARAM (wParam);
+    int num = (b & XBUTTON1) ? 3 : (b & XBUTTON2) ? 4 : -1;
+    if (num >= 0)
+	setmousebuttonstate (dinput_winmouse(), num, updown);
+}
+
 static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     static int ignorenextactivateapp;
     PAINTSTRUCT ps;
     HDC hDC;
-    BOOL minimized;
     LPMINMAXINFO lpmmi;
     RECT rect;
-    int mx, my;
+    int mx, my, v;
     static int mm;
+    static int minimized;
 
     if (ignore_messages_all)
 	return DefWindowProc (hWnd, message, wParam, lParam);
@@ -557,35 +577,83 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
     if (hMainWnd == 0)
 	hMainWnd = hWnd;
 
-    switch( message ) 
+    switch (message)
     {
+    case WM_SIZE:
+    {
+	write_log ("WM_SIZE %d %d\n", wParam, minimized);
+	if (isfullscreen ()) {
+	    v = minimized;
+	    switch (wParam)
+	    {
+		case SIZE_MAXIMIZED:
+		case SIZE_RESTORED:
+		v = FALSE;
+		break;
+		default:
+		v = TRUE;
+		break;
+	    }
+	    if (v != minimized) {
+		minimized = v;
+		if (v)
+		    winuae_inactive (hWnd, wParam == SIZE_MINIMIZED);
+		else
+		    winuae_active (hWnd, minimized);
+	    }
+	    return 0;
+	}
+    }
+	    
     case WM_ACTIVATE:
-    	minimized = HIWORD( wParam );
-	if (LOWORD (wParam) != WA_INACTIVE) {
-      	    winuae_active (hWnd, minimized);
+	write_log ("WM_ACTIVE %d %d %d\n", HIWORD (wParam), LOWORD (wParam), minimized);
+	if (!isfullscreen ()) {
+    	    minimized = HIWORD (wParam);
+	    if (LOWORD (wParam) != WA_INACTIVE) {
+      		winuae_active (hWnd, minimized);
+		if (ignorenextactivateapp > 0)
+		    ignorenextactivateapp--;
+	    } else {
+		winuae_inactive (hWnd, minimized);
+	    }
+	    return 0;
+	} else {
+	    if (LOWORD (wParam) == WA_INACTIVE) {
+		minimized = HIWORD (wParam);
+		winuae_inactive (hWnd, minimized);
+	    } else {
+		if (!minimized)
+		    winuae_active (hWnd, minimized);
+	    }
 	    if (ignorenextactivateapp > 0)
-		ignorenextactivateapp--;
-	} else
-	    winuae_inactive (hWnd, minimized);
-    break;
+	        ignorenextactivateapp--;
+	    return 0;
+	}
+	break;
 
     case WM_ACTIVATEAPP:
+	write_log ("WM_ACTIVATEAPP %d %d\n", wParam, minimized);
 	if (!wParam) {
+	    if (gui_active && isfullscreen())
+	        exit_gui (0);
 	    setmouseactive (0);
 	} else {
+	    if (minimized)
+		minimized = 0;
+	    winuae_active (hWnd, minimized);
 	    if (!ignorenextactivateapp && isfullscreen () && is3dmode ()) {
 	        WIN32GFX_DisplayChangeRequested ();
-	        ignorenextactivateapp = 2;
+	        ignorenextactivateapp = 3;
 	    }
 	    if (gui_active && isfullscreen())
 	        exit_gui (0);
 	}
         manual_palette_refresh_needed = 1;
-    break;
+    return 0;
 
     case WM_PALETTECHANGED:
-        if( (HWND)wParam != hWnd )
-	    WIN32GFX_PaletteChange();
+        if ((HWND)wParam != hWnd)
+	    manual_palette_refresh_needed = 1;
     break;
 
     case WM_KEYDOWN:
@@ -594,7 +662,7 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
     return 0;
 
     case WM_LBUTTONUP:
-	if (dinput_winmouse () > 0)
+	if (dinput_winmouse () >= 0)
 	    setmousebuttonstate (dinput_winmouse(), 0, 0);
     return 0;
     case WM_LBUTTONDOWN:
@@ -602,29 +670,51 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 	if (!mouseactive && !isfullscreen()) {
 	    setmouseactive (1);
 	}
-	if (dinput_winmouse () > 0)
+	if (dinput_winmouse () >= 0)
 	    setmousebuttonstate (dinput_winmouse(), 0, 1);
     return 0;
     case WM_RBUTTONUP:
-	if (dinput_winmouse () > 0)
+	if (dinput_winmouse () >= 0)
 	    setmousebuttonstate (dinput_winmouse(), 1, 0);
     return 0;
     case WM_RBUTTONDOWN:
     case WM_RBUTTONDBLCLK:
-	if (dinput_winmouse () > 0)
+	if (dinput_winmouse () >= 0)
 	    setmousebuttonstate (dinput_winmouse(), 1, 1);
     return 0;
     case WM_MBUTTONUP:
-	if (dinput_winmouse () > 0)
-	    setmousebuttonstate (dinput_winmouse(), 2, 0);
+	if (!currprefs.win32_middle_mouse) {
+	    if (dinput_winmouse () >= 0)
+		setmousebuttonstate (dinput_winmouse(), 2, 0);
+	}
     return 0;
     case WM_MBUTTONDOWN:
     case WM_MBUTTONDBLCLK:
-	if (dinput_winmouse () > 0)
-	    setmousebuttonstate (dinput_winmouse(), 2, 1);
+	if (currprefs.win32_middle_mouse) {
+    	    if (isfullscreen ())
+	        minimizewindow ();
+	    if (mouseactive)
+	        setmouseactive(0);
+	} else {
+	    if (dinput_winmouse () >= 0)
+		setmousebuttonstate (dinput_winmouse(), 2, 1);
+	}
+    return 0;
+    case WM_XBUTTONUP:
+	if (dinput_winmouse () >= 0) {
+	    handleXbutton (wParam, 0);
+	    return TRUE;
+	}
+    return 0;
+    case WM_XBUTTONDOWN:
+    case WM_XBUTTONDBLCLK:
+	if (dinput_winmouse () >= 0) {
+	    handleXbutton (wParam, 1);
+	    return TRUE;
+	}
     return 0;
     case WM_MOUSEWHEEL:
-	if (dinput_winmouse () > 0)
+	if (dinput_winmouse () >= 0)
 	    setmousestate (dinput_winmouse(), 2, ((short)HIWORD(wParam)), 0);
     return 0;
 
@@ -664,31 +754,30 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
     return 0;
 
     case WM_WINDOWPOSCHANGED:
-	GetWindowRect( hWnd, &amigawin_rect);
+	GetWindowRect (hWnd, &amigawin_rect);
     break;
 
     case WM_MOUSEMOVE:
         mx = (signed short) LOWORD (lParam);
         my = (signed short) HIWORD (lParam);
-	if (dinput_winmouse () > 0) {
-	    int mxx = (amigawin_rect.right - amigawin_rect.left) / 2;
-	    int myy = (amigawin_rect.bottom - amigawin_rect.top) / 2;
-	    mx = mx - mxx;
-	    my = my - myy;
-	    setmousestate (dinput_winmouse (), 0, mx, 0);
-	    setmousestate (dinput_winmouse (), 1, my, 0);
+	if (dinput_winmouse () >= 0) {
+	    if (dinput_winmousemode ()) {
+	        /* absolete + mousehack */
+	        setmousestate (dinput_winmouse (), 0, mx, 1);
+		setmousestate (dinput_winmouse (), 1, my, 1);
+		return 0;
+	    } else {
+		/* relative */
+    		int mxx = (amigawin_rect.right - amigawin_rect.left) / 2;
+		int myy = (amigawin_rect.bottom - amigawin_rect.top) / 2;
+		mx = mx - mxx;
+		my = my - myy;
+		setmousestate (dinput_winmouse (), 0, mx, 0);
+		setmousestate (dinput_winmouse (), 1, my, 0);
+	    }
         } else if ((!mouseactive && !isfullscreen())) {
 	    setmousestate (0, 0, mx, 1);
 	    setmousestate (0, 1, my, 1);
-	} else {
-#if 0
-	    int mxx = (amigawin_rect.right - amigawin_rect.left) / 2;
-	    int myy = (amigawin_rect.bottom - amigawin_rect.top) / 2;
-	    mx = mx - mxx;
-	    my = my - myy;
-	    setmousestate (0, 0, mx, 0);
-	    setmousestate (0, 1, my, 0);
-#endif
 	}
 	if (mouseactive)
 	    setcursor (LOWORD (lParam), HIWORD (lParam));
@@ -698,14 +787,6 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
     case WM_MOVE:
 	WIN32GFX_WindowMove();
     return TRUE;
-
-    case WM_SIZING:
-	WIN32GFX_WindowSize();
-    return TRUE;
-
-    case WM_SIZE:
-	WIN32GFX_WindowSize();
-    return 0;
 
     case WM_GETMINMAXINFO:
 	rect.left=0;
@@ -768,7 +849,40 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
     handle_rawinput (lParam);
     break;
     
-     case WM_USER + 1: /* Systray icon */
+    case WM_NOTIFY:
+    {
+        LPNMHDR nm = (LPNMHDR)lParam;
+        if (nm->hwndFrom == hStatusWnd) {
+	    switch (nm->code)
+	    {
+		/* status bar clicks */
+		case NM_CLICK:
+		case NM_RCLICK:
+		{
+		    LPNMMOUSE lpnm = (LPNMMOUSE) lParam; 
+		    int num = lpnm->dwItemSpec;
+		    if (num >= 6 && num <= 9) {
+			num -= 6;
+			if (nm->code == NM_RCLICK) {
+			    disk_eject (num);
+			} else {
+			    DiskSelection (hWnd, IDC_DF0 + num, 0, &changed_prefs, 0);
+			    disk_insert (num, changed_prefs.df[num]);
+			}
+		    } else if (num == 3) {
+			if (nm->code == NM_CLICK)
+			    gui_display (-1);
+			else
+			    uae_reset (0);
+		    }
+		    return TRUE;
+		}
+	    }
+	}
+    }
+    break;
+    
+    case WM_USER + 1: /* Systray icon */
 	 switch (lParam)
 	 {
 	    case WM_LBUTTONDOWN:
@@ -876,6 +990,7 @@ static long FAR PASCAL MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, L
      case 0xff: // WM_INPUT
      case WM_USER + 1:
      case WM_COMMAND:
+     case WM_NOTIFY:
 	return AmigaWindowProc (hWnd, message, wParam, lParam);
 
      case WM_DISPLAYCHANGE:
@@ -947,6 +1062,11 @@ static long FAR PASCAL MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, L
     return DefWindowProc (hWnd, message, wParam, lParam);
 }
 
+static long FAR PASCAL HiddenWindowProc (HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    return DefWindowProc (hWnd, message, wParam, lParam);
+}
+
 void handle_events (void)
 {
     MSG msg;
@@ -997,22 +1117,22 @@ void remove_brkhandler (void)
 int WIN32_RegisterClasses( void )
 {
     WNDCLASS wc;
-    HDC hDC = GetDC( NULL ); 
+    HDC hDC = GetDC( NULL );
 
-    if( GetDeviceCaps( hDC, NUMCOLORS ) != -1 ) 
-        g_dwBackgroundColor = RGB( 255, 0, 255 );    
-    ReleaseDC( NULL, hDC );
+    if (GetDeviceCaps (hDC, NUMCOLORS) != -1) 
+        g_dwBackgroundColor = RGB (255, 0, 255);
+    ReleaseDC (NULL, hDC);
 
     wc.style = CS_BYTEALIGNCLIENT | CS_BYTEALIGNWINDOW | CS_DBLCLKS | CS_OWNDC;
     wc.lpfnWndProc = AmigaWindowProc;
     wc.cbClsExtra = 0;
     wc.cbWndExtra = 0;
     wc.hInstance = 0;
-    wc.hIcon = LoadIcon (GetModuleHandle (NULL), MAKEINTRESOURCE( IDI_APPICON ) );
+    wc.hIcon = LoadIcon (GetModuleHandle (NULL), MAKEINTRESOURCE (IDI_APPICON));
     wc.hCursor = LoadCursor (NULL, IDC_ARROW);
     wc.lpszMenuName = 0;
     wc.lpszClassName = "AmigaPowah";
-    wc.hbrBackground = CreateSolidBrush( g_dwBackgroundColor ); 
+    wc.hbrBackground = CreateSolidBrush (g_dwBackgroundColor);
     if (!RegisterClass (&wc))
 	return 0;
 
@@ -1021,13 +1141,36 @@ int WIN32_RegisterClasses( void )
     wc.cbClsExtra = 0;
     wc.cbWndExtra = 0;
     wc.hInstance = 0;
-    wc.hIcon = LoadIcon (GetModuleHandle (NULL), MAKEINTRESOURCE( IDI_APPICON ) );
+    wc.hIcon = LoadIcon (GetModuleHandle (NULL), MAKEINTRESOURCE (IDI_APPICON));
     wc.hCursor = LoadCursor (NULL, IDC_ARROW);
-    wc.hbrBackground = CreateSolidBrush( g_dwBackgroundColor ); 
+    wc.hbrBackground = CreateSolidBrush (g_dwBackgroundColor);
     wc.lpszMenuName = 0;
     wc.lpszClassName = "PCsuxRox";
     if (!RegisterClass (&wc))
 	return 0;
+    
+    wc.style = CS_BYTEALIGNCLIENT | CS_BYTEALIGNWINDOW;
+    wc.lpfnWndProc = HiddenWindowProc;
+    wc.cbClsExtra = 0;
+    wc.cbWndExtra = 0;
+    wc.hInstance = 0;
+    wc.hIcon = LoadIcon (GetModuleHandle (NULL), MAKEINTRESOURCE (IDI_APPICON));
+    wc.hCursor = LoadCursor (NULL, IDC_ARROW);
+    wc.hbrBackground = CreateSolidBrush (g_dwBackgroundColor);
+    wc.lpszMenuName = 0;
+    wc.lpszClassName = "Useless";
+    if (!RegisterClass (&wc))
+	return 0;
+    
+    hHiddenWnd = CreateWindowEx (0,
+        "Useless", "You don't see me",
+        WS_POPUP,
+        0, 0,
+        1, 1, 
+        NULL, NULL, 0, NULL);
+    if (!hHiddenWnd)
+	return 0;
+
     return 1;
 }
 
@@ -1357,9 +1500,9 @@ int needmousehack (void)
 {
     return 1;
 }
-
-void LED (int a)
+int mousehack_allowed (void)
 {
+    return dinput_winmouse () > 0 && dinput_winmousemode ();
 }
 
 void logging_init( void )
@@ -1390,7 +1533,9 @@ void logging_init( void )
 #endif
     first++;
     write_log ( "%s", VersionStr );
-    write_log (" (OS: %s %d.%d%s)", os_winnt ? "NT" : "W9X/ME", osVersion.dwMajorVersion, osVersion.dwMinorVersion, os_winnt_admin ? " Administrator privileges" : "");
+    write_log (" (%s %d.%d %s%s)", os_winnt ? "NT" : "W9X/ME",
+	osVersion.dwMajorVersion, osVersion.dwMinorVersion, osVersion.szCSDVersion,
+	os_winnt_admin ? " Admin" : "");
     write_log ("\n(c) 1995-2001 Bernd Schmidt   - Core UAE concept and implementation."
 	       "\n(c) 1998-2004 Toni Wilen      - Win32 port, core code updates."
 	       "\n(c) 1996-2001 Brian King      - Win32 port, Picasso96 RTG, and GUI."
@@ -1409,22 +1554,27 @@ void logging_cleanup( void )
     debugfile = 0;
 }
 
-void target_default_options (struct uae_prefs *p)
+void target_default_options (struct uae_prefs *p, int type)
 {
-    p->win32_middle_mouse = 0;
-    p->win32_logfile = 0;
-    p->win32_iconified_nosound = 0;
-    p->win32_iconified_pause = 0;
-    p->win32_inactive_nosound = 0;
-    p->win32_inactive_pause = 0;
-    p->win32_no_overlay = 0;
-    p->win32_ctrl_F11_is_quit = 0;
-    p->win32_soundcard = 0;
-    p->win32_active_priority = 1;
-    p->win32_inactive_priority = 2;
-    p->win32_iconified_priority = 3;
-    p->win32_midioutdev = 0;
-    p->win32_midiindev = -2;
+    if (type == 2 || type == 0) {
+        p->win32_middle_mouse = 1;
+	p->win32_logfile = 0;
+	p->win32_iconified_nosound = 1;
+	p->win32_iconified_pause = 1;
+	p->win32_inactive_nosound = 0;
+	p->win32_inactive_pause = 0;
+	p->win32_no_overlay = 0;
+	p->win32_ctrl_F11_is_quit = 0;
+	p->win32_soundcard = 0;
+	p->win32_active_priority = 0;
+	p->win32_inactive_priority = 2;
+	p->win32_iconified_priority = 3;
+	p->win32_notaskbarbutton = 0;
+    }
+    if (type == 1 || type == 0) {
+        p->win32_midioutdev = -2;
+	p->win32_midiindev = 0;
+    }
 }
 
 void target_save_options (FILE *f, struct uae_prefs *p)
@@ -1450,6 +1600,7 @@ void target_save_options (FILE *f, struct uae_prefs *p)
     cfgfile_write (f, "win32.aspi=%s\n", p->win32_aspi ? "true" : "false" );
     cfgfile_write (f, "win32.soundcard=%d\n", p->win32_soundcard );
     cfgfile_write (f, "win32.cpu_idle=%d\n", p->cpu_idle);
+    cfgfile_write (f, "win32.notaskbarbutton=%s\n", p->win32_notaskbarbutton ? "true" : "false");
 }
 
 static int fetchpri (int pri, int defpri)
@@ -1491,6 +1642,7 @@ int target_parse_option (struct uae_prefs *p, char *option, char *value)
 	    || cfgfile_intval (option, value, "soundcard", &p->win32_soundcard, 1)
 	    || cfgfile_string (option, value, "serial_port", &p->sername[0], 256)
 	    || cfgfile_string (option, value, "parallel_port", &p->prtname[0], 256)
+	    || cfgfile_yesno  (option, value, "notaskbarbutton", &p->win32_notaskbarbutton)
 	    || cfgfile_intval  (option, value, "cpu_idle", &p->cpu_idle, 1));
 
     if (cfgfile_intval (option, value, "active_priority", &v, 1)) {
@@ -1527,15 +1679,161 @@ int target_parse_option (struct uae_prefs *p, char *option, char *value)
     return result;
 }
 
+void fetch_saveimagepath (char *out, int size, int dir)
+{
+    fetch_path ("SaveimagePath", out, size);
+    if (dir) {
+	out[strlen (out) - 1] = 0;
+	CreateDirectory (out, NULL);
+        fetch_path ("SaveimagePath", out, size);
+    }
+}
+void fetch_configurationpath (char *out, int size)
+{
+    fetch_path ("ConfigurationPath", out, size);
+}
+
+void fetch_path (char *name, char *out, int size)
+{
+    int size2 = size;
+    strcpy (out, start_path);
+    if (!strcmp (name, "FloppyPath"))
+	strcat (out, "..\\shared\\adf\\");
+    if (!strcmp (name, "hdfPath"))
+	strcat (out, "..\\shared\\hdf\\");
+    if (!strcmp (name, "KickstartPath"))
+	strcat (out, "..\\shared\\rom\\");
+    if (!strcmp (name, "ConfigurationPath"))
+	strcat (out, "Configurations\\");
+    if (hWinUAEKey)
+	RegQueryValueEx (hWinUAEKey, name, 0, NULL, out, &size);
+    if (out[0] == '\\') { /* relative? */
+	strcpy (out, start_path);
+        if (hWinUAEKey) {
+	    size2 -= strlen (out);
+	    RegQueryValueEx (hWinUAEKey, name, 0, NULL, out + strlen (out) - 1, &size2);
+	}
+    }
+}
+void set_path (char *name, char *path)
+{
+    char tmp[MAX_DPATH];
+    if (!path) {
+	strcpy (tmp, start_path);
+	if (!strcmp (name, "KickstartPath"))
+	    strcat (tmp, "Roms");
+	if (!strcmp (name, "ConfigurationPath"))
+	    strcat (tmp, "Configurations");
+	if (!strcmp (name, "ScreenshotPath"))
+	    strcat (tmp, "Screenshots");
+	if (!strcmp (name, "StatefilePath"))
+	    strcat (tmp, "Savestates");
+	if (!strcmp (name, "SaveimagePath"))
+	    strcat (tmp, "SaveImages");
+    } else {
+	strcpy (tmp, path);
+    }
+    if (tmp[strlen (tmp) - 1] != '\\' && tmp[strlen (tmp) - 1] != '/')
+	strcat (tmp, "\\");
+    if (hWinUAEKey)
+	RegSetValueEx (hWinUAEKey, name, 0, REG_SZ, (CONST BYTE *)tmp, strlen (tmp) + 1);
+}
+
+static void initpath (char *name, char *path)
+{
+    if (!hWinUAEKey)
+	return;
+    if (RegQueryValueEx(hWinUAEKey, name, 0, NULL, NULL, NULL) == ERROR_SUCCESS)
+	return;
+    set_path (name, NULL);
+}
+
+extern int scan_roms (char*);
+void read_rom_list (int force)
+{
+    char tmp2[1000];
+    DWORD size2;
+    int idx, idx2;
+    HKEY fkey;
+    char tmp[1000];
+    DWORD size, disp;
+
+    romlist_clear ();
+    if (!hWinUAEKey)
+	return;
+    RegCreateKeyEx(hWinUAEKey , "DetectedROMs", 0, NULL, REG_OPTION_NON_VOLATILE,
+	KEY_ALL_ACCESS, NULL, &fkey, &disp);
+    if (fkey == NULL)
+	return;
+    if (disp == REG_CREATED_NEW_KEY || force)
+	scan_roms (NULL);
+    idx = 0;
+    for (;;) {
+        int err;
+        size = sizeof (tmp);
+        size2 = sizeof (tmp2);
+        err = RegEnumValue(fkey, idx, tmp, &size, NULL, NULL, tmp2, &size2);
+        if (err != ERROR_SUCCESS)
+	    break;
+        if (strlen (tmp) == 5) {
+	    idx2 = atol (tmp + 3);
+	    if (idx2 >= 0 && strlen (tmp2) > 0) {
+		struct romdata *rd = getromdatabyid (idx2);
+		if (rd)
+		    romlist_add (tmp2, rd);
+	    }
+	}
+	idx++;
+    }
+}
+
+static int parseversion (char **vs)
+{
+    char tmp[10];
+    int i;
+    
+    i = 0;
+    while (**vs >= '0' && **vs <= '9') {
+	if (i >= sizeof (tmp))
+	    return 0;
+	tmp[i++] = **vs;
+	(*vs)++;
+    }
+    if (**vs == '.')
+	(*vs)++;
+    tmp[i] = 0;
+    return atol (tmp);
+}
+
+static int checkversion (char *vs)
+{
+    if (strlen (vs) < 10)
+	return 0;
+    if (memcmp (vs, "WinUAE ", 7))
+	return 0;
+    vs += 7;
+    if (parseversion (&vs) < UAEMAJOR)
+	return 1;
+    if (parseversion (&vs) < UAEMINOR)
+	return 1;
+    if (parseversion (&vs) < UAESUBREV)
+	return 1;
+    return 0;
+}
+
 static void WIN32_HandleRegistryStuff( void )
 {
-    RGBFTYPE colortype      = RGBFB_NONE;
-    DWORD dwType            = REG_DWORD;
+    RGBFTYPE colortype = RGBFB_NONE;
+    DWORD dwType = REG_DWORD;
     DWORD dwDisplayInfoSize = sizeof( colortype );
+    DWORD size;
     DWORD disposition;
     char path[MAX_DPATH] = "";
+    char version[100];
     HKEY hWinUAEKeyLocal = NULL;
     HKEY fkey;
+    int forceroms = 0;
+    int updateversion = 1;
 
     /* Create/Open the hWinUAEKey which points to our config-info */
     if( RegCreateKeyEx( HKEY_CLASSES_ROOT, ".uae", 0, "", REG_OPTION_NON_VOLATILE,
@@ -1554,7 +1852,7 @@ static void WIN32_HandleRegistryStuff( void )
             sprintf( path, "%sWinUAE.exe -f \"%%1\" -s use_gui=yes", start_path );
             RegSetValueEx( hWinUAEKeyLocal, "", 0, REG_SZ, (CONST BYTE *)path, strlen( path ) + 1 );
         }
-		RegCloseKey( hWinUAEKeyLocal );
+	RegCloseKey( hWinUAEKeyLocal );
 
         if( ( RegCreateKeyEx( HKEY_CLASSES_ROOT, "WinUAE\\shell\\Open\\command", 0, "", REG_OPTION_NON_VOLATILE,
                               KEY_ALL_ACCESS, NULL, &hWinUAEKeyLocal, &disposition ) == ERROR_SUCCESS ) )
@@ -1566,11 +1864,20 @@ static void WIN32_HandleRegistryStuff( void )
 	RegCloseKey( hWinUAEKeyLocal );
     }
     RegCloseKey( hWinUAEKey );
+    hWinUAEKey = NULL;
 
     /* Create/Open the hWinUAEKey which points our config-info */
     if( RegCreateKeyEx( HKEY_CURRENT_USER, "Software\\Arabuusimiehet\\WinUAE", 0, "", REG_OPTION_NON_VOLATILE,
                           KEY_ALL_ACCESS, NULL, &hWinUAEKey, &disposition ) == ERROR_SUCCESS )
     {
+        initpath ("FloppyPath", start_path);
+        initpath ("KickstartPath", start_path);
+        initpath ("hdfPath", start_path);
+        initpath ("ConfigurationPath", start_path);
+        initpath ("ScreenshotPath", start_path);
+        initpath ("StatefilePath", start_path);
+        initpath ("SaveimagePath", start_path);
+        initpath ("VideoPath", start_path);
         if( disposition == REG_CREATED_NEW_KEY )
         {
             /* Create and initialize all our sub-keys to the default values */
@@ -1580,38 +1887,60 @@ static void WIN32_HandleRegistryStuff( void )
             RegSetValueEx( hWinUAEKey, "yPos", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
             RegSetValueEx( hWinUAEKey, "xPosGUI", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
             RegSetValueEx( hWinUAEKey, "yPosGUI", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
-            RegSetValueEx( hWinUAEKey, "FloppyPath", 0, REG_SZ, (CONST BYTE *)start_path, strlen( start_path ) + 1 );
-            RegSetValueEx( hWinUAEKey, "KickstartPath", 0, REG_SZ, (CONST BYTE *)start_path, strlen( start_path ) + 1 );
-            RegSetValueEx( hWinUAEKey, "hdfPath", 0, REG_SZ, (CONST BYTE *)start_path, strlen( start_path ) + 1 );
         }
-	// Set this even when we're opening an existing key, so that the version info is always up to date.
-        RegSetValueEx( hWinUAEKey, "Version", 0, REG_SZ, (CONST BYTE *)VersionStr, strlen( VersionStr ) + 1 );
-        
-		RegQueryValueEx( hWinUAEKey, "DisplayInfo", 0, &dwType, (LPBYTE)&colortype, &dwDisplayInfoSize );
-		if( colortype == 0 ) /* No color information stored in the registry yet */
-		{
-			char szMessage[ 4096 ];
-			char szTitle[ MAX_DPATH ];
-			WIN32GUI_LoadUIString( IDS_GFXCARDCHECK, szMessage, 4096 );
-			WIN32GUI_LoadUIString( IDS_GFXCARDTITLE, szTitle, MAX_DPATH );
-		    
-			if( MessageBox( NULL, szMessage, szTitle, 
-			MB_YESNO | MB_ICONWARNING | MB_TASKMODAL | MB_SETFOREGROUND ) == IDYES )
-			{
-			ignore_messages_all++;
-			colortype = WIN32GFX_FigurePixelFormats(0);
-			ignore_messages_all--;
-			RegSetValueEx( hWinUAEKey, "DisplayInfo", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
-			}
-		}
-		if( colortype ) {
-			/* Set the 16-bit pixel format for the appropriate modes */
-			WIN32GFX_FigurePixelFormats( colortype );
-		}
+	size = sizeof (version);
+	if (RegQueryValueEx( hWinUAEKey, "Version", 0, &dwType, (LPBYTE)&version, &size) == ERROR_SUCCESS) {
+	    if (checkversion (version))
+		forceroms = 1;
+	    else
+		updateversion = 0;
+	} else {
+	    forceroms = 1;
 	}
+	if (updateversion) {
+	    // Set this even when we're opening an existing key, so that the version info is always up to date.
+	    if (RegSetValueEx( hWinUAEKey, "Version", 0, REG_SZ, (CONST BYTE *)VersionStr, strlen( VersionStr ) + 1 ) != ERROR_SUCCESS)
+		forceroms = 0;
+	}
+        
+	RegQueryValueEx( hWinUAEKey, "DisplayInfo", 0, &dwType, (LPBYTE)&colortype, &dwDisplayInfoSize );
+	if( colortype == 0 ) /* No color information stored in the registry yet */
+	{
+	    char szMessage[ 4096 ];
+	    char szTitle[ MAX_DPATH ];
+	    WIN32GUI_LoadUIString( IDS_GFXCARDCHECK, szMessage, 4096 );
+	    WIN32GUI_LoadUIString( IDS_GFXCARDTITLE, szTitle, MAX_DPATH );
+		    
+	    if( MessageBox( NULL, szMessage, szTitle, MB_YESNO | MB_ICONWARNING | MB_TASKMODAL | MB_SETFOREGROUND ) == IDYES )
+	    {
+	        ignore_messages_all++;
+	        colortype = WIN32GFX_FigurePixelFormats(0);
+	        ignore_messages_all--;
+	        RegSetValueEx( hWinUAEKey, "DisplayInfo", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
+	    }
+	}
+	if( colortype ) {
+	    /* Set the 16-bit pixel format for the appropriate modes */
+	    WIN32GFX_FigurePixelFormats( colortype );
+	}
+	size = sizeof (quickstart);
+ 	RegQueryValueEx( hWinUAEKey, "QuickStartMode", 0, &dwType, (LPBYTE)&quickstart, &size );
+    }
+    fetch_path ("ConfigurationPath", path, sizeof (path));
+    path[strlen (path) - 1] = 0;
+    CreateDirectory (path, NULL);
+    strcat (path, "\\Host");
+    CreateDirectory (path, NULL);
+    fetch_path ("ConfigurationPath", path, sizeof (path));
+    strcat (path, "Hardware");
+    CreateDirectory (path, NULL);
+    fetch_path ("StatefilePath", path, sizeof (path));
+    strcat (path, "default.uss");
+    strcpy (savestate_fname, path);
     fkey = read_disk_history ();
     if (fkey)
 	RegCloseKey (fkey);
+    read_rom_list (forceroms);
 }
 
 static void betamessage (void)
@@ -1645,17 +1974,65 @@ static int dxdetect (void)
 
 int os_winnt, os_winnt_admin;
 
+static int isadminpriv (void) 
+{
+    DWORD i, dwSize = 0, dwResult = 0;
+    HANDLE hToken;
+    PTOKEN_GROUPS pGroupInfo;
+    BYTE sidBuffer[100];
+    PSID pSID = (PSID)&sidBuffer;
+    SID_IDENTIFIER_AUTHORITY SIDAuth = SECURITY_NT_AUTHORITY;
+    int isadmin = 0;
+   
+    // Open a handle to the access token for the calling process.
+    if (!OpenProcessToken( GetCurrentProcess(), TOKEN_QUERY, &hToken )) {
+	write_log ( "OpenProcessToken Error %u\n", GetLastError() );
+	return FALSE;
+    }
+
+    // Call GetTokenInformation to get the buffer size.
+    if(!GetTokenInformation(hToken, TokenGroups, NULL, dwSize, &dwSize)) {
+	dwResult = GetLastError();
+	if( dwResult != ERROR_INSUFFICIENT_BUFFER ) {
+	    write_log( "GetTokenInformation Error %u\n", dwResult );
+	    return FALSE;
+	}
+    }
+
+    // Allocate the buffer.
+    pGroupInfo = (PTOKEN_GROUPS) GlobalAlloc( GPTR, dwSize );
+
+    // Call GetTokenInformation again to get the group information.
+    if(! GetTokenInformation(hToken, TokenGroups, pGroupInfo, dwSize, &dwSize ) ) {
+	write_log ( "GetTokenInformation Error %u\n", GetLastError() );
+	return FALSE;
+    }
+
+    // Create a SID for the BUILTIN\Administrators group.
+    if(! AllocateAndInitializeSid( &SIDAuth, 2,
+                 SECURITY_BUILTIN_DOMAIN_RID,
+                 DOMAIN_ALIAS_RID_ADMINS,
+                 0, 0, 0, 0, 0, 0,
+                 &pSID) ) {
+	write_log( "AllocateAndInitializeSid Error %u\n", GetLastError() );
+	return FALSE;
+   }
+
+    // Loop through the group SIDs looking for the administrator SID.
+    for(i=0; i<pGroupInfo->GroupCount; i++) {
+	if ( EqualSid(pSID, pGroupInfo->Groups[i].Sid) )
+	    isadmin = 1;
+    }
+    
+    if (pSID)
+	FreeSid(pSID);
+    if ( pGroupInfo )
+	GlobalFree( pGroupInfo );
+    return isadmin;
+}
+
 static int osdetect (void)
 {
-    HANDLE hAccessToken;
-    UCHAR InfoBuffer[1024];
-    PTOKEN_GROUPS ptgGroups = (PTOKEN_GROUPS)InfoBuffer;
-    DWORD dwInfoBufferSize;
-    PSID psidAdministrators;
-    SID_IDENTIFIER_AUTHORITY siaNtAuthority = SECURITY_NT_AUTHORITY;
-    UINT x;
-    BOOL bSuccess;
-
     os_winnt = 0;
     os_winnt_admin = 0;
 
@@ -1678,51 +2055,9 @@ static int osdetect (void)
     if (!os_winnt) {
 	return 1;
     }
-
-    if(!OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, TRUE,
-         &hAccessToken )) {
-         if(GetLastError() != ERROR_NO_TOKEN)
-            return 1;
-         // 
-         // retry against process token if no thread token exists
-         // 
-         if(!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY,
-            &hAccessToken))
-            return 1;
-      }
-
-      bSuccess = GetTokenInformation(hAccessToken,TokenGroups,InfoBuffer,
-         1024, &dwInfoBufferSize);
-
-      CloseHandle(hAccessToken);
-
-      if(!bSuccess )
-         return 1;
-
-      if(!AllocateAndInitializeSid(&siaNtAuthority, 2,
-         SECURITY_BUILTIN_DOMAIN_RID,
-         DOMAIN_ALIAS_RID_ADMINS,
-         0, 0, 0, 0, 0, 0,
-         &psidAdministrators))
-         return 1;
-
-   // assume that we don't find the admin SID.
-      bSuccess = FALSE;
-
-      for(x=0;x<ptgGroups->GroupCount;x++)
-      {
-         if( EqualSid(psidAdministrators, ptgGroups->Groups[x].Sid) )
-         {
-            bSuccess = TRUE;
-            break;
-         }
-
-      }
-      FreeSid(psidAdministrators);
-      os_winnt_admin = bSuccess ? 1 : 0;
-      return 1;
-   }
-
+    os_winnt_admin = isadminpriv ();
+    return 1;
+}
 
 static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
 		    int nCmdShow)
@@ -1733,7 +2068,6 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
     int argc;
     int i;
     int multi_display = 1;
-    char tmp[MAX_DPATH];
 
 #ifdef __GNUC__
     __asm__ ("leal -2300*1024(%%esp),%0" : "=r" (win32_stackbase) :);
@@ -1765,6 +2099,7 @@ __asm{
 #ifdef AVIOUTPUT
     AVIOutput_Initialize();
 #endif
+    init_zlib ();
 
 #ifdef __MINGW32__
     argc = _argc; argv = _argv;
@@ -1779,7 +2114,6 @@ __asm{
 	if (!strcmp (arg, "-disableharddrivesafetycheck")) harddrive_dangerous = 0x1234dead;
 	if (!strcmp (arg, "-noaspifiltering")) aspi_allow_all = 1;
 #endif
-	if (!strcmp (arg, "-dsaudiomix")) dsound_hardware_mixing = 1;
 	if (!strcmp (arg, "-nordtsc")) no_rdtsc = 1;
 	if (!strcmp (arg, "-forcerdtsc")) no_rdtsc = -1;
 	if (!strcmp (arg, "-norawinput")) no_rawinput = 1;
@@ -1791,22 +2125,12 @@ __asm{
     argv[0] = 0;
 #endif
     /* Get our executable's root-path */
-    if( ( start_path = xmalloc( MAX_DPATH ) ) )
+    if ((start_path = xmalloc (MAX_DPATH)))
     {
 	GetModuleFileName( NULL, start_path, MAX_DPATH );
 	if((posn = strrchr (start_path, '\\')))
 	    posn[1] = 0;
 	sprintf (help_file, "%sWinUAE.chm", start_path );
-#ifndef SINGLEFILE
-	sprintf (tmp, "%sSaveStates", start_path);
-	CreateDirectory (tmp, NULL);
-	strcat (tmp, "\\default.uss");
-	strcpy (savestate_fname, tmp);
-	sprintf (tmp, "%sSaveImages", start_path);
-	CreateDirectory (tmp, NULL);
-	sprintf (tmp, "%sScreenShots", start_path);
-	CreateDirectory (tmp, NULL);
-#endif
 	sprintf( VersionStr, "WinUAE %d.%d.%d%s", UAEMAJOR, UAEMINOR, UAESUBREV, WINUAEBETA ? WINUAEBETASTR : "" );
 
 	logging_init ();
@@ -1845,13 +2169,12 @@ __asm{
 	    DirectDraw_Release();
 	    betamessage ();
 	    keyboard_settrans ();
-	    init_zlib ();
 #ifdef PARALLEL_PORT
 	    paraport_mask = paraport_init ();
 #endif
 	    real_main (argc, argv);
 	}
-	free( start_path );
+	free (start_path);
     }
 	
     if (mm_timerres && timermode == 0)
@@ -1896,11 +2219,11 @@ int execute_command (char *cmd)
 }
 
 struct threadpriorities priorities[] = {
-    { "Above Normal", THREAD_PRIORITY_ABOVE_NORMAL },
-    { "Normal", THREAD_PRIORITY_NORMAL },
-    { "Below Normal", THREAD_PRIORITY_BELOW_NORMAL },
-    { "Low", THREAD_PRIORITY_LOWEST },
-    { 0, -1 }
+    { "Above Normal", THREAD_PRIORITY_ABOVE_NORMAL, ABOVE_NORMAL_PRIORITY_CLASS },
+    { "Normal", THREAD_PRIORITY_NORMAL, NORMAL_PRIORITY_CLASS },
+    { "Below Normal", THREAD_PRIORITY_BELOW_NORMAL, BELOW_NORMAL_PRIORITY_CLASS },
+    { "Low", THREAD_PRIORITY_LOWEST, IDLE_PRIORITY_CLASS },
+    { 0 }
 };
 
 static int drvsampleres[] = {
@@ -1979,7 +2302,7 @@ static LONG WINAPI ExceptionFilter( struct _EXCEPTION_POINTERS * pExceptionPoint
 		    write_log ("failed to find and fix the problem (%p). crashing..\n", p);
 		} else {
 		    m68k_setpc (0);
-		    exception2 (opc, p);
+		    exception2 (opc, (uaecptr)p);
 		    lRet = EXCEPTION_CONTINUE_EXECUTION;
 		}
 	    }

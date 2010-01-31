@@ -8,8 +8,8 @@
   */
 
 #define UAEMAJOR 0
-#define UAEMINOR 8
-#define UAESUBREV 27
+#define UAEMINOR 9
+#define UAESUBREV 90
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -52,6 +52,8 @@ struct uae_prefs {
     char description[256];
     char info[256];
     int config_version;
+    char config_hardware_path[256];
+    char config_host_path[256];
 
     int illegal_mem;
     int no_xhair;
@@ -70,8 +72,9 @@ struct uae_prefs {
     int test_drawing_speed;
 
     int produce_sound;
-    int stereo;
-    int mixed_stereo;
+    int sound_stereo;
+    int sound_stereo_separation;
+    int sound_mixed_stereo;
     int sound_bits;
     int sound_freq;
     int sound_maxbsiz;
@@ -136,6 +139,7 @@ struct uae_prefs {
     int keyboard_leds_in_use;
     int fast_copper;
     int scsi;
+    int uaeserial;
     int catweasel_io;
     int cpu_idle;
     int cpu_cycle_exact;
@@ -148,7 +152,6 @@ struct uae_prefs {
     char dfxlist[MAX_SPARE_DRIVES][256];
     char romfile[256];
     char romextfile[256];
-    char keyfile[256];
     char flashfile[256];
     char cartfile[256];
     char pci_devices[256];
@@ -188,8 +191,10 @@ struct uae_prefs {
     int x11_use_dgamode;
     int x11_hide_cursor;
     int svga_no_linear;
+
     int win32_middle_mouse;
     int win32_logfile;
+    int win32_notaskbarbutton;
 
     int win32_active_priority;
     int win32_inactive_priority;
@@ -246,16 +251,18 @@ extern char *cfgfile_subst_path (const char *path, const char *subst, const char
 
 extern int target_parse_option (struct uae_prefs *, char *option, char *value);
 extern void target_save_options (FILE *, struct uae_prefs *);
-extern void target_default_options (struct uae_prefs *);
+extern void target_default_options (struct uae_prefs *, int type);
+extern int target_cfgfile_load (struct uae_prefs *, char *filename, int type);
 
-extern int cfgfile_load (struct uae_prefs *, const char *filename, int *);
+extern int cfgfile_load (struct uae_prefs *p, const char *filename, int *type, int ignorelink);
 extern int cfgfile_save (struct uae_prefs *, const char *filename, int);
 extern void cfgfile_parse_line (struct uae_prefs *p, char *, int);
 extern int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value, int);
-extern int cfgfile_get_description (const char *filename, char *description, int*);
+extern int cfgfile_get_description (const char *filename, char *description, char *hostlink, char *hardwarelink, int *type);
 extern void cfgfile_show_usage (void);
 extern uae_u32 cfgfile_uaelib(int mode, uae_u32 name, uae_u32 dst, uae_u32 maxlen);
 extern void cfgfile_addcfgparam (char *);
+extern int build_in_prefs (struct uae_prefs *p, int model, int config, int compa, int romcheck);
 
 extern void fixup_prefs_dimensions (struct uae_prefs *prefs);
 
@@ -263,16 +270,6 @@ extern void check_prefs_changed_custom (void);
 extern void check_prefs_changed_cpu (void);
 extern void check_prefs_changed_audio (void);
 extern int check_prefs_changed_gfx (void);
-
-#define JSEM_DECODEVAL(n,v) ((n) == 0 ? (v)->jport0 : (v)->jport1)
-/* Determine how port n is configured */
-#define JSEM_ISJOY0(n,v) (JSEM_DECODEVAL(n,v) == 0)
-#define JSEM_ISJOY1(n,v) (JSEM_DECODEVAL(n,v) == 1)
-#define JSEM_ISMOUSE(n,v) (JSEM_DECODEVAL(n,v) == 2)
-#define JSEM_ISNUMPAD(n,v) (JSEM_DECODEVAL(n,v) == 3)
-#define JSEM_ISCURSOR(n,v) (JSEM_DECODEVAL(n,v) == 4)
-#define JSEM_ISSOMEWHEREELSE(n,v) (JSEM_DECODEVAL(n,v) == 5)
-extern const char *gameport_state (int n);
 
 extern struct uae_prefs currprefs, changed_prefs;
 

@@ -104,7 +104,6 @@ struct ev eventtab[ev_max];
 
 volatile frame_time_t vsynctime, vsyncmintime;
 
-int ievent_alive = 0;
 #ifdef JIT
 extern uae_u8* compiled_code;
 #endif
@@ -739,13 +738,15 @@ static int delayoffset;
 
 STATIC_INLINE void compute_delay_offset (void)
 {
-    delayoffset = ((plfstrt - HARD_DDF_START) & fetchstart_mask) << 1;
-    if (delayoffset & 8)
+    delayoffset = (((plfstrt - HARD_DDF_START) & fetchstart_mask) << 1) & ~7;
+    if (delayoffset == 8)
 	delayoffset = 8;
-    else if (delayoffset & 16)
-	delayoffset = 16;
-    else if (delayoffset & 32)
+    else if (delayoffset == 16) /* Overkill AGA */
+	delayoffset = 48;
+    else if (delayoffset == 32)
 	delayoffset = 32;
+    else if (delayoffset == 48) /* Pinball Illusions AGA, ingame */
+	delayoffset = 16;
     else
 	delayoffset = 0;
 }
@@ -2162,7 +2163,7 @@ void compute_vsynctime (void)
 {
     fake_vblank_hz = 0;
     if (currprefs.gfx_vsync && currprefs.gfx_afullscreen && currprefs.gfx_refreshrate) {
-	vblank_hz = currprefs.gfx_refreshrate;
+	vblank_hz = abs (currprefs.gfx_refreshrate);
 	vblank_skip = 1;
 #if 0
 	if (vblank_hz == 75) {
@@ -2204,7 +2205,8 @@ void init_hz (void)
     beamcon0 = new_beamcon0;
     isntsc = beamcon0 & 0x20 ? 0 : 1;
     if (hack_vpos > 0) {
-	if (maxvpos == hack_vpos) return;
+	if (maxvpos == hack_vpos)
+	    return;
 	maxvpos = hack_vpos;
 	vblank_hz = 15600 / hack_vpos;
 	hack_vpos = -1;
@@ -2303,6 +2305,14 @@ static void calcdiw (void)
 	plfstrt = HARD_DDF_START;
 }
 
+/* display mode changed (lores, doubling etc..), recalculate everything */
+void init_custom (void)
+{
+    reset_drawing ();
+    init_hz ();
+    calcdiw ();
+}
+
 static int timehack_alive = 0;
 
 static uae_u32 timehack_helper (void)
@@ -2362,9 +2372,8 @@ STATIC_INLINE uae_u16 VPOSR (void)
     int vp = (vpos >> 8) & 7;
 #ifdef AGA
     csbit |= (currprefs.chipset_mask & CSMASK_AGA) ? 0x2300 : 0;
-#else
-    csbit |= (currprefs.chipset_mask & CSMASK_ECS_AGNUS) ? 0x2000 : 0;
 #endif
+    csbit |= (currprefs.chipset_mask & CSMASK_ECS_AGNUS) ? 0x2000 : 0;
     if (!(currprefs.chipset_mask & CSMASK_ECS_AGNUS))
 	vp &= 1;
     vp = vp | lof | csbit;
@@ -2836,11 +2845,9 @@ static void DDFSTRT (int hpos, uae_u16 v)
 	static int last_warned;
 	last_warned = (last_warned + 1) & 4095;
 	if (last_warned == 0)
-	    write_log ("WARNING! Very strange DDF values.\n");
+	    write_log ("WARNING! Very strange DDF values (%x %x).\n", ddfstrt, ddfstop);
     }
 }
-
-int test_cnt = 0x80;
 
 static void DDFSTOP (int hpos, uae_u16 v)
 {
@@ -4117,7 +4124,7 @@ static void fpscounter (void)
 	double idle = 1000 - (idletime == 0 ? 0.0 : (double)idletime * 1000.0 / (vsynctime * 32.0));
 	int fps = frametime2 == 0 ? 0 : syncbase * 32 / (frametime2 / 10);
 	if (fps > 9999)
-		fps = 9999;
+	    fps = 9999;
 	if (idle < 0)
 	    idle = 0;
 	if (idle > 100 * 10)
@@ -4218,12 +4225,9 @@ static void vsync_handler (void)
 
     init_hardware_frame ();
 
-    if (ievent_alive > 0)
-	ievent_alive--;
     if (timehack_alive > 0)
 	timehack_alive--;
     inputdevice_vsync ();
-
 }
 
 #ifdef JIT
@@ -4305,6 +4309,7 @@ static void hsync_handler (void)
 #ifdef PICASSO96
     picasso_handle_hsync ();
 #endif
+
     ciahsync++;
     if (ciahsync >= (currprefs.ntscmode ? MAXVPOS_NTSC : MAXVPOS_PAL) * MAXHPOS_PAL / maxhpos) { /* not so perfect.. */
         CIA_vsync_handler ();
@@ -4537,16 +4542,7 @@ void customreset (void)
 
     vpos = 0;
 
-    if (needmousehack ()) {
-#if 0
-	mousehack_set (mousehack_follow);
-#else
-	mousehack_set (mousehack_dontcare);
-#endif
-    } else {
-	mousehack_set (mousehack_normal);
-    }
-    ievent_alive = 0;
+    inputdevice_reset ();
     timehack_alive = 0;
 
     curr_sprite_entries = 0;
@@ -4812,10 +4808,12 @@ STATIC_INLINE uae_u32 REGPARAM2 custom_wget_1 (uaecptr addr, int noput)
     uae_u32 v;
     sync_copper_with_cpu (current_hpos (), 1, addr);
     if (currprefs.cpu_level >= 2) {
-	if(addr > 0xde0000 && addr <= 0xdeffff)
+	if(addr >= 0xde0000 && addr <= 0xdeffff) {
 	    return 0x7f7f;
-	if(addr > 0xdd0000 && addr <= 0xddffff)
-	     return 0xffff;
+	}
+	if(addr >= 0xdd0000 && addr <= 0xddffff) {
+	    return 0xffff;
+	}
     }
     v = custom_wget_1 (addr, 0);
 #ifdef ACTION_REPLAY
@@ -5465,7 +5463,7 @@ uae_u8 *save_custom_sprite(int num, int *len, uae_u8 *dstptr)
     if (dstptr)
 	dstbak = dst = dstptr;
     else
-        dstbak = dst = malloc (25);
+	dstbak = dst = malloc (25);
     SL (spr[num].pt);		/* 120-13E SPRxPT */
     SW (sprpos[num]);		/* 1x0 SPRxPOS */
     SW (sprctl[num]);		/* 1x2 SPRxPOS */
@@ -5502,8 +5500,7 @@ void check_prefs_changed_custom (void)
 	    currprefs.ntscmode = changed_prefs.ntscmode;
 	    new_beamcon0 = currprefs.ntscmode ? 0x00 : 0x20;
 	}
-	init_hz ();
-	calcdiw ();
+	init_custom ();
     }
     currprefs.gfx_filter_horiz_zoom = changed_prefs.gfx_filter_horiz_zoom;
     currprefs.gfx_filter_vert_zoom = changed_prefs.gfx_filter_vert_zoom;

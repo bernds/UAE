@@ -175,9 +175,6 @@
 				RelativePath="..\..\custom.c">
 			</File>
 			<File
-				RelativePath="..\..\debug.c">
-			</File>
-			<File
 				RelativePath="..\..\disk.c">
 			</File>
 			<File
@@ -191,9 +188,6 @@
 			</File>
 			<File
 				RelativePath="..\..\gfxutil.c">
-			</File>
-			<File
-				RelativePath="..\..\identify.c">
 			</File>
 			<File
 				RelativePath="..\..\inputdevice.c">
@@ -229,6 +223,63 @@
 		<Filter
 			Name="Resource Files"
 			Filter="rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe">
+			<File
+				RelativePath="..\resources\35floppy.ico">
+			</File>
+			<File
+				RelativePath="..\resources\amigainfo.ico">
+			</File>
+			<File
+				RelativePath="..\resources\avioutput.ico">
+			</File>
+			<File
+				RelativePath="..\resources\chip.ico">
+			</File>
+			<File
+				RelativePath="..\resources\cpu.ico">
+			</File>
+			<File
+				RelativePath="..\resources\drive.ico">
+			</File>
+			<File
+				RelativePath="..\resources\file.ico">
+			</File>
+			<File
+				RelativePath="..\resources\folder.ico">
+			</File>
+			<File
+				RelativePath="..\resources\h_arrow.cur">
+			</File>
+			<File
+				RelativePath="..\resources\joystick.ico">
+			</File>
+			<File
+				RelativePath="..\resources\misc.ico">
+			</File>
+			<File
+				RelativePath="..\resources\move_dow.ico">
+			</File>
+			<File
+				RelativePath="..\resources\move_up.ico">
+			</File>
+			<File
+				RelativePath="..\resources\paths.ico">
+			</File>
+			<File
+				RelativePath="..\resources\quickstart.ico">
+			</File>
+			<File
+				RelativePath="..\resources\root.ico">
+			</File>
+			<File
+				RelativePath="..\resources\screen.ico">
+			</File>
+			<File
+				RelativePath="..\resources\sound.ico">
+			</File>
+			<File
+				RelativePath="..\resources\winuae.ico">
+			</File>
 			<File
 				RelativePath="..\resources\winuae.rc">
 			</File>
@@ -326,6 +377,21 @@
 			RelativePath="..\1">
 		</File>
 		<File
+			RelativePath="..\resources\drive_click.wav">
+		</File>
+		<File
+			RelativePath="..\resources\drive_snatch.wav">
+		</File>
+		<File
+			RelativePath="..\resources\drive_spin.wav">
+		</File>
+		<File
+			RelativePath="..\resources\drive_spinnd.wav">
+		</File>
+		<File
+			RelativePath="..\resources\drive_startup.wav">
+		</File>
+		<File
 			RelativePath="..\hq2x32.obj">
 		</File>
 		<File
@@ -336,6 +402,12 @@
 		</File>
 		<File
 			RelativePath="..\hq4x32.obj">
+		</File>
+		<File
+			RelativePath="..\resources\resource.h">
+		</File>
+		<File
+			RelativePath="..\resources\winuae.exe.manifest">
 		</File>
 	</Files>
 	<Globals>

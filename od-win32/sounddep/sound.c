@@ -34,8 +34,6 @@
 
 #include <math.h>
 
-int dsound_hardware_mixing = 0;
-
 #define ADJUST_SIZE 10
 #define EXP 1.3
 
@@ -147,6 +145,7 @@ static int restore (DWORD hr)
 	//write_log ("restore failed %s\n", DXError (hr));
 	return 1;
     }
+    pause_audio_ds ();
     resume_audio_ds ();
     return 1;
 }
@@ -180,7 +179,7 @@ static int calibrate (void)
 {
     int len = 1000;
     int pos, lastpos, tpos, expected, diff;
-    int mult = currprefs.stereo ? 4 : 2;
+    int mult = currprefs.sound_stereo ? 4 : 2;
     double qv, pct;
 
     if (!QueryPerformanceFrequency(&qpf)) {
@@ -254,11 +253,11 @@ static int open_audio_ds (int size)
     int freq = currprefs.sound_freq;
     
     enumerate_sound_devices (0);
-    if (dsound_hardware_mixing) {
+    if (currprefs.sound_stereo == 2) {
 	size <<= 3;
     } else {
 	size <<= 1;
-	if (currprefs.stereo)
+	if (currprefs.sound_stereo)
 	    size <<= 1;
     }
     snd_configsize = size;
@@ -318,11 +317,12 @@ static int open_audio_ds (int size)
     }
 
     wavfmt.wFormatTag = WAVE_FORMAT_PCM;
-    wavfmt.nChannels = dsound_hardware_mixing ? 4 : (currprefs.stereo ? 2 : 1);
+    wavfmt.nChannels = (currprefs.sound_stereo == 2) ? 4 : (currprefs.sound_stereo ? 2 : 1);
     wavfmt.nSamplesPerSec = freq;
     wavfmt.wBitsPerSample = 16;
     wavfmt.nBlockAlign = 16 / 8 * wavfmt.nChannels;
     wavfmt.nAvgBytesPerSec = wavfmt.nBlockAlign * freq;
+    wavfmt.cbSize = 0;
 
     max_sndbufsize = size * 3;
     if (max_sndbufsize > SND_MAX_BUFFER2)
@@ -363,13 +363,15 @@ static int open_audio_ds (int size)
     clearbuffer ();
 
     init_sound_table16 ();
-    if (dsound_hardware_mixing)
+    if (currprefs.sound_stereo == 2)
 	sample_handler = sample16ss_handler;
     else
-	sample_handler = currprefs.stereo ? sample16s_handler : sample16_handler;
+	sample_handler = currprefs.sound_stereo ? sample16s_handler : sample16_handler;
 
     write_log ("DS driver '%s'/%d/%d bits/%d Hz/buffer %d/dist %d\n",
-	sound_devices[currprefs.win32_soundcard], dsound_hardware_mixing ? 4 : (currprefs.stereo ? 2 : 1), 16, freq, max_sndbufsize, snd_configsize);
+	sound_devices[currprefs.win32_soundcard],
+	currprefs.sound_stereo == 2 ? 4 : (currprefs.sound_stereo ? 2 : 1),
+	16, freq, max_sndbufsize, snd_configsize);
     obtainedfreq = currprefs.sound_freq;
 
     return 1;
@@ -487,13 +489,26 @@ void sound_setadjust (double v)
 
 static void finish_sound_buffer_ds (void)
 {
-    DWORD playpos, safepos;
+    DWORD playpos, safepos, status;
     HRESULT hr;
     void *b1, *b2;
     DWORD s1, s2;
     int diff;
+    int counter = 1000;
     double vdiff, m, skipmode;
 
+    hr = IDirectSoundBuffer_GetStatus (lpDSBsecondary, &status);
+    if (hr != DS_OK)
+	return;
+    if (status & DSBSTATUS_BUFFERLOST) {
+	restore (DSERR_BUFFERLOST);
+	return;
+    }
+    if ((status & (DSBSTATUS_PLAYING | DSBSTATUS_LOOPING)) != (DSBSTATUS_PLAYING | DSBSTATUS_LOOPING)) {
+	write_log ("sound status = %08.8X\n", status);
+	restore (DSERR_BUFFERLOST);
+	return;
+    }
     for (;;) {
 	hr = IDirectSoundBuffer_GetCurrentPosition (lpDSBsecondary, &playpos, &safepos);
 	if (hr != DS_OK) {
@@ -520,6 +535,12 @@ static void finish_sound_buffer_ds (void)
 
 	if (diff > max_sndbufsize * 6 / 8) {
 	    sleep_millis_busy (1);
+	    counter--;
+	    if (counter < 0) {
+		write_log ("sound system got stuck!?\n");
+		restore (DSERR_BUFFERLOST);
+		return;
+	    }
 	    continue;
 	}
 	break;
@@ -561,7 +582,7 @@ static void finish_sound_buffer_ds (void)
 
 static void filtercheck (uae_s16 *sndbuffer, int len)
 {
-    int ch = dsound_hardware_mixing ? 4 : (currprefs.stereo ? 2 : 1);
+    int ch = currprefs.sound_stereo == 2 ? 4 : (currprefs.sound_stereo ? 2 : 1);
     int i;
     static double cold[4];
     double old0, old1, v;
@@ -648,13 +669,15 @@ int sound_calibrate (HWND hwnd, struct uae_prefs *p)
 
     hMainWnd = hwnd;
     currprefs.sound_freq = p->sound_freq;
-    currprefs.stereo = p->stereo;
+    currprefs.sound_stereo = p->sound_stereo;
     if (open_sound ()) {
-        SetThreadPriority ( GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+        SetThreadPriority (GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
 	pct = calibrate ();
-        SetThreadPriority ( GetCurrentThread(), THREAD_PRIORITY_NORMAL);
+        SetThreadPriority (GetCurrentThread(), THREAD_PRIORITY_NORMAL);
 	close_sound ();
     }
+    if (pct > 995 && pct < 1005)
+	pct = 1000;
     hMainWnd = old;
     return pct;
 }
