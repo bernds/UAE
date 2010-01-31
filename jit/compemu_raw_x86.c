@@ -119,7 +119,7 @@ uae_u8 need_to_preserve[]={1,1,1,1,0,1,1,1};
  * Actual encoding of the instructions on the target CPU                 *
  *************************************************************************/
 
-#include "compemu_optimizer_x86.c"
+//#include "compemu_optimizer_x86.c"
 
 STATIC_INLINE uae_u16 swap16(uae_u16 x)
 {
@@ -1697,7 +1697,8 @@ static uae_u8 *veccode;
 #define ctxPC (pContext->Eip)
 #endif
 
-int EvalException ( LPEXCEPTION_POINTERS blah, int n_except )
+extern int mman_guard_exception (LPEXCEPTION_POINTERS);
+int EvalException (LPEXCEPTION_POINTERS blah, int n_except)
 {
     PEXCEPTION_RECORD pExceptRecord = NULL;
     PCONTEXT          pContext = NULL;
@@ -1709,30 +1710,23 @@ int EvalException ( LPEXCEPTION_POINTERS blah, int n_except )
     int dir=-1;
     int len=0;
 
-    if( n_except != STATUS_ACCESS_VIOLATION || !canbang)
+    if (n_except == STATUS_GUARD_PAGE_VIOLATION)
+	return mman_guard_exception (blah);
+    if (n_except != STATUS_ACCESS_VIOLATION || !canbang)
 	return EXCEPTION_CONTINUE_SEARCH;
 
     pExceptRecord = blah->ExceptionRecord;
     pContext = blah->ContextRecord;
 
-    if( pContext )
-    {
+    if (pContext)
 	i = (uae_u8 *)ctxPC;
-    }
-    if( pExceptRecord )
-    {
+    if (pExceptRecord)
 	addr = (uae_u32)(pExceptRecord->ExceptionInformation[1]);
-    }
 #ifdef JIT_DEBUG
     write_log ("JIT: fault address is 0x%x at 0x%x\n",addr,i);
 #endif
     if (!canbang || !currprefs.cachesize)
-    {
-#ifdef JIT_DEBUG
-	write_log ("JIT: Not happy! Canbang or cachesize is 0 in SIGSEGV handler!\n");
-#endif
 	return EXCEPTION_CONTINUE_SEARCH;
-    }
 
     if (in_handler)
 	write_log ("JIT: Argh --- Am already in a handler. Shouldn't happen!\n");

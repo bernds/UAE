@@ -8,8 +8,8 @@
   */
 
 #define UAEMAJOR 1
-#define UAEMINOR 4
-#define UAESUBREV 6
+#define UAEMINOR 5
+#define UAESUBREV 0
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -40,10 +40,11 @@ struct uae_input_device {
     uae_u8 enabled;
 };
 
+#define MAX_JPORTNAME 128
 struct jport {
     int id;
-    char *name;
-    char *configname;
+    char name[MAX_JPORTNAME];
+    char configname[MAX_JPORTNAME];
 };
 
 #define MAX_SPARE_DRIVES 20
@@ -131,7 +132,6 @@ struct uae_prefs {
     int comptrustlong;
     int comptrustnaddr;
     int compnf;
-    int compforcesettings;
     int compfpu;
     int comp_midopt;
     int comp_lowopt;
@@ -150,6 +150,7 @@ struct uae_prefs {
     uae_u32 override_dga_address;
 
     int gfx_display;
+    char gfx_display_name[256];
     int gfx_framerate, gfx_autoframerate;
     struct wh gfx_size_win;
     struct wh gfx_size_fs;
@@ -167,6 +168,7 @@ struct uae_prefs {
     int gfx_xcenter, gfx_ycenter;
     int gfx_xcenter_pos, gfx_ycenter_pos;
     int gfx_xcenter_size, gfx_ycenter_size;
+    int gfx_max_horizontal, gfx_max_vertical;
     int gfx_saturation, gfx_luminance, gfx_contrast, gfx_gamma;
     int color_mode;
 
@@ -180,7 +182,7 @@ struct uae_prefs {
     int gfx_filter_filtermode;
     int gfx_filter_noise, gfx_filter_blur;
     int gfx_filter_saturation, gfx_filter_luminance, gfx_filter_contrast, gfx_filter_gamma;
-    int gfx_filter_upscale;
+    int gfx_filter_aspect;
 
     int immediate_blits;
     unsigned int chipset_mask;
@@ -199,6 +201,7 @@ struct uae_prefs {
     int cpu_cycle_exact;
     int blitter_cycle_exact;
     int floppy_speed;
+    int floppy_write_length;
     int tod_hack;
     uae_u32 maprom;
 
@@ -259,8 +262,9 @@ struct uae_prefs {
     int cpu_compatible;
     int address_space_24;
     int picasso96_nocustom;
+    int picasso96_modeflags;
 
-    uae_u32 z3fastmem_size;
+    uae_u32 z3fastmem_size, z3fastmem2_size;
     uae_u32 z3fastmem_start;
     uae_u32 fastmem_size;
     uae_u32 chipmem_size;
@@ -275,6 +279,7 @@ struct uae_prefs {
     int filesys_no_uaefsdb;
     int filesys_custom_uaefsdb;
     int mmkeyboard;
+    int uae_hide;
 
     int mountitems;
     struct uaedev_config_info mountconfig[MOUNT_CONFIG_SIZE];
@@ -307,7 +312,8 @@ struct uae_prefs {
     int win32_iconified_pause;
     int win32_iconified_nosound;
 
-    int win32_no_overlay; /* If this is set, we won't try and use any RGB overlays */
+    int win32_rtgmatchdepth;
+    int win32_rtgscaleifsmall;
     int win32_borderless;
     int win32_ctrl_F11_is_quit;
     int win32_automount_removable;

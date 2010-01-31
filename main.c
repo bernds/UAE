@@ -47,18 +47,21 @@
 #include "scsi.h"
 #include "sana2.h"
 #include "blkdev.h"
+#include "gfxfilter.h"
+#include "uaeresource.h"
 
 #ifdef USE_SDL
 #include "SDL.h"
 #endif
 
-long int version = 256*65536L*UAEMAJOR + 65536L*UAEMINOR + UAESUBREV;
+long int version = 256 * 65536L * UAEMAJOR + 65536L * UAEMINOR + UAESUBREV;
 
 struct uae_prefs currprefs, changed_prefs;
 
 int no_gui = 0;
 int joystickpresent = 0;
 int cloanto_rom = 0;
+int kickstart_rom = 1;
 
 struct gui_info gui_data;
 
@@ -121,10 +124,6 @@ static void fixup_prefs_dim2 (struct wh *wh)
 
 void fixup_prefs_dimensions (struct uae_prefs *prefs)
 {
-    if (prefs->gfx_xcenter_size > 0)
-        prefs->gfx_size_win.width = prefs->gfx_xcenter_size << prefs->gfx_resolution;
-    if (prefs->gfx_ycenter_size > 0)
-        prefs->gfx_size_win.height = prefs->gfx_ycenter_size << (prefs->gfx_linedbl ? 1 : 0);
     fixup_prefs_dim2 (&prefs->gfx_size_fs);
     fixup_prefs_dim2 (&prefs->gfx_size_win);
 }
@@ -135,11 +134,13 @@ void fixup_cpu (struct uae_prefs *p)
     {
     case 68000:
 	p->address_space_24 = 1;
-	p->fpu_model = 0;
+	if (p->cpu_compatible || p->cpu_cycle_exact)
+	    p->fpu_model = 0;
 	break;
     case 68010:
 	p->address_space_24 = 1;
-	p->fpu_model = 0;
+	if (p->cpu_compatible || p->cpu_cycle_exact)
+	    p->fpu_model = 0;
 	break;
     case 68020:
 	break;
@@ -167,7 +168,7 @@ void fixup_prefs (struct uae_prefs *p)
     built_in_chipset_prefs (p);
     fixup_cpu (p);
 
-    if ((p->chipmem_size & (p->chipmem_size - 1)) != 0
+    if (((p->chipmem_size & (p->chipmem_size - 1)) != 0 && p->chipmem_size != 0x180000)
 	|| p->chipmem_size < 0x20000
 	|| p->chipmem_size > 0x800000)
     {
@@ -199,6 +200,16 @@ void fixup_prefs (struct uae_prefs *p)
 	    p->z3fastmem_size = max_z3fastmem;
 	else
 	    p->z3fastmem_size = 0;
+	err = 1;
+    }
+    if ((p->z3fastmem2_size & (p->z3fastmem2_size - 1)) != 0
+	|| (p->z3fastmem2_size != 0 && (p->z3fastmem2_size < 0x100000 || p->z3fastmem2_size > max_z3fastmem)))
+    {
+	write_log ("Unsupported Zorro III fastmem size %x (%x)!\n", p->z3fastmem2_size, max_z3fastmem);
+	if (p->z3fastmem2_size > max_z3fastmem)
+	    p->z3fastmem2_size = max_z3fastmem;
+	else
+	    p->z3fastmem2_size = 0;
 	err = 1;
     }
     p->z3fastmem_start &= ~0xffff;
@@ -385,6 +396,8 @@ void fixup_prefs (struct uae_prefs *p)
     if (p->cpu_cycle_exact)
 	p->gfx_framerate = 1;
 #endif
+    if (p->maprom && !p->address_space_24)
+	p->maprom = 0x0f000000;
     target_fixup_options (p);
 }
 
@@ -652,8 +665,8 @@ void leave_program (void)
 
 static void real_main2 (int argc, char **argv)
 {
-#if defined (JIT) && (defined ( _WIN32 ) || defined (_WIN64)) && !defined ( NO_WIN32_EXCEPTION_HANDLER )
-    extern int EvalException ( LPEXCEPTION_POINTERS blah, int n_except );
+#if defined (JIT) && (defined (_WIN32) || defined (_WIN64)) && !defined (NO_WIN32_EXCEPTION_HANDLER)
+    extern int EvalException (LPEXCEPTION_POINTERS blah, int n_except);
     __try
 #endif
     {
@@ -730,6 +743,7 @@ static void real_main2 (int argc, char **argv)
 #endif
 #ifdef FILESYS
     rtarea_init ();
+    uaeres_install ();
     hardfile_install ();
 #endif
     savestate_init ();

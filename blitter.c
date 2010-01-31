@@ -9,6 +9,7 @@
 
 //#define BLITTER_DEBUG
 //#define BLITTER_SLOWDOWNDEBUG 4
+//#define BLITTER_DEBUG_NO_D
 
 #define SPEEDUP
 
@@ -255,12 +256,19 @@ static void blitter_done (void)
     ddat1use = ddat2use = 0;
     bltstate = BLT_done;
     blitter_done_notify ();
-    INTREQ(0x8040);
-    event2_remevent(ev2_blitter);
+    INTREQ (0x8040);
+    event2_remevent (ev2_blitter);
     unset_special (&regs, SPCFLAG_BLTNASTY);
 #ifdef BLITTER_DEBUG
     write_log ("vpos=%d, cycles %d, missed %d, total %d\n",
 	vpos, blit_cyclecounter, blit_misscyclecounter, blit_cyclecounter + blit_misscyclecounter);
+#endif
+}
+
+STATIC_INLINE chipmem_agnus_wput2 (uaecptr addr, uae_u32 w)
+{
+#ifndef BLITTER_DEBUG_NO_D
+    chipmem_agnus_wput (addr, w);
 #endif
 }
 
@@ -327,7 +335,8 @@ static void blitter_dofast (void)
 		    blt_info.bltcdat = chipmem_agnus_wget (bltcdatptr);
 		    bltcdatptr += 2;
 		}
-		if (dodst) chipmem_agnus_wput (dstp, blt_info.bltddat);
+		if (dodst)
+		    chipmem_agnus_wput2 (dstp, blt_info.bltddat);
 		blt_info.bltddat = blit_func (blitahold, blitbhold, blt_info.bltcdat, mt) & 0xFFFF;
 		if (blitfill) {
 		    uae_u16 d = blt_info.bltddat;
@@ -345,12 +354,17 @@ static void blitter_dofast (void)
 		    bltddatptr += 2;
 		}
 	    }
-	    if (bltadatptr) bltadatptr += blt_info.bltamod;
-	    if (bltbdatptr) bltbdatptr += blt_info.bltbmod;
-	    if (bltcdatptr) bltcdatptr += blt_info.bltcmod;
-	    if (bltddatptr) bltddatptr += blt_info.bltdmod;
+	    if (bltadatptr)
+		bltadatptr += blt_info.bltamod;
+	    if (bltbdatptr)
+		bltbdatptr += blt_info.bltbmod;
+	    if (bltcdatptr)
+		bltcdatptr += blt_info.bltcmod;
+	    if (bltddatptr)
+		bltddatptr += blt_info.bltdmod;
 	}
-	if (dodst) chipmem_agnus_wput (dstp, blt_info.bltddat);
+	if (dodst)
+	    chipmem_agnus_wput2 (dstp, blt_info.bltddat);
 	blt_info.bltbhold = blitbhold;
     }
     blit_masktable[0] = 0xFFFF;
@@ -420,7 +434,8 @@ static void blitter_dofast_desc (void)
 		    blt_info.bltcdat = blt_info.bltbdat = chipmem_agnus_wget (bltcdatptr);
 		    bltcdatptr -= 2;
 		}
-		if (dodst) chipmem_agnus_wput (dstp, blt_info.bltddat);
+		if (dodst)
+		    chipmem_agnus_wput2 (dstp, blt_info.bltddat);
 		blt_info.bltddat = blit_func (blitahold, blitbhold, blt_info.bltcdat, mt) & 0xFFFF;
 		if (blitfill) {
 		    uae_u16 d = blt_info.bltddat;
@@ -438,12 +453,17 @@ static void blitter_dofast_desc (void)
 		    bltddatptr -= 2;
 		}
 	    }
-	    if (bltadatptr) bltadatptr -= blt_info.bltamod;
-	    if (bltbdatptr) bltbdatptr -= blt_info.bltbmod;
-	    if (bltcdatptr) bltcdatptr -= blt_info.bltcmod;
-	    if (bltddatptr) bltddatptr -= blt_info.bltdmod;
+	    if (bltadatptr)
+		bltadatptr -= blt_info.bltamod;
+	    if (bltbdatptr)
+		bltbdatptr -= blt_info.bltbmod;
+	    if (bltcdatptr)
+		bltcdatptr -= blt_info.bltcmod;
+	    if (bltddatptr)
+		bltddatptr -= blt_info.bltdmod;
 	}
-	if (dodst) chipmem_agnus_wput (dstp, blt_info.bltddat);
+	if (dodst)
+	    chipmem_agnus_wput2 (dstp, blt_info.bltddat);
 	blt_info.bltbhold = blitbhold;
     }
     blit_masktable[0] = 0xFFFF;
@@ -730,7 +750,7 @@ STATIC_INLINE int blitter_doddma (void)
 	wd = 1;
     }
     if (wd) {
-	chipmem_agnus_wput (bltdpt, d);
+	chipmem_agnus_wput2 (bltdpt, d);
 	bltdpt += blit_add;
 	blitter_hcounter2++;
 	if (blitter_hcounter2 == blt_info.hblitsize) {
@@ -806,6 +826,20 @@ void decide_blitter (int hpos)
 #endif
     if (!blitter_cycle_exact)
 	return;
+
+    if (blit_linecyclecounter > 0) {
+	while (blit_linecyclecounter > 0 && blit_last_hpos < hpos) {
+	    blit_linecyclecounter--;
+	    blit_last_hpos++;
+	}
+	if (blit_last_hpos > maxhpos)
+	    blit_last_hpos = 0;
+    }
+    if (blit_linecyclecounter > 0) {
+	blit_last_hpos = hpos;
+	return;
+    }
+
     if (blitline) {
 	blt_info.got_cycle = 1;
 	decide_blitter_line (hpos);
@@ -1055,7 +1089,7 @@ void do_blitter (int hpos)
 	blitter_vcounter1 = blitter_vcounter2 = 0;
 	if (blit_nod)
 	    blitter_vcounter2 = blt_info.vblitsize;
-	blit_linecyclecounter = 0;
+	blit_linecyclecounter = 2;
 	if (blit_ch == 0)
 	    blit_maxcyclecounter = blt_info.hblitsize * blt_info.vblitsize;
 	return;

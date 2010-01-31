@@ -2843,9 +2843,16 @@ gen_opcode (unsigned long int opcode)
 	//}
 	break;
 
-     case i_MMUOP:
-     case i_MMUOP30A:
-     case i_MMUOP30B:
+     case i_MMUOP030:
+     case i_PFLUSHN:
+     case i_PFLUSH:
+     case i_PFLUSHAN:
+     case i_PFLUSHA:
+     case i_PLPAR:
+     case i_PLPAW:
+     case i_PTESTR:
+     case i_PTESTW:
+     case i_LPSTOP:
 	isjump;
 	failure;
 	break;
@@ -3095,9 +3102,9 @@ main (int argc, char **argv)
      * cputbl.h that way), but cpuopti can't cope.  That could be fixed, but
      * I don't dare to touch the 68k version.  */
 
-    headerfile = fopen ("comptbl.h", "wb");
-    stblfile = fopen ("compstbl.c", "wb");
-    freopen ("compemu.c", "wb", stdout);
+    headerfile = fopen ("jit/comptbl.h", "wb");
+    stblfile = fopen ("jit/compstbl.c", "wb");
+    freopen ("jit/compemu.c", "wb", stdout);
 
     generate_includes (stdout);
     generate_includes (stblfile);

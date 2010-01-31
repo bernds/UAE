@@ -10,6 +10,9 @@
 #define DRIVESOUND
 #define GFXFILTER
 #define X86_MSVC_ASSEMBLY
+//#define X86_MSVC_ASSEMBLY_MEMACCESS
+#define OPTIMIZED_FLAGS
+#define __i386__
 
 #ifndef UAE_MINI
 
@@ -44,6 +47,7 @@
 #define CPUEMU_12 /* cycle-exact cpu&blitter */
 #define ACTION_REPLAY /* Action Replay 1/2/3 support */
 #define PICASSO96 /* Picasso96 display card emulation */
+#define UAEGFX_INTERNAL /* built-in libs:picasso96/uaegfx.card */
 #define BSDSOCKET /* bsdsocket.library emulation */
 #define CAPS /* CAPS-image support */
 #define FDI2RAW /* FDI 1.0 and 2.x image support */

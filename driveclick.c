@@ -16,6 +16,7 @@
 #include "audio.h"
 #include "sounddep/sound.h"
 #include "zfile.h"
+#include "fsdb.h"
 #include "events.h"
 #include "driveclick.h"
 
@@ -48,7 +49,7 @@ uae_s16 *decodewav (uae_u8 *s, int *lenp)
 	if (!memcmp (s, "data", 4)) {
 	    s += 4;
 	    len = s[0] | (s[1] << 8) | (s[2] << 16) | (s[3] << 24);
-	    dst = (uae_s16*)xmalloc (len);
+	    dst = xmalloc (len);
 	    memcpy (dst, s + 4, len);
 	    *lenp = len / 2;
 	    return dst;
@@ -77,7 +78,7 @@ static int loadsample (char *path, struct drvsample *ds)
     }
     zfile_fseek (f, 0, SEEK_END);
     size = zfile_ftell (f);
-    buf = (uae_u8*)xmalloc (size);
+    buf = xmalloc (size);
     zfile_fseek (f, 0, SEEK_SET);
     zfile_fread (buf, size, 1, f);
     zfile_fclose (f);
@@ -136,7 +137,7 @@ void driveclick_init(void)
     int v, vv, i, j;
     char tmp[MAX_DPATH];
 
-    driveclick_fdrawcmd_detect();
+    driveclick_fdrawcmd_detect ();
     driveclick_free ();
     vv = 0;
     for (i = 0; i < 4; i++) {
@@ -157,30 +158,36 @@ void driveclick_init(void)
 		    wave_initialized = 1;
 		    break;
 		    default:
-		    if (driveclick_fdrawcmd_open(currprefs.dfxclick[i] - 2))
+		    if (driveclick_fdrawcmd_open (currprefs.dfxclick[i] - 2))
 			v = 1;
 		    break;
 		}
 	    } else if (currprefs.dfxclick[i] == -1) {
+		char path2[MAX_DPATH];
 		wave_initialized = 1;
 		for (j = 0; j < CLICK_TRACKS; j++)
 		    drvs[i][DS_CLICK].lengths[j] = drvs[i][DS_CLICK].len;
-		sprintf (tmp, "%suae_data%cdrive_click_%s",
-		    start_path_data, FSDB_DIR_SEPARATOR, currprefs.dfxclickexternal[i]);
+		sprintf (tmp, "%splugins%cfloppysounds%c", start_path_data, FSDB_DIR_SEPARATOR, FSDB_DIR_SEPARATOR, FSDB_DIR_SEPARATOR);
+		if (my_existsdir (tmp))
+		    strcpy (path2, tmp);
+		else
+		    sprintf (path2, "%suae_data%c", start_path_data, FSDB_DIR_SEPARATOR);
+		sprintf (tmp, "%sdrive_click_%s",
+		    path2, currprefs.dfxclickexternal[i]);
 		v = loadsample (tmp, &drvs[i][DS_CLICK]);
 		if (v)
 		    processclicks (&drvs[i][DS_CLICK]);
-		sprintf (tmp, "%suae_data%cdrive_spin_%s",
-		    start_path_data, FSDB_DIR_SEPARATOR, currprefs.dfxclickexternal[i]);
+		sprintf (tmp, "%sdrive_spin_%s",
+		    path2, currprefs.dfxclickexternal[i]);
 		v += loadsample (tmp, &drvs[i][DS_SPIN]);
-		sprintf (tmp, "%suae_data%cdrive_spinnd_%s",
-		    start_path_data, FSDB_DIR_SEPARATOR, currprefs.dfxclickexternal[i]);
+		sprintf (tmp, "%sdrive_spinnd_%s",
+		    path2, currprefs.dfxclickexternal[i]);
 		v += loadsample (tmp, &drvs[i][DS_SPINND]);
-		sprintf (tmp, "%suae_data%cdrive_startup_%s",
-		    start_path_data, FSDB_DIR_SEPARATOR, currprefs.dfxclickexternal[i]);
+		sprintf (tmp, "%sdrive_startup_%s",
+		    path2, currprefs.dfxclickexternal[i]);
 		v += loadsample (tmp, &drvs[i][DS_START]);
-		sprintf (tmp, "%suae_data%cdrive_snatch_%s",
-		    start_path_data, FSDB_DIR_SEPARATOR, currprefs.dfxclickexternal[i]);
+		sprintf (tmp, "%sdrive_snatch_%s",
+		    path2, currprefs.dfxclickexternal[i]);
 		v += loadsample (tmp, &drvs[i][DS_SNATCH]);
 	    }
 	    if (v == 0) {
@@ -208,7 +215,7 @@ void driveclick_reset (void)
     xfree (clickbuffer);
     if (!wave_initialized)
 	return;
-    clickbuffer = (uae_s16*)xmalloc (sndbufsize);
+    clickbuffer = xmalloc (sndbufsize);
     sample_step = (freq << DS_SHIFT) / currprefs.sound_freq;
 }
 
@@ -216,8 +223,8 @@ void driveclick_free (void)
 {
     int i, j;
 
-    driveclick_fdrawcmd_close(0);
-    driveclick_fdrawcmd_close(1);
+    driveclick_fdrawcmd_close (0);
+    driveclick_fdrawcmd_close (1);
     for (i = 0; i < 4; i++) {
 	for (j = 0; j < DS_END; j++)
 	    freesample (&drvs[i][j]);
@@ -293,15 +300,15 @@ static int clickcnt;
 
 static void mix (void)
 {
-    int total = ((uae_u8*)sndbufpt - (uae_u8*)sndbuffer) / (get_audio_nativechannels() * 2);
+    int total = ((uae_u8*)sndbufpt - (uae_u8*)sndbuffer) / (get_audio_nativechannels () * 2);
 
     if (currprefs.dfxclickvolume > 0) {
 	while (clickcnt < total) {
-	    clickbuffer[clickcnt++] = getsample() * (100 - currprefs.dfxclickvolume) / 100;
+	    clickbuffer[clickcnt++] = getsample () * (100 - currprefs.dfxclickvolume) / 100;
 	}
     } else {
 	while (clickcnt < total) {
-	    clickbuffer[clickcnt++] = getsample();
+	    clickbuffer[clickcnt++] = getsample ();
 	}
     }
 }
@@ -321,26 +328,52 @@ void driveclick_mix (uae_s16 *sndbuffer, int size)
 
     if (!wave_initialized)
 	return;
-    mix();
+    mix ();
     clickcnt = 0;
-    if (!get_audio_ismono()) {
-	for (i = 0; i < size / 2; i++) {
-	    uae_s16 s = clickbuffer[i];
-	    sndbuffer[0] = limit(((sndbuffer[0] + s) * 2) / 3);
-	    sndbuffer[1] = limit(((sndbuffer[1] + s) * 2) / 3);
-	    sndbuffer += 2;
-	}
-    } else {
-	for (i = 0; i < size; i++) {
-	    sndbuffer[0] = limit(((sndbuffer[0] + clickbuffer[i]) * 2) / 3);
-	    sndbuffer++;
-	}
+    switch (get_audio_nativechannels ())
+    {
+	case 6:
+	    for (i = 0; i < size / 6; i++) {
+		uae_s16 s = clickbuffer[i];
+		sndbuffer[0] = limit (((sndbuffer[0] + s) * 2) / 3);
+		sndbuffer[1] = limit (((sndbuffer[1] + s) * 2) / 3);
+		sndbuffer[2] = limit (((sndbuffer[2] + s) * 2) / 3);
+		sndbuffer[3] = limit (((sndbuffer[3] + s) * 2) / 3);
+		sndbuffer[4] = limit (((sndbuffer[4] + s) * 2) / 3);
+		sndbuffer[5] = limit (((sndbuffer[5] + s) * 2) / 3);
+		sndbuffer += 6;
+	    }
+	break;
+	case 4:
+	    for (i = 0; i < size / 4; i++) {
+		uae_s16 s = clickbuffer[i];
+		sndbuffer[0] = limit (((sndbuffer[0] + s) * 2) / 3);
+		sndbuffer[1] = limit (((sndbuffer[1] + s) * 2) / 3);
+		sndbuffer[2] = limit (((sndbuffer[2] + s) * 2) / 3);
+		sndbuffer[3] = limit (((sndbuffer[3] + s) * 2) / 3);
+		sndbuffer += 4;
+	    }
+	break;
+	case 2:
+	    for (i = 0; i < size / 2; i++) {
+		uae_s16 s = clickbuffer[i];
+		sndbuffer[0] = limit (((sndbuffer[0] + s) * 2) / 3);
+		sndbuffer[1] = limit (((sndbuffer[1] + s) * 2) / 3);
+		sndbuffer += 2;
+	    }
+	break;
+	case 1:
+	    for (i = 0; i < size; i++) {
+		sndbuffer[0] = limit (((sndbuffer[0] + clickbuffer[i]) * 2) / 3);
+		sndbuffer++;
+	    }
+	break;
     }
 }
 
 static void dr_audio_activate(void)
 {
-    if (audio_activate())
+    if (audio_activate ())
 	clickcnt = 0;
 }
 
@@ -354,13 +387,13 @@ void driveclick_click (int drive, int cyl)
 	return;
     if (prevcyl[drive] == 0 && cyl == 0) // "noclick" check
 	return;
-    dr_audio_activate();
+    dr_audio_activate ();
     prevcyl[drive] = cyl;
     if (!wave_initialized) {
 	driveclick_fdrawcmd_seek (currprefs.dfxclick[drive] - 2, cyl);
 	return;
     }
-    mix();
+    mix ();
     drvs[drive][DS_CLICK].pos = drvs[drive][DS_CLICK].indexes[cyl] << DS_SHIFT;
     drvs[drive][DS_CLICK].len = (drvs[drive][DS_CLICK].indexes[cyl] + (drvs[drive][DS_CLICK].lengths[cyl] / 2)) << DS_SHIFT;
 }
@@ -375,7 +408,7 @@ void driveclick_motor (int drive, int running)
 	driveclick_fdrawcmd_motor (currprefs.dfxclick[drive] - 2, running);
 	return;
     }
-    mix();
+    mix ();
     if (running == 0) {
 	drv_starting[drive] = 0;
 	drv_spinning[drive] = 0;
@@ -404,7 +437,7 @@ void driveclick_insert (int drive, int eject)
     if (eject)
 	drv_has_spun[drive] = 0;
     if (drv_has_disk[drive] == 0 && !eject)
-	dr_audio_activate();
+	dr_audio_activate ();
     drv_has_disk[drive] = !eject;
 }
 
@@ -412,9 +445,9 @@ void driveclick_check_prefs (void)
 {
     int i;
 
-    driveclick_fdrawcmd_vsync();
-    if (driveclick_active())
-	dr_audio_activate();
+    driveclick_fdrawcmd_vsync ();
+    if (driveclick_active ())
+	dr_audio_activate ();
     if (currprefs.dfxclickvolume != changed_prefs.dfxclickvolume ||
 	currprefs.dfxclick[0] != changed_prefs.dfxclick[0] ||
 	currprefs.dfxclick[1] != changed_prefs.dfxclick[1] ||

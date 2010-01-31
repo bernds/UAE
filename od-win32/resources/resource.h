@@ -249,6 +249,8 @@
 #define IDS_SOUND_STEREO2               256
 #define IDS_INPUT_CUSTOMEVENT           257
 #define IDS_DEFAULT_NEWWINUAE           258
+#define IDS_SOUND_CLONED51              259
+#define IDS_SOUND_51                    260
 #define IDS_NUMSG_NEEDEXT2              300
 #define IDS_NUMSG_NOROMKEY              301
 #define IDS_NUMSG_KSROMCRCERROR         302
@@ -283,6 +285,8 @@
 #define IDS_NUMSG_KS68030               331
 #define IDS_NUMSG_EXPROMNEED            332
 #define IDS_HARDDRIVESAFETYWARNING2     333
+#define IDM_DBGCONTEXTMENU              334
+#define IDD_DBGMEMINPUT                 335
 #define IDS_QS_MODELS                   1000
 #define IDS_QS_MODEL_A500               1001
 #define IDS_QS_MODEL_A500P              1002
@@ -383,7 +387,6 @@
 #define IDC_COMPATIBLE                  1214
 #define IDC_TRUST0                      1215
 #define IDC_TRUST1                      1216
-#define IDC_TRUST2                      1217
 #define IDC_CACHE                       1218
 #define IDC_CYCLEEXACT                  1219
 #define IDC_CS_CPU_TEXT2                1219
@@ -610,7 +613,6 @@
 #define IDC_NOFLAGS                     1581
 #define IDC_SOUNDDRIVEVOLUME2           1581
 #define IDC_CS_CACHE_TEXT               1582
-#define IDC_FORCE                       1583
 #define IDC_COLLISIONS                  1584
 #define IDC_JITENABLE                   1584
 #define IDC_DISASSEMBLY                 1585
@@ -634,7 +636,7 @@
 #define IDC_DF3TYPE                     1598
 #define IDC_SOUNDSPEEDTEXT              1599
 #define IDC_SOUNDSPEEDCAPTION           1600
-#define IDC_NOOVERLAY                   1601
+#define IDC_RTGMATCHDEPTH               1601
 #define IDC_ROMFILE2TEXT                1602
 #define IDC_ROMTEXT                     1603
 #define IDC_KEYTEXT                     1604
@@ -688,7 +690,7 @@
 #define IDC_FILTERVO                    1619
 #define IDC_AVIOUTPUT_8BIT              1620
 #define IDC_INPREC_PLAY                 1620
-#define IDC_FILTERUPSCALE               1620
+#define IDC_FILTERASPECT                1620
 #define IDC_AVIOUTPUT_24BIT             1621
 #define IDC_AVIOUTPUT_WIDTH             1622
 #define IDC_AVIOUTPUT_HEIGHT            1623
@@ -847,7 +849,6 @@
 #define IDC_CS_KSMIRROR_E0              1716
 #define IDC_STRINGBOXEDIT               1716
 #define IDC_CS_CD32CD                   1717
-#define IDC_STRINGBOX_TEXT              1717
 #define IDC_CS_CD32C2P                  1718
 #define IDC_CS_CD32NVRAM                1719
 #define IDC_CS_CDTVCD                   1720
@@ -925,6 +926,20 @@
 #define IDC_DF3ENABLE                   1778
 #define IDC_HDF_RW                      1778
 #define IDC_HDFINFO                     1779
+#define IDC_DBG_AUTOSET                 1780
+#define IDC_HF_SPARSE                   1780
+#define IDC_DBG_DASM2                   1781
+#define IDC_DBG_MEM2                    1782
+#define IDC_DBG_MEMINPUT2               1783
+#define IDC_DBG_ADDRINPUTTXT            1784
+#define IDC_RTG_SCALE                   1785
+#define IDC_RTG_MATCH_DEPTH             1786
+#define IDC_RTG_8BIT                    1787
+#define IDC_RTG_16BIT                   1788
+#define IDC_PATHS_CONFIGCACHE           1788
+#define IDC_RTG_24BIT                   1789
+#define IDC_RTG_32BIT                   1790
+#define IDC_DD_SURFACETYPE              1791
 #define ID__FLOPPYDRIVES                40004
 #define ID_FLOPPYDRIVES_DF0             40005
 #define ID_ST_CONFIGURATION             40010
@@ -945,6 +960,22 @@
 #define ID_DBG_PAGE7                    40026
 #define ID_DBG_PAGE8                    40027
 #define ID_DBG_PAGE9                    40028
+#define ID_DBG_STEP_OVER                40029
+#define ID_DBG_STEP_INTO                40030
+#define ID_DBG_SETTOA0                  40031
+#define ID_DBG_SETTOA1                  40032
+#define ID_DBG_SETTOA2                  40033
+#define ID_DBG_SETTOA3                  40034
+#define ID_DBG_SETTOA4                  40035
+#define ID_DBG_SETTOA5                  40036
+#define ID_DBG_SETTOA6                  40037
+#define ID_DBG_SETTOA7                  40038
+#define ID_DBG_ENTERADDR                40039
+#define ID_DBG_COPYLBLINE               40040
+#define ID_DBG_COPYLB                   40041
+#define ID_DBG_TOGGLEBP                 40042
+#define ID_DBG_DELETEBPS                40043
+#define ID_DBG_SETTOPC                  40044
 
 // Next default values for new objects
 // 
@@ -952,9 +983,9 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
 #define _APS_3D_CONTROLS                     1
-#define _APS_NEXT_RESOURCE_VALUE        334
-#define _APS_NEXT_COMMAND_VALUE         40029
-#define _APS_NEXT_CONTROL_VALUE         1779
+#define _APS_NEXT_RESOURCE_VALUE        336
+#define _APS_NEXT_COMMAND_VALUE         40045
+#define _APS_NEXT_CONTROL_VALUE         1789
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

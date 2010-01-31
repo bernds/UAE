@@ -42,7 +42,7 @@ extern uae_u32 allocated_chipmem;
 extern uae_u32 allocated_fastmem;
 extern uae_u32 allocated_bogomem;
 extern uae_u32 allocated_gfxmem;
-extern uae_u32 allocated_z3fastmem, max_z3fastmem;
+extern uae_u32 allocated_z3fastmem, allocated_z3fastmem2, max_z3fastmem;
 extern uae_u32 allocated_a3000mem;
 extern uae_u32 allocated_cardmem;
 
@@ -57,13 +57,13 @@ extern void wait_cpu_cycle_write (uaecptr addr, int mode, uae_u32 v);
 #define bogomem_start 0x00C00000
 #define cardmem_start 0x00E00000
 #define kickmem_start 0x00F80000
-extern uaecptr z3fastmem_start;
+extern uaecptr z3fastmem_start, z3fastmem2_start;
 extern uaecptr p96ram_start;
 extern uaecptr fastmem_start;
 extern uaecptr a3000lmem_start, a3000hmem_start;
 
 extern int ersatzkickfile;
-extern int cloanto_rom;
+extern int cloanto_rom, kickstart_rom;
 extern uae_u16 kickstart_version;
 extern int uae_boot_rom, uae_boot_rom_size;
 extern uaecptr rtarea_base;
@@ -112,13 +112,12 @@ extern addrbank fastmem_bank;
 extern addrbank gfxmem_bank, gfxmem_bankx;
 extern addrbank gayle_bank;
 extern addrbank gayle2_bank;
-extern addrbank gayle_attr_bank;
-extern addrbank gayle_common_bank;
 extern addrbank mbres_bank;
 extern addrbank akiko_bank;
 extern addrbank cardmem_bank;
 
 extern void rtarea_init (void);
+extern void rtarea_init_mem (void);
 extern void rtarea_setup (void);
 extern void expamem_init (void);
 extern void expamem_reset (void);
@@ -323,32 +322,36 @@ extern shmpiece *shm_start;
 
 #endif
 
-extern uae_u8 *mapped_malloc (size_t, char *);
+extern uae_u8 *mapped_malloc (size_t, const char *);
 extern void mapped_free (uae_u8 *);
 extern void clearexec (void);
 extern void mapkick (void);
 extern int decode_cloanto_rom_do (uae_u8 *mem, int size, int real_size);
 extern void a3000_fakekick(int);
 
-#define ROMTYPE_KICK 1
-#define ROMTYPE_KICKCD32 2
-#define ROMTYPE_EXTCD32 4
-#define ROMTYPE_EXTCDTV 8
-#define ROMTYPE_A2091BOOT 16
-#define ROMTYPE_A4091BOOT 32
-#define ROMTYPE_AR 64
-#define ROMTYPE_SUPERIV 128
-#define ROMTYPE_KEY 256
-#define ROMTYPE_ARCADIABIOS 512
-#define ROMTYPE_ARCADIAGAME 1024
-#define ROMTYPE_HRTMON 2048
-#define ROMTYPE_NORDIC 4096
-#define ROMTYPE_XPOWER 8192
-#define ROMTYPE_CD32CART 16384
-#define ROMTYPE_EVEN 131072
-#define ROMTYPE_ODD 262144
-#define ROMTYPE_BYTESWAP 524288
-#define ROMTYPE_SCRAMBLED 1048576
+#define ROMTYPE_KICK	    0x000001
+#define ROMTYPE_KICKCD32    0x000002
+#define ROMTYPE_EXTCD32	    0x000004
+#define ROMTYPE_EXTCDTV	    0x000008
+#define ROMTYPE_A2091BOOT   0x000010
+#define ROMTYPE_A4091BOOT   0x000020
+#define ROMTYPE_AR	    0x000040
+#define ROMTYPE_SUPERIV	    0x000080
+#define ROMTYPE_KEY	    0x000100
+#define ROMTYPE_ARCADIABIOS 0x000200
+#define ROMTYPE_ARCADIAGAME 0x000400
+#define ROMTYPE_HRTMON	    0x000800
+#define ROMTYPE_NORDIC	    0x001000
+#define ROMTYPE_XPOWER	    0x002000
+#define ROMTYPE_CD32CART    0x004000
+#define ROMTYPE_SPECIALKICK 0x008000
+#define ROMTYPE_MASK	    0x01ffff
+#define ROMTYPE_EVEN	    0x020000
+#define ROMTYPE_ODD	    0x040000
+#define ROMTYPE_8BIT	    0x080000
+#define ROMTYPE_BYTESWAP    0x100000
+#define ROMTYPE_CD32	    0x200000
+#define ROMTYPE_SCRAMBLED   0x400000
 
 struct romheader {
     char *name;
@@ -367,6 +370,7 @@ struct romdata {
     int type;
     int group;
     int title;
+    char *partnumber;
     uae_u32 crc32;
     uae_u32 sha1[5];
     char *configname;
@@ -381,6 +385,7 @@ extern struct romdata *getromdatabypath(char *path);
 extern struct romdata *getromdatabycrc (uae_u32 crc32);
 extern struct romdata *getromdatabydata (uae_u8 *rom, int size);
 extern struct romdata *getromdatabyid (int id);
+extern struct romdata *getromdatabyidgroup (int id, int group, int subitem);
 extern struct romdata *getromdatabyzfile (struct zfile *f);
 extern struct romlist **getarcadiaroms (void);
 extern struct romdata *getarcadiarombyname (char *name);
@@ -393,6 +398,8 @@ extern struct romlist *getromlistbyromdata(struct romdata *rd);
 extern void romlist_add (char *path, struct romdata *rd);
 extern char *romlist_get (struct romdata *rd);
 extern void romlist_clear (void);
+extern struct zfile *read_rom (struct romdata **rd);
+extern struct zfile *read_rom_name (const char *filename);
 
 extern int load_keyring (struct uae_prefs *p, char *path);
 extern uae_u8 *target_load_keyfile (struct uae_prefs *p, char *path, int *size, char *name);
@@ -400,7 +407,7 @@ extern void free_keyring (void);
 extern int get_keyring (void);
 
 uaecptr strcpyha_safe (uaecptr dst, const char *src);
-extern char *strcpyah_safe (char *dst, uaecptr src);
+extern char *strcpyah_safe (char *dst, uaecptr src, int maxsize);
 void memcpyha_safe (uaecptr dst, const uae_u8 *src, int size);
 void memcpyha (uaecptr dst, const uae_u8 *src, int size);
 void memcpyah_safe (uae_u8 *dst, uaecptr src, int size);

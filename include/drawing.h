@@ -197,7 +197,7 @@ extern struct color_change *color_changes[2];
 extern struct color_change color_changes[2][MAX_REG_CHANGE];
 #endif
 
-extern struct color_entry color_tables[2][(MAXVPOS+1) * 2];
+extern struct color_entry color_tables[2][(MAXVPOS + 1) * 2];
 extern struct color_entry *curr_color_tables, *prev_color_tables;
 
 extern struct sprite_entry *curr_sprite_entries, *prev_sprite_entries;
@@ -221,7 +221,7 @@ struct decision {
     uae_u8 bplres;
     unsigned int ham_seen:1;
     unsigned int ham_at_start:1;
-    unsigned int valid:1;
+//    unsigned int valid:1;
 };
 
 /* Anything related to changes in hw registers during the DDF for one
@@ -234,10 +234,10 @@ struct draw_info {
 
 extern int next_sprite_entry;
 
-extern struct decision line_decisions[2 * (MAXVPOS+1) + 1];
-extern struct draw_info line_drawinfo[2][2 * (MAXVPOS+1) + 1];
+extern struct decision line_decisions[2 * (MAXVPOS + 1) + 1];
+extern struct draw_info line_drawinfo[2][2 * (MAXVPOS + 1) + 1];
 
-extern uae_u8 line_data[(MAXVPOS+1) * 2][MAX_PLANES * MAX_WORDS_PER_LINE * 2];
+extern uae_u8 line_data[(MAXVPOS + 1) * 2][MAX_PLANES * MAX_WORDS_PER_LINE * 2];
 
 extern uae_u8 *real_bplpt[8];
 
@@ -274,7 +274,7 @@ extern void redraw_frame (void);
 /* Finally, stuff that shouldn't really be shared.  */
 
 extern int thisframe_first_drawn_line, thisframe_last_drawn_line;
-extern int diwfirstword,diwlastword;
+extern int diwfirstword, diwlastword;
 
 #define IHF_SCROLLLOCK 0
 #define IHF_QUIT_PROGRAM 1

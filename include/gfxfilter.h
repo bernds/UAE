@@ -34,6 +34,10 @@ extern void AdMame2x32(u8 *srcPtr, u32 srcPitch, /* u8 deltaPtr, */
 extern void hq_init(int rb, int gb, int bb, int rs, int gs, int bs);
 extern void hq2x_16(unsigned char*, unsigned char*, DWORD, DWORD, DWORD);
 extern void hq2x_32(unsigned char*, unsigned char*, DWORD, DWORD, DWORD);
+extern void hq3x_16(unsigned char*, unsigned char*, DWORD, DWORD, DWORD);
+extern void hq3x_32(unsigned char*, unsigned char*, DWORD, DWORD, DWORD);
+extern void hq4x_16(unsigned char*, unsigned char*, DWORD, DWORD, DWORD);
+extern void hq4x_32(unsigned char*, unsigned char*, DWORD, DWORD, DWORD);
 
 #define UAE_FILTER_NULL 1
 #define UAE_FILTER_DIRECT3D 2
@@ -55,12 +59,15 @@ extern void hq2x_32(unsigned char*, unsigned char*, DWORD, DWORD, DWORD);
 
 struct uae_filter
 {
-    int type, yuv;
+    int type, yuv, intmul;
     char *name, *cfgname;
-    int x[5];
+    int x[6];
 };
 
 extern struct uae_filter uaefilters[];
 extern struct uae_filter *usedfilter;
+
+uae_u8 *getfilterrect1 (RECT *sr, RECT *dr, int dst_depth, int aw, int ah, int scale, int temp_width, int temp_height, uae_u8 *dptr, int pitch);
+void getfilterrect2 (RECT *sr, RECT *dr, int dst_width, int dst_height, int aw, int ah, int scale, int temp_width, int temp_height);
 
 #endif

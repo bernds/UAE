@@ -2,11 +2,12 @@
  Name    : RetroPlatformGuestIPC.c
  Project : RetroPlatform Player
  Client  : Cloanto Italia srl
- Legal   : Copyright © 2007 Cloanto Italia srl - All rights reserved. This
+ Legal   : Copyright 2007, 2008 Cloanto Italia srl - All rights reserved. This
          : file is made available under the terms of the GNU General Public
          : License version 2 as published by the Free Software Foundation.
  Authors : os, mcb
  Created : 2007-08-24 15:28:48
+ Updated : 2008-06-10 13:42:00
  Comment : RP Player interprocess communication functions (guest side)
  Note    : Can be compiled both in Unicode and Multibyte projects
  *****************************************************************************/
@@ -44,7 +45,6 @@ HRESULT RPInitializeGuest(RPGUESTINFO *pInfo, HINSTANCE hInstance, LPCTSTR pszHo
 	_TCHAR szGuestClass[(sizeof(g_szGuestWndClass)/sizeof(_TCHAR))+20];
 	_TCHAR *pszHostClass;
 	LRESULT lr;
-	int n;
 
 	if (!pInfo || !pszHostInfo)
 		return E_POINTER;
@@ -161,18 +161,44 @@ BOOL RPSendMessage(UINT uMessage, WPARAM wParam, LPARAM lParam,
 		cds.dwData = (ULONG_PTR)uMessage;
 		cds.cbData = dwDataSize;
 		cds.lpData = (LPVOID)pData;
-		if (!SendMessageTimeout(pInfo->hHostMessageWindow, WM_COPYDATA, (WPARAM)pInfo->hGuestMessageWindow, (LPARAM)&cds, SMTO_NORMAL, SRPMSG_TIMEOUT, &dwResult))
-			return FALSE;
+		dwResult = SendMessage(pInfo->hHostMessageWindow, WM_COPYDATA, (WPARAM)pInfo->hGuestMessageWindow, (LPARAM)&cds);
 	}
 	else
 	{
-		if (!SendMessageTimeout(pInfo->hHostMessageWindow, uMessage, wParam, lParam, SMTO_NORMAL, SRPMSG_TIMEOUT, &dwResult))
-			return FALSE;
+		// SendMessageTimeout is not used, since the host
+		// might display MessageBoxes during notifications
+		// (e.g. go-to-fullscreen message)
+		dwResult = SendMessage(pInfo->hHostMessageWindow, uMessage, wParam, lParam);
 	}
 	if (plResult)
 		*plResult = dwResult;
 
 	return TRUE;
+}
+
+/*****************************************************************************
+ Name      : RPPostMessage
+ Arguments : UINT uMessage            - 
+           : WPARAM wParam            - 
+           : LPARAM lParam            - 
+           : const RPGUESTINFO *pInfo - 
+ Return    : BOOL                     - 
+ Authors   : os
+ Created   : 2008-06-10 13:30:34
+ Comment   : the guest calls this function to post messages to the host
+             (unlike RPSendMessage(), this function sends messages
+			  in asynchronous fashion and cannot be used to post messages which require
+			  a reply from the host and/or messages which include additional data)
+ *****************************************************************************/
+
+BOOL RPPostMessage(UINT uMessage, WPARAM wParam, LPARAM lParam, const RPGUESTINFO *pInfo)
+{
+	if (!pInfo)
+		return FALSE;
+	if (!pInfo->hHostMessageWindow)
+		return FALSE;
+
+	return PostMessage(pInfo->hHostMessageWindow, uMessage, wParam, lParam);
 }
 
 /*****************************************************************************

@@ -8,6 +8,7 @@
 #include "zfile.h"
 #include "gui.h"
 #include "win32.h"
+#include <shlobj.h>
 
 #include "ComType.h"
 #include "CapsAPI.h"
@@ -44,18 +45,27 @@ int caps_init (void)
     int i;
     HMODULE h;
     struct CapsVersionInfo cvi;
+    char *dllname = "CAPSImg.dll";
 
     if (init)
 	return 1;
-    h = WIN32_LoadLibrary ("CAPSImg.dll");
+    h = WIN32_LoadLibrary (dllname);
     if (!h) {
-	if (noticed)
-	    return 0;
-	notify_user (NUMSG_NOCAPS);
-	noticed = 1;
-	return 0;
+	char tmp[MAX_DPATH];
+	if (SUCCEEDED(SHGetFolderPath (NULL, CSIDL_PROGRAM_FILES_COMMON, NULL, 0, tmp))) {
+	    strcat (tmp, "\\Software Preservation Society\\");
+	    strcat (tmp, dllname);
+	    h = LoadLibrary (tmp);
+	    if (!h) {
+		if (noticed)
+		    return 0;
+		notify_user (NUMSG_NOCAPS);
+		noticed = 1;
+		return 0;
+	    }
+	}
     }
-    if (GetProcAddress(h, "CAPSLockImageMemory") == 0 || GetProcAddress(h, "CAPSGetVersionInfo") == 0) {
+    if (GetProcAddress (h, "CAPSLockImageMemory") == 0 || GetProcAddress (h, "CAPSGetVersionInfo") == 0) {
 	if (noticed)
 	    return 0;
 	notify_user (NUMSG_OLDCAPS);
@@ -77,7 +87,7 @@ int caps_init (void)
     pCAPSGetVersionInfo (&cvi, 0);
     write_log ("CAPS: library version %d.%d\n", cvi.release, cvi.revision);
     for (i = 0; i < 4; i++)
-	caps_cont[i] = pCAPSAddImage();
+	caps_cont[i] = pCAPSAddImage ();
     return 1;
 }
 
@@ -109,12 +119,10 @@ int caps_loadimage (struct zfile *zf, int drv, int *num_tracks)
 	return 0;
     if (zfile_fread (buf, len, 1, zf) == 0)
 	return 0;
-    ret = pCAPSLockImageMemory(caps_cont[drv], buf, len, 0);
-    free (buf);
-    if (ret != imgeOk) {
-	free (buf);
+    ret = pCAPSLockImageMemory (caps_cont[drv], buf, len, 0);
+    xfree (buf);
+    if (ret != imgeOk)
 	return 0;
-    }
     caps_locked[drv] = 1;
     pCAPSGetImageInfo(&ci, caps_cont[drv]);
     *num_tracks = (ci.maxcylinder - ci.mincylinder + 1) * (ci.maxhead - ci.minhead + 1);
@@ -156,7 +164,7 @@ int caps_loadrevolution (uae_u16 *mfmbuf, int drv, int track, int *tracklength)
     struct CapsTrackInfoT1 ci;
 
     ci.type = LIB_TYPE;
-    pCAPSLockTrack((PCAPSTRACKINFO)&ci, caps_cont[drv], track / 2, track & 1, caps_flags);
+    pCAPSLockTrack ((PCAPSTRACKINFO)&ci, caps_cont[drv], track / 2, track & 1, caps_flags);
     len = ci.tracklen;
     *tracklength = len * 8;
     mfm = mfmbuf;
@@ -175,7 +183,7 @@ int caps_loadtrack (uae_u16 *mfmbuf, uae_u16 *tracktiming, int drv, int track, i
 
     ci.type = LIB_TYPE;
     *tracktiming = 0;
-    pCAPSLockTrack((PCAPSTRACKINFO)&ci, caps_cont[drv], track / 2, track & 1, caps_flags);
+    pCAPSLockTrack ((PCAPSTRACKINFO)&ci, caps_cont[drv], track / 2, track & 1, caps_flags);
     mfm = mfmbuf;
     *multirev = (ci.type & CTIT_FLAG_FLAKEY) ? 1 : 0;
     type = ci.type & CTIT_MASK_TYPE;

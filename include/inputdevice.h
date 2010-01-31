@@ -60,6 +60,7 @@ extern void inputdevice_config_change (void);
 extern int inputdevice_config_change_test (void);
 extern int inputdevice_get_device_index (int devnum);
 extern char *inputdevice_get_device_name (int type, int devnum);
+extern char *inputdevice_get_device_unique_name (int type, int devnum);
 extern int inputdevice_get_device_status (int devnum);
 extern void inputdevice_set_device_status (int devnum, int enabled);
 extern int inputdevice_get_device_total (int type);
@@ -91,6 +92,7 @@ extern void mousehack_handle (int sprctl, int sprpos);
 extern void togglemouse (void);
 extern int mousehack_alive (void);
 extern int mousehack_allowed (void);
+extern int magicmouse_alive (void);
 
 extern void setmousebuttonstateall (int mouse, uae_u32 buttonbits, uae_u32 buttonmask);
 extern void setjoybuttonstateall (int joy, uae_u32 buttonbits, uae_u32 buttonmask);
@@ -124,13 +126,13 @@ extern void inputdevice_reset (void);
 extern void write_inputdevice_config (struct uae_prefs *p, struct zfile *f);
 extern void read_inputdevice_config (struct uae_prefs *p, char *option, char *value);
 extern void reset_inputdevice_config (struct uae_prefs *pr);
-extern void inputdevice_joyport_config (struct uae_prefs *p, char *value, int portnum, int type);
+extern int inputdevice_joyport_config (struct uae_prefs *p, char *value, int portnum, int type);
 
 extern void inputdevice_init (void);
 extern void inputdevice_close (void);
 extern void inputdevice_default_prefs (struct uae_prefs *p);
 
-extern void inputdevice_acquire (void);
+extern void inputdevice_acquire (int allmode);
 extern void inputdevice_unacquire (void);
 
 extern void indicator_leds (int num, int state);
@@ -145,12 +147,14 @@ extern void inputdevice_handle_inputcode (void);
 #define JSEM_JOYS 100
 #define JSEM_MICE 200
 #define JSEM_END 300
+#define JSEM_XARCADE1LAYOUT (JSEM_KBDLAYOUT + 3)
+#define JSEM_XARCADE2LAYOUT (JSEM_KBDLAYOUT + 4)
 #define JSEM_DECODEVAL(port,p) ((p)->jports[port].id)
 #define JSEM_ISNUMPAD(port,p) (jsem_iskbdjoy(port,p) == JSEM_KBDLAYOUT)
 #define JSEM_ISCURSOR(port,p) (jsem_iskbdjoy(port,p) == JSEM_KBDLAYOUT + 1)
 #define JSEM_ISSOMEWHEREELSE(port,p) (jsem_iskbdjoy(port,p) == JSEM_KBDLAYOUT + 2)
-#define JSEM_ISXARCADE1(port,p) (jsem_iskbdjoy(port,p) == JSEM_KBDLAYOUT + 3)
-#define JSEM_ISXARCADE2(port,p) (jsem_iskbdjoy(port,p) == JSEM_KBDLAYOUT + 4)
+#define JSEM_ISXARCADE1(port,p) (jsem_iskbdjoy(port,p) == JSEM_XARCADE1LAYOUT)
+#define JSEM_ISXARCADE2(port,p) (jsem_iskbdjoy(port,p) == JSEM_XARCADE2LAYOUT)
 #define JSEM_LASTKBD 5
 #define JSEM_ISANYKBD(port,p) (jsem_iskbdjoy(port,p) >= JSEM_KBDLAYOUT && jsem_iskbdjoy(port,p) < JSEM_KBDLAYOUT + JSEM_LASTKBD)
 

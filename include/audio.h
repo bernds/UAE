@@ -31,8 +31,8 @@ extern void audio_update_adkmasks (void);
 extern void audio_update_irq (uae_u16);
 extern void update_sound (int freq);
 extern void led_filter_audio (void);
-extern void set_audio(void);
-extern int audio_activate(void);
+extern void set_audio (void);
+extern int audio_activate (void);
 
 extern void audio_sampleripper(int);
 extern int sampleripper_enabled;
@@ -40,17 +40,17 @@ extern void write_wavheader (struct zfile *wavfile, uae_u32 size, uae_u32 freq);
 
 enum {
     SND_MONO, SND_STEREO, SND_4CH_CLONEDSTEREO, SND_4CH, SND_6CH_CLONEDSTEREO, SND_6CH, SND_NONE };
-STATIC_INLINE int get_audio_nativechannels(void)
+STATIC_INLINE int get_audio_nativechannels (void)
 {
     int ch[] = { 1, 2, 4, 4, 6, 6, 0 };
     return ch[currprefs.sound_stereo];
 }
-STATIC_INLINE int get_audio_amigachannels(void)
+STATIC_INLINE int get_audio_amigachannels (void)
 {
     int ch[] = { 1, 2, 2, 4, 2, 4, 0 };
     return ch[currprefs.sound_stereo];
 }
-STATIC_INLINE int get_audio_ismono(void)
+STATIC_INLINE int get_audio_ismono (void)
 {
     if (currprefs.sound_stereo == 0)
 	return 1;

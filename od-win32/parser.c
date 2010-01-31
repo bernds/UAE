@@ -38,6 +38,8 @@
 #include "od-win32/parser.h"
 #include "od-win32/midi.h"
 #include "od-win32/ahidsound.h"
+#include "picasso96_win.h"
+#include "win32gfx.h"
 #include "win32.h"
 #include "ioport.h"
 #include "parallel.h"
@@ -53,7 +55,6 @@ static char prtbuf[PRTBUFSIZE];
 static int prtbufbytes,wantwrite;
 static HANDLE hPrt = INVALID_HANDLE_VALUE;
 static DWORD  dwJob;
-extern HWND hAmigaWnd;
 static int prtopen;
 extern void flushpixels(void);
 void DoSomeWeirdPrintingStuff(char val);
@@ -147,7 +148,7 @@ static int openprinter_ps (void)
 	    return 0;
 	}
 	ptr_gsapi_run_string_begin (gsinstance, 0, &gs_exitcode);
-    } __except(ExceptionFilter(GetExceptionInformation(), GetExceptionCode())) {
+    } __except (ExceptionFilter (GetExceptionInformation (), GetExceptionCode ())) {
 	write_log ("GS crashed\n");
 	return 0;
     }
@@ -418,16 +419,16 @@ void openprinter( void )
 	return;
     } else if (hPrt == INVALID_HANDLE_VALUE) {
 	flushprtbuf ();
-	if (OpenPrinter(currprefs.prtname, &hPrt, NULL)) {
+	if (OpenPrinter (currprefs.prtname, &hPrt, NULL)) {
 	    // Fill in the structure with info about this "document."
 	    DocInfo.pDocName = "My Document";
 	    DocInfo.pOutputFile = NULL;
 	    DocInfo.pDatatype = "RAW";
 	    // Inform the spooler the document is beginning.
-	    if( (dwJob = StartDocPrinter(hPrt, 1, (LPSTR)&DocInfo)) == 0) {
+	    if ((dwJob = StartDocPrinter(hPrt, 1, (LPSTR)&DocInfo)) == 0) {
 		ClosePrinter(hPrt );
 		hPrt = INVALID_HANDLE_VALUE;
-	    } else if(StartPagePrinter(hPrt)) {
+	    } else if(StartPagePrinter (hPrt)) {
 		prtopen = 1;
 	    }
 	} else {
@@ -443,7 +444,7 @@ void openprinter( void )
 
 void flushprinter (void)
 {
-    closeprinter();
+    closeprinter ();
 }
 
 void closeprinter( void	)
@@ -474,7 +475,7 @@ void closeprinter( void	)
 
 static void putprinter (char val)
 {
-    DoSomeWeirdPrintingStuff( val );
+    DoSomeWeirdPrintingStuff (val);
 }
 
 int doprinter (uae_u8 val)
@@ -858,7 +859,7 @@ void closeser (void)
     }
     if (midi_ready) {
 	extern uae_u16 serper;
-	Midi_Close();
+	Midi_Close ();
 	//need for camd Midi Stuff(it close midi and reopen it but serial.c think the baudrate
 	//is the same and do not open midi), so setting serper to different value helps
 	serper = 0x30;
@@ -1061,11 +1062,14 @@ void initparallel (void)
     if (uae_boot_rom) {
 	uaecptr a = here (); //this install the ahisound
 	org (rtarea_base + 0xFFC0);
-	calltrap (deftrap (ahi_demux));
+	calltrap (deftrapres (ahi_demux, 0, "ahi_winuae"));
 	dw (0x4e75);// rts
 	org (a);
     }
 }
+
+extern int flashscreen;
+extern void DX_Fill (int dstx, int dsty, int width, int height, uae_u32 color);
 
 void hsyncstuff(void)
 //only generate Interrupts when
@@ -1089,18 +1093,19 @@ void hsyncstuff(void)
 #endif
 #ifdef PARALLEL_PORT
     keycheck++;
-    if(keycheck==1000)
+    if(keycheck >= 1000)
     {
 	flushprtbuf ();
 	{
 #if defined(AHI)
-	    extern flashscreen;
-	    int DX_Fill( int , int , int, int, uae_u32 , enum RGBFTYPE  );
 	    //extern int warned_JIT_0xF10000;
 	    //warned_JIT_0xF10000 = 0;
-	    if (flashscreen) {
-		DX_Fill(0,0,300,40,0x000000,9);
+	    if (flashscreen > 0) {
+		DX_Fill (0, 0, -1, 30, 0x000000);
+		DX_Invalidate (0, 0, -1, 30);
 		flashscreen--;
+		if (flashscreen == 0)
+		    picasso_refresh ();
 	    }
 #endif
 	}
@@ -1198,9 +1203,7 @@ int enumserialports(void)
     char devname[1000];
 
     write_log ("Serial port enumeration..\n");
-    cnt = 0;
-    if (os_winnt)
-	cnt = enumserialports_2();
+    cnt = enumserialports_2();
     for (i = 0; i < 10; i++) {
 	sprintf(name, "COM%d", i);
 	if (!QueryDosDevice(name, devname, sizeof devname))
@@ -1218,23 +1221,6 @@ int enumserialports(void)
 	    comports[j].name = my_strdup (name);
 	    write_log ("SERPORT: %d:'%s' = '%s' (%s)\n", cnt, comports[j].name, comports[j].dev, devname);
 	    cnt++;
-	}
-    }
-    if (cnt == 0 && !os_winnt) {
-	/* windows 98 hack */
-	for (i = 0; i < 8; i++) {
-	    COMMCONFIG cc;
-	    DWORD size = sizeof(COMMCONFIG);
-	    sprintf(name, "COM%d", i);
-	    if(GetDefaultCommConfig (name, &cc, &size)) {
-		j = cnt;
-		comports[j].dev = xmalloc(100);
-		sprintf(comports[cnt].dev, "\\.\\\\%s", name);
-		comports[j].cfgname = my_strdup (name);
-		comports[j].name = my_strdup (name);
-		write_log ("W98SERPORT: %d:'%s'\n", cnt, comports[j].name);
-		cnt++;
-	    }
 	}
     }
     write_log ("Serial port enumeration end\n");

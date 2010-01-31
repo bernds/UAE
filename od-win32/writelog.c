@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <sys/timeb.h>
 
+#include "options.h"
 #include "custom.h"
 #include "events.h"
 #include "debug.h"
@@ -20,8 +21,9 @@ static CRITICAL_SECTION cs;
 static int cs_init;
 
 FILE *debugfile = NULL;
-int console_logging;
+int console_logging = 0;
 static LONG debugger_type = -1;
+extern BOOL debuggerinitializing;
 
 #define WRITE_LOG_BUF_SIZE 4096
 
@@ -29,31 +31,31 @@ static LONG debugger_type = -1;
 
 typedef HWND (CALLBACK* GETCONSOLEWINDOW)(void);
 
-static HWND myGetConsoleWindow(void)
+static HWND myGetConsoleWindow (void)
 {
     GETCONSOLEWINDOW pGetConsoleWindow;
     /* Windows 2000 or newer only */
-    pGetConsoleWindow = (GETCONSOLEWINDOW)GetProcAddress(
-	GetModuleHandle("kernel32.dll"), "GetConsoleWindow");
+    pGetConsoleWindow = (GETCONSOLEWINDOW)GetProcAddress (
+	GetModuleHandle ("kernel32.dll"), "GetConsoleWindow");
     if (pGetConsoleWindow)
-	return pGetConsoleWindow();
+	return pGetConsoleWindow ();
     return NULL;
 }
 
-static void open_console_window(void)
+static void open_console_window (void)
 {
     AllocConsole();
-    stdinput = GetStdHandle(STD_INPUT_HANDLE);
-    stdoutput = GetStdHandle(STD_OUTPUT_HANDLE);
-    SetConsoleMode(stdinput,ENABLE_PROCESSED_INPUT|ENABLE_LINE_INPUT|ENABLE_ECHO_INPUT|ENABLE_PROCESSED_OUTPUT);
+    stdinput = GetStdHandle (STD_INPUT_HANDLE);
+    stdoutput = GetStdHandle (STD_OUTPUT_HANDLE);
+    SetConsoleMode (stdinput,ENABLE_PROCESSED_INPUT|ENABLE_LINE_INPUT|ENABLE_ECHO_INPUT|ENABLE_PROCESSED_OUTPUT);
     consoleopen = -1;
-    reopen_console();
+    reopen_console ();
 }
 
-static void openconsole(void)
+static void openconsole( void)
 {
     if (debugger_active && (debugger_type < 0 || debugger_type == 2)) {
-	if (consoleopen > 0)
+	if (consoleopen > 0 || debuggerinitializing)
 	    return;
 	if (debugger_type < 0) {
 	    regqueryint (NULL, "DebuggerType", &debugger_type);
@@ -62,21 +64,21 @@ static void openconsole(void)
 	    openconsole();
 	    return;
 	}
-	close_console();
-	if (open_debug_window()) {
+	close_console ();
+	if (open_debug_window ()) {
 	    consoleopen = 1;
 	    return;
 	}
-	open_console_window();
+	open_console_window ();
     } else {
 	if (consoleopen < 0)
 	    return;
-	close_console();
-	open_console_window();
+	close_console ();
+	open_console_window ();
     }
 }
 
-void debugger_change(int mode)
+void debugger_change (int mode)
 {
     if (mode < 0)
 	debugger_type = debugger_type == 2 ? 1 : 2;
@@ -85,16 +87,16 @@ void debugger_change(int mode)
     if (debugger_type != 1 && debugger_type != 2)
 	debugger_type = 2;
     regsetint (NULL, "DebuggerType", debugger_type);
-    openconsole();
+    openconsole ();
 }
 
-void reopen_console(void)
+void reopen_console (void)
 {
     HWND hwnd;
 
     if (consoleopen >= 0)
 	return;
-    hwnd = myGetConsoleWindow();
+    hwnd = myGetConsoleWindow ();
     if (hwnd) {
 	int newpos = 1;
 	LONG x, y, w, h;
@@ -113,20 +115,20 @@ void reopen_console(void)
 	    rc.right = x + w;
 	    rc.bottom = y + h;
 	    if (MonitorFromRect (&rc, MONITOR_DEFAULTTONULL) != NULL) {
-		SetForegroundWindow(hwnd);
-		SetWindowPos(hwnd, HWND_TOP, x, y, w, h, SWP_NOACTIVATE);
+		SetForegroundWindow (hwnd);
+		SetWindowPos (hwnd, HWND_TOP, x, y, w, h, SWP_NOACTIVATE);
 
 	    }
 	}
     }
 }
 
-void close_console(void)
+void close_console (void)
 {
     if (consoleopen > 0) {
-	close_debug_window();
+	close_debug_window ();
     } else if (consoleopen < 0) {
-	HWND hwnd = myGetConsoleWindow();
+	HWND hwnd = myGetConsoleWindow ();
 	if (hwnd) {
 	    RECT r;
 	    if (GetWindowRect (hwnd, &r)) {
@@ -138,23 +140,23 @@ void close_console(void)
 		regsetint (NULL, "LoggerPosH", r.bottom);
 	    }
 	}
-	FreeConsole();
+	FreeConsole ();
     }
     consoleopen = 0;
 }
 
-static void writeconsole(char *buffer)
+static void writeconsole (const char *buffer)
 {
     DWORD temp;
     if (!consoleopen)
 	openconsole();
     if (consoleopen > 0)
-	WriteOutput(buffer, strlen(buffer));
+	WriteOutput (buffer, strlen(buffer));
     else if (consoleopen < 0)
-	WriteConsole(stdoutput, buffer, strlen(buffer), &temp,0);
+	WriteConsole (stdoutput, buffer, strlen (buffer), &temp,0);
 }
 
-void console_out (const char *format,...)
+void console_out_f (const char *format,...)
 {
     va_list parms;
     char buffer[WRITE_LOG_BUF_SIZE];
@@ -162,8 +164,13 @@ void console_out (const char *format,...)
     va_start (parms, format);
     _vsnprintf (buffer, WRITE_LOG_BUF_SIZE-1, format, parms);
     va_end (parms);
-    openconsole();
-    writeconsole(buffer);
+    openconsole ();
+    writeconsole (buffer);
+}
+void console_out (const char *txt)
+{
+    openconsole ();
+    writeconsole (txt);
 }
 
 int console_get (char *out, int maxlen)
@@ -177,7 +184,7 @@ int console_get (char *out, int maxlen)
 	*out = 0;
 	totallen = 0;
 	while(maxlen > 0) {
-	    ReadConsole(stdinput, out, 1, &len, 0);
+	    ReadConsole (stdinput, out, 1, &len, 0);
 	    if(*out == 13)
 		break;
 	    out++;
@@ -197,7 +204,7 @@ void console_flush (void)
 
 static int lfdetected = 1;
 
-static char *writets(void)
+static char *writets (void)
 {
     struct tm *t;
     struct _timeb tb;
@@ -209,8 +216,8 @@ static char *writets(void)
     if (bootlogmode)
 	return NULL;
     _ftime(&tb);
-    t = localtime(&tb.time);
-    strftime(curts, sizeof curts, "%Y-%m-%d %H:%M:%S\n", t);
+    t = localtime (&tb.time);
+    strftime (curts, sizeof curts, "%Y-%m-%d %H:%M:%S\n", t);
     p = out;
     *p = 0;
     if (memcmp (curts, lastts, strlen (curts))) {
@@ -218,12 +225,12 @@ static char *writets(void)
 	p += strlen (p);
 	strcpy (lastts, curts);
     }
-    strftime(p, sizeof out - (p - out) , "%S-", t);
-    p += strlen(p);
-    sprintf(p, "%03d", tb.millitm);
-    p += strlen(p);
-    if (timeframes || vpos > 0 && current_hpos() > 0)
-	sprintf (p, " [%d %03dx%03d]", timeframes, current_hpos(), vpos);
+    strftime (p, sizeof out - (p - out) , "%S-", t);
+    p += strlen (p);
+    sprintf (p, "%03d", tb.millitm);
+    p += strlen (p);
+    if (timeframes || vpos > 0 && current_hpos () > 0)
+	sprintf (p, " [%d %03dx%03d]", timeframes, current_hpos (), vpos);
     strcat (p, ": ");
     return out;
 }
@@ -239,26 +246,25 @@ void write_dlog (const char *format, ...)
     if (!SHOW_CONSOLE && !console_logging && !debugfile)
 	return;
 
-    EnterCriticalSection(&cs);
+    EnterCriticalSection (&cs);
     va_start (parms, format);
     count = _vsnprintf(buffer, WRITE_LOG_BUF_SIZE-1, format, parms);
-    ts = writets();
+    ts = writets ();
     if (SHOW_CONSOLE || console_logging) {
 	if (lfdetected && ts)
-	    writeconsole(ts);
-	writeconsole(buffer);
+	    writeconsole (ts);
+	writeconsole (buffer);
     }
     if (debugfile) {
 	if (lfdetected && ts)
-	    fprintf(debugfile, ts);
-	fprintf(debugfile, buffer);
-	fflush(debugfile);
+	    fprintf (debugfile, ts);
+	fprintf (debugfile, buffer);
     }
     lfdetected = 0;
-    if (strlen(buffer) > 0 && buffer[strlen(buffer) - 1] == '\n')
+    if (strlen (buffer) > 0 && buffer[strlen(buffer) - 1] == '\n')
 	lfdetected = 1;
     va_end (parms);
-    LeaveCriticalSection(&cs);
+    LeaveCriticalSection (&cs);
 }
 
 void write_log (const char *format, ...)
@@ -267,8 +273,9 @@ void write_log (const char *format, ...)
     char buffer[WRITE_LOG_BUF_SIZE], *ts;
     int bufsize = WRITE_LOG_BUF_SIZE;
     char *bufp;
-
     va_list parms;
+
+    EnterCriticalSection(&cs);
     va_start(parms, format);
     bufp = buffer;
     for (;;) {
@@ -285,26 +292,32 @@ void write_log (const char *format, ...)
     bufp[bufsize - 1] = 0;
     if (!memcmp (bufp, "write ",6))
 	bufsize--;
-    ts = writets();
+    ts = writets ();
     if (bufp[0] == '*')
 	count++;
     if (SHOW_CONSOLE || console_logging) {
 	if (lfdetected && ts)
-	    writeconsole(ts);
-	writeconsole(bufp);
+	    writeconsole (ts);
+	writeconsole (bufp);
     }
     if (debugfile) {
 	if (lfdetected && ts)
-	    fprintf(debugfile, ts);
-	fprintf(debugfile, bufp);
-	fflush(debugfile);
+	    fprintf (debugfile, ts);
+	fprintf (debugfile, bufp);
     }
     lfdetected = 0;
-    if (strlen(bufp) > 0 && bufp[strlen(bufp) - 1] == '\n')
+    if (strlen (bufp) > 0 && bufp[strlen(bufp) - 1] == '\n')
 	lfdetected = 1;
     va_end (parms);
     if (bufp != buffer)
 	xfree (bufp);
+    LeaveCriticalSection(&cs);
+}
+
+void flush_log (void)
+{
+    if (debugfile)
+	fflush (debugfile);
 }
 
 void f_out (void *f, const char *format, ...)
@@ -318,7 +331,7 @@ void f_out (void *f, const char *format, ...)
 	return;
     count = _vsnprintf (buffer, WRITE_LOG_BUF_SIZE - 1, format, parms);
     openconsole ();
-    writeconsole(buffer);
+    writeconsole (buffer);
     va_end (parms);
 }
 
@@ -332,23 +345,23 @@ char* buf_out (char *buffer, int *bufsize, const char *format, ...)
 	return 0;
     count = _vsnprintf (buffer, (*bufsize)-1, format, parms);
     va_end (parms);
-    *bufsize -= strlen(buffer);
-    return buffer + strlen(buffer);
+    *bufsize -= strlen (buffer);
+    return buffer + strlen (buffer);
 }
 
-void *log_open(const char *name, int append, int bootlog)
+void *log_open (const char *name, int append, int bootlog)
 {
     FILE *f;
 
-    f = fopen(name, append ? "a" : "wt");
+    f = fopen (name, append ? "a" : "wt");
     bootlogmode = bootlog;
     if (!cs_init)
-	InitializeCriticalSection(&cs);
+	InitializeCriticalSection (&cs);
     cs_init = 1;
     return f;
 }
 
-void log_close(void *f)
+void log_close (void *f)
 {
-    fclose(f);
+    fclose (f);
 }

@@ -12,20 +12,6 @@
 
 #include "dxwrap.h"
 
-#ifdef _DEBUG
-void PICASSO96_Lock2(char *filename, int linenum);
-#define PICASSO96_Lock() PICASSO96_Lock2(__FILE__, __LINE__)
-
-void PICASSO96_Unlock2(char *filename, int linenum);
-#define PICASSO96_Unlock() PICASSO96_Unlock2(__FILE__, __LINE__)
-#endif
-
-/* Define this if you provide the proper sprite functions */
-//#define HARDWARE_SPRITE_EMULATION
-
-#define PIC_READ (S_READ)
-#define PIC_WRITE (S_WRITE)
-
 #define NOSIGNAL 0xFFFFFFFF
 
 /************************************************************************/
@@ -62,12 +48,12 @@ typedef enum {
  */
 typedef enum {
 	PCT_Unknown,
-	PCT_S11483,				// Sierra S11483: HiColor 15 bit, oMniBus, Domino
-	PCT_S15025,				// Sierra S15025: TrueColor 32 bit, oMniBus
+	PCT_S11483,			// Sierra S11483: HiColor 15 bit, oMniBus, Domino
+	PCT_S15025,			// Sierra S15025: TrueColor 32 bit, oMniBus
 	PCT_CirrusGD542x,		// Cirrus GD542x internal: TrueColor 24 bit
-	PCT_Domino,				// is in fact a Sierra S11483
-	PCT_BT482,				// BrookTree BT482: TrueColor 32 bit, Merlin
-	PCT_Music,				// Music MU9C4910: TrueColor 24 bit, oMniBus
+	PCT_Domino,			// is in fact a Sierra S11483
+	PCT_BT482,			// BrookTree BT482: TrueColor 32 bit, Merlin
+	PCT_Music,			// Music MU9C4910: TrueColor 24 bit, oMniBus
 	PCT_ICS5300,			// ICS 5300: ...., Retina BLT Z3
 	PCT_CirrusGD5446,		// Cirrus GD5446 internal: TrueColor 24 bit
 	PCT_CirrusGD5434,		// Cirrus GD5434 internal: TrueColor 32 bit
@@ -129,13 +115,13 @@ struct CLUTEntry {
     uae_u8 Blue;
 };
 
-#define PSSO_BitMap_BytesPerRow 0
-#define PSSO_BitMap_Rows 2
-#define PSSO_BitMap_Flags 4
-#define PSSO_BitMap_Depth 5
-#define PSSO_BitMap_pad 6
-#define PSSO_BitMap_Planes 8
-#define PSSO_BitMap_sizeof 40
+#define PSSO_BitMap_BytesPerRow	     0
+#define PSSO_BitMap_Rows	     2
+#define PSSO_BitMap_Flags	     4
+#define PSSO_BitMap_Depth	     5
+#define PSSO_BitMap_pad		     6
+#define PSSO_BitMap_Planes	     8
+#define PSSO_BitMap_sizeof	    40
 
 struct BitMap
 {
@@ -149,18 +135,18 @@ struct BitMap
 
 /************************************************************************/
 
-#define	SETTINGSNAMEMAXCHARS		30
-#define	BOARDNAMEMAXCHARS		30
+#define	SETTINGSNAMEMAXCHARS	30
+#define	BOARDNAMEMAXCHARS	30
 
 struct Settings {
-    uae_u32					BoardType;
+    uae_u32			BoardType;
     /* a value discribing assignment to nth board local to boardtype
      * to be used for reassignment when boards are added or removed.  */
-    uae_u16					LocalOrdering;
-    uae_s16					LastSelected;
-    char					NameField[SETTINGSNAMEMAXCHARS];
+    uae_u16			LocalOrdering;
+    uae_s16			LastSelected;
+    char			NameField[SETTINGSNAMEMAXCHARS];
     /* neu! */
-    char					*BoardName;
+    char			*BoardName;
 };
 
 #define MAXRESOLUTIONNAMELENGTH 22
@@ -169,15 +155,15 @@ struct Settings {
  * only used within rtg.library *
  ********************************/
 
-#define PSSO_LibResolution_P96ID 14
-#define PSSO_LibResolution_Name 20
-#define PSSO_LibResolution_DisplayID 42 /* Name + MAXRESOLUTIONNAMELENGTH */
-#define PSSO_LibResolution_Width 46
-#define PSSO_LibResolution_Height 48
-#define PSSO_LibResolution_Flags 50
-#define PSSO_LibResolution_Modes 52
-#define PSSO_LibResolution_BoardInfo (52 + MAXMODES*4)
-#define PSSO_LibResolution_sizeof (60 + MAXMODES*4)
+#define PSSO_LibResolution_P96ID	14
+#define PSSO_LibResolution_Name		20
+#define PSSO_LibResolution_DisplayID	42 /* Name + MAXRESOLUTIONNAMELENGTH */
+#define PSSO_LibResolution_Width	46
+#define PSSO_LibResolution_Height	48
+#define PSSO_LibResolution_Flags	50
+#define PSSO_LibResolution_Modes	52
+#define PSSO_LibResolution_BoardInfo	(52 + MAXMODES * 4)
+#define PSSO_LibResolution_sizeof	(60 + MAXMODES * 4)
 
 struct LibResolution {
     char P96ID[6];
@@ -198,32 +184,32 @@ struct LibResolution {
 #define	P96F_PUBLIC	(1<<P96B_PUBLIC)
 #define	P96F_MONITOOL	(1<<P96B_MONITOOL)
 
-#define PSSO_ModeInfo_OpenCount 14
-#define PSSO_ModeInfo_Active 16
-#define PSSO_ModeInfo_Width 18
-#define PSSO_ModeInfo_Height 20
-#define PSSO_ModeInfo_Depth 22
-#define PSSO_ModeInfo_Flags 23
-#define PSSO_ModeInfo_HorTotal 24
-#define PSSO_ModeInfo_HorBlankSize 26
-#define PSSO_ModeInfo_HorSyncStart 28
-#define PSSO_ModeInfo_HorSyncSize 30
-#define PSSO_ModeInfo_HorSyncSkew 32
+#define PSSO_ModeInfo_OpenCount	    14
+#define PSSO_ModeInfo_Active	    16
+#define PSSO_ModeInfo_Width	    18
+#define PSSO_ModeInfo_Height	    20
+#define PSSO_ModeInfo_Depth	    22
+#define PSSO_ModeInfo_Flags	    23
+#define PSSO_ModeInfo_HorTotal	    24
+#define PSSO_ModeInfo_HorBlankSize  26
+#define PSSO_ModeInfo_HorSyncStart  28
+#define PSSO_ModeInfo_HorSyncSize   30
+#define PSSO_ModeInfo_HorSyncSkew   32
 #define PSSO_ModeInfo_HorEnableSkew 33
-#define PSSO_ModeInfo_VerTotal 34
-#define PSSO_ModeInfo_VerBlankSize 36
-#define PSSO_ModeInfo_VerSyncStart 38
-#define PSSO_ModeInfo_VerSyncSize 40
-#define PSSO_ModeInfo_first_union 42
-#define PSSO_ModeInfo_second_union 43
-#define PSSO_ModeInfo_PixelClock 44
-#define PSSO_ModeInfo_sizeof 48
+#define PSSO_ModeInfo_VerTotal	    34
+#define PSSO_ModeInfo_VerBlankSize  36
+#define PSSO_ModeInfo_VerSyncStart  38
+#define PSSO_ModeInfo_VerSyncSize   40
+#define PSSO_ModeInfo_first_union   42
+#define PSSO_ModeInfo_second_union  43
+#define PSSO_ModeInfo_PixelClock    44
+#define PSSO_ModeInfo_sizeof	    48
 
-#define PSSO_RenderInfo_Memory 0
-#define PSSO_RenderInfo_BytesPerRow 4
-#define PSSO_RenderInfo_pad 6
-#define PSSO_RenderInfo_RGBFormat 8
-#define PSSO_RenderInfo_sizeof 12
+#define PSSO_RenderInfo_Memory	     0
+#define PSSO_RenderInfo_BytesPerRow  4
+#define PSSO_RenderInfo_pad	     6
+#define PSSO_RenderInfo_RGBFormat    8
+#define PSSO_RenderInfo_sizeof	    12
 
 struct RenderInfo {
     uae_u8 *Memory;
@@ -313,98 +299,170 @@ struct Line {
 #define PSSO_BitMapExtra_CompanionMaster 50
 #define PSSO_BitMapExtra_Last            54
 
-#define PSSO_BoardInfo_RegisterBase                0
-#define PSSO_BoardInfo_MemoryBase                  PSSO_BoardInfo_RegisterBase + 4
-#define PSSO_BoardInfo_MemoryIOBase                PSSO_BoardInfo_MemoryBase + 4
-#define PSSO_BoardInfo_MemorySize                  PSSO_BoardInfo_MemoryIOBase + 4
-#define PSSO_BoardInfo_BoardName                   PSSO_BoardInfo_MemorySize + 4
-#define PSSO_BoardInfo_VBIName                     PSSO_BoardInfo_BoardName + 4
-#define PSSO_BoardInfo_CardBase                    PSSO_BoardInfo_VBIName + 32
-#define PSSO_BoardInfo_ChipBase                    PSSO_BoardInfo_CardBase + 4
-#define PSSO_BoardInfo_ExecBase                    PSSO_BoardInfo_ChipBase + 4
-#define PSSO_BoardInfo_UtilBase                    PSSO_BoardInfo_ExecBase + 4
-#define PSSO_BoardInfo_HardInterrupt               PSSO_BoardInfo_UtilBase + 4
-#define PSSO_BoardInfo_SoftInterrupt               PSSO_BoardInfo_HardInterrupt + 22 /* The HardInterrupt is 22-bytes */
-#define PSSO_BoardInfo_BoardLock                   PSSO_BoardInfo_SoftInterrupt + 22 /* The SoftInterrupt is 22-bytes */
-#define PSSO_BoardInfo_ResolutionsList             PSSO_BoardInfo_BoardLock + 46 /* On the BoardLock, we were having some fun... */
-#define PSSO_BoardInfo_BoardType                   PSSO_BoardInfo_ResolutionsList + 12 /* The ResolutionsList is 12-bytes */
-#define PSSO_BoardInfo_PaletteChipType             PSSO_BoardInfo_BoardType + 4
-#define PSSO_BoardInfo_GraphicsControllerType      PSSO_BoardInfo_PaletteChipType + 4
-#define PSSO_BoardInfo_MoniSwitch                  PSSO_BoardInfo_GraphicsControllerType + 4
-#define PSSO_BoardInfo_BitsPerCannon               PSSO_BoardInfo_MoniSwitch + 2
-#define PSSO_BoardInfo_Flags                       PSSO_BoardInfo_BitsPerCannon + 2
-#define PSSO_BoardInfo_SoftSpriteFlags             PSSO_BoardInfo_Flags + 4
-#define PSSO_BoardInfo_ChipFlags                   PSSO_BoardInfo_SoftSpriteFlags + 2
-#define PSSO_BoardInfo_CardFlags                   PSSO_BoardInfo_ChipFlags + 2
-#define PSSO_BoardInfo_BoardNum                    PSSO_BoardInfo_CardFlags + 4
-#define PSSO_BoardInfo_RGBFormats                  PSSO_BoardInfo_BoardNum + 2
-#define PSSO_BoardInfo_MaxHorValue                 PSSO_BoardInfo_RGBFormats + 2
-#define PSSO_BoardInfo_MaxVerValue                 PSSO_BoardInfo_MaxHorValue + MAXMODES*2
-#define PSSO_BoardInfo_MaxHorResolution            PSSO_BoardInfo_MaxVerValue + MAXMODES*2
-#define PSSO_BoardInfo_MaxVerResolution            PSSO_BoardInfo_MaxHorResolution + MAXMODES*2
-#define PSSO_BoardInfo_MaxMemorySize               PSSO_BoardInfo_MaxVerResolution + MAXMODES*2
-#define PSSO_BoardInfo_MaxChunkSize                PSSO_BoardInfo_MaxMemorySize + 4
-#define PSSO_BoardInfo_MemoryClock                 PSSO_BoardInfo_MaxChunkSize + 4
-#define PSSO_BoardInfo_PixelClockCount             PSSO_BoardInfo_MemoryClock + 4
-#define PSSO_BoardInfo_AllocCardMem                PSSO_BoardInfo_PixelClockCount + MAXMODES*4
-#define PSSO_BoardInfo_SpecialFeatures             PSSO_BoardInfo_AllocCardMem + 68*4 /* 68 function pointers */
-#define PSSO_BoardInfo_ModeInfo                    PSSO_BoardInfo_SpecialFeatures + 12 /* SpecialFeatures is 12-bytes */
-#define PSSO_BoardInfo_RGBFormat                   PSSO_BoardInfo_ModeInfo + 4
-#define PSSO_BoardInfo_XOffset                     PSSO_BoardInfo_RGBFormat + 4
-#define PSSO_BoardInfo_YOffset                     PSSO_BoardInfo_XOffset + 2
-#define PSSO_BoardInfo_Depth                       PSSO_BoardInfo_YOffset + 2
-#define PSSO_BoardInfo_ClearMask                   PSSO_BoardInfo_Depth + 1
-#define PSSO_BoardInfo_Border                      PSSO_BoardInfo_ClearMask + 1
-#define PSSO_BoardInfo_Mask                        PSSO_BoardInfo_Border + 2 /* BOOL type is only 2-bytes! */
-#define PSSO_BoardInfo_CLUT                        PSSO_BoardInfo_Mask + 4
-#define PSSO_BoardInfo_ViewPort                    PSSO_BoardInfo_CLUT + 3*256
-#define PSSO_BoardInfo_VisibleBitMap               PSSO_BoardInfo_ViewPort + 4
-#define PSSO_BoardInfo_BitMapExtra                 PSSO_BoardInfo_VisibleBitMap + 4
-#define PSSO_BoardInfo_BitMapList                  PSSO_BoardInfo_BitMapExtra + 4
-#define PSSO_BoardInfo_MemList                     PSSO_BoardInfo_BitMapList + 12 /* BitMapList is 12-bytes */
-#define PSSO_BoardInfo_MouseX                      PSSO_BoardInfo_MemList + 12 /* MemList is 12-bytes */
-#define PSSO_BoardInfo_MouseY                      PSSO_BoardInfo_MouseX + 2
-#define PSSO_BoardInfo_MouseWidth                  PSSO_BoardInfo_MouseY + 2
-#define PSSO_BoardInfo_MouseHeight                 PSSO_BoardInfo_MouseWidth + 1
-#define PSSO_BoardInfo_MouseXOffset                PSSO_BoardInfo_MouseHeight + 1
-#define PSSO_BoardInfo_MouseYOffset                PSSO_BoardInfo_MouseXOffset + 1
-#define PSSO_BoardInfo_MouseImage                  PSSO_BoardInfo_MouseYOffset + 1
-#define PSSO_BoardInfo_MousePens                   PSSO_BoardInfo_MouseImage + 4
-#define PSSO_BoardInfo_MouseRect                   PSSO_BoardInfo_MousePens + 4
-#define PSSO_BoardInfo_MouseChunky                 PSSO_BoardInfo_MouseRect + 8 /* MouseRect is 8-bytes */
-#define PSSO_BoardInfo_MouseRendered               PSSO_BoardInfo_MouseChunky + 4
-#define PSSO_BoardInfo_MouseSaveBuffer             PSSO_BoardInfo_MouseRendered + 4
+#define PSSO_BoardInfo_RegisterBase		    0
+#define PSSO_BoardInfo_MemoryBase		    PSSO_BoardInfo_RegisterBase + 4
+#define PSSO_BoardInfo_MemoryIOBase		    PSSO_BoardInfo_MemoryBase + 4
+#define PSSO_BoardInfo_MemorySize		    PSSO_BoardInfo_MemoryIOBase + 4
+#define PSSO_BoardInfo_BoardName		    PSSO_BoardInfo_MemorySize + 4
+#define PSSO_BoardInfo_VBIName			    PSSO_BoardInfo_BoardName + 4
+#define PSSO_BoardInfo_CardBase			    PSSO_BoardInfo_VBIName + 32
+#define PSSO_BoardInfo_ChipBase			    PSSO_BoardInfo_CardBase + 4
+#define PSSO_BoardInfo_ExecBase			    PSSO_BoardInfo_ChipBase + 4
+#define PSSO_BoardInfo_UtilBase			    PSSO_BoardInfo_ExecBase + 4
+#define PSSO_BoardInfo_HardInterrupt		    PSSO_BoardInfo_UtilBase + 4
+#define PSSO_BoardInfo_SoftInterrupt		    PSSO_BoardInfo_HardInterrupt + 22 /* The HardInterrupt is 22-bytes */
+#define PSSO_BoardInfo_BoardLock		    PSSO_BoardInfo_SoftInterrupt + 22 /* The SoftInterrupt is 22-bytes */
+#define PSSO_BoardInfo_ResolutionsList		    PSSO_BoardInfo_BoardLock + 46 /* On the BoardLock, we were having some fun... */
+#define PSSO_BoardInfo_BoardType		    PSSO_BoardInfo_ResolutionsList + 12 /* The ResolutionsList is 12-bytes */
+#define PSSO_BoardInfo_PaletteChipType		    PSSO_BoardInfo_BoardType + 4
+#define PSSO_BoardInfo_GraphicsControllerType	    PSSO_BoardInfo_PaletteChipType + 4
+#define PSSO_BoardInfo_MoniSwitch		    PSSO_BoardInfo_GraphicsControllerType + 4
+#define PSSO_BoardInfo_BitsPerCannon		    PSSO_BoardInfo_MoniSwitch + 2
+#define PSSO_BoardInfo_Flags			    PSSO_BoardInfo_BitsPerCannon + 2
+#define PSSO_BoardInfo_SoftSpriteFlags		    PSSO_BoardInfo_Flags + 4
+#define PSSO_BoardInfo_ChipFlags		    PSSO_BoardInfo_SoftSpriteFlags + 2
+#define PSSO_BoardInfo_CardFlags		    PSSO_BoardInfo_ChipFlags + 2
+#define PSSO_BoardInfo_BoardNum			    PSSO_BoardInfo_CardFlags + 4
+#define PSSO_BoardInfo_RGBFormats		    PSSO_BoardInfo_BoardNum + 2
+#define PSSO_BoardInfo_MaxHorValue		    PSSO_BoardInfo_RGBFormats + 2
+#define PSSO_BoardInfo_MaxVerValue		    PSSO_BoardInfo_MaxHorValue + MAXMODES * 2
+#define PSSO_BoardInfo_MaxHorResolution		    PSSO_BoardInfo_MaxVerValue + MAXMODES * 2
+#define PSSO_BoardInfo_MaxVerResolution		    PSSO_BoardInfo_MaxHorResolution + MAXMODES * 2
+#define PSSO_BoardInfo_MaxMemorySize		    PSSO_BoardInfo_MaxVerResolution + MAXMODES * 2
+#define PSSO_BoardInfo_MaxChunkSize		    PSSO_BoardInfo_MaxMemorySize + 4
+#define PSSO_BoardInfo_MemoryClock		    PSSO_BoardInfo_MaxChunkSize + 4
+#define PSSO_BoardInfo_PixelClockCount		    PSSO_BoardInfo_MemoryClock + 4
 
-struct BoardInfo {
-    uae_u8 *RegisterBase, *MemoryBase, *MemoryIOBase;
-    uae_u32 MemorySize;
-    char *BoardName, VBIName[32];
+#define PSSO_BoardInfo_AllocCardMem		    PSSO_BoardInfo_PixelClockCount + MAXMODES * 4
+#define PSSO_BoardInfo_FreeCardMem		    PSSO_BoardInfo_AllocCardMem + 4
 
-    uae_u16 MoniSwitch;
-    uae_u16 BitsPerCannon;
-    uae_u32 Flags;
-    uae_u16 SoftSpriteFlags;
-    uae_u16 ChipFlags;	/* private, chip specific, not touched by RTG */
-    uae_u32 CardFlags;	/* private, card specific, not touched by RTG */
+#define PSSO_BoardInfo_SetSwitch		    PSSO_BoardInfo_FreeCardMem + 4
 
-    uae_u16 BoardNum;
-    uae_s16 RGBFormats;
+#define PSSO_BoardInfo_SetColorArray		    PSSO_BoardInfo_SetSwitch + 4
 
-    uae_u16 MaxHorValue[MAXMODES];
-    uae_u16 MaxVerValue[MAXMODES];
-    uae_u16 MaxHorResolution[MAXMODES];
-    uae_u16 MaxVerResolution[MAXMODES];
-    uae_u32 MaxMemorySize, MaxChunkSize;
-};
+#define PSSO_BoardInfo_SetDAC			    PSSO_BoardInfo_SetColorArray + 4
+#define PSSO_BoardInfo_SetGC			    PSSO_BoardInfo_SetDAC + 4
+#define PSSO_BoardInfo_SetPanning		    PSSO_BoardInfo_SetGC + 4
+#define PSSO_BoardInfo_CalculateBytesPerRow	    PSSO_BoardInfo_SetPanning + 4
+#define PSSO_BoardInfo_CalculateMemory		    PSSO_BoardInfo_CalculateBytesPerRow + 4
+#define PSSO_BoardInfo_GetCompatibleFormats	    PSSO_BoardInfo_CalculateMemory + 4
+#define PSSO_BoardInfo_SetDisplay		    PSSO_BoardInfo_GetCompatibleFormats + 4
+
+#define PSSO_BoardInfo_ResolvePixelClock	    PSSO_BoardInfo_SetDisplay + 4
+#define PSSO_BoardInfo_GetPixelClock		    PSSO_BoardInfo_ResolvePixelClock + 4
+#define PSSO_BoardInfo_SetClock			    PSSO_BoardInfo_GetPixelClock + 4
+
+#define PSSO_BoardInfo_SetMemoryMode		    PSSO_BoardInfo_SetClock + 4
+#define PSSO_BoardInfo_SetWriteMask		    PSSO_BoardInfo_SetMemoryMode + 4
+#define PSSO_BoardInfo_SetClearMask		    PSSO_BoardInfo_SetWriteMask + 4
+#define PSSO_BoardInfo_SetReadPlane		    PSSO_BoardInfo_SetClearMask + 4
+
+#define PSSO_BoardInfo_WaitVerticalSync		    PSSO_BoardInfo_SetReadPlane + 4
+#define PSSO_BoardInfo_SetInterrupt		    PSSO_BoardInfo_WaitVerticalSync + 4
+
+#define PSSO_BoardInfo_WaitBlitter		    PSSO_BoardInfo_SetInterrupt + 4
+
+#define PSSO_BoardInfo_ScrollPlanar		    PSSO_BoardInfo_WaitBlitter + 4
+#define PSSO_BoardInfo_ScrollPlanarDefault	    PSSO_BoardInfo_ScrollPlanar + 4
+#define PSSO_BoardInfo_UpdatePlanar		    PSSO_BoardInfo_ScrollPlanarDefault + 4
+#define PSSO_BoardInfo_UpdatePlanarDefault	    PSSO_BoardInfo_UpdatePlanar + 4
+#define PSSO_BoardInfo_BlitPlanar2Chunky	    PSSO_BoardInfo_UpdatePlanarDefault + 4
+#define PSSO_BoardInfo_BlitPlanar2ChunkyDefault	    PSSO_BoardInfo_BlitPlanar2Chunky + 4
+
+#define PSSO_BoardInfo_FillRect			    PSSO_BoardInfo_BlitPlanar2ChunkyDefault + 4
+#define PSSO_BoardInfo_FillRectDefault		    PSSO_BoardInfo_FillRect + 4
+#define PSSO_BoardInfo_InvertRect		    PSSO_BoardInfo_FillRectDefault + 4
+#define PSSO_BoardInfo_InvertRectDefault	    PSSO_BoardInfo_InvertRect + 4
+#define PSSO_BoardInfo_BlitRect			    PSSO_BoardInfo_InvertRectDefault + 4
+#define PSSO_BoardInfo_BlitRectDefault		    PSSO_BoardInfo_BlitRect + 4
+#define PSSO_BoardInfo_BlitTemplate		    PSSO_BoardInfo_BlitRectDefault + 4
+#define PSSO_BoardInfo_BlitTemplateDefault	    PSSO_BoardInfo_BlitTemplate + 4
+#define PSSO_BoardInfo_BlitPattern		    PSSO_BoardInfo_BlitTemplateDefault + 4
+#define PSSO_BoardInfo_BlitPatternDefault	    PSSO_BoardInfo_BlitPattern + 4
+#define PSSO_BoardInfo_DrawLine			    PSSO_BoardInfo_BlitPatternDefault + 4
+#define PSSO_BoardInfo_DrawLineDefault		    PSSO_BoardInfo_DrawLine + 4
+#define PSSO_BoardInfo_BlitRectNoMaskComplete	    PSSO_BoardInfo_DrawLineDefault + 4
+#define PSSO_BoardInfo_BlitRectNoMaskCompleteDefault PSSO_BoardInfo_BlitRectNoMaskComplete + 4
+#define PSSO_BoardInfo_BlitPlanar2Direct	    PSSO_BoardInfo_BlitRectNoMaskCompleteDefault + 4
+#define PSSO_BoardInfo_BlitPlanar2DirectDefault	    PSSO_BoardInfo_BlitPlanar2Direct + 4
+
+#define PSSO_BoardInfo_Reserved0		    PSSO_BoardInfo_BlitPlanar2DirectDefault + 4
+#define PSSO_BoardInfo_Reserved0Default		    PSSO_BoardInfo_Reserved0 + 4
+#define PSSO_BoardInfo_Reserved1		    PSSO_BoardInfo_Reserved0Default + 4
+#define PSSO_BoardInfo_Reserved1Default		    PSSO_BoardInfo_Reserved1 + 4
+#define PSSO_BoardInfo_Reserved2		    PSSO_BoardInfo_Reserved1Default + 4
+#define PSSO_BoardInfo_Reserved2Default		    PSSO_BoardInfo_Reserved2 + 4
+#define PSSO_BoardInfo_Reserved3		    PSSO_BoardInfo_Reserved2Default + 4
+#define PSSO_BoardInfo_Reserved3Default		    PSSO_BoardInfo_Reserved3 + 4
+#define PSSO_BoardInfo_Reserved4		    PSSO_BoardInfo_Reserved3Default + 4
+#define PSSO_BoardInfo_Reserved4Default		    PSSO_BoardInfo_Reserved4 + 4
+#define PSSO_BoardInfo_Reserved5		    PSSO_BoardInfo_Reserved4Default + 4
+#define PSSO_BoardInfo_Reserved5Default		    PSSO_BoardInfo_Reserved5 + 4
+
+#define PSSO_BoardInfo_SetDPMSLevel		    PSSO_BoardInfo_Reserved5Default + 4
+#define PSSO_BoardInfo_ResetChip		    PSSO_BoardInfo_SetDPMSLevel + 4
+
+#define PSSO_BoardInfo_GetFeatureAttrs		    PSSO_BoardInfo_ResetChip + 4
+
+#define PSSO_BoardInfo_AllocBitMap		    PSSO_BoardInfo_GetFeatureAttrs + 4
+#define PSSO_BoardInfo_FreeBitMap		    PSSO_BoardInfo_AllocBitMap + 4
+#define PSSO_BoardInfo_GetBitMapAttr		    PSSO_BoardInfo_FreeBitMap + 4
+
+#define PSSO_BoardInfo_SetSprite		    PSSO_BoardInfo_GetBitMapAttr + 4
+#define PSSO_BoardInfo_SetSpritePosition	    PSSO_BoardInfo_SetSprite + 4
+#define PSSO_BoardInfo_SetSpriteImage		    PSSO_BoardInfo_SetSpritePosition + 4
+#define PSSO_BoardInfo_SetSpriteColor		    PSSO_BoardInfo_SetSpriteImage + 4
+
+#define PSSO_BoardInfo_CreateFeature		    PSSO_BoardInfo_SetSpriteColor + 4
+#define PSSO_BoardInfo_SetFeatureAttrs		    PSSO_BoardInfo_CreateFeature + 4
+#define PSSO_BoardInfo_DeleteFeature		    PSSO_BoardInfo_SetFeatureAttrs + 4
+#define PSSO_BoardInfo_SpecialFeatures		    PSSO_BoardInfo_DeleteFeature + 4
+
+#define PSSO_BoardInfo_ModeInfo			    PSSO_BoardInfo_SpecialFeatures + 12 /* SpecialFeatures is 12-bytes */
+#define PSSO_BoardInfo_RGBFormat		    PSSO_BoardInfo_ModeInfo + 4
+#define PSSO_BoardInfo_XOffset			    PSSO_BoardInfo_RGBFormat + 4
+#define PSSO_BoardInfo_YOffset			    PSSO_BoardInfo_XOffset + 2
+#define PSSO_BoardInfo_Depth			    PSSO_BoardInfo_YOffset + 2
+#define PSSO_BoardInfo_ClearMask		    PSSO_BoardInfo_Depth + 1
+#define PSSO_BoardInfo_Border			    PSSO_BoardInfo_ClearMask + 1
+#define PSSO_BoardInfo_Mask			    PSSO_BoardInfo_Border + 2 /* BOOL type is only 2-bytes! */
+#define PSSO_BoardInfo_CLUT			    PSSO_BoardInfo_Mask + 4
+#define PSSO_BoardInfo_ViewPort			    PSSO_BoardInfo_CLUT + 3*256
+#define PSSO_BoardInfo_VisibleBitMap		    PSSO_BoardInfo_ViewPort + 4
+#define PSSO_BoardInfo_BitMapExtra		    PSSO_BoardInfo_VisibleBitMap + 4
+#define PSSO_BoardInfo_BitMapList		    PSSO_BoardInfo_BitMapExtra + 4
+#define PSSO_BoardInfo_MemList			    PSSO_BoardInfo_BitMapList + 12 /* BitMapList is 12-bytes */
+#define PSSO_BoardInfo_MouseX			    PSSO_BoardInfo_MemList + 12 /* MemList is 12-bytes */
+#define PSSO_BoardInfo_MouseY			    PSSO_BoardInfo_MouseX + 2
+#define PSSO_BoardInfo_MouseWidth		    PSSO_BoardInfo_MouseY + 2
+#define PSSO_BoardInfo_MouseHeight		    PSSO_BoardInfo_MouseWidth + 1
+#define PSSO_BoardInfo_MouseXOffset		    PSSO_BoardInfo_MouseHeight + 1
+#define PSSO_BoardInfo_MouseYOffset		    PSSO_BoardInfo_MouseXOffset + 1
+#define PSSO_BoardInfo_MouseImage		    PSSO_BoardInfo_MouseYOffset + 1
+#define PSSO_BoardInfo_MousePens		    PSSO_BoardInfo_MouseImage + 4
+#define PSSO_BoardInfo_MouseRect		    PSSO_BoardInfo_MousePens + 4
+#define PSSO_BoardInfo_MouseChunky		    PSSO_BoardInfo_MouseRect + 8 /* MouseRect is 8-bytes */
+#define PSSO_BoardInfo_MouseRendered		    PSSO_BoardInfo_MouseChunky + 4
+#define PSSO_BoardInfo_MouseSaveBuffer		    PSSO_BoardInfo_MouseRendered + 4
+
+#define PSSO_BoardInfo_ChipData			    PSSO_BoardInfo_MouseSaveBuffer + 4
+#define PSSO_BoardInfo_CardData			    PSSO_BoardInfo_ChipData + 16 * 4
+#define PSSO_BoardInfo_MemorySpaceBase		    PSSO_BoardInfo_CardData + 16 * 4
+#define PSSO_BoardInfo_MemorySpaceSize		    PSSO_BoardInfo_MemorySpaceBase + 4
+#define PSSO_BoardInfo_DoubleBufferList		    PSSO_BoardInfo_MemorySpaceSize + 4
+#define PSSO_BoardInfo_SyncTime			    PSSO_BoardInfo_DoubleBufferList + 4
+#define PSSO_BoardInfo_SyncPeriod		    PSSO_BoardInfo_SyncTime + 4
+#define PSSO_BoardInfo_SoftVBlankPort		    PSSO_BoardInfo_SyncPeriod + 8
+#define PSSO_BoardInfo_SizeOf			    PSSO_BoardInfo_SoftVBlankPort + 34
 
 /* BoardInfo flags */
 /*  0-15: hardware flags */
 /* 16-31: user flags */
-#define BIB_HARDWARESPRITE	0	/* board has hardware sprite */
-#define BIB_NOMEMORYMODEMIX	1	/* board does not support modifying planar bitmaps while displaying chunky and vice versa */
-#define BIB_NEEDSALIGNMENT	2	/* bitmaps have to be aligned (not yet supported!) */
-#define BIB_DBLSCANDBLSPRITEY	8	/* hardware sprite y position is doubled on doublescan display modes */
-#define BIB_ILACEHALFSPRITEY	9	/* hardware sprite y position is halved on interlace display modes */
+#define BIB_HARDWARESPRITE	 0	/* board has hardware sprite */
+#define BIB_NOMEMORYMODEMIX	 1	/* board does not support modifying planar bitmaps while displaying chunky and vice versa */
+#define BIB_NEEDSALIGNMENT	 2	/* bitmaps have to be aligned (not yet supported!) */
+#define BIB_DBLSCANDBLSPRITEY	 8	/* hardware sprite y position is doubled on doublescan display modes */
+#define BIB_ILACEHALFSPRITEY	 9	/* hardware sprite y position is halved on interlace display modes */
 #define BIB_ILACEDBLROWOFFSET	10	/* doubled row offset in interlaced display modes needs additional horizontal bit */
 
 #define BIB_FLICKERFIXER	12	/* board can flicker fix Amiga RGB signal */
@@ -424,25 +482,25 @@ struct BoardInfo {
 
 #define BIB_IGNOREMASK	BIB_NOMASKBLITS
 
-#define BIF_HARDWARESPRITE	(1<<BIB_HARDWARESPRITE)
-#define BIF_NOMEMORYMODEMIX	(1<<BIB_NOMEMORYMODEMIX)
-#define BIF_NEEDSALIGNMENT	(1<<BIB_NEEDSALIGNMENT)
-#define BIF_DBLSCANDBLSPRITEY	(1<<BIB_DBLSCANDBLSPRITEY)
-#define BIF_ILACEHALFSPRITEY	(1<<BIB_ILACEHALFSPRITEY)
-#define BIF_ILACEDBLROWOFFSET	(1<<BIB_ILACEDBLROWOFFSET)
-#define BIF_FLICKERFIXER	(1<<BIB_FLICKERFIXER)
-#define BIF_VIDEOCAPTURE	(1<<BIB_VIDEOCAPTURE)
-#define BIF_VIDEOWINDOW		(1<<BIB_VIDEOWINDOW)
-#define BIF_BLITTER		(1<<BIB_BLITTER)
-#define BIF_HIRESSPRITE		(1<<BIB_HIRESSPRITE)
-#define BIF_BIGSPRITE		(1<<BIB_BIGSPRITE)
-#define BIF_BORDEROVERRIDE	(1<<BIB_BORDEROVERRIDE)
-#define BIF_BORDERBLANK		(1<<BIB_BORDERBLANK)
-#define BIF_INDISPLAYCHAIN	(1<<BIB_INDISPLAYCHAIN)
-#define BIF_QUIET		(1<<BIB_QUIET)
-#define BIF_NOMASKBLITS		(1<<BIB_NOMASKBLITS)
-#define BIF_NOC2PBLITS		(1<<BIB_NOC2PBLITS)
-#define BIF_NOBLITTER		(1<<BIB_NOBLITTER)
+#define BIF_HARDWARESPRITE	(1 << BIB_HARDWARESPRITE)
+#define BIF_NOMEMORYMODEMIX	(1 << BIB_NOMEMORYMODEMIX)
+#define BIF_NEEDSALIGNMENT	(1 << BIB_NEEDSALIGNMENT)
+#define BIF_DBLSCANDBLSPRITEY	(1 << BIB_DBLSCANDBLSPRITEY)
+#define BIF_ILACEHALFSPRITEY	(1 << BIB_ILACEHALFSPRITEY)
+#define BIF_ILACEDBLROWOFFSET	(1 << BIB_ILACEDBLROWOFFSET)
+#define BIF_FLICKERFIXER	(1 << BIB_FLICKERFIXER)
+#define BIF_VIDEOCAPTURE	(1 << BIB_VIDEOCAPTURE)
+#define BIF_VIDEOWINDOW		(1 << BIB_VIDEOWINDOW)
+#define BIF_BLITTER		(1 << BIB_BLITTER)
+#define BIF_HIRESSPRITE		(1 << BIB_HIRESSPRITE)
+#define BIF_BIGSPRITE		(1 << BIB_BIGSPRITE)
+#define BIF_BORDEROVERRIDE	(1 << BIB_BORDEROVERRIDE)
+#define BIF_BORDERBLANK		(1 << BIB_BORDERBLANK)
+#define BIF_INDISPLAYCHAIN	(1 << BIB_INDISPLAYCHAIN)
+#define BIF_QUIET		(1 << BIB_QUIET)
+#define BIF_NOMASKBLITS		(1 << BIB_NOMASKBLITS)
+#define BIF_NOC2PBLITS		(1 << BIB_NOC2PBLITS)
+#define BIF_NOBLITTER		(1 << BIB_NOBLITTER)
 
 #define BIF_IGNOREMASK 	BIF_NOMASKBLITS
 
@@ -466,9 +524,9 @@ struct picasso96_state_struct
     uae_u8              BytesPerPixel;
     uae_u8              CardFound;
     //here follow winuae additional entrys
-    uae_u8  BigAssBitmap; /* Set to 1 when our Amiga screen is bigger than the displayable area */
-    unsigned int        Version;
-    uae_u8 *HostAddress; /* Active screen address (PC-side) */
+    uae_u8		BigAssBitmap; /* Set to 1 when our Amiga screen is bigger than the displayable area */
+    unsigned int	Version;
+    uae_u8		*HostAddress; /* Active screen address (PC-side) */
     // host address is need because Windows
     // support NO direct access all the time to gfx Card
     // everytime windows can remove your surface from card so the mainrender place
@@ -477,33 +535,6 @@ struct picasso96_state_struct
 };
 
 extern void InitPicasso96 (void);
-
-extern int GetNumResolutions( void );
-extern int GetDisplayModeIndex( uae_u32 x, uae_u32 y, uae_u32 d);
-
-extern uae_u32 REGPARAM3 picasso_SetDisplay (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_CalculateBytesPerRow (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_FillRect (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_BlitRect (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_InvertRect (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_SetPanning (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_SetGC (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_SetDAC (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_SetColorArray (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_SetSwitch (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_SetSwitch (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_FindCard (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_InitCard (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_BlitPlanar2Chunky (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_BlitPlanar2Direct (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_BlitTemplate (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_BlitPattern (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_BlitRectNoMaskComplete (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_SetSprite (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_SetSpritePosition (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_SetSpriteImage (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_SetSpriteColor (struct regstruct *regs);
-extern uae_u32 REGPARAM3 picasso_DrawLine (struct regstruct *regs);
 
 extern uae_u32 gfxmem_mask;
 extern uae_u8 *gfxmemory;
@@ -515,20 +546,14 @@ extern uae_u16 picasso96_pixel_format;
 
 extern int  DX_InvertRect (int X, int Y, int Width, int Height);
 extern void DX_SetPalette (int start, int count);
-extern int  DX_BitsPerCannon (void);
 extern void DX_Invalidate (int, int, int, int);
-extern int  DX_Flip(void);
-extern int  DX_Blit(int srcx, int srcy, int dstx, int dsty, int w, int h, BLIT_OPCODE opcode);
-extern int  DX_Fill(int dstx, int dsty, int width, int height, uae_u32 color, RGBFTYPE rgbtype);
-extern uae_u32 DX_ShowCursor(uae_u32 activate);
-extern uae_u32 DX_MoveCursor(uae_u32 x, uae_u32 y);
+extern int  DX_Flip (void);
 extern void picasso_enablescreen (int on);
-extern void picasso_refresh (int);
+extern void picasso_refresh (void);
 extern void picasso_handle_vsync (void);
 extern void init_hz_p96 (void);
 extern void picasso_handle_hsync (void);
-
-extern uae_u8 *gfxmemory;
+extern int picasso_palette (void);
 
 /* This structure describes the UAE-side framebuffer for the Picasso
  * screen.  */
@@ -549,9 +574,24 @@ extern void gfx_set_picasso_state (int on);
 extern uae_u8 *gfx_lock_picasso (void);
 extern void gfx_unlock_picasso (void);
 extern void picasso_clip_mouse (int *, int *);
+extern void picasso_putcursor (int,int,int,int);
+extern void picasso_clearcursor (void);
 
 extern int p96refresh_active;
 extern int p96hsync_counter;
+
+#define LIB_SIZE 34
+#define CARD_FLAGS LIB_SIZE
+#define CARD_EXECBASE (CARD_FLAGS + 2)
+#define CARD_EXPANSIONBASE (CARD_EXECBASE + 4)
+#define CARD_SEGMENTLIST (CARD_EXPANSIONBASE + 4)
+#define CARD_NAME (CARD_SEGMENTLIST + 4)
+/* uae specific stuff */
+#define CARD_RESLIST (CARD_NAME + 4)
+#define CARD_RESLISTSIZE (CARD_RESLIST + 4)
+#define CARD_BOARDINFO (CARD_RESLISTSIZE + 4)
+#define CARD_END (CARD_BOARDINFO + 4)
+#define CARD_SIZEOF CARD_END
 
 #endif
 

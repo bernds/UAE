@@ -46,9 +46,11 @@
 #include "picasso96.h"
 #include "drawing.h"
 #ifdef JIT
-#include "compemu.h"
+#include "jit/compemu.h"
 #endif
 #include "savestate.h"
+#include "statusline.h"
+#include "inputdevice.h"
 
 extern int sprite_buffer_res;
 
@@ -107,7 +109,8 @@ struct vidbuf_description gfxvidinfo;
 /* OCS/ECS color lookup table. */
 xcolnr xcolors[4096];
 
-static uae_u8 spritepixels[MAX_PIXELS_PER_LINE * 4]; /* used when sprite resolution > lores */
+static uae_u8 spritepixels[MAX_PIXELS_PER_LINE * 5]; /* used when sprite resolution > lores */
+static int sprite_aga_first_x, sprite_aga_last_x;
 
 #ifdef AGA
 /* AGA mode color lookup tables */
@@ -194,7 +197,7 @@ static int first_block_line, last_block_line;
    each line that needs to be drawn.  These are basically extracted out of
    bit fields in the hardware registers.  */
 static int bplehb, bplham, bpldualpf, bpldualpfpri, bpldualpf2of, bplplanecnt, bplres, ecsshres, issprites;
-static int plf1pri, plf2pri;
+static int plf1pri, plf2pri, bplxor;
 static uae_u32 plf_sprite_mask;
 static int sbasecol[2] = { 16, 16 };
 static int brdsprt, brdblank, brdblank_changed;
@@ -329,6 +332,7 @@ static int pixels_offset;
 static int src_pixel;
 /* How many pixels in window coordinates which are to the left of the left border.  */
 static int unpainted;
+static int seen_sprites;
 
 /* Initialize the variables necessary for drawing a line.
  * This involves setting up start/stop positions and display window
@@ -373,7 +377,6 @@ static void pfield_init_linetoscr (void)
 #ifdef AGA
     if (brdsprt && dip_for_drawing->nr_sprites) {
 	int min = visible_right_border, max = visible_left_border, i;
-	int posdiff = sprite_buffer_res - bplres;
 	for (i = 0; i < dip_for_drawing->nr_sprites; i++) {
 	    int x;
 	    x = curr_sprite_entries[dip_for_drawing->first_sprite_entry + i].pos;
@@ -383,15 +386,8 @@ static void pfield_init_linetoscr (void)
 	    if (x > max)
 		max = x;
 	}
-	min += (DIW_DDF_OFFSET - DISPLAY_LEFT_SHIFT) << sprite_buffer_res;
-	max += (DIW_DDF_OFFSET - DISPLAY_LEFT_SHIFT) << sprite_buffer_res;
-	if (posdiff < 0) {
-	    min <<= -posdiff;
-	    max <<= -posdiff;
-	} else {
-	    min >>= posdiff;
-	    max >>= posdiff;
-	}
+	min = coord_hw_to_window_x (min >> sprite_buffer_res) + (DIW_DDF_OFFSET << lores_shift);
+	max = coord_hw_to_window_x (max >> sprite_buffer_res) + (DIW_DDF_OFFSET << lores_shift);
 	if (min < playfield_start)
 	    playfield_start = min;
 	if (playfield_start < visible_left_border)
@@ -412,8 +408,24 @@ static void pfield_init_linetoscr (void)
     unpainted = visible_left_border < playfield_start ? 0 : visible_left_border - playfield_start;
     src_pixel = MAX_PIXELS_PER_LINE + res_shift_from_window (playfield_start - native_ddf_left + unpainted);
 
+    if (sprite_aga_first_x < sprite_aga_last_x) {
+        uae_u8 *p = spritepixels + sprite_aga_first_x;
+	int len = sprite_aga_last_x - sprite_aga_first_x + 1;
+	int i;
+	/* clear previous sprite data storage line */
+	for (i = 0; i < (1 << (res_shift < 0 ? 0 : res_shift)); i++) {
+	    memset (p, 0, len);
+	    p += MAX_PIXELS_PER_LINE;
+	}
+	sprite_aga_last_x = 0;
+	sprite_aga_first_x = MAX_PIXELS_PER_LINE;
+    }
+    seen_sprites = 0;
     if (dip_for_drawing->nr_sprites == 0)
 	return;
+    if (seen_sprites < 0 && sprite_buffer_res > 0)
+	memset (spritepixels, 0, sizeof spritepixels);
+    seen_sprites = 1;
     /* Must clear parts of apixels.  */
     if (linetoscr_diw_start < native_ddf_left) {
 	int size = res_shift_from_window (native_ddf_left - linetoscr_diw_start);
@@ -841,7 +853,7 @@ static void init_ham_decoding (void)
     ham_decode_pixel = src_pixel;
     ham_lastcolor = color_reg_get (&colors_for_drawing, 0);
 
-    if (! bplham || (bplplanecnt != 6 && ((currprefs.chipset_mask & CSMASK_AGA) == 0 || bplplanecnt != 8))) {
+    if (!bplham) {
 	if (unpainted_amiga > 0) {
 	    int pv = pixdata.apixels[ham_decode_pixel + unpainted_amiga - 1];
 #ifdef AGA
@@ -853,38 +865,40 @@ static void init_ham_decoding (void)
 	}
 #ifdef AGA
     } else if (currprefs.chipset_mask & CSMASK_AGA) {
-	if (bplplanecnt == 8) { /* AGA mode HAM8 */
+	if (bplplanecnt >= 7) { /* AGA mode HAM8 */
 	    while (unpainted_amiga-- > 0) {
 		int pv = pixdata.apixels[ham_decode_pixel++];
-		switch (pv & 0x3) {
-		case 0x0: ham_lastcolor = colors_for_drawing.color_regs_aga[pv >> 2]; break;
-		case 0x1: ham_lastcolor &= 0xFFFF03; ham_lastcolor |= (pv & 0xFC); break;
-		case 0x2: ham_lastcolor &= 0x03FFFF; ham_lastcolor |= (pv & 0xFC) << 16; break;
-		case 0x3: ham_lastcolor &= 0xFF03FF; ham_lastcolor |= (pv & 0xFC) << 8; break;
+		switch (pv & 0x3)
+		{
+		    case 0x0: ham_lastcolor = colors_for_drawing.color_regs_aga[pv >> 2]; break;
+		    case 0x1: ham_lastcolor &= 0xFFFF03; ham_lastcolor |= (pv & 0xFC); break;
+		    case 0x2: ham_lastcolor &= 0x03FFFF; ham_lastcolor |= (pv & 0xFC) << 16; break;
+		    case 0x3: ham_lastcolor &= 0xFF03FF; ham_lastcolor |= (pv & 0xFC) << 8; break;
 		}
 	    }
-	} else if (bplplanecnt == 6) { /* AGA mode HAM6 */
+	} else { /* AGA mode HAM6 */
 	    while (unpainted_amiga-- > 0) {
 		int pv = pixdata.apixels[ham_decode_pixel++];
-		switch (pv & 0x30) {
-		case 0x00: ham_lastcolor = colors_for_drawing.color_regs_aga[pv]; break;
-		case 0x10: ham_lastcolor &= 0xFFFF00; ham_lastcolor |= (pv & 0xF) << 4; break;
-		case 0x20: ham_lastcolor &= 0x00FFFF; ham_lastcolor |= (pv & 0xF) << 20; break;
-		case 0x30: ham_lastcolor &= 0xFF00FF; ham_lastcolor |= (pv & 0xF) << 12; break;
+		switch (pv & 0x30)
+		{
+		    case 0x00: ham_lastcolor = colors_for_drawing.color_regs_aga[pv]; break;
+		    case 0x10: ham_lastcolor &= 0xFFFF00; ham_lastcolor |= (pv & 0xF) << 4; break;
+		    case 0x20: ham_lastcolor &= 0x00FFFF; ham_lastcolor |= (pv & 0xF) << 20; break;
+		    case 0x30: ham_lastcolor &= 0xFF00FF; ham_lastcolor |= (pv & 0xF) << 12; break;
 		}
 	    }
 	}
 #endif
     } else {
-	if (bplplanecnt == 6) { /* OCS/ECS mode HAM6 */
-	    while (unpainted_amiga-- > 0) {
-		int pv = pixdata.apixels[ham_decode_pixel++];
-		switch (pv & 0x30) {
-		case 0x00: ham_lastcolor = colors_for_drawing.color_regs_ecs[pv]; break;
-		case 0x10: ham_lastcolor &= 0xFF0; ham_lastcolor |= (pv & 0xF); break;
-		case 0x20: ham_lastcolor &= 0x0FF; ham_lastcolor |= (pv & 0xF) << 8; break;
-		case 0x30: ham_lastcolor &= 0xF0F; ham_lastcolor |= (pv & 0xF) << 4; break;
-		}
+	/* OCS/ECS mode HAM6 */
+	while (unpainted_amiga-- > 0) {
+	    int pv = pixdata.apixels[ham_decode_pixel++];
+	    switch (pv & 0x30)
+	    {
+	        case 0x00: ham_lastcolor = colors_for_drawing.color_regs_ecs[pv]; break;
+	        case 0x10: ham_lastcolor &= 0xFF0; ham_lastcolor |= (pv & 0xF); break;
+	        case 0x20: ham_lastcolor &= 0x0FF; ham_lastcolor |= (pv & 0xF) << 8; break;
+	        case 0x30: ham_lastcolor &= 0xF0F; ham_lastcolor |= (pv & 0xF) << 4; break;
 	    }
 	}
     }
@@ -894,7 +908,7 @@ static void decode_ham (int pix, int stoppos)
 {
     int todraw_amiga = res_shift_from_window (stoppos - pix);
 
-    if (! bplham || (bplplanecnt != 6 && ((currprefs.chipset_mask & CSMASK_AGA) == 0 || bplplanecnt != 8))) {
+    if (!bplham) {
 	while (todraw_amiga-- > 0) {
 	    int pv = pixdata.apixels[ham_decode_pixel];
 #ifdef AGA
@@ -908,42 +922,44 @@ static void decode_ham (int pix, int stoppos)
 	}
 #ifdef AGA
     } else if (currprefs.chipset_mask & CSMASK_AGA) {
-	if (bplplanecnt == 8) { /* AGA mode HAM8 */
+	if (bplplanecnt >= 7) { /* AGA mode HAM8 */
 	    while (todraw_amiga-- > 0) {
 		int pv = pixdata.apixels[ham_decode_pixel];
-		switch (pv & 0x3) {
-		case 0x0: ham_lastcolor = colors_for_drawing.color_regs_aga[pv >> 2]; break;
-		case 0x1: ham_lastcolor &= 0xFFFF03; ham_lastcolor |= (pv & 0xFC); break;
-		case 0x2: ham_lastcolor &= 0x03FFFF; ham_lastcolor |= (pv & 0xFC) << 16; break;
-		case 0x3: ham_lastcolor &= 0xFF03FF; ham_lastcolor |= (pv & 0xFC) << 8; break;
+		switch (pv & 0x3)
+		{
+		    case 0x0: ham_lastcolor = colors_for_drawing.color_regs_aga[pv >> 2]; break;
+		    case 0x1: ham_lastcolor &= 0xFFFF03; ham_lastcolor |= (pv & 0xFC); break;
+		    case 0x2: ham_lastcolor &= 0x03FFFF; ham_lastcolor |= (pv & 0xFC) << 16; break;
+		    case 0x3: ham_lastcolor &= 0xFF03FF; ham_lastcolor |= (pv & 0xFC) << 8; break;
 		}
 		ham_linebuf[ham_decode_pixel++] = ham_lastcolor;
 	    }
-	} else if (bplplanecnt == 6) { /* AGA mode HAM6 */
+	} else { /* AGA mode HAM6 */
 	    while (todraw_amiga-- > 0) {
 		int pv = pixdata.apixels[ham_decode_pixel];
-		switch (pv & 0x30) {
-		case 0x00: ham_lastcolor = colors_for_drawing.color_regs_aga[pv]; break;
-		case 0x10: ham_lastcolor &= 0xFFFF00; ham_lastcolor |= (pv & 0xF) << 4; break;
-		case 0x20: ham_lastcolor &= 0x00FFFF; ham_lastcolor |= (pv & 0xF) << 20; break;
-		case 0x30: ham_lastcolor &= 0xFF00FF; ham_lastcolor |= (pv & 0xF) << 12; break;
+		switch (pv & 0x30)
+		{
+		    case 0x00: ham_lastcolor = colors_for_drawing.color_regs_aga[pv]; break;
+		    case 0x10: ham_lastcolor &= 0xFFFF00; ham_lastcolor |= (pv & 0xF) << 4; break;
+		    case 0x20: ham_lastcolor &= 0x00FFFF; ham_lastcolor |= (pv & 0xF) << 20; break;
+		    case 0x30: ham_lastcolor &= 0xFF00FF; ham_lastcolor |= (pv & 0xF) << 12; break;
 		}
 		ham_linebuf[ham_decode_pixel++] = ham_lastcolor;
 	    }
 	}
 #endif
     } else {
-	if (bplplanecnt == 6) { /* OCS/ECS mode HAM6 */
-	    while (todraw_amiga-- > 0) {
-		int pv = pixdata.apixels[ham_decode_pixel];
-		switch (pv & 0x30) {
-		case 0x00: ham_lastcolor = colors_for_drawing.color_regs_ecs[pv]; break;
-		case 0x10: ham_lastcolor &= 0xFF0; ham_lastcolor |= (pv & 0xF); break;
-		case 0x20: ham_lastcolor &= 0x0FF; ham_lastcolor |= (pv & 0xF) << 8; break;
-		case 0x30: ham_lastcolor &= 0xF0F; ham_lastcolor |= (pv & 0xF) << 4; break;
-		}
-		ham_linebuf[ham_decode_pixel++] = ham_lastcolor;
+	/* OCS/ECS mode HAM6 */
+	while (todraw_amiga-- > 0) {
+	    int pv = pixdata.apixels[ham_decode_pixel];
+	    switch (pv & 0x30)
+	    {
+	        case 0x00: ham_lastcolor = colors_for_drawing.color_regs_ecs[pv]; break;
+	        case 0x10: ham_lastcolor &= 0xFF0; ham_lastcolor |= (pv & 0xF); break;
+	        case 0x20: ham_lastcolor &= 0x0FF; ham_lastcolor |= (pv & 0xF) << 8; break;
+	        case 0x30: ham_lastcolor &= 0xF0F; ham_lastcolor |= (pv & 0xF) << 4; break;
 	    }
+	    ham_linebuf[ham_decode_pixel++] = ham_lastcolor;
 	}
     }
 }
@@ -1012,14 +1028,12 @@ STATIC_INLINE void draw_sprites_2 (struct sprite_entry *e, int ham, int dualpf,
     uae_u16 *buf = spixels + e->first_pixel;
     uae_u8 *stbuf = spixstate.bytes + e->first_pixel;
     int pos, window_pos, spr_level, spr_level_max;
-#ifdef AGA
-    uae_u8 xor_val = (uae_u8)(dp_for_drawing->bplcon4 >> 8);
-#endif
 
     buf -= e->pos;
     stbuf -= e->pos;
 
     window_pos = e->pos + ((DIW_DDF_OFFSET - DISPLAY_LEFT_SHIFT) << sprite_buffer_res);
+
     spr_level = 0;
     spr_level_max = 0;
     if (res_shift > 0 && aga) {
@@ -1032,6 +1046,11 @@ STATIC_INLINE void draw_sprites_2 (struct sprite_entry *e, int ham, int dualpf,
     else if (posdoubling)
 	window_pos <<= posdoubling;
     window_pos += pixels_offset;
+
+    if (aga) {
+	if (window_pos < sprite_aga_first_x)
+	    sprite_aga_first_x = window_pos;
+    }
 
     for (pos = e->pos; pos < e->max; pos += 1 << sizeskip) {
 	int maskshift, plfmask;
@@ -1190,6 +1209,10 @@ STATIC_INLINE void draw_sprites_2 (struct sprite_entry *e, int ham, int dualpf,
 	    }
 	}
 
+    }
+    if (aga) {
+	if (window_pos > sprite_aga_last_x)
+	    sprite_aga_last_x = window_pos;
     }
 }
 STATIC_INLINE void draw_sprites_1 (struct sprite_entry *e, int ham, int dualpf,
@@ -1453,19 +1476,19 @@ static void init_aspect_maps (void)
 	return;
 
     linedbld = linedbl = currprefs.gfx_linedbl;
-    if (doublescan) {
+    if (doublescan && !interlace_seen) {
 	linedbl = 0;
 	linedbld = 1;
     }
 
     if (native2amiga_line_map)
-	free (native2amiga_line_map);
+	xfree (native2amiga_line_map);
     if (amiga2aspect_line_map)
-	free (amiga2aspect_line_map);
+	xfree (amiga2aspect_line_map);
 
     /* At least for this array the +1 is necessary. */
-    amiga2aspect_line_map = (int *)malloc (sizeof (int) * (MAXVPOS + 1) * 2 + 1);
-    native2amiga_line_map = (int *)malloc (sizeof (int) * gfxvidinfo.height);
+    amiga2aspect_line_map = malloc (sizeof (int) * (MAXVPOS + 1) * 2 + 1);
+    native2amiga_line_map = malloc (sizeof (int) * gfxvidinfo.height);
 
     if (currprefs.gfx_correct_aspect)
 	native_lines_per_amiga_line = ((double)gfxvidinfo.height
@@ -1625,6 +1648,7 @@ static void pfield_expand_dp_bplcon (void)
     sbasecol[0] = ((dp_for_drawing->bplcon4 >> 4) & 15) << 4;
     sbasecol[1] = ((dp_for_drawing->bplcon4 >> 0) & 15) << 4;
     brdsprt = !brdblank && (currprefs.chipset_mask & CSMASK_AGA) && (dp_for_drawing->bplcon0 & 1) && (dp_for_drawing->bplcon3 & 0x02);
+    bplxor = dp_for_drawing->bplcon4 >> 8;
 #endif
 }
 
@@ -1635,8 +1659,8 @@ static void pfield_expand_dp_bplcon2 (int regno, int v)
     {
 	case 0x100:
 	dp_for_drawing->bplcon0 = v;
-	dp_for_drawing->bplres = GET_RES(v);
-	dp_for_drawing->nr_planes = GET_PLANES(v);
+	dp_for_drawing->bplres = GET_RES (v);
+	dp_for_drawing->nr_planes = GET_PLANES (v);
 	dp_for_drawing->ham_seen = !! (v & 0x800);
 	break;
 	case 0x104:
@@ -1648,7 +1672,7 @@ static void pfield_expand_dp_bplcon2 (int regno, int v)
 	break;
 #endif
 #ifdef AGA
-	case 0x108:
+	case 0x10c:
 	dp_for_drawing->bplcon4 = v;
 	break;
 #endif
@@ -1791,8 +1815,6 @@ static void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 	dp_for_drawing--;
 	dip_for_drawing--;
 	linestate[lineno] = LINE_DONE_AS_PREVIOUS;
-	if (!dp_for_drawing->valid)
-	    return;
 	if (dp_for_drawing->plfleft == -1)
 	    border = 1;
 	break;
@@ -1975,12 +1997,29 @@ static void center_image (void)
 		visible_left_border = prev_x_adjust;
 	}
     } else {
-	visible_left_border = max_diwlastword - gfxvidinfo.width;
-	if (doublescan)
-	    visible_left_border = (max_diwlastword - 48) / 2 - gfxvidinfo.width;
+	if (beamcon0 & 0x80) {
+	    int w = gfxvidinfo.width;
+	    if (max_diwstop - min_diwstart < w)
+		visible_left_border = (max_diwstop - min_diwstart - w) / 2 + min_diwstart;
+	    else
+		visible_left_border = max_diwstop - w - (max_diwstop - min_diwstart - w) / 2;
+	} else {
+	    visible_left_border = max_diwlastword - gfxvidinfo.width;
+	}
     }
-    if (currprefs.gfx_xcenter_pos >= 0)
-	visible_left_border = currprefs.gfx_xcenter_pos + (DIW_DDF_OFFSET << currprefs.gfx_resolution) - (DISPLAY_LEFT_SHIFT * 2 - (DISPLAY_LEFT_SHIFT << currprefs.gfx_resolution));
+    if (currprefs.gfx_xcenter_pos >= 0) {
+	int val = currprefs.gfx_xcenter_pos >> RES_MAX;
+#if 0
+	if (currprefs.gfx_xcenter_size > 0) {
+	    int diff = ((gfxvidinfo.width << (RES_MAX - currprefs.gfx_resolution)) - currprefs.gfx_xcenter_size) / 1;
+	    write_log ("%d %d\n", currprefs.gfx_xcenter_size, gfxvidinfo.width);
+	    val -= diff >> RES_MAX;
+	}
+#endif
+	if (val < 56)
+	    val = 56;
+	visible_left_border = val + (DIW_DDF_OFFSET << currprefs.gfx_resolution) - (DISPLAY_LEFT_SHIFT * 2 - (DISPLAY_LEFT_SHIFT << currprefs.gfx_resolution));
+    }
 
     if (visible_left_border > max_diwlastword - 32)
 	visible_left_border = max_diwlastword - 32;
@@ -2012,7 +2051,13 @@ static void center_image (void)
 	}
     }
     if (currprefs.gfx_ycenter_pos >= 0) {
-	thisframe_y_adjust = currprefs.gfx_ycenter_pos;
+	thisframe_y_adjust = currprefs.gfx_ycenter_pos >> 1;
+#if 0
+	if (currprefs.gfx_ycenter_size > 0) {
+	    int diff = (currprefs.gfx_ycenter_size - (gfxvidinfo.height << (linedbl ? 0 : 1))) / 2;
+	    thisframe_y_adjust += diff >> 1;
+	}
+#endif
 	if (thisframe_y_adjust + max_drawn_amiga_line > 2 * maxvpos_max)
 	    thisframe_y_adjust = 2 * maxvpos_max - max_drawn_amiga_line;
 	if (thisframe_y_adjust < 0)
@@ -2126,31 +2171,12 @@ static void init_drawing_frame (void)
     thisframe_last_drawn_line = -1;
 
     drawing_color_matches = -1;
+    seen_sprites = -1;
 }
 
 /*
  * Some code to put status information on the screen.
  */
-
-#define TD_PADX 10
-#define TD_PADY 2
-#define TD_WIDTH 32
-#define TD_LED_WIDTH 24
-#define TD_LED_HEIGHT 4
-
-#define TD_RIGHT 1
-#define TD_BOTTOM 2
-
-static int td_pos = (TD_RIGHT|TD_BOTTOM);
-
-#define TD_NUM_WIDTH 7
-#define TD_NUM_HEIGHT 7
-
-#define TD_TOTAL_HEIGHT (TD_PADY * 2 + TD_NUM_HEIGHT)
-
-#define NUMBERS_NUM 16
-
-#define TD_BORDER 0x333
 
 static const char *numbers = { /* ugly  0123456789CHD%+- */
 "+++++++--++++-+++++++++++++++++-++++++++++++++++++++++++++++++++++++++++++++-++++++-++++----++---+--------------"
@@ -2162,18 +2188,18 @@ static const char *numbers = { /* ugly  0123456789CHD%+- */
 "+++++++---+++-++++++++++++++----+++++++++++++++++--+++--++++++++++++++++++++-++++++-++++------------------------"
 };
 
-STATIC_INLINE void putpixel (int x, xcolnr c8)
+STATIC_INLINE void putpixel (uae_u8 *buf, int bpp, int x, xcolnr c8)
 {
     if (x <= 0)
 	return;
 
-    switch (gfxvidinfo.pixbytes) {
+    switch (bpp) {
     case 1:
-	xlinebuffer[x] = (uae_u8)c8;
+	buf[x] = (uae_u8)c8;
 	break;
     case 2:
     {
-	uae_u16 *p = (uae_u16 *)xlinebuffer + x;
+	uae_u16 *p = (uae_u16 *)buf + x;
 	*p = (uae_u16)c8;
 	break;
     }
@@ -2182,14 +2208,19 @@ STATIC_INLINE void putpixel (int x, xcolnr c8)
 	break;
     case 4:
     {
-	uae_u32 *p = (uae_u32 *)xlinebuffer + x;
+	uae_u32 *p = (uae_u32 *)buf + x;
 	*p = c8;
 	break;
     }
     }
 }
 
-static void write_tdnumber (int x, int y, int num)
+STATIC_INLINE uae_u32 ledcolor (uae_u32 c, uae_u32 *rc, uae_u32 *gc, uae_u32 *bc)
+{
+    return rc[(c >> 16) & 0xff] | gc[(c >> 8) & 0xff] | bc[(c >> 0) & 0xff];
+}
+
+static void write_tdnumber (uae_u8 *buf, int bpp, int x, int y, int num, uae_u32 c1, uae_u32 c2)
 {
     int j;
     const char *numptr;
@@ -2197,71 +2228,75 @@ static void write_tdnumber (int x, int y, int num)
     numptr = numbers + num * TD_NUM_WIDTH + NUMBERS_NUM * TD_NUM_WIDTH * y;
     for (j = 0; j < TD_NUM_WIDTH; j++) {
 	if (*numptr == 'x')
-	    putpixel (x + j, xcolors[0xfff]);
+	    putpixel (buf, bpp, x + j, c1);
 	else if (*numptr == '+')
-	    putpixel (x + j, xcolors[0x000]);
+	    putpixel (buf, bpp, x + j, c2);
 	numptr++;
     }
 }
 
-static void draw_status_line (int line)
+void draw_status_line_single (uae_u8 *buf, int bpp, int y, int totalwidth, uae_u32 *rc, uae_u32 *gc, uae_u32 *bc)
 {
-    int x_start, y, j, led;
+    int x_start, j, led;
+    uae_u32 c1, c2, cb;
+
+    c1 = ledcolor (0xffffff, rc, gc, bc);
+    c2 = ledcolor (0x000000, rc, gc, bc);
+    cb = ledcolor (TD_BORDER, rc, gc, bc);
 
     if (td_pos & TD_RIGHT)
-	x_start = gfxvidinfo.width - TD_PADX - NUM_LEDS * TD_WIDTH;
+	x_start = totalwidth - TD_PADX - NUM_LEDS * TD_WIDTH;
     else
 	x_start = TD_PADX;
 
-    y = line - (gfxvidinfo.height - TD_TOTAL_HEIGHT);
-    xlinebuffer = gfxvidinfo.linemem;
-    if (xlinebuffer == 0)
-	xlinebuffer = row_map[line];
-
     for (led = 0; led < NUM_LEDS; led++) {
 	int side, pos, num1 = -1, num2 = -1, num3 = -1, num4 = -1;
-	int x, off_rgb, on_rgb, c, on = 0, am = 2;
+	int x, c, on = 0, am = 2;
+	xcolnr on_rgb, off_rgb;
+
 	if (led >= 1 && led <= 4) {
 	    int pled = led - 1;
 	    int track = gui_data.drive_track[pled];
 	    pos = 6 + pled;
-	    on_rgb = 0x0c0;
-	    off_rgb = 0x030;
+	    on_rgb = 0x00cc00;
+	    off_rgb = 0x003300;
 	    if (!gui_data.drive_disabled[pled]) {
 		num1 = -1;
 		num2 = track / 10;
 		num3 = track % 10;
 		on = gui_data.drive_motor[pled];
 		if (gui_data.drive_writing[pled])
-		    on_rgb = 0xc00;
+		    on_rgb = 0xcc0000;
 	    }
 	    side = gui_data.drive_side;
 	} else if (led == 0) {
 	    pos = 3;
+	    //on = gui_data.powerled_brightness > 0;
+	    on_rgb = ((gui_data.powerled_brightness * 10 / 16) + 0x33) << 16;
 	    on = gui_data.powerled;
-	    on_rgb = 0xc00;
-	    off_rgb = 0x300;
+	    //on_rgb = 0xcc0000;
+	    off_rgb = 0x330000;
 	} else if (led == 5) {
 	    pos = 5;
 	    on = gui_data.cd;
-	    on_rgb = 0x00c;
-	    off_rgb = 0x003;
+	    on_rgb = 0x0000cc;
+	    off_rgb = 0x000033;
 	    num1 = -1;
 	    num2 = 10;
 	    num3 = 12;
 	} else if (led == 6) {
 	    pos = 4;
 	    on = gui_data.hd;
-	    on_rgb = on == 2 ? 0xc00 : 0x00c;
-	    off_rgb = 0x003;
+	    on_rgb = on == 2 ? 0xcc0000 : 0x0000cc;
+	    off_rgb = 0x000033;
 	    num1 = -1;
 	    num2 = 11;
 	    num3 = 12;
 	} else if (led == 7) {
 	    int fps = (gui_data.fps + 5) / 10;
 	    pos = 2;
-	    on_rgb = 0x000;
-	    off_rgb = 0x000;
+	    on_rgb = 0x000000;
+	    off_rgb = 0x000000;
 	    num1 = fps / 100;
 	    num2 = (fps - num1 * 100) / 10;
 	    num3 = fps % 10;
@@ -2272,8 +2307,8 @@ static void draw_status_line (int line)
 	    int idle = (gui_data.idle + 5) / 10;
 	    pos = 1;
 	    on = framecnt;
-	    on_rgb = 0xc00;
-	    off_rgb = 0x000;
+	    on_rgb = 0xcc0000;
+	    off_rgb = 0x000000;
 	    num1 = idle / 100;
 	    num2 = (idle - num1 * 100) / 10;
 	    num3 = idle % 10;
@@ -2290,42 +2325,58 @@ static void draw_status_line (int line)
 		num2 = snd / 10;
 		num3 = snd % 10;
 	    }
-	    on_rgb = 0x000;
+	    on_rgb = 0x000000;
 	    if (on < 0)
-		on_rgb = 0xcc0; // underflow
+		on_rgb = 0xcccc00; // underflow
 	    else if (on == 2)
-		on_rgb = 0xc00; // really big overflow
+		on_rgb = 0xcc0000; // really big overflow
 	    else if (on == 1)
-		on_rgb = 0x00c; // "normal" overflow
-	    off_rgb = 0x000;
+		on_rgb = 0x0000cc; // "normal" overflow
+	    off_rgb = 0x000000;
 	    am = 3;
 	}
-	c = xcolors[on ? on_rgb : off_rgb];
+	c = ledcolor (on ? on_rgb : off_rgb, rc, gc, bc);
 	if (y == 0 || y == TD_TOTAL_HEIGHT - 1)
-	    c = xcolors[TD_BORDER];
+	    c = ledcolor (TD_BORDER, rc, gc, bc);
 
 	x = x_start + pos * TD_WIDTH;
-	putpixel (x - 1, xcolors[TD_BORDER]);
+	putpixel (buf, bpp, x - 1, cb);
 	for (j = 0; j < TD_LED_WIDTH; j++)
-	    putpixel (x + j, c);
-	putpixel (x + j, xcolors[TD_BORDER]);
+	    putpixel (buf, bpp, x + j, c);
+	putpixel (buf, bpp, x + j, cb);
 
 	if (y >= TD_PADY && y - TD_PADY < TD_NUM_HEIGHT) {
 	    if (num3 >= 0) {
 		x += (TD_LED_WIDTH - am * TD_NUM_WIDTH) / 2;
 		if (num1 > 0) {
-		    write_tdnumber (x, y - TD_PADY, num1);
+		    write_tdnumber (buf, bpp, x, y - TD_PADY, num1, c1, c2);
 		    x += TD_NUM_WIDTH;
 		}
-		write_tdnumber (x, y - TD_PADY, num2);
+		write_tdnumber (buf, bpp, x, y - TD_PADY, num2, c1, c2);
 		x += TD_NUM_WIDTH;
-		write_tdnumber (x, y - TD_PADY, num3);
+		write_tdnumber (buf, bpp, x, y - TD_PADY, num3, c1, c2);
 		x += TD_NUM_WIDTH;
 		if (num4 > 0)
-		    write_tdnumber (x, y - TD_PADY, num4);
+		    write_tdnumber (buf, bpp, x, y - TD_PADY, num4, c1, c2);
 	    }
 	}
     }
+}
+
+static void draw_status_line (int line)
+{
+    int bpp, y;
+    uae_u8 *buf;
+
+    if (currprefs.leds_on_screen != STATUSLINE_BUILTIN)
+	return;
+    bpp = gfxvidinfo.pixbytes;
+    y = line - (gfxvidinfo.height - TD_TOTAL_HEIGHT);
+    xlinebuffer = gfxvidinfo.linemem;
+    if (xlinebuffer == 0)
+	xlinebuffer = row_map[line];
+    buf = xlinebuffer;
+    draw_status_line_single (buf, bpp, y, gfxvidinfo.width, xredcolors, xgreencolors, xbluecolors);
 }
 
 #define LIGHTPEN_HEIGHT 12
@@ -2361,7 +2412,7 @@ static void draw_lightpen_cursor (int x, int y, int line, int onscreen)
     for (i = 0; i < LIGHTPEN_WIDTH; i++) {
 	int xx = x + i - LIGHTPEN_WIDTH / 2;
 	if (*p != '-' && xx >= 0 && xx < gfxvidinfo.width)
-	    putpixel(xx, *p == 'x' ? xcolors[color1] : xcolors[color2]);
+	    putpixel(xlinebuffer, gfxvidinfo.pixbytes, xx, *p == 'x' ? xcolors[color1] : xcolors[color2]);
 	p++;
     }
 }
@@ -2510,7 +2561,7 @@ STATIC_INLINE void check_picasso (void)
 {
 #ifdef PICASSO96
     if (picasso_on && picasso_redraw_necessary)
-	picasso_refresh (1);
+	picasso_refresh ();
     picasso_redraw_necessary = 0;
 
     if (picasso_requested_on == picasso_on)
@@ -2712,6 +2763,12 @@ void reset_drawing (void)
     notice_screen_contents_lost ();
     frame_res_cnt = FRAMES_UNTIL_RES_SWITCH;
     lightpen_y1 = lightpen_y2 = -1;
+
+    sprite_buffer_res = (currprefs.chipset_mask & CSMASK_AGA) ? RES_SUPERHIRES : RES_LORES;
+    if (sprite_buffer_res > currprefs.gfx_resolution + (doublescan ? 1 : 0))
+	sprite_buffer_res = currprefs.gfx_resolution + (doublescan ? 1 : 0);
+    if (sprite_buffer_res > RES_SUPERHIRES)
+	sprite_buffer_res = RES_SUPERHIRES;
 }
 
 void drawing_init (void)
@@ -2732,5 +2789,39 @@ void drawing_init (void)
 
     gfxbuffer_reset ();
     reset_drawing ();
+}
+
+#include "crc32.h"
+void magic_centering (uae_u16 regno, uae_u16 value, int vpos)
+{
+#if 0
+    static uae_u32 crc;
+    static uae_u32 prevcrc;
+    static int count;
+    uae_u16 v;
+
+    if (!regno) {
+	if (count > 0) {
+	    count--;
+	    if (count == 0) {
+		write_log ("**** CHANGED ****\n");
+	    }
+	}
+	if (crc != 0 && crc != prevcrc && count == 0) {
+	    count = 3;
+	    prevcrc = crc;
+	}
+	crc = 0;
+	return;
+    }
+    v = regno;
+    crc = get_crc32_val (v >> 8, crc);
+    crc = get_crc32_val (v, crc);
+    if (regno == 0x92 || regno == 0x94)
+	return;
+    v = value;
+    crc = get_crc32_val (v >> 8, crc);
+    crc = get_crc32_val (v, crc);
+#endif
 }
 

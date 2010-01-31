@@ -217,8 +217,6 @@
 #endif
 
 static char *cart_memnames[] = { NULL, "hrtmon", "arhrtmon", "superiv" };
-static char *cart_memnames2[] = { NULL, NULL, NULL, "superiv_2" };
-static char *cart_memnames3[] = { NULL, NULL, NULL, "superiv_3" };
 
 #define ARMODE_FREEZE 0 /* AR2/3 The action replay 'freeze' button has been pressed.  */
 #define ARMODE_BREAKPOINT_AR2 2 /* AR2: The action replay is activated via a breakpoint. */
@@ -1510,11 +1508,14 @@ int action_replay_unload (int in_memory_reset)
     return 1;
 }
 
-static int superiv_init(struct romdata *rd, struct zfile *f)
+static int superiv_init (struct romdata *rd, struct zfile *f)
 {
     uae_u32 chip = currprefs.chipmem_size - 0x10000;
     int subtype = rd->id;
     int flags = rd->type;
+    char *memname1, *memname2, *memname3;
+
+    memname1 = memname2 = memname3 = NULL;
 
     cart_type = CART_SUPER4;
 
@@ -1528,6 +1529,8 @@ static int superiv_init(struct romdata *rd, struct zfile *f)
 	hrtmem2_start = 0xf20000;
 	hrtmem2_size =  0x10000;
 	hrtmem_rom = 1;
+	memname1 = "xpower_e2";
+	memname2 = "xpower_f2";
     } else if (flags & ROMTYPE_NORDIC) { /* nordic */
 	hrtmem_start = 0xf00000;
 	hrtmem_size = 0x10000;
@@ -1536,9 +1539,12 @@ static int superiv_init(struct romdata *rd, struct zfile *f)
 	hrtmem2_end = 0xf60000;
 	hrtmem2_size =  0x10000;
 	hrtmem_rom = 1;
+	memname1 = "nordic_f0";
+	memname2 = "nordic_f4";
 	if (subtype == 70) {
 	    hrtmem_start += 0x60000;
 	    hrtmem_end += 0x60000;
+	    memname1 = "nordic_f6";
 	}
     } else { /* super4 */
 	hrtmem_start = 0xd00000;
@@ -1548,11 +1554,14 @@ static int superiv_init(struct romdata *rd, struct zfile *f)
 	hrtmem2_size2 = 0x0c0000;
 	hrtmem3_start = 0xe00000;
 	hrtmem3_size = 0x80000;
+	memname1 = "superiv_d0";
+	memname2 = "superiv_b0";
+	memname3 = "superiv_e0";
     }
     if (hrtmem2_size && !hrtmem2_size2)
 	hrtmem2_size2 = hrtmem2_size;
 
-    hrtmemory = mapped_malloc (hrtmem_size, cart_memnames[cart_type]);
+    hrtmemory = mapped_malloc (hrtmem_size, memname1);
     memset (hrtmemory, 0x00, hrtmem_size);
     if (f) {
 	zfile_fseek (f, 0, SEEK_SET);
@@ -1564,11 +1573,11 @@ static int superiv_init(struct romdata *rd, struct zfile *f)
     hrtmem2_mask = hrtmem2_size - 1;
     hrtmem3_mask = hrtmem3_size - 1;
     if (hrtmem2_size) {
-	hrtmemory2 = mapped_malloc (hrtmem2_size, cart_memnames2[cart_type]);
+	hrtmemory2 = mapped_malloc (hrtmem2_size, memname2);
 	memset(hrtmemory2, 0, hrtmem2_size);
     }
     if (hrtmem3_size) {
-	hrtmemory3 = mapped_malloc (hrtmem3_size, cart_memnames3[cart_type]);
+	hrtmemory3 = mapped_malloc (hrtmem3_size, memname3);
 	memset(hrtmemory3, 0, hrtmem3_size);
     }
     hrtmem3_bank.baseaddr = hrtmemory3;
@@ -1624,14 +1633,14 @@ int action_replay_load (void)
 
     if (strlen(currprefs.cartfile) == 0)
 	return 0;
-    rd = getromdatabypath(currprefs.cartfile);
+    rd = getromdatabypath (currprefs.cartfile);
     if (rd) {
 	if (rd->id == 62)
-	    return superiv_init(rd, NULL);
+	    return superiv_init (rd, NULL);
 	if (rd->type & ROMTYPE_CD32CART)
 	    return 0;
     }
-    f = zfile_fopen(currprefs.cartfile, "rb");
+    f = read_rom_name (currprefs.cartfile);
     if (!f) {
 	write_log ("failed to load '%s' cartridge ROM\n", currprefs.cartfile);
 	return 0;
@@ -1641,7 +1650,7 @@ int action_replay_load (void)
 	write_log ("Unknown cartridge ROM\n");
     } else {
 	if (rd->type & (ROMTYPE_SUPERIV | ROMTYPE_NORDIC | ROMTYPE_XPOWER)) {
-	    return superiv_init(rd, f);
+	    return superiv_init (rd, f);
 	}
     }
     zfile_fseek(f, 0, SEEK_END);
@@ -1789,7 +1798,7 @@ int hrtmon_load (void)
     if (!isinternal) {
 	if (strlen(currprefs.cartfile) == 0)
 	    return 0;
-	f = zfile_fopen(currprefs.cartfile,"rb");
+	f = read_rom_name (currprefs.cartfile);
 	if(!f) {
 	    write_log ("failed to load '%s' cartridge ROM\n", currprefs.cartfile);
 	    return 0;
@@ -1817,7 +1826,7 @@ int hrtmon_load (void)
 	#endif
 	cart_type = CART_HRTMON;
     }
-    hrtmemory = mapped_malloc (hrtmem_size, cart_memnames[cart_type]);
+    hrtmemory = mapped_malloc (hrtmem_size, "hrtmem");
     memset (hrtmemory, 0xff, 0x80000);
     zfile_fseek (f, 0, SEEK_SET);
     zfile_fread (hrtmemory, 1, 524288, f);
@@ -1826,12 +1835,14 @@ int hrtmon_load (void)
     hrtmon_custom = hrtmemory + 0x08f000;
     hrtmon_ciaa = hrtmemory + 0x08e000;
     hrtmon_ciab = hrtmemory + 0x08d000;
+#if 0
     if (hrtmem2_size) {
 	hrtmem2_mask = hrtmem2_size - 1;
 	hrtmemory2 = mapped_malloc (hrtmem2_size, cart_memnames2[cart_type]);
 	memset(hrtmemory2, 0, hrtmem2_size);
 	hrtmem2_bank.baseaddr = hrtmemory2;
     }
+#endif
     hrtmem_bank.baseaddr = hrtmemory;
     hrtmon_flag = ACTION_REPLAY_IDLE;
     write_log ("%s installed at %08.8X\n", cart_memnames[cart_type], hrtmem_start);
@@ -2116,3 +2127,94 @@ uae_u8 *restore_action_replay (uae_u8 *src)
     return src;
 }
 
+
+#define NPSIZE 65536
+
+static unsigned char bswap (unsigned char v,int b7,int b6,int b5,int b4,int b3,int b2,int b1,int b0)
+{
+    unsigned char b = 0;
+
+    b |= ((v >> b7) & 1) << 7;
+    b |= ((v >> b6) & 1) << 6;
+    b |= ((v >> b5) & 1) << 5;
+    b |= ((v >> b4) & 1) << 4;
+    b |= ((v >> b3) & 1) << 3;
+    b |= ((v >> b2) & 1) << 2;
+    b |= ((v >> b1) & 1) << 1;
+    b |= ((v >> b0) & 1) << 0;
+    return b;
+}
+
+static unsigned short wswap (unsigned short v,int b15,int b14,int b13,int b12, int b11, int b10, int b9, int b8, int b7,int b6,int b5,int b4,int b3,int b2,int b1,int b0)
+{
+    unsigned short b = 0;
+
+    b |= ((v >> b15) & 1) << 15;
+    b |= ((v >> b14) & 1) << 14;
+    b |= ((v >> b13) & 1) << 13;
+    b |= ((v >> b12) & 1) << 12;
+    b |= ((v >> b11) & 1) << 11;
+    b |= ((v >> b10) & 1) << 10;
+    b |= ((v >> b9) & 1) << 9;
+    b |= ((v >> b8) & 1) << 8;
+    b |= ((v >> b7) & 1) << 7;
+    b |= ((v >> b6) & 1) << 6;
+    b |= ((v >> b5) & 1) << 5;
+    b |= ((v >> b4) & 1) << 4;
+    b |= ((v >> b3) & 1) << 3;
+    b |= ((v >> b2) & 1) << 2;
+    b |= ((v >> b1) & 1) << 1;
+    b |= ((v >> b0) & 1) << 0;
+    return b;
+}
+
+#define AXOR 0x817f
+
+// middle (even)
+static void descramble1(unsigned char *buf, int size)
+{
+    int i;
+
+    for (i = 0; i < size; i++)
+	buf[i] = bswap(buf[i], 4, 1, 5, 3, 0, 7, 6, 2);
+}
+static void descramble1a(unsigned char *buf, int size)
+{
+    int i;
+    unsigned char tbuf[NPSIZE];
+
+    memcpy(tbuf, buf, size);
+    for (i = 0; i < size; i++) {
+	int a = (i ^ AXOR) & (size - 1);
+	buf[i] = tbuf[wswap(a, 15, 9, 10, 4, 6, 5, 3, 8, 14, 13, 0, 12, 11, 2, 1, 7)];
+    }
+}
+// corner (odd)
+static void descramble2(unsigned char *buf, int size)
+{
+    int i;
+
+    for (i = 0; i < size; i++)
+	buf[i] = bswap(buf[i], 5, 4, 3, 2, 1, 0, 7, 6);
+}
+static void descramble2a(unsigned char *buf, int size)
+{
+    int i;
+    unsigned char tbuf[NPSIZE];
+
+    memcpy(tbuf, buf, size);
+    for (i = 0; i < size; i++) {
+	int a = (i ^ AXOR) & (size - 1);
+	buf[i] = tbuf[wswap(a, 15, 2, 4, 0, 1, 10, 11, 8, 13, 14, 12, 9, 7, 5, 6, 3)];
+    }
+}
+void descramble_nordicpro (uae_u8 *buf, int size, int odd)
+{
+    if (odd) {
+	descramble2 (buf, size);
+	descramble2a (buf, size);
+    } else {
+	descramble1 (buf, size);
+	descramble1a (buf, size);
+    }
+}

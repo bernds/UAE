@@ -73,18 +73,17 @@ int get_fs_usage (const char *path, const char *disk, struct fs_usage *fsp)
 	buf2[3] = 0;
     }
 
-    if (!GetDiskFreeSpaceEx (buf2, &FreeBytesAvailable, &TotalNumberOfBytes, &TotalNumberOfFreeBytes))
-    {
+    if (!GetDiskFreeSpaceEx (buf2, &FreeBytesAvailable, &TotalNumberOfBytes, &TotalNumberOfFreeBytes)) {
 	write_log ("GetDiskFreeSpaceEx() failed err=%d\n", GetLastError());
 	return -1;
     }
 
-    fsp->fsu_blocks = (1 << 31) - 1;
-    fsp->fsu_bavail = (1 << 31) - 1;
+    fsp->fsu_blocks = 0x7fffffff;
+    fsp->fsu_bavail = 0x7fffffff;
     if (TotalNumberOfBytes.QuadPart / 1024 < (1 << 31))
-	fsp->fsu_blocks = TotalNumberOfBytes.QuadPart / 1024;
+	fsp->fsu_blocks = (unsigned long)(TotalNumberOfBytes.QuadPart / 1024);
     if (FreeBytesAvailable.QuadPart / 1024 < (1 << 31))
-	fsp->fsu_bavail = FreeBytesAvailable.QuadPart / 1024;
+	fsp->fsu_bavail = (unsigned long)(FreeBytesAvailable.QuadPart / 1024);
     return 0;
 }
 

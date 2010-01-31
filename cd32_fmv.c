@@ -190,8 +190,9 @@ static addrbank fmv_bank = {
 
 void cd32_fmv_init (uaecptr start)
 {
-    int ids[] = { 72, -1 };
+    int ids[] = { 23, -1 };
     struct romlist *rl = getromlistbyids (ids);
+    struct romdata *rd;
     struct zfile *z;
 
     write_log ("CD32 FMV mapped @$%lx\n", start);
@@ -199,14 +200,14 @@ void cd32_fmv_init (uaecptr start)
 	return;
     if (!rl)
 	return;
-    write_log ("CD32 FMV ROM '%s' %d.%d\n", rl->path, rl->rd->ver, rl->rd->rev);
-    z = zfile_fopen(rl->path, "rb");
+    rd = rl->rd;
+    z = read_rom (&rd);
     if (z) {
+	write_log ("CD32 FMV ROM %d.%d\n", rd->ver, rd->rev);
 	rom = mapped_malloc (fmv_size, "fast");
-	if (rom) {
-	    zfile_fread(rom, rom_size, 1, z);
-	    zfile_fclose (z);
-	}
+	if (rom)
+	    zfile_fread (rom, rd->size, 1, z);
+	zfile_fclose (z);
     }
     fmv_mask = fmv_size - 1;
     fmv_bank.baseaddr = rom;

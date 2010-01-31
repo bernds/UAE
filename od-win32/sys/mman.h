@@ -12,7 +12,7 @@
 
 #define MAX_SHMID 256
 
-extern uae_u8 *natmem_offset;
+extern uae_u8 *natmem_offset, *natmem_offset_end;
 
 typedef int key_t;
 typedef USHORT ushort;
@@ -21,15 +21,17 @@ typedef USHORT ushort;
 struct shmid_ds {
     key_t  key;
     size_t size;
-    void  *addr;
+    void   *addr;
     char   name[MAX_PATH];
     void   *attached;
+    int    mode;
+    void   *natmembase;
 };
 
 int mprotect (void *addr, size_t len, int prot);
 void *shmat (int shmid, LPVOID shmaddr, int shmflg);
 int shmdt (const void *shmaddr);
-int shmget (key_t key, size_t size, int shmflg, char*);
+int shmget (key_t key, size_t size, int shmflg, const char*);
 int shmctl (int shmid, int cmd, struct shmid_ds *buf);
 int init_shm (void);
 

@@ -1,4 +1,532 @@
 
+Beta 25: RC1
+
+- "non-standard" Picasso96 resolutions are available again
+- fixed unusable huge crash dumps if logging was enabled
+
+Beta 24:
+
+- real PCMCIA SRAM card removal should really really work now
+- real harddisk (or memory card or usb stick) disk change message
+  could have been sent to wrong device unit if multiple harddisk
+  devices were configured (including hardfiles)
+- direct3d and opengl fullscreen fixed
+- direct3d/ogl<>Picasso96 switching fixed (instant switch not possible)
+- NTSC vblank end vpos fixed (top of display was cut in overscan modes)
+
+Beta 23:
+
+- OGL/D3D fixed but uses old scaling method (update after 1.5)
+- AF2008 ROM scanner detection problems really fixed
+- JIT timing change test (perhaps faster CPU without other
+  side-effects..), added command line parameter -jitevent <val>
+  current default 10000, old was 3000. Experiment if interested..
+- default display buffer setting changed to "DefaultRAM" (which
+  is same as in 1.4.6 and older, can cause too much confusion
+  if new version even in non-Picasso96 mode is much slower than
+  old version due to weird display drivers)
+- disk write does not start if wordsync is enabled
+- improved rare heavy CPU usage situation when sync word=0
+  without disk inserted
+- improved dragndrop file type autodetection
+- ignore duplicate directinput joystick axis indexes
+
+Beta 22: (To do: OGL/D3D scaling options. bleh.)
+
+- AF2008 non-KS/extended ROMs didn't decrypt properly
+- configuration cache checkbox added to paths-panel (default is
+  enabled, saved to registry/ini)
+- added pointless CD32+FMV Quickstart entry
+- CDTV extended ROM 1.0 part numbers added (2.07 PN still missing)
+- Action Replay 3 v3.09 even/odd ROM checksums added (roms dumped,
+  thanks to Jope for adding ROM sockets to my AR3). First four bytes,
+  io-addresses that can't be dumped using software dump method, are
+  0x50 0x00 0x00 0x00. (how boring..)
+- possible fix for sluggish GUI Memory-panel
+
+Beta 21:
+
+- A3000 1.3 SuperKickstart fakeMMU bonus remapping fixed
+- A3000 mode (=A3000 SCSI enabled) forces UAE boot rom to backup
+  location (no more conflicts with 1.3 SuperKickstart bonus area)
+- notification area icon is now created only once at startup
+- added function to uae.resource that can be used to query function
+  pointers using string labels (more portable and safe)
+- 32->16bit Picasso96 color space conversion fixed
+- all missing Picasso96 color space conversion routines added
+- HAM6 with less than 6 planes emulated properly
+- 0.5M chip + 0.5M slow + ECS Agnus chip ram aliasing implemented
+  (DMA addresses 0x80000-0xfffff are aliased to 0xc00000-0xc7ffff)
+  Previous chip mapping fixes were not 100% correct, there is no "bus
+  noise" when slow ram is enabled.
+  Fixes demo "Move Any Mountain" by "Lazy Bones"
+- floppy drive sounds fixed in 4+ sound channel modes
+- fixed rare bug in configuration list, missing directory entries
+  possible if it only contained other directories (no files)
+- implemented configuration cache that caches all data needed to
+  populate Configuration-panel quickly without directory/file scanning.
+  Currently always enabled (this way I surely get enough testing..)
+  Cache is stored in file called "configuration.cache" in configuration
+  root directory. Cache file is only re-created when configuration is
+  saved, deleted or cache file is missing or corrupted.
+  Enable/disable in future, first some testing :)
+
+Beta 20:
+
+- only reset sound when changing configuration if sound mode, sound card,
+  frequency, channels, or buffer size is changed
+- 5.1 sound settings now also send mixed sound to center and LFE channel
+  (mixing volume may need adjusting, please test)
+- superhires sprites in doublescan mode had halved horizontal resolution
+- power led fade support (very crappy)
+- possible fix to random joystick/mouse switch crash
+- programmed resolutions (doublescan) are now horizontally centered
+- right side max sprite clipping position was incorrect
+- D3D/OGL filters do not crash anymore but still do not work as expected..
+- added Amiga-side uae.resource, safe method to find "uae rom" base and
+  other information. Version of resource is UAEVERSION.UAEREVISION
+  NOTE: in compatible modes resource may not be available.
+  Check sources for more information.
+  
+Beta 19:
+
+- lha/lzh archives with directory entries ("-lhd-") crash fix
+- GUI chip ram 8M option was unavailable (b17)
+- joyportx and input panel parameters (except input mappings)
+  supported via uae-configuration
+- less useless logging in fullscreen alt-tab
+- GUI autoscroll fixed when using fullscreen mode smaller than 640x480
+  on non-primary monitor 
+- non-AR cartridge emulation problems fixed
+- dont emulate chip ram mirroring if JIT direct is enabled at startup
+  (OS can detect wrong chip ram size, JIT does not support mirroring)
+- emulate "bus noise" (very far from real thing currently) when ECS
+  Agnus but only 512M RAM configuration (512k chip ram, 512k bus noise,
+  512k chip ram, 512k bus noise) In theory 1M/2M Agnus configuration
+  should be implemented because 1M Agnus + 1M chip = 1M chip ram + 1M
+  chip ram mirror but 2M Agnus + 1M chip = 1M chip ram + 1M of "bus
+  noise" (for example A500Plus) Later..
+- Picasso96 state file support fixed (not compatible with old states)
+- development PC CPU updated to Q9450 quad core CPU, 3.2GHz
+  currently, more/less overclock later :) (old CPU was E6600)
+
+Beta 18:
+
+- sprites were visible when they were outside of DDFSTRT/DDFSTOP range
+  (which really is DDFSTRT - end of line, another undocumented
+  feature) "Fixes" demo Blittersweet (looks more broken now but it does
+  look exact same on real A500) This update may not be 100% correct yet,
+  it can break other programs. Test and complain :)
+- some archives mounted as a harddrive crashed
+
+Beta 17:
+
+- hardware mouse cursor trails fixed when cursor height > width
+- cursor directdraw surface handling changed, perhaps workaround
+  for buggy drivers
+- fullscreen to fullscreen picasso96 mode switching work properly
+  when "Match host and RTG color depth if possible" is off
+  (instant switch without resetting display mode)
+- Picasso96 "fake" (320x200 etc..) display resolutions fixed
+  (resolutions disappeared few betas ago)
+- added 1.5M chip ram option (A500Plus + 0.5M trap door expansion)
+  NOTE: do not use with JIT, JIT does not like non-power-of-2 RAM
+- added 384M/768M/1.5G Z3 RAM options (enables second Z3 RAM board,
+  384M = 256M+128M, 768M = 512M+256M...) Why? Because on most PCs
+  1G is not possible (without having 64-bit OS) but 768M is usually
+  possible and lots of RAM is fun and pointless :)
+- Z3 RAM is now always mapped (more compatible with some reset proof
+  programs)
+
+Beta 16:
+
+- winuaebootlog.txt and winuaelog.txt (if enabled) is written to crash
+  dump file automatically
+- uncapture mouse when paused if in windowed mode
+- release only non-enabled input devices when mouse is uncaptured and
+  release all devices when focus is lost. This makes WinUAE's behaviour
+  more Windows-like (input is read as long as program has focus)
+- "Match host and RTG color depth if possible" set and 24-bit fullscreen
+  Picasso96 mode selected -> use 32-bit native mode
+- fixed corrupted Picasso96 hardware mouse cursor in 8/16-bit modes
+
+Beta 15:
+
+- autoconfig emulation update, fixes AR3 (broken) autoconfig code that
+  detected non-existing ram expansion at 0x00600000-0x009ffff
+- modified directdraw fullscreen mode fallback code
+- Picasso96 hires hardware sprite problem fixed. It was emulation
+  problem after all.. (I really need new brown paper bag soon)
+- Picasso96 hardware sprite resolution switching problem should be
+  really fixed now. (lots of logging can still happen after alt-tab,
+  this will be removed later)
+- disk insert/remove tweak
+
+Beta 14:
+
+- fixed IDE emulation crash
+- uae-configuration problems with some config entries
+- pointless feature: 68881/68882 available in 68000/68010 modes
+  (cycle-exact or more compatible not allowed at the same time)
+- warp-mode didn't work in fullscreen mode if display refresh rate was
+  set to "default"
+- restoring statefile that includes one or more directory harddrives or
+  uaehf.device hardfiles didn't restore uae boot rom properly
+- some vsync tuning
+- pause sound immediately when entering GUI
+- maprom "shadow" ram moved to 0x0f000000 (no more conflicts with
+  extended ROMs or incompatible Cloanto Kickstart ROMs)
+- hardfile state restore freeze fix (Picasso96 statefile support not
+  yet updated)
+- Picasso96 hardware sprite DirectDraw surface is now allocated only
+  once (instead of dynamically re-creating when shape changed)
+- gfx garbage in mixed non-interlaced and interlaced modes should be
+  finally fixed (maybe. for example Pinball Illusions scoreboard in
+  hires-mode)
+- totally broken interlaced doublescan modes fixed
+ - "The Diagnostic 2.0" by Logica (Amiga diagnostic replacement ROM)
+  keyboard detection fixed. Checksums added to ROM scanner.
+- do not send initiate and terminate power-up key codes after
+  restoring statefile
+- floppy sounds also supported in <winuae path>\plugins\floppysounds
+  directory
+- JIT GUI changes, removed useless force checkbox, direct/indirect
+  switching should work as designed again
+
+Beta 13:
+
+- more screen mode switching problems fixed
+- automatically select next bigger resolution if fullscreen mode fails
+  to open (for example 50Hz-only modes without 50Hz compatible display)
+- added "keep aspect ratio" checkbox to filter panel, syncronizes
+  vertical and horizontal zoom sliders (OGL/D3D are still broken!)
+- both vertical and horizontal filter multiplier set to "FS" and aspect
+  ratio checkbox checked -> keep aspect ratio
+- midscreen BPLCON4 modifications fixed (broken since 1200b2, stupid bug,
+  wrong register address..) fixes Gloom (and other programs using same
+  copper C2P method) graphics problems
+- winuaeenforcer stack debug output fix (BR)
+- PCMCIA SRAM emulation eject crash fix
+- fullwindow Picasso96 mode is centered again
+
+Beta 12:
+
+- hardfile creation: sparse file option added (sparse file = non-written
+  parts of file do not take space on HD, NTFSv5+ required)
+- IDE harddrive emulation LBA48 support implemented (>128G hardfiles)
+  NOTE! READ THIS: http://eab.abime.net/showthread.php?t=35801
+- memwatch breakpoints with value detection improved if size is word or
+  byte
+- CD32 CD frame interrupt was not always cleared (Liberation CD32, perhaps
+  others, JIT still needs to be disabled)
+- mousehack (tablet) mode fix, partially broken since 1.4.6 (not tested,
+  I need to borrow my brother's tablet first..)
+- Picasso96 tweaks
+
+Beta 11:
+
+- uaegfx.card is now WinUAE built-in, libs:picasso96/uaegfx.card is not
+  needed anymore (and is ignored if it exists)
+- resolution names in display preferences are now named
+  "UAE:<w>x<h>" instead of "uaegfx:<w>x<h>"
+- added new Picasso96 options to GUI
+- 24-bit display depth Picasso96 blitter routines implemented/updated
+- added all Picasso96 supported color depth modes, defaults are
+  old standard PC modes (palette mode, R5G6B5PC and B8G8R8A8)
+  NOTES:
+  - only one 8-bit,15/16-bit, 24-bit and 32-bit mode supported
+  simultaneously
+  - All "new" modes require color space conversion = slower.
+  - Not all mode color space conversions yet supported (black screen)
+  - Can be useful with old RTG compatible demos or games that require
+    specific "non-pc" display color modes
+- added "Display buffer" option to misc-panel (stored to registry)
+- "FS" scale setting is now the default
+- refresh whole screen using very optimized routine if >80% of
+  Picasso96 screen needs refreshing (faster than partial update)
+- Marvin's Marvellous Adventure clouds/score interference fixed
+  (It was really stupid bug, can only happen with AGA sprites)
+- Skid Marks hires mode car sprite problem fixed (b10)
+
+Beta 10:
+
+- MOVEM is not weird in debugger anymore
+- JIT RAM allocation failure path fixed (if Z3+RTG RAM fails to
+  allocate, lower amount of RAM automatically and try again)
+- limit internal sprite resolution to current display resolution
+  (setting in display panel), should improve performance slightly
+  in AGA modes if lots of sprites are used and display isn't shres
+- harddrive detection crash if returned STORAGE_DEVICE_DESCRIPTOR
+  was shorter than expected
+- disable hardware sprite if uaegfx.card is old version without
+  hardware sprite support and devs:monitors/info has softsprite=no
+- adjusted DirectDraw surface allocation parameters, perhaps helps
+  with P96Speed differences
+- added -ddforcemode <mode> command line parameter, if you have slow
+  P96Speed results compared to 1.4.6, try mode values from 1 to 3 and
+  report results.
+
+Beta 9:
+
+- crash when fullscreen enabled and error dialog was shown before
+  display was changed to fullscreen
+- CD32 state restore compatibility improved
+- SSCAN2 'undocumented' feature emulated. "If SSCAN2 bit in FMODE is
+  set, then disable SH10 horizontal coincidence detect". This really
+  means both one AND zero SH10 match = single sprite can appear twice
+  on screen! (Fantastic Dizzy CD32 background)
+- AGA mode only: last line of sprite may have been redrawn if bitplane
+  width was changed and sprite was reused later (introduced in 1.4.5)
+- debugger sp command improvements
+- AGA sprite outside bitplanes position bug fix (introduced in 1.4.5)
+- Picasso96 8-bit mode wrong palette after mode switch
+- Picasso96 8-bit and 16-bit optimized blitter bug fix, too much data
+  was blitted if width was >32 bytes (not pixels) and it was not
+  divisible by 32. 32-bit mode was working properly.
+- emulated LPSTOP instruction (68060 only)
+- MMU instructions didn't check supervisor mode. Note that there is no
+  MMU emulation, I think I have to repeat this every time I talk about
+  MMU :)
+- added 68040/68060 MMU instructions to table68k (no more generic
+  "MMUOP" in debugger's disassembler) 68030 MMU instructions are still
+  shown as "MMUOP030", they don't really fit to table68k format because
+  first instruction word does not specify the instruction type
+- MOVEC weird disassembly updated (MOVEM is still weird)
+
+Beta 8:
+
+NOTE: OGL/D3D filters still using old scaling
+
+- uaegfx.card fallback graphics routines fixed (rarely used drawing
+  modes that native C-code "blitter" does not support)
+- print uaegfx.card version to log file
+- simple RTG scaling support, do not change resolution but scale to
+  fullscreen if display size configured in display panel is larger than
+  requested Picasso96 resolution. Quality is not good, real filter
+  support later. Perhaps.. Mainly useful with games/demos that use
+  very low resolutions. (configuration enable option not yet added)
+- "super skid marks fix" updated, previous "fix" broke all attached
+  AGA-mode sprites
+- GUI does not get overdrawn in fullscreen when adjusting filters
+- timer calibration removed, uses now performance counters only, also
+  checks periodically if counter frequency changes and adjusts to new
+  rate automatically (possible fix for random power saving slowdown
+  problems)
+- fullscreen non-filter mode graphics problems fixed
+- vsync is working but it isn't 100% smooth yet (at least on my PC)
+- real CD32 rom (391640-03) checksums added to rom scanner
+- fixed left and top border RTG hardware cursor graphics problems
+- added warning if p96_uae_tweak is detected, it is incompatible with
+  new uaegfx.card (update will be released later)
+- filter temporary directdraw surface size restricted to max hardware
+  supported 3D texture size (at least some cards apparently switch
+  to very slow software blitter if size is bigger than max texture
+  size) note that this can restrict scaling range, image simply
+  disappears if scaling multiplier is out of supported range
+- "watch" only visible RTG display RAM, should improve performance if
+  program uses multiple temporary offscreen bitmaps
+- RTG hardware cursor didn't always get erased properly when cursor
+  shape was changed
+- ROM chip part numbers added to rom scanner data, also added to GUI
+  because not all ROMs have confirmed part number yet. "Non-ROMs" not
+  included, like separate CD32 ROMs (real CD32 has single 1M ROM)
+- PCMCIA SRAM on the fly insert/removal fix
+
+
+Beta 7:
+
+NOTE: _DO_ use filters (except OGL/D3D). Vsync still broken.
+
+- Gayle and Gary CIA select lines work slightly differently, Gayle
+  does not select any CIAs if both CIA select bits are zero (address
+  bits 12 and 13). Gary enables both. Gary-style selection was
+  emulated long time ago, Gayle-style emulated now. (I think 'select
+  both CIAs' was only used by some games accidentally and perhaps
+  also used by some copy protections)
+- car color flickering in hires mode super skid marks (ancient bug)
+- real PCMCIA SRAM card detection really works now
+- uaegfx.card updated, now works even if "UAE boot rom" is not in
+  "standard" 0xf00000 location (=CDTV ROM enabled) or disabled.
+  Previos version simply crashed.
+- uae boot rom backup location moved from 0xe70000 to 0xef0000
+  (0xe70000 can conflict with KS mirror)
+- jit memory allocation update, should prevent random RTG memory
+  allocation failures
+- Picasso96 emulation updates and tweaks
+- CPU panel "After RTG" radiobutton removed, not needed anymore
+- big filter rewrite (NOTE: OpenGL/Direct3D not yet updated)
+  Settings needs to be readjusted
+  + works more intuitively now
+  + scaling does not affect centering anymore.
+  + position setting (0,0) = centered.
+  + 1/2x scaling factor added
+  + "FS" scaling factor added = full screen scaling (obsoletes short
+  lived "full screen filter" setting)
+  + user scaling factor (FS,1/2x,1x,2x..) never include filter's
+  possible internal scaling
+  + hq3x and hq4x added
+  + onscreen leds are now rendered after filter calculations
+  + (some kind of "keep aspect ratio" option needed?)
+
+Beta 6:
+
+NOTE: Do not use filters, do not use vsync.
+
+- real 8-bit RTG mode work (fullscreen only)
+- buffer overflow in floppy image favorite shortcut code
+- disappeared Z2 fast ram amount box is back
+- Z3 but no RTG RAM allocation failure fixed
+- Picasso96 BltPattern and BltTemplate COMPLEMENT-mode uses now native
+  code
+- Picasso96 "new" mode is now Windows 2000 compatible. NOTE: this is
+  not 100% correct yet, graphics errors possible. W2K workaround mode
+  is also slower than Windows XP+ mode
+- Picasso96 RectFill() optimization (2x speedup here)
+- some mode switching crashes/graphics errors fixed
+- write warning to log if blitter is forced off in devs:monitors/uaegfx
+- 8-bit modes removed from display-panel GUI. Native (custom chipset)
+  display modes need at least 16-bit color depth now. RTG 8-bit still
+  supported.
+
+Beta 5:
+
+NOTE: filters are currently not supported, they may or may not work
+NOTE: vsync not supported. expect flashing or other issues..
+
+- "favorite path" editing added. Path added is always last opened
+  path from any file select dialog. (later..)
+- "favorite path" right button context menus added to most path
+  selection buttons
+- picasso96.c clean up, removed old p96mode and other unused code
+- new p96mode works without JIT
+- CHK.L is 68020+, not 68000+ (only CHK.W is 68000+)
+- uaescsi.device missing CMD_GETGEOMETRY added (not sure if "geometry"
+  data is correct but at least device type and removable flag is set)
+- RGB overlay option is gone, not very useful anymore and newer
+  display drivers seem to emulate this in software..
+- big directdraw support rewrite
+- fullscreen to different fullscreen mode switching should be quick
+  now (no more switching back to desktop and then back to fullscreen)
+- 16 bit modes should work correctly again
+- Windows-side 8 bit modes (temporarily) disabled. 8-bit RTG modes
+  still work and are automatically converted to 16/32-bit
+- "Match RTG color depth" option added to misc-panel. If checked
+  fullscreen RTG mode uses Amiga-side color depth (as previously)
+  Not checked = always use Display panel depth setting. (if you have
+  programs that switch modes but you don't want Windows-side display
+  mode changes) Windowed mode always uses desktop color depth
+- GUI debugger updates (KB)
+
+Beta 4:
+
+NOTE: Fullscreen RTG modes are not fully working yet. Do not use.
+NOTE: Before benchmarking, make sure Display panel display depth
+matches Picasso96 display depth.
+NOTE: P96 OLD-mode not supported. Only use NEW-mode.
+
+- "Full-window" mode does not reopen window when switching modes
+- 16 and 8-bit RTG mode optimized blitter operations
+- RTG template-blit ("RectFill() Pattern") operations optimized (do
+  pen value endian swap only once per blit, not every pixel..)
+- RTG hardware mouse cursor implemented. Rock-solid, no flickering.
+  Replace libs:picasso96/uaegfx.card with included updated version.
+  NOTE: Make sure devs:monitors/uaegfx.info does not have forced
+  software sprite setting. (SOFTSPRITE=Yes)
+- 16-bit RectFill() graphics corruption fixed (b3)
+- rom scan registry data updated, A590/A2091 ROMs work again, also
+  version number information in the log is correct. Manual ROM rescan
+  required or all roms will fail to load
+- "favorite paths" added. Right click on floppy "Select disk image" or
+  ".." buttons to open favorites menu. Data stored in registry, no
+  GUI support yet. No data in registry: show beta-only example paths.
+  There may be submenus or something similar in future if you are
+  wondering about 'ALL'-part.. Will be added to other path-buttons in
+  future.
+
+Example registry editor export:
+
+Windows Registry Editor Version 5.00
+
+[HKEY_CURRENT_USER\Software\Arabuusimiehet\WinUAE\FavoritePaths]
+"PATH_ALL_01"="d:\\amiga\\stuff\\games"
+"PATH_ALL_02"="d:\\amiga\\stuff\\demos"
+"PATH_ALL_03"="My Favorite Path #1 \"E:\\blah\\blah\\adf\""
+
+
+Beta 3:
+
+- "P96 new"-mode only: RTG display depth is now completely virtual.
+  Emulation converts to real color space (configured in display panel)
+  16->32, 8->32, 32->16 and 8->16 supported. 8-bit and 16-bit (without
+  overlay) now possible in windowed mode. I guess real 8-bit support
+  can be removed because it is not very well supported anymore..
+  24-bit and 16-bit RGB (instead of 16-bit BGR) can be also implemented
+  if some weird program don't support other modes..
+  NOTE: make sure you have 32 bit selected in display panel if you want
+  real 32-bit RTG mode. (instead of 32bit converted to 16bit)
+- "new mode" fixes and optimizations
+- chipset<>RTG switching is now instant (no closing and reopening) if
+  both modes have same dimensions. (to do: different dimensions)
+- "old p96 mode" will be removed soon because it is incompatible with
+  above new features. (perhaps some optimizations to do first)
+  Other new possible features will be RTG filter support (for example
+  2x support for small resolutions like 320x200)
+
+Beta 2:
+
+- experimental Picasso96 speedup code. Default enabled, temporary
+  option added to RAM-panel (stored to registry, not config file)
+  May be slower on older PCs, I get up to 8x speedup in P96Speed
+  benchmark (both desktop and laptop) Post your results here.
+  Including PC specs, "old" and "new" P96Speed or other test results.
+- harddrive detection now also includes more devices, even CDROMs..
+  (perhaps this allows PCMCIA SRAM direct access)
+- Weird Dreams sound problem (hospital scene when game is starting)
+- GUI debugger patch I forgot to merge
+
+
+Beta 1: (possible big changes in future betas)
+
+- MSVC 2008 compiled. Does not run on Windows 98/ME anymore.
+- debugger sprite dump command added (sp <addr> [<addr2>] [<size])
+- A3000 2.04 revision number fixed. It really is 37.175.
+- DOS HD floppy image crash fixed
+- PCMCIA SRAM card emulation. SCRAM "HD controller" in harddrive panel
+  (other HD parameters are ignored) Hot-swapping supported.
+  Note 1: Amiga PCMCIA slot supports max 4M of directly addressable RAM
+  and you can't have more than 4M of (non-32bit) fast RAM at the same
+  time. Note 2: real PCMCIA SRAM card in PCMCIA/CardBus slot is not
+  supported yet. I need SRAM card to implement it (or good
+  documentation)
+- rom scanner odd/even split and byteswapped rom support. Does not
+  include: AR2/3/1200 ROMs (no real rom dumps available), Arcadia ROMs
+  (not worth the trouble) or "non-rom roms" like Cloanto ROMs.
+- rom scanner data in registry changed, added human-readable names
+  NOTE: You need to manually rescan roms if you need to use 1.4.6 or
+  older WinUAE versions
+- EXTB.L was 68000+ when it should have been 68020+ (bug since the
+  beginning and more)
+- Gayle interrupt handling rewritten to match preliminary datasheet.
+  This solved remaining PCMCIA problems. This can also fix possible
+  problems with IDE emulation with specific device driver versions
+- uaenet.device NSCMD_DEVICEQUERY fixed (didn't work and/or corrupted
+  memory) S2_ADDMULTICASTADDRESSES and S2_DELMULTICASTADDRESSES had
+  wrong command number
+- uaenet.device random deadlock fixed
+- really ugly uaenet.device interrupt handler setup replaced with
+  proper exec.library AddIntServer() call
+- added NSCMD_DEVICEQUERY to uaeserial.device
+- added some sanity checks to emulated devices' open function
+- Quickstart boot disk check does not complain anymore if track zero
+  has errors but sectors 0 and 1 are ok
+- multithreaded avioutput (finally). Video/audio encoding now runs
+  in separate thread, MUCH faster encoding on 2+ core CPUs
+  Note: null filter recommended (or any other 2d filter), non-filter
+  mode requires reads from display RAM which is very slow
+- GUI debugger improvements (Karsten Bock)
+
+
+1.4.6
 
 1.4.6 will be the last Windows 98/ME compatible version. 1.5.0
 will require Windows 2000 or newer.

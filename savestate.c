@@ -75,13 +75,13 @@ static int frameextra;
 
 struct zfile *savestate_file;
 static uae_u8 *replaybuffer, *replaybufferend;
-static int savestate_docompress, savestate_specialdump;
+static int savestate_docompress, savestate_specialdump, savestate_nodialogs;
 static int replaybuffersize;
 
 char savestate_fname[MAX_DPATH];
 static struct staterecord staterecords[MAX_STATERECORDS];
 
-static void state_incompatible_warn(void)
+static void state_incompatible_warn (void)
 {
     static int warned;
     int dowarn = 0;
@@ -239,8 +239,10 @@ static void save_chunk (struct zfile *f, uae_u8 *chunk, size_t len, char *name, 
     /* chunk data */
     if (compress) {
 	int tmplen = len;
+	size_t opos;
 	dst = &tmp[0];
 	save_u32 (len);
+	opos = zfile_ftell (f);
 	zfile_fwrite (&tmp[0], 1, 4, f);
 	len = zfile_zcompress (f, chunk, len);
 	if (len > 0) {
@@ -252,7 +254,7 @@ static void save_chunk (struct zfile *f, uae_u8 *chunk, size_t len, char *name, 
 	} else {
 	    len = tmplen;
 	    compress = 0;
-	    zfile_fseek (f, -8, SEEK_CUR);
+	    zfile_fseek (f, opos, SEEK_SET);
 	    dst = &tmp[0];
 	    save_u32 (flags);
 	    zfile_fwrite (&tmp[0], 1, 4, f);
@@ -340,6 +342,8 @@ void restore_ram (size_t filepos, uae_u8 *memory)
     int size, fullsize;
     uae_u32 flags;
 
+    if (filepos == 0 || memory == NULL)
+	return;
     zfile_fseek (savestate_file, filepos, SEEK_SET);
     zfile_fread (tmp, 1, sizeof(tmp), savestate_file);
     size = restore_u32 ();
@@ -380,13 +384,14 @@ static void restore_header (uae_u8 *src)
 
 /* restore all subsystems */
 
-void restore_state (char *filename)
+void restore_state (const char *filename)
 {
     struct zfile *f;
     uae_u8 *chunk,*end;
     char name[5];
     size_t len, totallen;
     size_t filepos, filesize;
+    int z3num;
 
     chunk = 0;
     f = zfile_fopen (filename, "rb");
@@ -409,8 +414,10 @@ void restore_state (char *filename)
     changed_prefs.chipmem_size = 0;
     changed_prefs.fastmem_size = 0;
     changed_prefs.z3fastmem_size = 0;
+    changed_prefs.z3fastmem2_size = 0;
     changed_prefs.mbresmem_low_size = 0;
     changed_prefs.mbresmem_high_size = 0;
+    z3num = 0;
     savestate_state = STATE_RESTORE;
     for (;;) {
 	name[0] = 0;
@@ -440,7 +447,7 @@ void restore_state (char *filename)
 	    restore_fram (totallen, filepos);
 	    continue;
 	} else if (!strcmp (name, "ZRAM")) {
-	    restore_zram (totallen, filepos);
+	    restore_zram (totallen, filepos, z3num++);
 	    continue;
 	} else if (!strcmp (name, "BORO")) {
 	    restore_bootrom (totallen, filepos);
@@ -541,14 +548,18 @@ void restore_state (char *filename)
 	    end = chunk + len;
 	    write_log ("unknown chunk '%s' size %d bytes\n", name, len);
 	}
-	if (len != end - chunk)
+	if (end == NULL)
+	    write_log ("Chunk '%s', size %d bytes was not accepted!\n",
+		name, len);
+	else if (len != end - chunk)
 	    write_log ("Chunk '%s' total size %d bytes but read %d bytes!\n",
 		       name, len, end - chunk);
 	xfree (chunk);
     }
-    restore_disk_finish();
-    restore_blitter_finish();
-    restore_akiko_finish();
+    restore_disk_finish ();
+    restore_blitter_finish ();
+    restore_akiko_finish ();
+    restore_p96_finish ();
     return;
 
     error:
@@ -567,15 +578,23 @@ void savestate_restore_finish (void)
     zfile_fclose (savestate_file);
     savestate_file = 0;
     savestate_state = 0;
-    restore_cpu_finish();
+    restore_cpu_finish ();
 }
 
 /* 1=compressed,2=not compressed,3=ram dump,4=audio dump */
-void savestate_initsave (char *filename, int mode)
+void savestate_initsave (const char *filename, int mode, int nodialogs)
 {
+    if (filename == NULL) {
+	savestate_fname[0] = 0;
+	savestate_docompress = 0;
+	savestate_specialdump = 0;
+	savestate_nodialogs = 0;
+	return;
+    }
     strcpy (savestate_fname, filename);
     savestate_docompress = (mode == 1) ? 1 : 0;
     savestate_specialdump = (mode == 3) ? 1 : (mode == 4) ? 2 : 0;
+    savestate_nodialogs = nodialogs;
 }
 
 static void save_rams (struct zfile *f, int comp)
@@ -594,7 +613,9 @@ static void save_rams (struct zfile *f, int comp)
 #ifdef AUTOCONFIG
     dst = save_fram (&len);
     save_chunk (f, dst, len, "FRAM", comp);
-    dst = save_zram (&len);
+    dst = save_zram (&len, 0);
+    save_chunk (f, dst, len, "ZRAM", comp);
+    dst = save_zram (&len, 1);
     save_chunk (f, dst, len, "ZRAM", comp);
     dst = save_bootrom (&len);
     save_chunk (f, dst, len, "BORO", comp);
@@ -609,7 +630,7 @@ static void save_rams (struct zfile *f, int comp)
 
 /* Save all subsystems */
 
-int save_state (char *filename, char *description)
+int save_state (const char *filename, const char *description)
 {
     uae_u8 endhunk[] = { 'E', 'N', 'D', ' ', 0, 0, 0, 8 };
     uae_u8 header[1000];
@@ -620,13 +641,14 @@ int save_state (char *filename, char *description)
     char name[5];
     int comp = savestate_docompress;
 
-    if (!savestate_specialdump) {
-	state_incompatible_warn();
-	if (!save_filesys_cando()) {
+    if (!savestate_specialdump && !savestate_nodialogs) {
+	state_incompatible_warn ();
+	if (!save_filesys_cando ()) {
 	    gui_message("Filesystem active. Try again later");
 	    return -1;
 	}
     }
+    savestate_nodialogs = 0;
     custom_prepare_savestate ();
     f = zfile_fopen (filename, "w+b");
     if (!f)
@@ -785,7 +807,7 @@ int save_state (char *filename, char *description)
 	save_chunk (f, dst, len, "CONF", 1);
 	xfree(dst);
     }
-    dst = save_log (&len);
+    dst = save_log (TRUE, &len);
     if (dst) {
 	save_chunk (f, dst, len, "LOG ", 1);
 	xfree(dst);
@@ -869,7 +891,7 @@ void savestate_listrewind (void)
 	    break;
 	p = st->cpu + 17 * 4;
 	pc = restore_u32_func (&p);
-	console_out ("%d: PC=%08X %c\n", cnt, pc, regs.pc == pc ? '*' : ' ');
+	console_out_f ("%d: PC=%08X %c\n", cnt, pc, regs.pc == pc ? '*' : ' ');
 	cnt++;
 	i--;
 	if (i < 0)
@@ -924,7 +946,7 @@ void savestate_rewind (void)
     memcpy (save_fram (&dummy), p, currprefs.fastmem_size > len ? len : currprefs.fastmem_size);
     p += len;
     len = restore_u32_func (&p);
-    memcpy (save_zram (&dummy), p, currprefs.z3fastmem_size > len ? len : currprefs.z3fastmem_size);
+    memcpy (save_zram (&dummy, 0), p, currprefs.z3fastmem_size > len ? len : currprefs.z3fastmem_size);
     p += len;
 #endif
 #ifdef ACTION_REPLAY
@@ -1079,7 +1101,7 @@ retry2:
     memcpy (p, dst, len);
     tlen += len + 4;
     p += len;
-    dst = save_zram (&len);
+    dst = save_zram (&len, 0);
     if (bufcheck (&p, len))
 	goto retry;
     save_u32_func (&p, len);
@@ -1146,7 +1168,7 @@ void savestate_init (void)
     frameextra = 0;
     if (currprefs.statecapture && currprefs.statecapturebuffersize && currprefs.statecapturerate) {
 	replaybuffersize = currprefs.statecapturebuffersize;
-	replaybuffer = (uae_u8*)malloc (replaybuffersize);
+	replaybuffer = xmalloc (replaybuffersize);
     }
 }
 

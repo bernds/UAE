@@ -17,7 +17,7 @@
 
 #define WINUAEBETA 0
 #define WINUAEPUBLICBETA 0
-#define WINUAEDATE MAKEBD(2008, 2, 2)
+#define WINUAEDATE MAKEBD(2008, 6, 19)
 #define WINUAEEXTRA ""
 #define WINUAEREV ""
 
@@ -25,7 +25,7 @@
 #define NORMAL_WINDOW_STYLE (WS_VISIBLE | WS_BORDER | WS_CAPTION | WS_MINIMIZEBOX | WS_SYSMENU)
 
 extern HMODULE hUIDLL;
-extern HWND hAmigaWnd, hMainWnd, hHiddenWnd;
+extern HWND hAmigaWnd, hMainWnd, hHiddenWnd, hGUIWnd;
 extern RECT amigawin_rect;
 extern int in_sizemove;
 extern int manual_painting_needed;
@@ -37,16 +37,16 @@ extern char start_path_exe[MAX_DPATH];
 extern char start_path_data[MAX_DPATH];
 
 extern void my_kbd_handler (int, int, int);
-extern void clearallkeys(void);
+extern void clearallkeys (void);
 extern int getcapslock (void);
 
 void releasecapture (void);
-int WIN32_RegisterClasses(void);
-int WIN32_InitHtmlHelp(void);
-int WIN32_InitLibraries(void);
-int WIN32_CleanupLibraries(void);
-void WIN32_MouseDefaults(int, int);
-void WIN32_HandleRegistryStuff(void);
+int WIN32_RegisterClasses (void);
+int WIN32_InitHtmlHelp (void);
+int WIN32_InitLibraries (void);
+int WIN32_CleanupLibraries (void);
+void WIN32_MouseDefaults (int, int);
+void WIN32_HandleRegistryStuff (void);
 extern void setup_brkhandler (void);
 extern void remove_brkhandler (void);
 extern void disablecapture (void);
@@ -54,10 +54,10 @@ extern void fullscreentoggle (void);
 
 extern void setmouseactive (int active);
 extern void minimizewindow (void);
-extern uae_u32 OSDEP_minimize_uae(void);
+extern uae_u32 OSDEP_minimize_uae (void);
 
-extern void resumepaused(void);
-extern void setpaused(void);
+extern void resumepaused (void);
+extern void setpaused (void);
 
 void finishjob (void);
 void updatedisplayarea (void);
@@ -69,10 +69,10 @@ extern int framecnt;
 extern char prtname[];
 extern char VersionStr[256];
 extern char BetaStr[64];
-extern int os_winnt, os_winnt_admin, os_64bit, os_vista, os_winxp;
+extern int os_winnt_admin, os_64bit, os_vista, os_winxp;
 extern int paraport_mask;
 extern int gui_active;
-extern DWORD quickstart;
+extern DWORD quickstart, configurationcache;
 
 extern HKEY hWinUAEKey;
 extern int screen_is_picasso;
@@ -107,10 +107,11 @@ extern int dinput_wmkey (uae_u32 key);
 extern int dinput_winmouse (void);
 extern int dinput_wheelbuttonstart (void);
 extern int dinput_winmousemode (void);
+extern void dinput_window (void);
 
 void addnotifications (HWND hwnd, int remove);
-int win32_hardfile_media_change (void);
-extern int CheckRM(char *DriveName);
+int win32_hardfile_media_change (const char *drvname, int inserted);
+extern int CheckRM (char *DriveName);
 void systray (HWND hwnd, int remove);
 void systraymenu (HWND hwnd);
 void exit_gui (int);
@@ -121,8 +122,8 @@ void read_rom_list (void);
 #define WIN32_PLUGINDIR "plugins\\"
 HMODULE WIN32_LoadLibrary (const char *);
 
-extern int screenshot_prepare(void);
-extern void screenshot_free(void);
+extern int screenshot_prepare (void);
+extern void screenshot_free (void);
 
 struct winuae_lang
 {
@@ -130,10 +131,11 @@ struct winuae_lang
     char *name;
 };
 extern struct winuae_lang langs[];
-extern HMODULE language_load(WORD language);
+extern HMODULE language_load (WORD language);
 
-extern void logging_open(int,int);
-extern void logging_cleanup(void);
+extern void logging_open (int,int);
+extern void logging_cleanup (void);
 
-extern LONG WINAPI WIN32_ExceptionFilter(struct _EXCEPTION_POINTERS *pExceptionPointers, DWORD ec);
+extern LONG WINAPI WIN32_ExceptionFilter (struct _EXCEPTION_POINTERS *pExceptionPointers, DWORD ec);
+
 #endif
