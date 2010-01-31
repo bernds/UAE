@@ -28,6 +28,7 @@
 #include <shlwapi.h>
 #include <ddraw.h>
 #include <shobjidl.h>
+#include <dbt.h>
 
 #include "resource.h"
 #include "sysconfig.h"
@@ -379,7 +380,7 @@ static HWND cachedlist = NULL;
 #define MIN_Z3_MEM 0
 #define MAX_Z3_MEM ((max_z3fastmem >> 20) < 512 ? 9 : ((max_z3fastmem >> 20) < 1024 ? 10 : ((max_z3fastmem >> 20) < 2048) ? 11 : 12))
 #define MIN_P96_MEM 0
-#define MAX_P96_MEM 8
+#define MAX_P96_MEM ((max_z3fastmem >> 20) < 512 ? 8 : ((max_z3fastmem >> 20) < 1024 ? 9 : ((max_z3fastmem >> 20) < 2048) ? 10 : 11))
 #define MIN_MB_MEM 0
 #define MAX_MB_MEM 7
 
@@ -573,7 +574,7 @@ static void show_rom_list (void)
 	8, 9, 10, -1, -1, // A600
 	23, 24, -1, -1, // A1000
 	11, 31, 15, -1, -1, // A1200
-	61, 59, -1, -1, // A3000
+	59, 71, 61, -1, -1, // A3000
 	16, 46, 31, 13, 12, -1, -1, // A4000
 	18, -1, 19, -1, -1, // CD32
 	20, 21, 22, -1, 6, 32, -1, -1, // CDTV
@@ -623,16 +624,15 @@ static void show_rom_list (void)
     free (p);
 }
 
-static int scan_roms_2 (UAEREG *fkey, char *pathp)
+static int scan_roms_2 (UAEREG *fkey, char *path)
 {
-    char buf[MAX_DPATH], path[MAX_DPATH];
+    char buf[MAX_DPATH];
     WIN32_FIND_DATA find_data;
     HANDLE handle;
     int ret;
 
-    if (!pathp)
+    if (!path)
 	return 0;
-    GetFullPathName(pathp, MAX_DPATH, path, NULL);
     write_log("ROM scan directory '%s'\n", path);
     strcpy (buf, path);
     strcat (buf, "*.*");
@@ -656,17 +656,26 @@ static int scan_roms_2 (UAEREG *fkey, char *pathp)
     return ret;
 }
 
-static int scan_roms_3(void *fkey, char **paths, int offset, char *path)
+#define MAX_ROM_PATHS 10
+
+static int scan_roms_3(void *fkey, char **paths, char *path)
 {
     int i, ret;
+    char pathp[MAX_DPATH];
 
     ret = 0;
-    for (i = 0; i < offset; i++) {
-	if (paths[i] && !strcmpi(paths[i], path))
+    GetFullPathName(path, MAX_DPATH, pathp, NULL);
+    for (i = 0; i < MAX_ROM_PATHS; i++) {
+	if (paths[i] && !strcmpi(paths[i], pathp))
 	    return ret;
     }
-    ret = scan_roms_2 (fkey, path);
-    paths[offset] = my_strdup(path);
+    ret = scan_roms_2 (fkey, pathp);
+    for (i = 0; i < MAX_ROM_PATHS; i++) {
+	if (!paths[i]) {
+	    paths[i] = my_strdup(pathp);
+	    break;
+	}
+    }
     return ret;
 }
 
@@ -678,7 +687,7 @@ int scan_roms (int show)
     static int recursive;
     int id, i, ret, keys, cnt;
     UAEREG *fkey, *fkey2;
-    char *paths[10];
+    char *paths[MAX_ROM_PATHS];
 
     if (recursive)
 	return 0;
@@ -691,30 +700,34 @@ int scan_roms (int show)
 
     cnt = 0;
     ret = 0;
-    for (i = 0; i < 10; i++)
+    for (i = 0; i < MAX_ROM_PATHS; i++)
 	paths[i] = NULL;
     for (;;) {
 	keys = get_keyring();
 	fetch_path ("KickstartPath", path, sizeof path);
-	scan_roms_3 (fkey, paths, 0, path);
+	cnt += scan_roms_3 (fkey, paths, path);
 	if (1) {
-	    for(i = 0; ;i++) {
+	    for(i = 0; i < MAX_ROM_PATHS; i++) {
 		ret = get_rom_path (path, i);
 		if (ret < 0)
 		    break;
-		cnt += scan_roms_3 (fkey, paths, 2 + i, path);
+		cnt += scan_roms_3 (fkey, paths, path);
 	    }
 	    if (get_keyring() > keys) { /* more keys detected in previous scan? */
-		keys = get_keyring();
+		write_log ("ROM scan: more keys found, restarting..\n");
+		for (i = 0; i < MAX_ROM_PATHS; i++) {
+		    xfree (paths[i]);
+		    paths[i] = NULL;
+		}
 		continue;
 	    }
 	}
 	break;
     }
     if (cnt == 0)
-	scan_roms_3 (fkey, paths, 1, workprefs.path_rom);
+	scan_roms_3 (fkey, paths, workprefs.path_rom);
 
-    for (i = 0; i < 10; i++)
+    for (i = 0; i < MAX_ROM_PATHS; i++)
 	xfree(paths[i]);
 
     fkey2 = regcreatetree (NULL, "DetectedROMS");
@@ -1488,7 +1501,7 @@ static int msi_chip[] = { 1, 2, 3, 4, 5, 6 };
 static int msi_bogo[] = { 0, 2, 3, 14, 15 };
 static int msi_fast[] = { 0, 3, 4, 5, 6 };
 static int msi_z3fast[] = { 0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16 };
-static int msi_gfx[] = { 0, 3, 4, 5, 6, 7, 8, 9, 10 };
+static int msi_gfx[] = { 0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13 };
 
 static int CalculateHardfileSize (HWND hDlg)
 {
@@ -1516,7 +1529,7 @@ static void setguititle (HWND phwnd)
 
     if (phwnd)
 	hwnd = phwnd;
-    if (!title[0]) {
+    if (hwnd && !title[0]) {
         GetWindowText (hwnd, title, sizeof (title));
 	if (WINUAEBETA > 0) {
 	    strcat (title, BetaStr);
@@ -2045,6 +2058,11 @@ void InitializeListView (HWND hDlg)
 	    } else if (uci->controller >= HD_CONTROLLER_SCSI0 && uci->controller <= HD_CONTROLLER_SCSI6) {
 		sprintf (blocksize_str, "%d", uci->blocksize);
 		sprintf (devname_str, "*SCSI%d*", uci->controller - HD_CONTROLLER_SCSI0);
+		strcpy (volname_str, "n/a");
+		strcpy (bootpri_str, "n/a");
+	    } else if (uci->controller == HD_CONTROLLER_PCMCIA_SRAM) {
+		strcpy (blocksize_str, "n/a");
+		strcpy(devname_str, "*SCSRAM*");
 		strcpy (volname_str, "n/a");
 		strcpy (bootpri_str, "n/a");
 	    } else if (type == FILESYS_HARDFILE) {
@@ -4115,11 +4133,9 @@ static void values_to_chipsetdlg (HWND hDlg)
     case CSMASK_ECS_AGNUS:
 	CheckRadioButton(hDlg, IDC_OCS, IDC_AGA, IDC_OCS + 1);
 	break;
-#if 0
     case CSMASK_ECS_DENISE:
 	CheckRadioButton(hDlg, IDC_OCS, IDC_AGA, IDC_OCS + 2);
 	break;
-#endif
     case CSMASK_ECS_AGNUS | CSMASK_ECS_DENISE:
 	CheckRadioButton(hDlg, IDC_OCS, IDC_AGA, IDC_OCS + 3);
 	break;
@@ -4181,12 +4197,10 @@ static void values_from_chipsetdlg (HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
     workprefs.collision_level = IsDlgButtonChecked (hDlg, IDC_COLLISION0) ? 0
 				 : IsDlgButtonChecked (hDlg, IDC_COLLISION1) ? 1
 				 : IsDlgButtonChecked (hDlg, IDC_COLLISION2) ? 2 : 3;
-    workprefs.chipset_mask = IsDlgButtonChecked( hDlg, IDC_OCS ) ? 0
-			      : IsDlgButtonChecked( hDlg, IDC_ECS_AGNUS ) ? CSMASK_ECS_AGNUS
-#if 0
-			      : IsDlgButtonChecked( hDlg, IDC_ECS_DENISE ) ? CSMASK_ECS_DENISE
-#endif
-			      : IsDlgButtonChecked( hDlg, IDC_ECS ) ? CSMASK_ECS_AGNUS | CSMASK_ECS_DENISE
+    workprefs.chipset_mask = IsDlgButtonChecked (hDlg, IDC_OCS) ? 0
+			      : IsDlgButtonChecked (hDlg, IDC_ECS_AGNUS) ? CSMASK_ECS_AGNUS
+			      : IsDlgButtonChecked (hDlg, IDC_ECS_DENISE) ? CSMASK_ECS_DENISE
+			      : IsDlgButtonChecked (hDlg, IDC_ECS) ? CSMASK_ECS_AGNUS | CSMASK_ECS_DENISE
 			      : CSMASK_AGA | CSMASK_ECS_AGNUS | CSMASK_ECS_DENISE;
     n = IsDlgButtonChecked (hDlg, IDC_NTSC) ? 1 : 0;
     if (workprefs.ntscmode != n) {
@@ -4274,7 +4288,12 @@ static void values_to_chipsetdlg2 (HWND hDlg)
 	break;
     }
     CheckDlgButton (hDlg, IDC_CS_COMPATIBLE, workprefs.cs_compatible);
-    CheckDlgButton (hDlg, IDC_CS_KSMIRROR, workprefs.cs_ksmirror);
+    CheckDlgButton (hDlg, IDC_CS_RESETWARNING, workprefs.cs_resetwarning);
+    CheckDlgButton (hDlg, IDC_CS_NOEHB, workprefs.cs_denisenoehb);
+    CheckDlgButton (hDlg, IDC_CS_BLITTERBUG, workprefs.cs_agnusbltbusybug);
+    CheckDlgButton (hDlg, IDC_CS_KSMIRROR_E0, workprefs.cs_ksmirror_e0);
+    CheckDlgButton (hDlg, IDC_CS_KSMIRROR_A8, workprefs.cs_ksmirror_a8);
+    CheckDlgButton (hDlg, IDC_CS_CIAOVERLAY, workprefs.cs_ciaoverlay);
     CheckDlgButton (hDlg, IDC_CS_DF0IDHW, workprefs.cs_df0idhw);
     CheckDlgButton (hDlg, IDC_CS_CD32CD, workprefs.cs_cd32cd);
     CheckDlgButton (hDlg, IDC_CS_CD32C2P, workprefs.cs_cd32c2p);
@@ -4344,7 +4363,12 @@ static void values_from_chipsetdlg2 (HWND hDlg, UINT msg, WPARAM wParam, LPARAM 
     int v;
 
     workprefs.cs_compatible = IsDlgButtonChecked (hDlg, IDC_CS_COMPATIBLE);
-    workprefs.cs_ksmirror = IsDlgButtonChecked (hDlg, IDC_CS_KSMIRROR);
+    workprefs.cs_resetwarning = IsDlgButtonChecked (hDlg, IDC_CS_RESETWARNING);
+    workprefs.cs_denisenoehb = IsDlgButtonChecked (hDlg, IDC_CS_NOEHB);
+    workprefs.cs_agnusbltbusybug = IsDlgButtonChecked (hDlg, IDC_CS_BLITTERBUG);
+    workprefs.cs_ksmirror_e0 = IsDlgButtonChecked (hDlg, IDC_CS_KSMIRROR_E0);
+    workprefs.cs_ksmirror_a8 = IsDlgButtonChecked (hDlg, IDC_CS_KSMIRROR_A8);
+    workprefs.cs_ciaoverlay = IsDlgButtonChecked (hDlg, IDC_CS_CIAOVERLAY);
     workprefs.cs_df0idhw = IsDlgButtonChecked (hDlg, IDC_CS_DF0IDHW);
     workprefs.cs_cd32cd = IsDlgButtonChecked (hDlg, IDC_CS_CD32CD);
     workprefs.cs_cd32c2p = IsDlgButtonChecked (hDlg, IDC_CS_CD32C2P);
@@ -4438,7 +4462,12 @@ static void enable_for_chipsetdlg2 (HWND hDlg)
     ew (hDlg, IDC_CS_CDTVCD, e);
     ew (hDlg, IDC_CS_CDTVRAM, e);
     ew (hDlg, IDC_CS_CDTVRAMEXP, e);
-    ew (hDlg, IDC_CS_KSMIRROR, e);
+    ew (hDlg, IDC_CS_RESETWARNING, e);
+    ew (hDlg, IDC_CS_NOEHB, e);
+    ew (hDlg, IDC_CS_BLITTERBUG, e);
+    ew (hDlg, IDC_CS_KSMIRROR_E0, e);
+    ew (hDlg, IDC_CS_KSMIRROR_A8, e);
+    ew (hDlg, IDC_CS_CIAOVERLAY, e);
     ew (hDlg, IDC_CS_A1000RAM, e);
     ew (hDlg, IDC_CS_DF0IDHW, e);
     ew (hDlg, IDC_CS_CIAA_TOD1, e);
@@ -4570,6 +4599,9 @@ static void values_to_memorydlg (HWND hDlg)
      case 0x02000000: mem_size = 6; break;
      case 0x04000000: mem_size = 7; break;
      case 0x08000000: mem_size = 8; break;
+     case 0x10000000: mem_size = 9; break;
+     case 0x20000000: mem_size = 10; break;
+     case 0x40000000: mem_size = 11; break;
     }
     SendDlgItemMessage (hDlg, IDC_P96MEM, TBM_SETPOS, TRUE, mem_size);
     SetDlgItemText (hDlg, IDC_P96RAM, memsize_names[msi_gfx[mem_size]]);
@@ -4737,7 +4769,7 @@ static void values_to_kickstartdlg (HWND hDlg)
     addromfiles (fkey, hDlg, IDC_ROMFILE2, workprefs.romextfile,
         ROMTYPE_EXTCD32 | ROMTYPE_EXTCDTV | ROMTYPE_ARCADIABIOS);
     addromfiles (fkey, hDlg, IDC_CARTFILE, workprefs.cartfile,
-        ROMTYPE_AR | ROMTYPE_SUPERIV | ROMTYPE_NORDIC | ROMTYPE_XPOWER | ROMTYPE_ARCADIAGAME | ROMTYPE_HRTMON);
+        ROMTYPE_AR | ROMTYPE_SUPERIV | ROMTYPE_NORDIC | ROMTYPE_XPOWER | ROMTYPE_ARCADIAGAME | ROMTYPE_HRTMON | ROMTYPE_CD32CART);
     regclosetree (fkey);
 
     SetDlgItemText(hDlg, IDC_FLASHFILE, workprefs.flashfile);
@@ -6129,6 +6161,7 @@ static void inithdcontroller (HWND hDlg)
     SendDlgItemMessage (hDlg, IDC_HDF_CONTROLLER, CB_ADDSTRING, 0, (LPARAM)"SCSI4");
     SendDlgItemMessage (hDlg, IDC_HDF_CONTROLLER, CB_ADDSTRING, 0, (LPARAM)"SCSI5");
     SendDlgItemMessage (hDlg, IDC_HDF_CONTROLLER, CB_ADDSTRING, 0, (LPARAM)"SCSI6");
+    //SendDlgItemMessage (hDlg, IDC_HDF_CONTROLLER, CB_ADDSTRING, 0, (LPARAM)"SCSRAM");
     SendDlgItemMessage (hDlg, IDC_HDF_CONTROLLER, CB_SETCURSEL, 0, 0);
 }
 
@@ -6191,6 +6224,14 @@ static void updatehdfinfo (HWND hDlg, int force)
 	    zfile_fseek (zf, 0, SEEK_END);
 	    bsize = zfile_ftell (zf);
 	    zfile_fclose (zf);
+	    if (bsize == -1) { /* perhaps file is >=2G? */
+		FILE *fp = fopen (current_hfdlg.filename, "rb");
+		if (fp) {
+		    _fseeki64 (fp, 0, SEEK_END);
+		    bsize = _ftelli64 (fp);
+		    fclose (fp);
+		}
+	    }
 	}
     }
     cyls = 0;
@@ -6348,19 +6389,20 @@ extern int harddrive_to_hdf(HWND, struct uae_prefs*, int);
 static INT_PTR CALLBACK HarddriveSettingsProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     static int recursive = 0;
-    int i, index;
+    int i;
     LRESULT posn;
     static int oposn;
 
     switch (msg) {
     case WM_INITDIALOG:
+    {
+	int index;
 	oposn = -1;
 	hdf_init ();
 	recursive++;
 	inithdcontroller (hDlg);
 	CheckDlgButton (hDlg, IDC_HDF_RW, current_hfdlg.rw);
 	SendDlgItemMessage(hDlg, IDC_HARDDRIVE, CB_RESETCONTENT, 0, 0);
-	SendDlgItemMessage (hDlg, IDC_HDF_CONTROLLER, CB_SETCURSEL, current_hfdlg.controller, 0);
 	ew (hDlg, IDC_HARDDRIVE_IMAGE, FALSE);
 	ew (hDlg, IDOK, FALSE);
 	ew (hDlg, IDC_HDF_RW, FALSE);
@@ -6377,7 +6419,7 @@ static INT_PTR CALLBACK HarddriveSettingsProc (HWND hDlg, UINT msg, WPARAM wPara
 	}
 	recursive--;
 	return TRUE;
-
+    }
     case WM_COMMAND:
 	if (recursive)
 	    break;
@@ -6402,7 +6444,7 @@ static INT_PTR CALLBACK HarddriveSettingsProc (HWND hDlg, UINT msg, WPARAM wPara
 		break;
 	    case IDC_HARDDRIVE_IMAGE:
 		if (posn != CB_ERR)
-		    harddrive_to_hdf(hDlg, &workprefs, posn);
+		    harddrive_to_hdf (hDlg, &workprefs, posn);
 		break;
 	    }
 	}
@@ -6533,6 +6575,7 @@ static void harddisk_edit (HWND hDlg)
     }
     else if (type == FILESYS_HARDDRIVE) /* harddisk */
     {
+	current_hfdlg.controller = uci->controller;
 	current_hfdlg.rw = !uci->readonly;
 	strncpy (current_hfdlg.filename, uci->rootdir, (sizeof current_hfdlg.filename) - 1);
 	current_hfdlg.filename[(sizeof current_hfdlg.filename) - 1] = '\0';
@@ -7573,7 +7616,7 @@ static void updatejoyport (HWND hDlg)
 	int total = 2;
 	int idx = i == 0 ? joy0previous : joy1previous;
 	int id = i == 0 ? IDC_PORT0_JOYS : IDC_PORT1_JOYS;
-	int v = i == 0 ? workprefs.jport0 : workprefs.jport1;
+	int v = workprefs.jports[i].id;
 	char *p1, *p2;
 
 	SendDlgItemMessage (hDlg, id, CB_RESETCONTENT, 0, 0L);
@@ -7591,7 +7634,8 @@ static void updatejoyport (HWND hDlg)
 		SendDlgItemMessage (hDlg, id, CB_ADDSTRING, 0, (LPARAM)p1);
 		total++;
 		p1 = p2;
-	    } else break;
+	    } else
+		break;
 	}
 	for (j = 0; j < inputdevice_get_device_total (IDTYPE_JOYSTICK); j++, total++)
 	    SendDlgItemMessage (hDlg, id, CB_ADDSTRING, 0, (LPARAM)inputdevice_get_device_name(IDTYPE_JOYSTICK, j));
@@ -7621,9 +7665,9 @@ static void updatejoyport (HWND hDlg)
     }
 }
 
-static void fixjport (int *port, int v)
+static void fixjport (struct jport *port, int v)
 {
-    int vv = *port;
+    int vv = port->id;
     if (vv != v)
 	return;
     if (vv >= JSEM_JOYS && vv < JSEM_MICE) {
@@ -7647,7 +7691,7 @@ static void fixjport (int *port, int v)
 	    vv = 0;
 	vv += JSEM_KBDLAYOUT;
     }
-    *port = vv;
+    port->id = vv;
 }
 
 static void values_from_portsdlg (HWND hDlg)
@@ -7659,7 +7703,7 @@ static void values_from_portsdlg (HWND hDlg)
 
     for (i = 0; i < 2; i++) {
 	int idx = 0;
-	int *port = i == 0 ? &workprefs.jport0 : &workprefs.jport1;
+	int *port = &workprefs.jports[i].id;
 	int prevport = *port;
 	int id = i == 0 ? IDC_PORT0_JOYS : IDC_PORT1_JOYS;
 	LRESULT v = SendDlgItemMessage (hDlg, id, CB_GETCURSEL, 0, 0L);
@@ -7681,9 +7725,9 @@ static void values_from_portsdlg (HWND hDlg)
     }
     if (changed) {
 	if (lastside)
-	    fixjport (&workprefs.jport0, workprefs.jport1);
+	    fixjport (&workprefs.jports[0], workprefs.jports[1].id);
 	else
-	    fixjport (&workprefs.jport1, workprefs.jport0);
+	    fixjport (&workprefs.jports[1], workprefs.jports[0].id);
     }
 
     item = SendDlgItemMessage (hDlg, IDC_PRINTERLIST, CB_GETCURSEL, 0, 0L);
@@ -7949,9 +7993,10 @@ static INT_PTR CALLBACK PortsDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 	    break;
 	recursive++;
 	if (wParam == IDC_SWAP) {
-	    temp = workprefs.jport0;
-	    workprefs.jport0 = workprefs.jport1;
-	    workprefs.jport1 = temp;
+	    struct jport tmp;
+	    memcpy (&tmp, &workprefs.jports[0], sizeof (struct jport));
+	    memcpy (&workprefs.jports[0], &workprefs.jports[1], sizeof (struct jport));
+	    memcpy (&workprefs.jports[1], &tmp, sizeof (struct jport));
 	    temp = joy0previous;
 	    joy0previous = joy1previous;
 	    joy1previous = temp;
@@ -8139,6 +8184,8 @@ static void init_inputdlg( HWND hDlg )
     input_total_devices = inputdevice_get_device_total (IDTYPE_JOYSTICK) +
 	inputdevice_get_device_total (IDTYPE_MOUSE) +
 	inputdevice_get_device_total (IDTYPE_KEYBOARD);
+    if (input_selected_device >= input_total_devices)
+	input_selected_device = 0;
     InitializeListView(hDlg);
     init_inputdlg_2 (hDlg);
     values_to_inputdlg (hDlg);
@@ -8426,11 +8473,13 @@ static void enable_for_hw3ddlg (HWND hDlg)
     ew (hDlg, IDC_FILTERXTRA, vv2);
     ew (hDlg, IDC_FILTERDEFAULT, v);
     ew (hDlg, IDC_FILTERFILTER, vv);
+    ew (hDlg, IDC_FILTERUPSCALE, vv && !vv2);
     ew (hDlg, IDC_FILTERAUTORES, vv && !vv2);
 
     ew (hDlg, IDC_FILTERPRESETSAVE, filterpreset_builtin < 0);
     ew (hDlg, IDC_FILTERPRESETLOAD, filterpreset_selected > 0);
     ew (hDlg, IDC_FILTERPRESETDELETE, filterpreset_selected > 0 && filterpreset_builtin < 0);
+    CheckDlgButton(hDlg, IDC_FILTERUPSCALE, workprefs.gfx_filter_upscale);
 }
 
 static void makefilter(char *s, int x, int flags)
@@ -8482,16 +8531,17 @@ static int *filtervars[] = {
 	&workprefs.gfx_xcenter, &workprefs.gfx_ycenter,
 	&workprefs.gfx_filter_luminance, &workprefs.gfx_filter_contrast, &workprefs.gfx_filter_saturation,
 	&workprefs.gfx_filter_gamma, &workprefs.gfx_filter_blur, &workprefs.gfx_filter_noise,
+	&workprefs.gfx_filter_upscale,
 	NULL
     };
 
 struct filterpreset {
     char *name;
-    int conf[22];
+    int conf[23];
 };
 static struct filterpreset filterpresets[] =
 {
-    { "PAL example", 8, 0, 0, 0, 1000, 1000, 0, 0, 50, 0, 0, 0, 1, 0, 0, 0, 10, 0, 0, 0, 300, 30 },
+    { "PAL example", 8, 0, 0, 0, 1000, 1000, 0, 0, 50, 0, 0, 0, 1, 0, 0, 0, 10, 0, 0, 0, 300, 30, 0 },
     { NULL }
 };
 
@@ -8837,6 +8887,8 @@ static INT_PTR CALLBACK hw3dDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 	    currprefs.gfx_filter_horiz_offset = workprefs.gfx_filter_horiz_offset = 0;
 	    currprefs.gfx_filter_vert_offset = workprefs.gfx_filter_vert_offset = 0;
 	    values_to_hw3ddlg (hDlg);
+	    updatedisplayarea ();
+	    WIN32GFX_WindowMove ();
 	    break;
 	    case IDC_FILTERPRESETLOAD:
 	    case IDC_FILTERPRESETSAVE:
@@ -8848,6 +8900,11 @@ static INT_PTR CALLBACK hw3dDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 	    break;
 	    case IDC_FILTERAUTORES:
 	    workprefs.gfx_autoresolution = IsDlgButtonChecked (hDlg, IDC_FILTERAUTORES);
+	    break;
+	    case IDC_FILTERUPSCALE:
+	    currprefs.gfx_filter_upscale = workprefs.gfx_filter_upscale = IsDlgButtonChecked (hDlg, IDC_FILTERUPSCALE);
+	    updatedisplayarea ();
+	    WIN32GFX_WindowMove ();
 	    break;
 	    default:
 	    if (HIWORD (wParam) == CBN_SELCHANGE || HIWORD (wParam) == CBN_KILLFOCUS)  {
@@ -9841,13 +9898,38 @@ static int dialogreturn;
 static INT_PTR CALLBACK DialogProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     static int recursive = 0;
+    static int waitfornext;
 
     switch(msg)
     {
+	case WM_DEVICECHANGE:
+	{
+	    DEV_BROADCAST_HDR *pBHdr = (DEV_BROADCAST_HDR *)lParam;
+	    int doit = 0;
+	    if (wParam == DBT_DEVNODES_CHANGED && lParam == 0) {
+		if (waitfornext)
+		    doit = 1;
+	    } else if (pBHdr && pBHdr->dbch_devicetype == DBT_DEVTYP_DEVICEINTERFACE) {
+		DEV_BROADCAST_DEVICEINTERFACE *dbd = (DEV_BROADCAST_DEVICEINTERFACE*)lParam;
+		write_log ("%s: %s\n", wParam == DBT_DEVICEREMOVECOMPLETE ? "Removed" : "Inserted",
+		    dbd->dbcc_name);
+		if (wParam == DBT_DEVICEREMOVECOMPLETE)
+		    doit = 1;
+		else if (wParam == DBT_DEVICEARRIVAL)
+		    waitfornext = 1; /* DirectInput enumeration does not yet show the new device.. */
+	    }
+	    if (doit) {
+	        inputdevice_devicechange (&workprefs);
+		updatePanel (hDlg, currentpage);
+		waitfornext = 0;
+	    }
+	}
+	return TRUE;
 	case WM_DESTROY:
 	PostQuitMessage (0);
 	return TRUE;
 	case WM_CLOSE:
+        addnotifications (hDlg, 1);
 	DestroyWindow(hDlg);
 	if (dialogreturn < 0) {
 	    dialogreturn = 0;
@@ -9858,6 +9940,7 @@ static INT_PTR CALLBACK DialogProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lP
 	}
 	return TRUE;
 	case WM_INITDIALOG:
+	    waitfornext = 0;
 	    guiDlg = hDlg;
 	    SendMessage(hDlg, WM_SETICON, ICON_SMALL, (LPARAM)LoadIcon (GetModuleHandle (NULL), MAKEINTRESOURCE(IDI_APPICON)));
 	    if (full_property_sheet) {
@@ -9869,6 +9952,7 @@ static INT_PTR CALLBACK DialogProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lP
 	    centerWindow (hDlg);
 	    createTreeView (hDlg, currentpage);
 	    updatePanel (hDlg, currentpage);
+	    addnotifications (hDlg, 0);
 	return TRUE;
 	case WM_DROPFILES:
 	    if (dragdrop (hDlg, (HDROP)wParam, (gui_active || full_property_sheet) ? &workprefs : &changed_prefs, currentpage))
@@ -10265,7 +10349,7 @@ void check_prefs_changed_gui( void )
 {
 }
 
-void gui_hd_led (int led)
+void gui_hd_led (int unitnum, int led)
 {
     static int resetcounter;
 
@@ -10275,13 +10359,16 @@ void gui_hd_led (int led)
 	if (resetcounter > 0)
 	    return;
     }
+#ifdef RETROPLATFORM
+    rp_hd_activity (unitnum, led);
+#endif
     gui_data.hd = led;
     resetcounter = 6;
     if (old != gui_data.hd)
 	gui_led (5, gui_data.hd);
 }
 
-void gui_cd_led (int led)
+void gui_cd_led (int unitnum, int led)
 {
     static int resetcounter;
 
@@ -10291,6 +10378,9 @@ void gui_cd_led (int led)
 	if (resetcounter > 0)
 	    return;
     }
+#ifdef RETROPLATFORM
+    rp_cd_activity (unitnum, led);
+#endif
     gui_data.cd = led;
     resetcounter = 6;
     if (old != gui_data.cd)

@@ -18,7 +18,8 @@ extern void *cache_alloc (int);
 extern void cache_free (void*);
 
 extern int canbang, candirect;
-void init_shm (void);
+int init_shm (void);
+void preinit_shm (void);
 #endif
 
 #ifdef ADDRESS_SPACE_24BIT
@@ -164,6 +165,7 @@ extern void memory_cleanup (void);
 extern void map_banks (addrbank *bank, int first, int count, int realsize);
 extern void map_overlay (int chip);
 extern void memory_hardreset (void);
+extern void free_fastmemory (void);
 
 #define longget(addr) (call_mem_get_func(get_mem_bank(addr).lget, addr))
 #define wordget(addr) (call_mem_get_func(get_mem_bank(addr).wget, addr))
@@ -326,7 +328,6 @@ extern void mapped_free (uae_u8 *);
 extern void clearexec (void);
 extern void mapkick (void);
 extern int decode_cloanto_rom_do (uae_u8 *mem, int size, int real_size);
-extern void init_shm(void);
 extern void a3000_fakekick(int);
 
 #define ROMTYPE_KICK 1
@@ -343,10 +344,11 @@ extern void a3000_fakekick(int);
 #define ROMTYPE_HRTMON 2048
 #define ROMTYPE_NORDIC 4096
 #define ROMTYPE_XPOWER 8192
-#define ROMTYPE_EVEN 16384
-#define ROMTYPE_ODD 32768
-#define ROMTYPE_BYTESWAP 65536
-#define ROMTYPE_SCRAMBLED 131072
+#define ROMTYPE_CD32CART 16384
+#define ROMTYPE_EVEN 131072
+#define ROMTYPE_ODD 262144
+#define ROMTYPE_BYTESWAP 524288
+#define ROMTYPE_SCRAMBLED 1048576
 
 struct romheader {
     char *name;

@@ -7,7 +7,7 @@
   *
   * Copyright 1995-2000 Bernd Schmidt
   * Copyright 1995 Alessandro Bissacco
-  * Copyright 2000,2001 Toni Wilen
+  * Copyright 2000-2008 Toni Wilen
   */
 
 /* There are a couple of concepts of "coordinates" in this file.
@@ -373,15 +373,25 @@ static void pfield_init_linetoscr (void)
 #ifdef AGA
     if (brdsprt && dip_for_drawing->nr_sprites) {
 	int min = visible_right_border, max = visible_left_border, i;
+	int posdiff = sprite_buffer_res - bplres;
 	for (i = 0; i < dip_for_drawing->nr_sprites; i++) {
 	    int x;
 	    x = curr_sprite_entries[dip_for_drawing->first_sprite_entry + i].pos;
-	    if (x < min) min = x;
+	    if (x < min)
+		min = x;
 	    x = curr_sprite_entries[dip_for_drawing->first_sprite_entry + i].max;
-	    if (x > max) max = x;
+	    if (x > max)
+		max = x;
 	}
-	min += (DIW_DDF_OFFSET - DISPLAY_LEFT_SHIFT) << (2 - lores_shift);
-	max += (DIW_DDF_OFFSET - DISPLAY_LEFT_SHIFT) << (2 - lores_shift);
+	min += (DIW_DDF_OFFSET - DISPLAY_LEFT_SHIFT) << sprite_buffer_res;
+	max += (DIW_DDF_OFFSET - DISPLAY_LEFT_SHIFT) << sprite_buffer_res;
+	if (posdiff < 0) {
+	    min <<= -posdiff;
+	    max <<= -posdiff;
+	} else {
+	    min >>= posdiff;
+	    max >>= posdiff;
+	}
 	if (min < playfield_start)
 	    playfield_start = min;
 	if (playfield_start < visible_left_border)
@@ -1082,7 +1092,7 @@ STATIC_INLINE void draw_sprites_2 (struct sprite_entry *e, int ham, int dualpf,
 		} else {
 		    col += 16;
 		}
-		col += (offs * 2);
+		col += offs * 2;
 	    }
 
 	    if (dualpf) {
@@ -1255,7 +1265,7 @@ STATIC_INLINE void draw_sprites_ecs (struct sprite_entry *e)
 		    draw_sprites_normal_dp_hi_nat (e);
 		else
 		    draw_sprites_normal_sp_hi_nat (e);
-	else if (bplres == 0)
+	else if (res == 0)
 	    if (dp_for_drawing->ham_seen)
 		draw_sprites_ham_sp_lo_nat (e);
 	    else
@@ -1274,8 +1284,9 @@ STATIC_INLINE void draw_sprites_ecs (struct sprite_entry *e)
 /* clear possible bitplane data outside DIW area */
 static void clear_bitplane_border_aga (void)
 {
-    int len, shift = lores_shift - bplres;
+    int len, shift = res_shift;
     uae_u8 v = 0;
+
     if (shift < 0) {
 	shift = -shift;
 	len = (real_playfield_start - playfield_start) << shift;
@@ -1294,19 +1305,13 @@ static void clear_bitplane_border_aga (void)
 /* emulate OCS/ECS only undocumented "SWIV" hardware feature */
 static void weird_bitplane_fix (void)
 {
-    int i, shift = lores_shift - bplres;
+    int i;
+    int sh = lores_shift;
+    uae_u8 *p = pixdata.apixels + pixels_offset;
 
-    if (shift < 0) {
-	shift = -shift;
-	for (i = xshift (playfield_start, lores_shift); i < xshift (playfield_end, lores_shift); i++) {
-	    if (pixdata.apixels[pixels_offset + i] > 16)
-		pixdata.apixels[pixels_offset + i] = 16;
-	}
-    } else {
-	for (i = xshift (playfield_start, lores_shift); i < xshift (playfield_end, lores_shift); i++) {
-	    if (pixdata.apixels[pixels_offset + i] > 16)
-		pixdata.apixels[pixels_offset + i] = 16;
-	}
+    for (i = playfield_start >> sh; i < playfield_end >> sh; i++) {
+        if (p[i] > 16)
+    	    p[i] = 16;
     }
 }
 
@@ -1395,7 +1400,7 @@ static void pfield_doline (int lineno)
     uae_u32 *data = pixdata.apixels_l + MAX_PIXELS_PER_LINE / 4;
 
 #ifdef SMART_UPDATE
-#define DATA_POINTER(n) (line_data[lineno] + (n)*MAX_WORDS_PER_LINE*2)
+#define DATA_POINTER(n) (line_data[lineno] + (n) * MAX_WORDS_PER_LINE * 2)
     real_bplpt[0] = DATA_POINTER (0);
     real_bplpt[1] = DATA_POINTER (1);
     real_bplpt[2] = DATA_POINTER (2);
@@ -1599,7 +1604,7 @@ static void pfield_expand_dp_bplcon (void)
     else if (currprefs.chipset_mask & CSMASK_ECS_DENISE)
 	bplehb = (dp_for_drawing->bplcon0 & 0xFC00) == 0x6000 && !(dp_for_drawing->bplcon2 & 0x200);
     else
-	bplehb = (dp_for_drawing->bplcon0 & 0xFC00) == 0x6000 && !(currprefs.chipset_mask & CSMASK_NO_EHB);
+	bplehb = (dp_for_drawing->bplcon0 & 0xFC00) == 0x6000 && !currprefs.cs_denisenoehb;
 
     plf1pri = dp_for_drawing->bplcon2 & 7;
     plf2pri = (dp_for_drawing->bplcon2 >> 3) & 7;
@@ -1883,7 +1888,7 @@ static void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 	adjust_drawing_colors (dp_for_drawing->ctable, 0);
 
 #ifdef AGA /* this makes things complex.. */
-	if (brdsprt && (currprefs.chipset_mask & CSMASK_AGA) && dip_for_drawing->nr_sprites > 0) {
+	if (brdsprt && dip_for_drawing->nr_sprites > 0) {
 	    dosprites = 1;
 	    pfield_expand_dp_bplcon ();
 	    pfield_init_linetoscr ();
@@ -1974,13 +1979,14 @@ static void center_image (void)
 	if (doublescan)
 	    visible_left_border = (max_diwlastword - 48) / 2 - gfxvidinfo.width;
     }
-    visible_left_border += currprefs.gfx_xcenter_adjust;
-    visible_left_border &= ~((xshift (1, lores_shift)) - 1);
+    if (currprefs.gfx_xcenter_pos >= 0)
+	visible_left_border = currprefs.gfx_xcenter_pos + (DIW_DDF_OFFSET << currprefs.gfx_resolution) - (DISPLAY_LEFT_SHIFT * 2 - (DISPLAY_LEFT_SHIFT << currprefs.gfx_resolution));
 
     if (visible_left_border > max_diwlastword - 32)
 	visible_left_border = max_diwlastword - 32;
     if (visible_left_border < 0)
 	visible_left_border = 0;
+    visible_left_border &= ~((xshift (1, lores_shift)) - 1);
 
     linetoscr_x_adjust_bytes = visible_left_border * gfxvidinfo.pixbytes;
 
@@ -2005,13 +2011,19 @@ static void center_image (void)
 		thisframe_y_adjust = prev_y_adjust;
 	}
     }
-    thisframe_y_adjust += currprefs.gfx_ycenter_adjust;
-    /* Make sure the value makes sense */
-    if (thisframe_y_adjust + max_drawn_amiga_line > maxvpos_max)
-        thisframe_y_adjust = maxvpos_max - max_drawn_amiga_line;
-    if (thisframe_y_adjust < minfirstline)
-        thisframe_y_adjust = minfirstline;
-
+    if (currprefs.gfx_ycenter_pos >= 0) {
+	thisframe_y_adjust = currprefs.gfx_ycenter_pos;
+	if (thisframe_y_adjust + max_drawn_amiga_line > 2 * maxvpos_max)
+	    thisframe_y_adjust = 2 * maxvpos_max - max_drawn_amiga_line;
+	if (thisframe_y_adjust < 0)
+	    thisframe_y_adjust = 0;
+    } else {
+	/* Make sure the value makes sense */
+	if (thisframe_y_adjust + max_drawn_amiga_line > maxvpos_max)
+	    thisframe_y_adjust = maxvpos_max - max_drawn_amiga_line;
+	if (thisframe_y_adjust < minfirstline)
+	    thisframe_y_adjust = minfirstline;
+    }
     thisframe_y_adjust_real = thisframe_y_adjust << (linedbl ? 1 : 0);
     tmp = (maxvpos_max - thisframe_y_adjust) << (linedbl ? 1 : 0);
     if (tmp != max_ypos_thisframe) {
@@ -2588,8 +2600,8 @@ void vsync_handle_redraw (int long_frame, int lof_changed)
 	if (currprefs.gfx_afullscreen && currprefs.gfx_avsync)
 	    flush_screen (0, 0); /* vsync mode */
     }
-    gui_hd_led (0);
-    gui_cd_led (0);
+    gui_hd_led (-1, 0);
+    gui_cd_led (-1, 0);
 #ifdef AVIOUTPUT
     frame_drawn ();
 #endif

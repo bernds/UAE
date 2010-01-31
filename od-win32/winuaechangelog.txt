@@ -1,4 +1,224 @@
 
+
+1.4.6 will be the last Windows 98/ME compatible version. 1.5.0
+will require Windows 2000 or newer.
+
+Beta 9:
+
+- CD32 FMV cartridge "supported" (Actually it is a Z2 board). CD32 FMV
+  ROM checksums added to scanner. Completely unusable currently.
+  CD32 Cannon Fodder will try to play video, of course nothing can be
+  seen or heard :)
+- ECS Denise (without ECS Agnus) option re-added. Confirmed working
+  configuration (except superhires, OCS Agnus does not know shres
+  bitplane DMA sequence, result is vertical stripes. This "feature"
+  is not emulated)
+- full screen filter GUI checkbox was not initialized correctly
+- small fullscreen filter tweak
+- set foreground Logitech LCD priority when WinUAE has focus
+
+Beta 8:
+
+- input-panel NMI and END+SHIFT+Break NMI was unstable in
+  cycle-exact/more compatible modes
+- Denise without EHB added to advanced chipset (was already in
+  A1000 "ICS" Quickstart)
+- original Agnus BLTBUSY bug added to advanced chipset (also was
+  already in A1000 Quickstart)
+- accept same windowed mode resolution as windows desktop
+- added "full screen" option to filter panel. Amiga display area
+  fills whole screen when this option is enabled. Maybe useful when
+  using "full-window" mode. Note: "whole screen" = resolution selected
+  in full screen display select box, even in "full-window" mode.
+  "Internal" filter window size can't be adjusted yet.
+
+Beta 7:
+
+- debugger activating when address error happened (debug code..)
+- 1M CDTV ROM (0xf00000-0xffffff) confused CPU emulator if m68k
+  instruction crossed extended and ks rom memory banks, 1M CDTV ROM is
+  now single 1M extended rom bank (I am still doing 1M real CDTV EPROM
+  tests..)
+- audio emulation update, copy AUDLEN and AUDLC to backup registers
+  when AUDxDAT starts interrupt-driven audio mode (Dungeon Master II)
+
+Beta 6:
+
+- binary support added to debugger, '%10101'
+- hex/dec/bin converter added to debugger, '?<value>'
+  result is 0x<hex>, %<bin>, <unsigned dec> and <signed dec>
+- all debugger commands which take numeric parameters also accept
+  register names: A0-A7 = RA0-RA7, D0-D7 = RD0-RD7, PC, USP, VBR,..
+- debugger number prefixes: hex = 0x or $, bin = %, dec = !. Most
+  command parameters default to hex (addresses) or decimal.
+- do not reserve lots of jit direct ram if non-jit compatible cpu
+- logitech lcd dfx/cpu/fps counter leading zeros removed
+  (I have G15 again, updated revision this time)
+- some incorrect Quickstart RTC configurations fixed
+- keyboard reset warning feature emulated and added to advanced
+  chipset panel. Reset warning information:
+  http://cataclysm.cx/random/amiga/reference/Hardware_Manual_guide/node0178.html
+  Reset warning sequence is only triggered if Amiga-Amiga-CTRL key
+  sequence pressed and reset warning setting enabled. Or Input panel
+  event "Keycode 0x78 (Reset Warning)" is received.
+  Amiga-Amiga-CTRL-ALT still does instant hardreset. Second
+  Amiga-Amiga-CTRL during reset warning sequence will also cause
+  instant reset.
+  Pre-emptive "bug report": if Amiga-Amiga-CTRL now causes gurus,
+  reset delays or something weird (and does not if reset warning is
+  disabled or GUI Reset-button clicked) you have buggy/badly configured
+  reset handler utility installed. This is Somebody Else's Problem.
+- joystick autoswitch update: firebutton press on non-connected
+  (to emulated Amiga port) joystick AND another joystick already in
+  joystick port (port 1) WITH firebutton pressed = insert new joystick
+  to mouse port
+
+  Following can be ignored if you aren't testing custom ROM images
+  before burning EPROM(s)
+
+- kickstart chipram overlay maps 0xe00000 rom instead of 0xf80000,
+  same with 0xf00000 rom if it begins with 0x1114 (emulates my 1M CDTV
+  EPROM hack..)
+- 2M ROM image support. Gayle ROM mapping:
+  * first 512K bank: E00000-E7FFFF (overlay bank)
+  * second 512K bank: A80000-AFFFFF
+  * third 512K bank: B00000-B7FFFF
+  * fourth 512K bank: F80000-FFFFFF
+  At least A600 and A1200 have 2MB ROM support but note that A1200
+  Blizzard accel's MAPROM feature must be disabled
+- cia overlay advanced chipset setting added (Pre-Gayle models use
+  CIA overlay io pin, newer models have overlay logic inside Gayle)
+- ROM Mirror advanced chipset setting separated to E0 and A8 ROM
+  banks. (A8-B8 = Gayle feature)
+
+Beta 5:
+
+- fixed wrong input device GUID format in config files
+- 'friendlyname' mapping didn't work if device name had trailing
+  whitespace (like USB ProComp 'USB 2A4K  GamePad          ')
+- C00000 and F00000 relocated beta/special KS roms supported
+  (200000 already supported long time ago)
+- A3000 official confirmed 2.04 ROM added (37.132 internal rom version,
+  37.175 shown in "insert disk" screen..)
+- possible crash when switching >2M chip setting from/to <=2M Chip
+  and >0M Fast RAM configuration
+- removed bogus "P96: display resolution list corruption" log message
+  if biggest available resolution required more RTG RAM than available
+- directory filesystem ACTION_EXAMINE_ALL is now "compatible" with
+  FFS implementation. (workaround for older Scalos ExAll bugs that
+  caused missing icons. Probably fixes other bad programs too..)
+  - eac_Entries is now always at least 1 if continuation flag is set
+  - keep returning ERROR_NO_MORE_ENTRIES even if previous call already
+  returned ERROR_NO_MORE_ENTRIES
+
+Beta 4:
+
+- A600/A1200/A4000 IDE emulation 4G wrap around bug fixed
+- "Add PC drives at startup" drive device name creation tries to detect
+  already mounted device names, prevents ugly looking 'DHx_0'-style
+  names. (note that this only affects name generation of "Add PC drives
+  at startup"-drives)
+- renamed GUI "autoboot" -> "bootable"
+- rom scan duplicate path detection improved
+
+Beta 3:
+
+- input compatibility mouse switching restrictions added due to
+  stupid Windows "supermouse" features. (Problem happens when you get
+  two or more mouse button clicks from two or more virtual mice when
+  in reality there is only one physical mouse..) Also you can't just
+  select "raw mouse" because it can have different speed/acceleration
+  than Windows "supermouse" mouse cursor..
+- unusable pcmcia sram card emulation. No on the fly card insert/eject
+  support yet. (insert empty sram card before starting emulation =
+  card becomes system ram expansion automatically)
+  This will be fully implemented after 1.4.6
+- new default mapping end+shift+pause/break = IRQ7/NMI
+- hardfile info panel didn't use 2G+ compatible size check
+- IDE emulation end of drive check fixed (most block addresses after
+  2G were detected as past end of disk)
+- JIT-mode memory allocation was not disabled in non-JIT modes
+  (68000/68010 and 68020 without 32-bit address space)
+  Caused problems with cartridge emulation and more. (b2)
+- GUI aligment/spacing errors fixed (David Walker)
+- "Add Harddrive" HD controller select box updates correctly
+- "SWIV" undocumented bitplane feature broke in 145b4 (not related to
+  shres changes, just standard code cleanup copy/paste error..)
+
+
+Beta 2:
+
+- sprites outside bitplane area (AGA feature) was not working in all
+  bitplane/sprite resolution combinations (broke when shres was added)
+- relaxed Z3/RTG max RAM limits slightly (NOTE: it is 100% your
+  problem if you select too much RAM resulting in massive paging and
+  hd trashing)
+- systray icon was not always removed
+- fullscreen mode fallback fixes (145b18)
+- do not flush directory filesystem cache if ACTION_MORE_CACHE is
+  called with dp_Arg == 0, return current number of buffers only
+- ports-panel joystick/mouse friendly/guid name saved to config file,
+  no more changed selected devices if you save config, exit WinUAE,
+  insert or remove some input device(s) and then reload the config
+
+- joystick/mouse autoselection, input compatibility mode:
+  Press any unselected joystick's button 0 to "insert" it in
+  Amiga port 1 (joystick port) and button 1 to "insert" it in port 0
+  (mouse port). Same with any unselected mouse except left mouse
+  button = port 0 (mouse port) and right mouse button = port 1
+  (joystick port).
+
+- joystick/mouse autoselection, input configuration mode:
+  Differences compared to compatibility mode:
+  - because you can have mappings to multiple ports, device's first
+  port related mapping in input-panel is decided as the only port
+  number when doing remappings. When switching, only mappings that have
+  same port number are remapped to new port. Old mappings that already
+  have new port number will be remapped to old port number. Other
+  mappings are not changed.
+  - all other devices that are mapped to same port as new device will
+  be disabled
+  - only devices that are disabled (checkbox on right side of device
+  name is not ticked) are available for autoselection
+  - mouse switching is disabled if there are any "supermouse" mice
+  enabled (Windows mouse etc..) because it would cause total confusion.
+  Rawmouse or catweasel mouse are "safe".  
+  
+  Note: joystick button 0 has to select port 1 because for example
+  Amiga joysticks in PC adapter may only have one button and generally
+  you want joysticks in port 1.
+  
+  Just insert any plug&play compatible joystick on the fly and press
+  first button. Can't get any easier!
+
+Beta 1:
+
+- ESS Mega (CDTV) "hidden" data track now reads properly on W2K/XP
+  (uses SPTI READ_CD SCSI command if ReadFile() returns zero bytes.
+  This is getting quite messy, mixing IOCTL, MCI and SPTI, Windows
+  version specific read modes etc..) NOTE: SPTI requires exclusive
+  access (IOCTL does not) so make sure no other program (including
+  Windows explorer) do not have any open handles.
+- crash when program executes any 68k command that causes a-line
+  exception and pc was in first 64K of chip ram (145b1x)
+- added inverted mouse/analog joystick input events
+- 'none' input event was incorrectly parsed causing all following
+  'sub configuration' entries to be ignored
+- added friendly name and not so friendly (GUID) device names to input
+  configuration file (so that we can match devices if they change or
+  configuration gets moved between PCs, see below)
+- input device insertion/removal on the fly supported (Windows 2K+)
+  Lots of bugs expected.. (ports-panel settings are not updated yet)
+- fixed mouse not capturing (Windows 98/ME mainly)
+- dynamic JIT direct memory allocation, can now have max 1G of Z3 fast
+  or 512M RTG RAM (both not possible at the same time, automatically
+  lowers memory settings until allocation succeeds) Max 2G Z3 possible
+  when 98/ME support is gone (need also 64-bit OS)
+  Extremely pointless feature.
+
+
+1.4.5
+
 Beta 19:
 
 - ESS Mega (CDTV) now works, added workaround for another Windows

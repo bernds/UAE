@@ -9,7 +9,7 @@
 
 #define UAEMAJOR 1
 #define UAEMINOR 4
-#define UAESUBREV 5
+#define UAESUBREV 6
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -32,11 +32,18 @@ struct strlist {
 
 struct uae_input_device {
     char *name;
+    char *configname;
     uae_s16 eventid[MAX_INPUT_DEVICE_EVENTS][MAX_INPUT_SUB_EVENT];
     char *custom[MAX_INPUT_DEVICE_EVENTS][MAX_INPUT_SUB_EVENT];
     uae_u16 flags[MAX_INPUT_DEVICE_EVENTS][MAX_INPUT_SUB_EVENT];
     uae_s16 extra[MAX_INPUT_DEVICE_EVENTS][MAX_INPUT_SIMULTANEOUS_KEYS];
     uae_u8 enabled;
+};
+
+struct jport {
+    int id;
+    char *name;
+    char *configname;
 };
 
 #define MAX_SPARE_DRIVES 20
@@ -157,8 +164,9 @@ struct uae_prefs {
     int gfx_linedbl;
     int gfx_correct_aspect;
     int gfx_afullscreen, gfx_pfullscreen;
-    int gfx_xcenter, gfx_xcenter_adjust;
-    int gfx_ycenter, gfx_ycenter_adjust;
+    int gfx_xcenter, gfx_ycenter;
+    int gfx_xcenter_pos, gfx_ycenter_pos;
+    int gfx_xcenter_size, gfx_ycenter_size;
     int gfx_saturation, gfx_luminance, gfx_contrast, gfx_gamma;
     int color_mode;
 
@@ -172,6 +180,7 @@ struct uae_prefs {
     int gfx_filter_filtermode;
     int gfx_filter_noise, gfx_filter_blur;
     int gfx_filter_saturation, gfx_filter_luminance, gfx_filter_contrast, gfx_filter_gamma;
+    int gfx_filter_upscale;
 
     int immediate_blits;
     unsigned int chipset_mask;
@@ -198,7 +207,9 @@ struct uae_prefs {
     int cs_rtc;
     int cs_rtc_adjust;
     int cs_rtc_adjust_mode;
-    int cs_ksmirror;
+    int cs_ksmirror_e0;
+    int cs_ksmirror_a8;
+    int cs_ciaoverlay;
     int cs_cd32cd;
     int cs_cd32c2p;
     int cs_cd32nvram;
@@ -217,6 +228,9 @@ struct uae_prefs {
     int cs_a2091, cs_a4091;
     int cs_df0idhw;
     int cs_slowmemisfast;
+    int cs_resetwarning;
+    int cs_denisenoehb;
+    int cs_agnusbltbusybug;
 
     char df[4][MAX_DPATH];
     char dfxlist[MAX_SPARE_DRIVES][MAX_DPATH];
@@ -315,8 +329,7 @@ struct uae_prefs {
 
     /* input */
 
-    int jport0;
-    int jport1;
+    struct jport jports[2];
     int input_selected_setting;
     int input_joymouse_multiplier;
     int input_joymouse_deadzone;

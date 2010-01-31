@@ -107,12 +107,12 @@ void discard_prefs (struct uae_prefs *p, int type)
 
 static void fixup_prefs_dim2 (struct wh *wh)
 {
-    if (wh->width < 320)
-	wh->width = 320;
-    if (wh->height < 200)
-	wh->height = 200;
-    if (wh->width > 2048)
-	wh->width = 2048;
+    if (wh->width < 160)
+	wh->width = 160;
+    if (wh->height < 128)
+	wh->height = 128;
+    if (wh->width > 3072)
+	wh->width = 3072;
     if (wh->height > 2048)
 	wh->height = 2048;
     wh->width += 7;
@@ -121,6 +121,10 @@ static void fixup_prefs_dim2 (struct wh *wh)
 
 void fixup_prefs_dimensions (struct uae_prefs *prefs)
 {
+    if (prefs->gfx_xcenter_size > 0)
+        prefs->gfx_size_win.width = prefs->gfx_xcenter_size << prefs->gfx_resolution;
+    if (prefs->gfx_ycenter_size > 0)
+        prefs->gfx_size_win.height = prefs->gfx_ycenter_size << (prefs->gfx_linedbl ? 1 : 0);
     fixup_prefs_dim2 (&prefs->gfx_size_fs);
     fixup_prefs_dim2 (&prefs->gfx_size_win);
 }
@@ -164,7 +168,7 @@ void fixup_prefs (struct uae_prefs *p)
     fixup_cpu (p);
 
     if ((p->chipmem_size & (p->chipmem_size - 1)) != 0
-	|| p->chipmem_size < 0x40000
+	|| p->chipmem_size < 0x20000
 	|| p->chipmem_size > 0x800000)
     {
 	write_log ("Unsupported chipmem size %x!\n", p->chipmem_size);
@@ -178,20 +182,23 @@ void fixup_prefs (struct uae_prefs *p)
 	err = 1;
     }
     if ((p->gfxmem_size & (p->gfxmem_size - 1)) != 0
-	|| (p->gfxmem_size != 0 && (p->gfxmem_size < 0x100000 || p->gfxmem_size > 0x8000000)))
+	|| (p->gfxmem_size != 0 && (p->gfxmem_size < 0x100000 || p->gfxmem_size > max_z3fastmem / 2)))
     {
-	write_log ("Unsupported graphics card memory size %x!\n", p->gfxmem_size);
-	p->gfxmem_size = 0;
+	write_log ("Unsupported graphics card memory size %x (%x)!\n", p->gfxmem_size, max_z3fastmem / 2);
+	if (p->gfxmem_size > max_z3fastmem / 2)
+	    p->gfxmem_size = max_z3fastmem / 2;
+	else
+	    p->gfxmem_size = 0;
 	err = 1;
     }
     if ((p->z3fastmem_size & (p->z3fastmem_size - 1)) != 0
 	|| (p->z3fastmem_size != 0 && (p->z3fastmem_size < 0x100000 || p->z3fastmem_size > max_z3fastmem)))
     {
+	write_log ("Unsupported Zorro III fastmem size %x (%x)!\n", p->z3fastmem_size, max_z3fastmem);
 	if (p->z3fastmem_size > max_z3fastmem)
 	    p->z3fastmem_size = max_z3fastmem;
 	else
 	    p->z3fastmem_size = 0;
-	write_log ("Unsupported Zorro III fastmem size!\n");
 	err = 1;
     }
     p->z3fastmem_start &= ~0xffff;
@@ -665,7 +672,7 @@ static void real_main2 (int argc, char **argv)
     }
 
 #ifdef NATMEM_OFFSET
-    init_shm ();
+    preinit_shm ();
 #endif
 
     if (restart_config[0])
@@ -701,13 +708,18 @@ static void real_main2 (int argc, char **argv)
 	}
     }
 
+    logging_init (); /* Yes, we call this twice - the first case handles when the user has loaded
+		       a config using the cmd-line.  This case handles loads through the GUI. */
+
+#ifdef NATMEM_OFFSET
+    init_shm ();
+#endif
+
 #ifdef JIT
     if (!((currprefs.cpu_model >= 68020) && (currprefs.address_space_24 == 0) && (currprefs.cachesize)))
 	canbang = 0;
 #endif
 
-    logging_init (); /* Yes, we call this twice - the first case handles when the user has loaded
-		       a config using the cmd-line.  This case handles loads through the GUI. */
     fixup_prefs (&currprefs);
     changed_prefs = currprefs;
     /* force sound settings change */

@@ -5,7 +5,7 @@
   *
   * Copyright 1995-2002 Bernd Schmidt
   * Copyright 1995 Alessandro Bissacco
-  * Copyright 2000-2004 Toni Wilen
+  * Copyright 2000-2008 Toni Wilen
   */
 
 //#define CUSTOM_DEBUG
@@ -2467,7 +2467,7 @@ STATIC_INLINE uae_u16 DMACONR (void)
 {
     uae_u16 v;
     decide_blitter (current_hpos ());
-    v = dmacon | (bltstate == BLT_done || (bltstate != BLT_done && (currprefs.chipset_mask & CSMASK_BLTBUSY_BUG) && !blt_info.got_cycle) ? 0 : 0x4000)
+    v = dmacon | (bltstate == BLT_done || (bltstate != BLT_done && currprefs.cs_agnusbltbusybug && !blt_info.got_cycle) ? 0 : 0x4000)
 	    | (blt_info.blitzero ? 0x2000 : 0);
     return v;
 }
@@ -2688,9 +2688,20 @@ static void DMACON (int hpos, uae_u16 v)
     events_schedule();
 }
 
+static int irq_nmi;
+
+void NMI_delayed (void)
+{
+    irq_nmi = 1;
+}
+
 int intlev (void)
 {
     uae_u16 imask = intreq & intena;
+    if (irq_nmi) {
+	irq_nmi = 0;
+	return 7;
+    }
     if (!(imask && (intena & 0x4000)))
 	return -1;
     if (imask & (0x4000 | 0x2000)) // 13 14
@@ -2755,6 +2766,7 @@ void INTREQ_f(uae_u32 data)
 #ifdef CD32
     rethink_akiko ();
 #endif
+    rethink_gayle ();
 }
 
 static void INTREQ_d (uae_u16 v, int d)
@@ -4932,7 +4944,7 @@ int custom_init (void)
 	return 0;
 
 #ifdef AUTOCONFIG
-    {
+    if (uae_boot_rom) {
 	uaecptr pos;
 	pos = here ();
 
@@ -5752,10 +5764,8 @@ uae_u8 *save_custom_sprite(int num, int *len, uae_u8 *dstptr)
 void check_prefs_changed_custom (void)
 {
     currprefs.gfx_framerate = changed_prefs.gfx_framerate;
-    if (inputdevice_config_change_test ()) {
+    if (inputdevice_config_change_test ()) 
 	inputdevice_copyconfig (&changed_prefs, &currprefs);
-	inputdevice_updateconfig (&currprefs);
-    }
     currprefs.immediate_blits = changed_prefs.immediate_blits;
     currprefs.collision_level = changed_prefs.collision_level;
 

@@ -1554,7 +1554,6 @@ void m68k_mull (uae_u32 opcode, uae_u32 src, uae_u16 extra)
 
 void m68k_reset (int hardreset)
 {
-    regs.kick_mask = 0x00F80000;
     regs.spcflags = 0;
 #ifdef SAVESTATE
     if (savestate_state == STATE_RESTORE || savestate_state == STATE_REWIND) {
@@ -1570,8 +1569,8 @@ void m68k_reset (int hardreset)
 	return;
     }
 #endif
-    m68k_areg (&regs, 7) = get_long (0x00f80000);
-    m68k_setpc (&regs, get_long (0x00f80004));
+    m68k_areg (&regs, 7) = get_long (0);
+    m68k_setpc (&regs, get_long (4));
     regs.s = 1;
     regs.m = 0;
     regs.stopped = 0;
@@ -1623,7 +1622,7 @@ STATIC_INLINE int in_rom (uaecptr pc)
 
 STATIC_INLINE int in_rtarea (uaecptr pc)
 {
-    return (munge24 (pc) & 0xFFFF0000) == rtarea_base;
+    return (munge24 (pc) & 0xFFFF0000) == rtarea_base && uae_boot_rom;
 }
 
 unsigned long REGPARAM2 op_illg (uae_u32 opcode, struct regstruct *regs)
@@ -2039,7 +2038,7 @@ STATIC_INLINE int do_specialties (int cycles, struct regstruct *regs)
     if (regs->spcflags & SPCFLAG_INT) {
 	int intr = intlev ();
 	unset_special (regs, SPCFLAG_INT | SPCFLAG_DOINT);
-	if (intr != -1 && intr > regs->intmask)
+	if (intr != -1 && (intr > regs->intmask || intr == 7))
 	    do_interrupt (intr, regs);
     }
     if (regs->spcflags & SPCFLAG_DOINT) {
@@ -2796,6 +2795,8 @@ void m68k_dumpstate (void *f, uaecptr *nextpc)
     f_out (f, "USP  %08.8X ISP  %08.8X ", regs.usp, regs.isp);
     for (i = 0; m2cregs[i].regno>= 0; i++) {
 	if (!movec_illg (m2cregs[i].regno)) {
+	    if (!strcmp (m2cregs[i].regname, "USP") || !strcmp (m2cregs[i].regname, "ISP"))
+		continue;
 	    if (j > 0 && (j % 4) == 0)
 		f_out (f, "\n");
 	    f_out (f, "%-4s %08.8X ", m2cregs[i].regname, val_move2c (m2cregs[i].regno));

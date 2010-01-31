@@ -567,6 +567,8 @@ static void initialize_mountinfo(void)
 		    uci->devname, uci->sectors, uci->surfaces, uci->reserved,
 		    uci->bootpri, uci->filesys);
 	    }
+	} else if (uci->controller == HD_CONTROLLER_PCMCIA_SRAM) {
+	    gayle_add_pcmcia_sram_unit (uci->rootdir, uci->readonly);
 	}
     }
     filesys_addexternals();
@@ -591,7 +593,7 @@ void free_mountinfo (void)
     int i;
     for (i = 0; i < MAX_FILESYSTEM_UNITS; i++)
 	close_filesys_unit (mountinfo.ui + i);
-    gayle_free_ide_units();
+    gayle_free_units();
 }
 
 struct hardfiledata *get_hardfile_data (int nr)
@@ -707,6 +709,7 @@ typedef struct exallkey {
     uae_u32 id;
     void *dirhandle;
     char *fn;
+    uaecptr control;
 } ExAllKey;
 
 /* Since ACTION_EXAMINE_NEXT is so braindamaged, we have to keep
@@ -2713,15 +2716,19 @@ int get_native_path(uae_u32 lock, char *out)
 }
 
 #define EXALL_DEBUG 0
+#define EXALL_END 0xde1111ad
 
-static ExAllKey *getexall (Unit *unit, int id)
+static ExAllKey *getexall (Unit *unit, uaecptr control, int id)
 {
     int i;
     if (id < 0) {
 	for (i = 0; i < EXALLKEYS; i++) {
 	    if (unit->exalls[i].id == 0) {
 	        unit->exallid++;
+		if (unit->exallid == EXALL_END)
+		    unit->exallid++;
 		unit->exalls[i].id = unit->exallid;
+		unit->exalls[i].control = control;
 		return &unit->exalls[i];
 	    }
 	}
@@ -2895,7 +2902,7 @@ static int action_examine_all_end (Unit *unit, dpacket packet)
     if (kickstart_version < 36)
 	return 0;
     id = get_long (control + 4);
-    eak = getexall (unit, id);
+    eak = getexall (unit, control, id);
 #if EXALL_DEBUG > 0
     write_log ("EXALL_END ID=%d %x\n", id, eak);
 #endif
@@ -2956,8 +2963,12 @@ static int action_examine_all (Unit *unit, dpacket packet)
 
     PUT_PCK_RES1 (packet, DOS_TRUE);
     id = get_long (control + 4);
+    if (id == EXALL_END) {
+	write_log ("FILESYS: EXALL called twice with ERROR_NO_MORE_ENTRIES\n");
+	goto fail; /* already ended exall() */
+    }
     if (id) {
-	eak = getexall (unit, id);
+	eak = getexall (unit, control, id);
 	if (!eak) {
 	    write_log ("FILESYS: EXALL non-existing ID %d\n", id);
 	    doserr = ERROR_OBJECT_WRONG_TYPE;
@@ -2973,7 +2984,7 @@ static int action_examine_all (Unit *unit, dpacket packet)
 
     } else {
 
-	eak = getexall (unit, -1);
+	eak = getexall (unit, control, -1);
 	if (!eak)
 	    goto fail;
 	if (lock != 0)
@@ -3025,6 +3036,31 @@ fail:
 	    eak->dirhandle = NULL;
 	    xfree (eak->fn);
 	    eak->fn = NULL;
+	}
+	if (doserr == ERROR_NO_MORE_ENTRIES)
+	    put_long (control + 4, EXALL_END);
+    }
+    return 1;
+}
+
+static uae_u32 REGPARAM2 exall_helper (TrapContext *context)
+{
+    int i;
+    Unit *u;
+    uaecptr packet = m68k_areg (&context->regs, 4);
+    uaecptr control = get_long (packet + dp_Arg5);
+    uae_u32 id = get_long (control + 4);
+
+#if EXALL_DEBUG > 0
+    write_log ("FILESYS: EXALL extra round ID=%d\n", id);
+#endif
+    if (id == EXALL_END)
+	return 1;
+    for (u = units; u; u = u->next) {
+	for (i = 0; i < EXALLKEYS; i++) {
+	    if (u->exalls[i].id == id && u->exalls[i].control == control) {
+		action_examine_all (u, get_real_address (packet));
+	    }
 	}
     }
     return 1;
@@ -3127,7 +3163,7 @@ static void action_examine_next (Unit *unit, dpacket packet)
     uae_u32 uniq;
 
     TRACE(("ACTION_EXAMINE_NEXT(0x%lx,0x%lx)\n", lock, info));
-    gui_hd_led (1);
+    gui_hd_led (unit->unit, 1);
     DUMPLOCK(unit, lock);
 
     if (lock != 0)
@@ -3436,7 +3472,7 @@ action_read (Unit *unit, dpacket packet)
 	return;
     }
     TRACE(("ACTION_READ(%s,0x%lx,%ld)\n",k->aino->nname,addr,size));
-    gui_hd_led (1);
+    gui_hd_led (unit->unit, 1);
 #ifdef RELY_ON_LOADSEG_DETECTION
     /* HACK HACK HACK HACK
      * Try to detect a LoadSeg() */
@@ -3516,7 +3552,7 @@ action_write (Unit *unit, dpacket packet)
 	return;
     }
 
-    gui_hd_led (2);
+    gui_hd_led (unit->unit, 2);
     TRACE(("ACTION_WRITE(%s,0x%lx,%ld)\n",k->aino->nname,addr,size));
 
     if (unit->ui.readonly) {
@@ -3577,7 +3613,7 @@ action_seek (Unit *unit, dpacket packet)
     if (mode < 0) whence = SEEK_SET;
 
     TRACE(("ACTION_SEEK(%s,%d,%d)\n", k->aino->nname, pos, mode));
-    gui_hd_led (1);
+    gui_hd_led (unit->unit, 1);
 
     old = fs_lseek (unit, k->fd, 0, SEEK_CUR);
     {
@@ -3643,7 +3679,7 @@ action_set_protect (Unit *unit, dpacket packet)
 	PUT_PCK_RES1 (packet, DOS_TRUE);
     }
     notify_check (unit, a);
-    gui_hd_led (2);
+    gui_hd_led (unit->unit, 2);
 }
 
 static void action_set_comment (Unit * unit, dpacket packet)
@@ -3695,7 +3731,7 @@ static void action_set_comment (Unit * unit, dpacket packet)
     a->comment = commented;
     fsdb_set_file_attrs (a);
     notify_check (unit, a);
-    gui_hd_led (2);
+    gui_hd_led (unit->unit, 2);
 }
 
 static void
@@ -3883,7 +3919,7 @@ action_create_dir (Unit *unit, dpacket packet)
     notify_check (unit, aino);
     updatedirtime (aino, 0);
     PUT_PCK_RES1 (packet, make_lock (unit, aino->uniq, -2) >> 2);
-    gui_hd_led (2);
+    gui_hd_led (unit->unit, 2);
 }
 
 static void
@@ -3933,7 +3969,7 @@ action_set_file_size (Unit *unit, dpacket packet)
 	return;
     }
 
-    gui_hd_led (1);
+    gui_hd_led (unit->unit, 1);
     k->notifyactive = 1;
     /* If any open files have file pointers beyond this size, truncate only
      * so far that these pointers do not become invalid.  */
@@ -4071,7 +4107,7 @@ action_delete_object (Unit *unit, dpacket packet)
 	delete_aino (unit, a);
     }
     PUT_PCK_RES1 (packet, DOS_TRUE);
-    gui_hd_led (2);
+    gui_hd_led (unit->unit, 2);
 }
 
 static void
@@ -4104,7 +4140,7 @@ action_set_date (Unit *unit, dpacket packet)
 	notify_check (unit, a);
 	PUT_PCK_RES1 (packet, DOS_TRUE);
     }
-    gui_hd_led (2);
+    gui_hd_led (unit->unit, 2);
 }
 
 static void
@@ -4210,7 +4246,7 @@ action_rename_object (Unit *unit, dpacket packet)
     if (a2->elock > 0 || a2->shlock > 0 || wehavekeys > 0)
 	de_recycle_aino (unit, a2);
     PUT_PCK_RES1 (packet, DOS_TRUE);
-    gui_hd_led (2);
+    gui_hd_led (unit->unit, 2);
 }
 
 static void
@@ -4269,7 +4305,8 @@ action_more_cache (Unit *unit, dpacket packet)
 {
     TRACE(("ACTION_MORE_CACHE()\n"));
     PUT_PCK_RES1 (packet, 50); /* bug but AmigaOS expects it */
-    flush_cache(unit, 0);
+    if (GET_PCK_ARG1 (packet) != 0)
+	flush_cache(unit, 0);
 }
 
 static void
@@ -4938,40 +4975,46 @@ int rdb_checksum (char *id, uae_u8 *p, int block)
     return 1;
 }
 
-static char *device_dupfix (uaecptr expbase, char *devname)
+static int device_isdup (uaecptr expbase, char *devname)
 {
     uaecptr bnode, dnode, name;
-    int len, i, modified;
-    char dname[256], newname[256];
+    int len, i;
+    char dname[256];
+
+    bnode = get_long (expbase + 74); /* expansion.library bootnode list */
+    while (get_long (bnode)) {
+	dnode = get_long (bnode + 16); /* device node */
+	name = get_long (dnode + 40) << 2; /* device name BSTR */
+	len = get_byte (name);
+	for (i = 0; i < len; i++)
+	    dname[i] = get_byte (name + 1 + i);
+	dname[len] = 0;
+	if (!strcmpi (devname, dname))
+	    return 1;
+        bnode = get_long (bnode);
+    }
+    return 0;
+}
+
+static char *device_dupfix (uaecptr expbase, char *devname)
+{
+    int modified;
+    char newname[256];
 
     strcpy (newname, devname);
     modified = 1;
     while (modified) {
 	modified = 0;
-	bnode = get_long (expbase + 74); /* expansion.library bootnode list */
-	while (get_long (bnode)) {
-	    dnode = get_long (bnode + 16); /* device node */
-	    name = get_long (dnode + 40) << 2; /* device name BSTR */
-	    len = get_byte (name);
-	    for (i = 0; i < len; i++)
-		dname[i] = get_byte (name + 1 + i);
-	    dname[len] = 0;
-	    for (;;) {
-		if (!strcmpi (newname, dname)) {
-		    if (strlen (newname) > 2 && newname[strlen (newname) - 2] == '_') {
-			newname[strlen (newname) - 1]++;
-		    } else {
-			strcat (newname, "_0");
-		    }
-		    modified = 1;
-		} else {
-		    break;
-		}
+	if (device_isdup (expbase, newname)) {
+	    if (strlen (newname) > 2 && newname[strlen (newname) - 2] == '_') {
+		newname[strlen (newname) - 1]++;
+	    } else {
+		strcat (newname, "_0");
 	    }
-	    bnode = get_long (bnode);
+	    modified = 1;
 	}
     }
-    return strdup (newname);
+    return my_strdup (newname);
 }
 
 static void dump_partinfo (char *name, int num, uaecptr pp, int partblock)
@@ -5002,6 +5045,7 @@ static int rdb_mount (UnitInfo *uip, int unit_no, int partnum, uaecptr parmpacke
     int oldversion, oldrevision;
     int newversion, newrevision;
 
+    write_log ("%s:\n", uip->rootdir);
     if (hfd->drive_empty) {
 	rdbmnt
 	write_log ("ignored, drive is empty\n");
@@ -5284,13 +5328,19 @@ static int dofakefilesys (UnitInfo *uip, uaecptr parmpacket)
 static void get_new_device (int type, uaecptr parmpacket, char **devname, uaecptr *devname_amiga, int unit_no)
 {
     char buffer[80];
+    uaecptr expbase = get_long (parmpacket + PP_EXPLIB);
 
     if (*devname == 0 || strlen(*devname) == 0) {
-	sprintf (buffer, "DH%d", unit_no);
+	int un = unit_no;
+	for (;;) {
+	    sprintf (buffer, "DH%d", un++);
+	    if (!device_isdup (expbase, buffer))
+		break;
+	}
     } else {
 	strcpy (buffer, *devname);
     }
-    *devname_amiga = ds (device_dupfix (get_long (parmpacket + PP_EXPLIB), buffer));
+    *devname_amiga = ds (device_dupfix (expbase, buffer));
     if (type == FILESYS_VIRTUAL)
 	write_log ("FS: mounted virtual unit %s (%s)\n", buffer, mountinfo.ui[unit_no].rootdir);
     else
@@ -5408,6 +5458,10 @@ void filesys_install (void)
 
     org (rtarea_base + 0xFF50);
     calltrap (deftrap2 (exter_int_helper, 0, "exter_int_helper"));
+    dw (RTS);
+
+    org (rtarea_base + 0xFF58);
+    calltrap (deftrap2 (exall_helper, 0, "exall_helper"));
     dw (RTS);
 
     org (loop);

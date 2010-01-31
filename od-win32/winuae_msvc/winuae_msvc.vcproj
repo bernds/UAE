@@ -1634,6 +1634,10 @@
 				>
 			</File>
 			<File
+				RelativePath="..\..\cd32_fmv.c"
+				>
+			</File>
+			<File
 				RelativePath="..\..\cdrom.c"
 				>
 			</File>

@@ -131,7 +131,6 @@ extern struct regstruct
 #endif
 
     uae_u32 pcr;
-    uae_u32 kick_mask;
     uae_u32 address_space_mask;
 
     uae_u8 panic;
@@ -306,6 +305,7 @@ extern void REGPARAM3 MakeSR (struct regstruct *regs) REGPARAM;
 extern void REGPARAM3 MakeFromSR (struct regstruct *regs) REGPARAM;
 extern void REGPARAM3 Exception (int, struct regstruct *regs, uaecptr) REGPARAM;
 extern void NMI (void);
+extern void NMI_delayed (void);
 extern void doint (void);
 extern void dump_counts (void);
 extern int m68k_move2c (int, uae_u32 *);

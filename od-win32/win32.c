@@ -74,7 +74,7 @@
 #endif
 
 extern int harddrive_dangerous, do_rdbdump, aspi_allow_all, no_rawinput;
-int log_scsi, log_net = 1;
+int log_scsi, log_net = 0;
 
 extern FILE *debugfile;
 extern int console_logging;
@@ -93,7 +93,7 @@ HWND hAmigaWnd, hMainWnd, hHiddenWnd;
 RECT amigawin_rect;
 static int mouseposx, mouseposy;
 static UINT TaskbarRestart;
-static int TaskbarRestartOk;
+static HWND TaskbarRestartHWND;
 static int forceroms;
 static int start_data = 0;
 
@@ -572,8 +572,15 @@ void setmouseactive (int active)
 	focus = 1;
     if (focus) {
 	int donotfocus = 0;
-	if (SetForegroundWindow (hMainWnd) == FALSE)
-	    donotfocus = 1;
+	HWND fw = GetForegroundWindow ();
+	if (!(fw == hMainWnd || fw == hAmigaWnd)) {
+	    if (SetForegroundWindow (hMainWnd) == FALSE) {
+		if (SetForegroundWindow (hAmigaWnd) == FALSE) {
+		    donotfocus = 1;
+		    write_log ("wanted focus but SetforegroundWindow() failed\n");
+		}
+	    }
+	}
 #ifdef RETROPLATFORM
 	if (rp_isactive ())
 	    donotfocus = 0;
@@ -651,7 +658,10 @@ static void winuae_active (HWND hWnd, int minimized)
     if (minimized)
 	rp_minimize (0);
 #endif
-
+#ifdef LOGITECHLCD
+    if (!minimized)
+	lcd_priority (1);
+#endif
 }
 
 static void winuae_inactive (HWND hWnd, int minimized)
@@ -697,6 +707,9 @@ static void winuae_inactive (HWND hWnd, int minimized)
 #ifdef RETROPLATFORM
     if (minimized)
 	rp_minimize (1);
+#endif
+#ifdef LOGITECHLCD
+    lcd_priority (0);
 #endif
 }
 
@@ -1034,7 +1047,19 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 	extern void win32_ioctl_media_change (char driveletter, int insert);
 	extern void win32_aspi_media_change (char driveletter, int insert);
 	DEV_BROADCAST_HDR *pBHdr = (DEV_BROADCAST_HDR *)lParam;
-	if (pBHdr && pBHdr->dbch_devicetype == DBT_DEVTYP_VOLUME) {
+	static int waitfornext;
+
+	if (wParam == DBT_DEVNODES_CHANGED && lParam == 0) {
+	    if (waitfornext)
+		inputdevice_devicechange (&currprefs);
+	    waitfornext = 0;
+	} else if (pBHdr && pBHdr->dbch_devicetype == DBT_DEVTYP_DEVICEINTERFACE) {
+	    DEV_BROADCAST_DEVICEINTERFACE *dbd = (DEV_BROADCAST_DEVICEINTERFACE*)lParam;
+	    if (wParam == DBT_DEVICEREMOVECOMPLETE)
+		inputdevice_devicechange (&currprefs);
+	    else if (wParam == DBT_DEVICEARRIVAL)
+		waitfornext = 1;
+	} else if (pBHdr && pBHdr->dbch_devicetype == DBT_DEVTYP_VOLUME) {
 	    DEV_BROADCAST_VOLUME *pBVol = (DEV_BROADCAST_VOLUME *)lParam;
 	    if (wParam == DBT_DEVICEARRIVAL || wParam == DBT_DEVICEREMOVECOMPLETE) {
 		if (pBVol->dbcv_unitmask) {
@@ -1209,8 +1234,10 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 	break;
 
      default:
-	 if (TaskbarRestartOk && message == TaskbarRestart)
-	     systray (hWnd, FALSE);
+	 if (TaskbarRestart != 0 && TaskbarRestartHWND == hWnd && message == TaskbarRestart) {
+	     //write_log ("notif: taskbarrestart\n");
+	     systray (TaskbarRestartHWND, FALSE);
+	 }
     break;
     }
 
@@ -1327,7 +1354,7 @@ static LRESULT CALLBACK MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 
 
     default:
-	if (TaskbarRestartOk && message == TaskbarRestart)
+	if (TaskbarRestart != 0 && TaskbarRestartHWND == hWnd && message == TaskbarRestart)
 	    return AmigaWindowProc (hWnd, message, wParam, lParam);
 	break;
 
@@ -1601,9 +1628,9 @@ HMODULE language_load(WORD language)
 	int fail = 1;
 
 	if (language == 0x400)
-	    sprintf (dllbuf, "%sguidll.dll", start_path_exe);
+	    strcpy (dllbuf, "guidll.dll");
 	else
-	    sprintf (dllbuf, "%sWinUAE_%s.dll", start_path_exe, dllname);
+	    sprintf (dllbuf, "WinUAE_%s.dll", dllname);
 	result = WIN32_LoadLibrary (dllbuf);
 	if (result)  {
 	    dwFileVersionInfoSize = GetFileVersionInfoSize(dllbuf, &dwVersionHandle);
@@ -1617,7 +1644,7 @@ HMODULE language_load(WORD language)
 			    if (vsFileInfo &&
 				HIWORD(vsFileInfo->dwProductVersionMS) == UAEMAJOR
 				&& LOWORD(vsFileInfo->dwProductVersionMS) == UAEMINOR
-				&& HIWORD(vsFileInfo->dwProductVersionLS) == UAESUBREV) {
+				&& (HIWORD(vsFileInfo->dwProductVersionLS) == UAESUBREV || HIWORD(vsFileInfo->dwProductVersionLS) == UAESUBREV - 1)) {
 				success = TRUE;
 				write_log ("Translation DLL '%s' loaded and enabled\n", dllbuf);
 			    } else {
@@ -1756,7 +1783,7 @@ void logging_init(void)
 	SystemInfo.wProcessorLevel, SystemInfo.wProcessorRevision,
 	SystemInfo.dwNumberOfProcessors);
     write_log ("\n(c) 1995-2001 Bernd Schmidt   - Core UAE concept and implementation."
-	       "\n(c) 1998-2007 Toni Wilen      - Win32 port, core code updates."
+	       "\n(c) 1998-2008 Toni Wilen      - Win32 port, core code updates."
 	       "\n(c) 1996-2001 Brian King      - Win32 port, Picasso96 RTG, and GUI."
 	       "\n(c) 1996-1999 Mathias Ortmann - Win32 port and bsdsocket support."
 	       "\n(c) 2000-2001 Bernd Meyer     - JIT engine."
@@ -2863,7 +2890,7 @@ static void getstartpaths(void)
 
 extern void test (void);
 extern int screenshotmode, postscript_print_debugging, sound_debug, log_uaeserial;
-extern int force_direct_catweasel, max_allowed_mman, sound_mode_skip;
+extern int force_direct_catweasel, sound_mode_skip;
 
 extern DWORD_PTR cpu_affinity, cpu_paffinity;
 static DWORD_PTR original_affinity;
@@ -2988,12 +3015,6 @@ static int process_arg(char **xargv)
 	if (i + 1 < argc) {
 	    char *np = argv[i + 1];
 
-	    if (!strcmp (arg, "-trackmode")) {
-		extern int track_mode;
-		track_mode = getval (np);
-		i++;
-		continue;
-	    }
 	    if (!strcmp (arg, "-affinity")) {
 		cpu_affinity = getval (np);
 		i++;
@@ -3014,11 +3035,6 @@ static int process_arg(char **xargv)
 		i++;
 		strcpy(start_path_data, np);
 		start_data = -1;
-		continue;
-	    }
-	    if (!strcmp (arg, "-maxmem")) {
-		i++;
-		max_allowed_mman = getval (np);
 		continue;
 	    }
 	    if (!strcmp (arg, "-soundmodeskip")) {
@@ -3092,8 +3108,6 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
 	return 0;
     if (!dxdetect())
 	return 0;
-    if (!os_winnt && max_allowed_mman > 256)
-	max_allowed_mman = 256;
 
     hInst = hInstance;
     hMutex = CreateMutex( NULL, FALSE, "WinUAE Instantiated" ); // To tell the installer we're running
@@ -3368,6 +3382,9 @@ LONG WINAPI WIN32_ExceptionFilter(struct _EXCEPTION_POINTERS *pExceptionPointers
 
 #endif
 
+const static GUID GUID_DEVINTERFACE_HID =  { 0x4D1E55B2L, 0xF16F, 0x11CF,
+    { 0x88, 0xCB, 0x00, 0x11, 0x11, 0x00, 0x00, 0x30 } };
+
 typedef ULONG (CALLBACK *SHCHANGENOTIFYREGISTER)
     (HWND hwnd,
     int fSources,
@@ -3380,6 +3397,7 @@ typedef BOOL (CALLBACK *SHCHANGENOTIFYDEREGISTER)(ULONG ulID);
 void addnotifications (HWND hwnd, int remove)
 {
     static ULONG ret;
+    static HDEVNOTIFY hdn;
     LPITEMIDLIST ppidl;
     SHCHANGENOTIFYREGISTER pSHChangeNotifyRegister;
     SHCHANGENOTIFYDEREGISTER pSHChangeNotifyDeregister;
@@ -3392,35 +3410,62 @@ void addnotifications (HWND hwnd, int remove)
     if (remove) {
 	if (ret > 0 && pSHChangeNotifyDeregister)
 	    pSHChangeNotifyDeregister (ret);
+	ret = 0;
+	if (hdn)
+	    UnregisterDeviceNotification (hdn);
+	hdn = 0;
     } else {
+	DEV_BROADCAST_DEVICEINTERFACE NotificationFilter = { 0 };
 	if(pSHChangeNotifyRegister && SHGetSpecialFolderLocation(hwnd, CSIDL_DESKTOP, &ppidl) == NOERROR) {
 	    SHChangeNotifyEntry shCNE;
 	    shCNE.pidl = ppidl;
 	    shCNE.fRecursive = TRUE;
 	    ret = pSHChangeNotifyRegister (hwnd, SHCNE_DISKEVENTS, SHCNE_MEDIAINSERTED | SHCNE_MEDIAREMOVED,
 		WM_USER + 2, 1, &shCNE);
-	    write_log("SHChangeNotifyRegister=%d\n", ret);
 	}
+	NotificationFilter.dbcc_size = 
+	    sizeof(DEV_BROADCAST_DEVICEINTERFACE);
+	NotificationFilter.dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE;
+	NotificationFilter.dbcc_classguid = GUID_DEVINTERFACE_HID;
+	hdn = RegisterDeviceNotification (hwnd,  &NotificationFilter, DEVICE_NOTIFY_WINDOW_HANDLE);
     }
 }
 
 void systray (HWND hwnd, int remove)
 {
     NOTIFYICONDATA nid;
+    BOOL v;
 
-    if (hwnd == NULL)
+#ifdef RETROPLATFORM
+    if (rp_isactive())
 	return;
-    if (!TaskbarRestartOk) {
+#endif
+    //write_log ("notif: systray(%x,%d)\n", hwnd, remove);
+    if (!remove) {
 	TaskbarRestart = RegisterWindowMessage(TEXT("TaskbarCreated"));
-	TaskbarRestartOk = 1;
+	TaskbarRestartHWND = hwnd;
+	//write_log ("notif: taskbarrestart = %d\n", TaskbarRestart);
+    } else {
+	TaskbarRestart = 0;
+	hwnd = TaskbarRestartHWND;
     }
+    if (!hwnd)
+	return;
     memset (&nid, 0, sizeof (nid));
     nid.cbSize = sizeof (nid);
     nid.hWnd = hwnd;
     nid.hIcon = LoadIcon (hInst, (LPCSTR)MAKEINTRESOURCE(IDI_APPICON));
     nid.uFlags = NIF_ICON | NIF_MESSAGE;
     nid.uCallbackMessage = WM_USER + 1;
-    Shell_NotifyIcon (remove ? NIM_DELETE : NIM_ADD, &nid);
+    v = Shell_NotifyIcon (remove ? NIM_DELETE : NIM_ADD, &nid);
+    //write_log ("notif: Shell_NotifyIcon returned %d\n", v);
+    if (v) {
+	if (remove)
+	    TaskbarRestartHWND = NULL;
+    } else {
+	DWORD err = GetLastError ();
+	write_log ("Notify error code = %x (%d)\n",  err, err);
+    }
 }
 
 void systraymenu (HWND hwnd)
@@ -3432,7 +3477,7 @@ void systraymenu (HWND hwnd)
     char text[100];
 
     winuae_inactive (hwnd, FALSE);
-    WIN32GUI_LoadUIString( IDS_STMENUNOFLOPPY, text, sizeof (text));
+    WIN32GUI_LoadUIString (IDS_STMENUNOFLOPPY, text, sizeof (text));
     GetCursorPos (&pt);
     menu = LoadMenu (hUIDLL ? hUIDLL : hInst, MAKEINTRESOURCE (IDM_SYSTRAY));
     if (!menu)
