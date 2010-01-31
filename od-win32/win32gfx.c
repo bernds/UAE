@@ -7,7 +7,6 @@
  * Copyright 1997-2000 Brian King
  */
 
-#include "config.h"
 #include "sysconfig.h"
 
 #include <stdlib.h>
@@ -24,6 +23,8 @@
 #include "memory.h"
 #include "custom.h"
 #include "events.h"
+#include "newcpu.h"
+#include "traps.h"
 #include "xwin.h"
 #include "keyboard.h"
 #include "drawing.h"
@@ -575,6 +576,7 @@ void enumeratedisplays (int multi)
 	DirectDraw_EnumDisplays (displaysCallback);
 	EnumDisplayMonitors(NULL, NULL, monitorEnumProc, (LPARAM)&cnt);
     } else {
+	write_log ("Multimonitor detection disabled\n");
 	Displays[0].primary = 1;
 	Displays[0].name = "Display";
 	Displays[0].disabled = 0;
@@ -924,7 +926,7 @@ void flush_screen (int a, int b)
 	if(currentmode->flags & DM_DX_FULLSCREEN )
 	    DX_Flip ();
 	else if (DirectDraw_GetLockableType() != overlay_surface)
-	    DX_Blit( 0, 0, 0, 0, WIN32GFX_GetWidth(), WIN32GFX_GetHeight(), BLIT_SRC );
+	    DX_Blit (0, 0, 0, 0, WIN32GFX_GetWidth(), WIN32GFX_GetHeight(), BLIT_SRC);
 #endif
     } else if ((currentmode->flags & DM_DDRAW) && DirectDraw_GetLockableType() == secondary_surface ) {
 	if (currentmode->flags & DM_DX_FULLSCREEN) {
@@ -1285,8 +1287,10 @@ int check_prefs_changed_gfx (void)
 #endif
     }
 
-    if (currprefs.win32_automount_drives != changed_prefs.win32_automount_drives) {
+    if (currprefs.win32_automount_drives != changed_prefs.win32_automount_drives ||
+	currprefs.win32_powersavedisabled != changed_prefs.win32_powersavedisabled) {
 	currprefs.win32_automount_drives = changed_prefs.win32_automount_drives;
+	currprefs.win32_powersavedisabled = changed_prefs.win32_powersavedisabled;
     }
     return 0;
 }
@@ -1368,7 +1372,7 @@ void init_colors (void)
 		}
 	    }
 	}
-	alloc_colors64k (red_bits, green_bits, blue_bits, red_shift,green_shift, blue_shift, alpha_bits, alpha_shift, alpha);
+	alloc_colors64k (red_bits, green_bits, blue_bits, red_shift,green_shift, blue_shift, alpha_bits, alpha_shift, alpha, 0);
 #ifdef GFXFILTER
 	S2X_configure (red_bits, green_bits, blue_bits, red_shift,green_shift, blue_shift);
 #endif
@@ -1788,8 +1792,8 @@ static void createstatuswindow (void)
     RECT rc;
     HLOCAL hloc;
     LPINT lpParts;
-    int drive_width, hd_width, cd_width, power_width, fps_width, idle_width;
-    int num_parts = 10;
+    int drive_width, hd_width, cd_width, power_width, fps_width, idle_width, snd_width;
+    int num_parts = 11;
     double scaleX, scaleY;
 
     hStatusWnd = CreateWindowEx(
@@ -1808,6 +1812,7 @@ static void createstatuswindow (void)
     power_width = (int)(42 * scaleX);
     fps_width = (int)(64 * scaleX);
     idle_width = (int)(64 * scaleX);
+    snd_width = (int)(64 * scaleX);
     GetClientRect (hMainWnd, &rc);
     /* Allocate an array for holding the right edge coordinates. */
     hloc = LocalAlloc (LHND, sizeof (int) * num_parts);
@@ -1815,18 +1820,19 @@ static void createstatuswindow (void)
 	lpParts = LocalLock (hloc);
 	/* Calculate the right edge coordinate for each part, and copy the coords
 	 * to the array.  */
-	lpParts[0] = rc.right - (drive_width * 4) - power_width - idle_width - fps_width - cd_width - hd_width - 2;
-	lpParts[1] = lpParts[0] + idle_width;
-	lpParts[2] = lpParts[1] + fps_width;
-	lpParts[3] = lpParts[2] + power_width;
-	lpParts[4] = lpParts[3] + cd_width;
-	lpParts[5] = lpParts[4] + hd_width;
-	lpParts[6] = lpParts[5] + drive_width;
+	lpParts[0] = rc.right - (drive_width * 4) - power_width - idle_width - fps_width - cd_width - hd_width - snd_width - 2;
+	lpParts[1] = lpParts[0] + snd_width;
+	lpParts[2] = lpParts[1] + idle_width;
+	lpParts[3] = lpParts[2] + fps_width;
+	lpParts[4] = lpParts[3] + power_width;
+	lpParts[5] = lpParts[4] + cd_width;
+	lpParts[6] = lpParts[5] + hd_width;
 	lpParts[7] = lpParts[6] + drive_width;
 	lpParts[8] = lpParts[7] + drive_width;
 	lpParts[9] = lpParts[8] + drive_width;
-	window_led_drives = lpParts[5];
-	window_led_drives_end = lpParts[9];
+	lpParts[10] = lpParts[9] + drive_width;
+	window_led_drives = lpParts[6];
+	window_led_drives_end = lpParts[10];
 
 	/* Create the parts */
 	SendMessage (hStatusWnd, SB_SETPARTS, (WPARAM) num_parts, (LPARAM) lpParts);

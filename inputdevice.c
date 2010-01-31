@@ -21,7 +21,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "keyboard.h"
 #include "inputdevice.h"
@@ -55,8 +54,8 @@ static int potgo_logging = 0;
 #define DIR_DOWN 8
 
 struct inputevent {
-    char *confname;
-    char *name;
+    const char *confname;
+    const char *name;
     int allow_mask;
     int type;
     int unit;
@@ -453,7 +452,7 @@ static void kbrlabel (char *s)
 static void write_kbr_config (struct zfile *f, int idnum, int devnum, struct uae_input_device *kbr)
 {
     char tmp1[200], tmp2[200], tmp3[200], *p;
-    int i, j, k, event, skip;
+    int i, j, k, evt, skip;
 
     if (!keyboard_default)
 	return;
@@ -484,8 +483,8 @@ static void write_kbr_config (struct zfile *f, int idnum, int devnum, struct uae
 	p[0] = 0;
 	for (j = 0; j < MAX_INPUT_SUB_EVENT; j++) {
 	    char *custom = kbr->custom[i][j];
-	    event = kbr->eventid[i][j];
-	    if (custom == NULL && event <= 0) {
+	    evt = kbr->eventid[i][j];
+	    if (custom == NULL && evt <= 0) {
 		for (k = j + 1; k < MAX_INPUT_SUB_EVENT; k++) {
 		    if (kbr->eventid[i][k] > 0) break;
 		}
@@ -498,8 +497,8 @@ static void write_kbr_config (struct zfile *f, int idnum, int devnum, struct uae
 	    }
 	    if (custom)
 		sprintf (p, "'%s'.%d", custom, kbr->flags[i][j]);
-	    else if (event > 0)
-		sprintf (p, "%s.%d", events[event].confname, kbr->flags[i][j]);
+	    else if (evt > 0)
+		sprintf (p, "%s.%d", events[evt].confname, kbr->flags[i][j]);
 	    else
 		strcat (p, "NULL");
 	    p += strlen(p);
@@ -507,7 +506,7 @@ static void write_kbr_config (struct zfile *f, int idnum, int devnum, struct uae
 	sprintf (tmp3, "%d", kbr->extra[i][0]);
 	kbrlabel (tmp3);
 	sprintf (tmp1, "keyboard.%d.button.%s", devnum, tmp3);
-	cfgfile_write (f, "input.%d.%s=%s\n", idnum, tmp1, tmp2);
+	cfgfile_write (f, "input.%d.%s=%s\n", idnum, tmp1, tmp2[0] ? tmp2 : "NULL");
 	i++;
     }
 }
@@ -690,8 +689,13 @@ void read_inputdevice_config (struct uae_prefs *pr, char *option, char *value)
 	    }
 	}
 	flags = getnum (&p);
-	if (custom == NULL && ie->name == NULL)
+	if (custom == NULL && ie->name == NULL) {
+	    if (!strcmp(p2,"NULL")) {
+		id->eventid[keynum][subnum] = 0;
+		id->flags[keynum][subnum] = 0;
+	    }
 	    continue;
+	}
 	if (joystick < 0) {
 	    if (!(ie->allow_mask & AM_K))
 		continue;
@@ -875,6 +879,8 @@ int getjoystate (int joy)
     int left = 0, right = 0, top = 0, bot = 0;
     uae_u16 v = 0;
 
+    if (inputdevice_logging > 2)
+	write_log("JOY%dDAT %x\n", joy, m68k_getpc(&regs));
     readinput ();
     if (joydir[joy] & DIR_LEFT)
 	left = 1;
@@ -1147,7 +1153,7 @@ void POTGO (uae_u16 v)
     int i;
 
     if (potgo_logging)
-	write_log ("W:%d: %04.4X %p\n", vpos, v, m68k_getpc());
+	write_log ("W:%d: %04.4X %p\n", vpos, v, M68K_GETPC);
 #ifdef DONGLE_DEBUG
     if (notinrom ())
 	write_log ("POTGO %04.4X %s\n", v, debuginfo(0));
@@ -1184,7 +1190,7 @@ uae_u16 POTGOR (void)
 	write_log ("POTGOR %04.4X %s\n", v, debuginfo(0));
 #endif
     if (potgo_logging)
-	write_log("R:%d:%04.4X %d %p\n", vpos, v, cd32_shifter[1], m68k_getpc());
+	write_log("R:%d:%04.4X %d %p\n", vpos, v, cd32_shifter[1], M68K_GETPC);
     return v;
 }
 
@@ -1451,6 +1457,15 @@ int handle_input_event (int nr, int state, int max, int autofire)
     }
     switch (ie->unit)
     {
+	case 5: /* lightpen/gun */
+	{
+	    int delta = state * currprefs.input_mouse_speed / 100;
+	    if (ie->data)
+		lightpen_y += delta;
+	    else
+		lightpen_x += delta;
+	}
+	break;
 	case 1: /* ->JOY1 */
 	case 2: /* ->JOY2 */
 	case 3: /* ->Parallel port joystick adapter port #1 */

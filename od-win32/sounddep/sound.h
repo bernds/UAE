@@ -11,6 +11,7 @@ extern uae_u16 sndbuffer[];
 extern uae_u16 *sndbufpt;
 extern int sndbufsize;
 extern void finish_sound_buffer (void);
+extern void restart_sound_buffer (void);
 extern int init_sound (void);
 extern void close_sound (void);
 extern int setup_sound (void);
@@ -23,7 +24,7 @@ extern int drivesound_init (void);
 extern void drivesound_free (void);
 extern void sound_volume (int);
 
-static __inline__ void check_sound_buffers (void)
+STATIC_INLINE void check_sound_buffers (void)
 {
     if (currprefs.sound_stereo == 2) {
 	((uae_u16*)sndbufpt)[0] = ((uae_u16*)sndbufpt)[-2];
@@ -34,6 +35,12 @@ static __inline__ void check_sound_buffers (void)
 	finish_sound_buffer ();
 	sndbufpt = sndbuffer;
     }
+}
+
+STATIC_INLINE void clear_sound_buffers (void)
+{
+    memset (sndbuffer, 0, sndbufsize);
+    sndbufpt = sndbuffer;
 }
 
 #define PUT_SOUND_BYTE(b) do { *(uae_u8 *)sndbufpt = b; sndbufpt = (uae_u16 *)(((uae_u8 *)sndbufpt) + 1); } while (0)
@@ -60,7 +67,3 @@ static __inline__ void check_sound_buffers (void)
 #define FILTER_SOUND_TYPE_A1200 1
 
 #define ISSTEREO(p) (p.sound_stereo == 1 || p.sound_stereo == 2)
-
-#ifdef AHI
-#include "ahidsound.h"
-#endif

@@ -2,6 +2,7 @@ cd d:\projects\winuae_bak
 rm -rf bak
 mkdir bak
 copy /s d:\projects\winuae\src\*.* d:\projects\winuae_bak\bak\
+copy f:\amiga\text\winuaechangelog.txt d:\projects\winuae_bak\bak\od-win32
 cd bak
 del *.obj *.ilk *.exe *.pdb *.pch *.idb /s
 
@@ -18,29 +19,46 @@ del compstbl.c
 del cpuemu_0.c
 del cpuemu_5.c
 del cpuemu_6.c
+del linetoscr.c
 
 cd od-win32
 
+cd ipctester
+rm -rf debug
+rm -rf release
+cd ..
+
+cd spsutil
+rm -rf debug
+rm -rf release
+cd ..
+
+cd genlinetoscr_msvc
+rm -f genlinetoscr.exe
+rm -rf debug
+rm -rf release
+cd ..
+
 cd build68k_msvc
-rm -f build68k.exe build68k_msvc.plg
+rm -f build68k.exe
 rm -rf debug
 rm -rf release
 cd ..
 
 cd genblitter_msvc
-rm -f genblitter.exe genblitter_msvc.plg
+rm -f genblitter.exe 
 rm -rf debug
 rm -rf release
 cd ..
 
 cd gencomp_msvc
-rm -f gencomp.exe gencomp_msvc.plg
+rm -f gencomp.exe
 rm -rf debug
 rm -rf release
 cd ..
 
 cd gencpu_msvc
-rm -f gencpu.exe gencpu_msvc.plg
+rm -f gencpu.exe
 rm -rf debug
 rm -rf release
 cd ..

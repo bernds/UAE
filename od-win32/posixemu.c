@@ -6,7 +6,6 @@
  * Copyright 1997 Mathias Ortmann
  */
 
-#include "config.h"
 #include "sysconfig.h"
 #include "sysdeps.h"
 
@@ -24,13 +23,14 @@
 #include <sys/timeb.h>
 #include <sys/utime.h>
 #include <process.h>
+
 #include "options.h"
 #include "posixemu.h"
 #include "threaddep/thread.h"
 #include "filesys.h"
 
 /* Our Win32 implementation of this function */
-void gettimeofday( struct timeval *tv, void *blah )
+void gettimeofday (struct timeval *tv, void *blah)
 {
 #if 1
     struct timeb time;
@@ -53,8 +53,8 @@ void gettimeofday( struct timeval *tv, void *blah )
 }
 
 /* convert time_t to/from AmigaDOS time */
-#define secs_per_day ( 24 * 60 * 60 )
-#define diff ( (8 * 365 + 2) * secs_per_day )
+#define secs_per_day (24 * 60 * 60)
+#define diff ((8 * 365 + 2) * secs_per_day)
 
 static void get_time(time_t t, long* days, long* mins, long* ticks)
 {
@@ -80,11 +80,12 @@ static DWORD getattr(const char *name, LPFILETIME lpft, size_t *size)
         fd.dwFileAttributes = GetFileAttributes(name);
         return fd.dwFileAttributes;
     }
-
     FindClose(hFind);
 
-    if (lpft) *lpft = fd.ftLastWriteTime;
-    if (size) *size = fd.nFileSizeLow;
+    if (lpft)
+	*lpft = fd.ftLastWriteTime;
+    if (size)
+	*size = fd.nFileSizeLow;
 
     return fd.dwFileAttributes;
 }
@@ -98,8 +99,10 @@ int posixemu_stat(const char *name, struct stat *statbuf)
 	return -1;
     } else {
 	statbuf->st_mode = (attr & FILE_ATTRIBUTE_READONLY) ? FILEFLAG_READ : FILEFLAG_READ | FILEFLAG_WRITE;
-	if (attr & FILE_ATTRIBUTE_ARCHIVE) statbuf->st_mode |= FILEFLAG_ARCHIVE;
-	if (attr & FILE_ATTRIBUTE_DIRECTORY) statbuf->st_mode |= FILEFLAG_DIR;
+	if (attr & FILE_ATTRIBUTE_ARCHIVE)
+	    statbuf->st_mode |= FILEFLAG_ARCHIVE;
+	if (attr & FILE_ATTRIBUTE_DIRECTORY)
+	    statbuf->st_mode |= FILEFLAG_DIR;
 	FileTimeToLocalFileTime(&ft,&lft);
 	statbuf->st_mtime = (long)((*(__int64 *)&lft-((__int64)(369*365+89)*(__int64)(24*60*60)*(__int64)10000000))/(__int64)10000000);
     }
@@ -109,20 +112,20 @@ int posixemu_stat(const char *name, struct stat *statbuf)
 int posixemu_chmod(const char *name, int mode)
 {
     DWORD attr = FILE_ATTRIBUTE_NORMAL;
-    if (!(mode & FILEFLAG_WRITE)) attr |= FILE_ATTRIBUTE_READONLY;
-    if (mode & FILEFLAG_ARCHIVE) attr |= FILE_ATTRIBUTE_ARCHIVE;
-    if (SetFileAttributes(name,attr)) return 1;
+    if (!(mode & FILEFLAG_WRITE))
+	attr |= FILE_ATTRIBUTE_READONLY;
+    if (mode & FILEFLAG_ARCHIVE)
+	attr |= FILE_ATTRIBUTE_ARCHIVE;
+    if (SetFileAttributes(name,attr))
+	return 1;
     return -1;
 }
 
-static void tmToSystemTime( struct tm *tmtime, LPSYSTEMTIME systime )
+static void tmToSystemTime(struct tm *tmtime, LPSYSTEMTIME systime)
 {
-    if( tmtime == NULL )
-    {
-        GetSystemTime( systime );
-    }
-    else
-    {
+    if (tmtime == NULL) {
+        GetSystemTime (systime);
+    } else {
         systime->wDay       = tmtime->tm_mday;
         systime->wDayOfWeek = tmtime->tm_wday;
         systime->wMonth     = tmtime->tm_mon + 1;
@@ -139,14 +142,14 @@ static int setfiletime(const char *name, unsigned int days, int minute, int tick
     FILETIME LocalFileTime, FileTime;
     HANDLE hFile;
     int success;
-    if ((hFile = CreateFile(name, GENERIC_WRITE,FILE_SHARE_READ | FILE_SHARE_WRITE,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, NULL)) == INVALID_HANDLE_VALUE) {
+    if ((hFile = CreateFile(name, GENERIC_WRITE,FILE_SHARE_READ | FILE_SHARE_WRITE,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, NULL)) == INVALID_HANDLE_VALUE)
 	return 0;
-    }
 
     *(__int64 *)&LocalFileTime = (((__int64)(377*365+91+days)*(__int64)1440+(__int64)minute)*(__int64)(60*50)+(__int64)tick)*(__int64)200000;
     
     if (tolocal) {
-	if (!LocalFileTimeToFileTime(&LocalFileTime,&FileTime)) FileTime = LocalFileTime;
+	if (!LocalFileTimeToFileTime(&LocalFileTime,&FileTime))
+	    FileTime = LocalFileTime;
     } else {
 	FileTime = LocalFileTime;
     }
@@ -171,64 +174,57 @@ int posixemu_utime( const char *name, struct utimbuf *ttime )
     }
     get_time(actime, &days, &mins, &ticks);
 
-    if( setfiletime( name, days, mins, ticks, tolocal ) )
+    if(setfiletime (name, days, mins, ticks, tolocal))
         result = 0;
 
 	return result;
 }
 
-/* pthread Win32 emulation */
-void sem_init (HANDLE * event, int manual_reset, int initial_state)
+void uae_sem_init (uae_sem_t * event, int manual_reset, int initial_state)
 {
-    if( *event )
-    {
-	if( initial_state )
-	{
-	    SetEvent( *event );
-	}
+    if(*event) {
+	if (initial_state)
+	    SetEvent(*event);
 	else
-	{
-	    ResetEvent( *event );
-	}
-    }
-    else
-    {
-        *event = CreateEvent (NULL, manual_reset, initial_state, NULL);
+	    ResetEvent(*event);
+    } else {
+	*event = CreateEvent (NULL, manual_reset, initial_state, NULL);
     }
 }
 
-void sem_wait (HANDLE * event)
+void uae_sem_wait (uae_sem_t * event)
 {
     WaitForSingleObject (*event, INFINITE);
 }
 
-void sem_post (HANDLE * event)
+void uae_sem_post (uae_sem_t * event)
 {
     SetEvent (*event);
 }
 
-int sem_trywait (HANDLE * event)
+int uae_sem_trywait (uae_sem_t * event)
 {
     return WaitForSingleObject (*event, 0) == WAIT_OBJECT_0 ? 0 : -1;
 }
 
-void sem_close (HANDLE * event)
+void uae_sem_destroy (uae_sem_t * event)
 {
-    if( *event )
-    {
-	CloseHandle( *event );
+    if(*event) {
+	CloseHandle(*event);
 	*event = NULL;
     }
 }
 
 typedef unsigned (__stdcall *BEGINTHREADEX_FUNCPTR)(void *);
 
-int start_penguin (void *(*f)(void *), void *arg, DWORD *foo)
+int uae_start_thread (void *(*f)(void *), void *arg, uae_thread_id *tid)
 {
     HANDLE hThread;
     int result = 1;
+    unsigned foo;
 
-    hThread = (HANDLE)_beginthreadex( NULL, 0, (BEGINTHREADEX_FUNCPTR)f, arg, 0, foo );
+    hThread = (HANDLE)_beginthreadex(NULL, 0, (BEGINTHREADEX_FUNCPTR)f, arg, 0, &foo);
+    *tid = hThread;
     if (hThread)
         SetThreadPriority (hThread, THREAD_PRIORITY_ABOVE_NORMAL);
     else
@@ -236,7 +232,11 @@ int start_penguin (void *(*f)(void *), void *arg, DWORD *foo)
     return result;
 }
 
-void set_thread_priority (int pri)
+int cpu_affinity = 1;
+
+void uae_set_thread_priority (int pri)
 {
+    /* workaround for filesystem emulation freeze with some dual core systems */
+    SetThreadAffinityMask(GetCurrentThread(), cpu_affinity); 
 }
 

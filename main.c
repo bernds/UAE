@@ -10,7 +10,6 @@
 #include "sysdeps.h"
 #include <assert.h>
 
-#include "config.h"
 #include "options.h"
 #include "threaddep/thread.h"
 #include "uae.h"
@@ -30,8 +29,8 @@
 #include "gui.h"
 #include "zfile.h"
 #include "autoconf.h"
+#include "traps.h"
 #include "osemu.h"
-#include "osdep/exectasks.h"
 #include "picasso96.h"
 #include "bsdsocket.h"
 #include "uaeexe.h"
@@ -160,8 +159,7 @@ void fixup_prefs (struct uae_prefs *p)
 	write_log ("Can't use a graphics card or Zorro III fastmem when using a 24 bit\n"
 		 "address space - sorry.\n");
     }
-    if (p->bogomem_size != 0 && p->bogomem_size != 0x80000 && p->bogomem_size != 0x100000 && p->bogomem_size != 0x180000 && p->bogomem_size != 0x1c0000)
-    {
+    if (p->bogomem_size != 0 && p->bogomem_size != 0x80000 && p->bogomem_size != 0x100000 && p->bogomem_size != 0x180000 && p->bogomem_size != 0x1c0000) {
 	p->bogomem_size = 0;
 	write_log ("Unsupported bogomem size!\n");
 	err = 1;
@@ -234,7 +232,6 @@ void fixup_prefs (struct uae_prefs *p)
 	p->cachesize = 0;
 	err = 1;
     }
-
     if (p->cpu_level < 2 && p->z3fastmem_size > 0) {
 	write_log ("Z3 fast memory can't be used with a 68000/68010 emulation. It\n"
 		 "requires a 68020 emulation. Turning off Z3 fast memory.\n");
@@ -685,8 +682,8 @@ static void real_main2 (int argc, char **argv)
     }
 
     }
-#if defined (JIT) && (defined( _WIN32 ) || defined(_WIN64)) && !defined( NO_WIN32_EXCEPTION_HANDLER )
-    __except( EvalException( GetExceptionInformation(), GetExceptionCode() ) )
+#if defined (JIT) && (defined( _WIN32 ) || defined(_WIN64)) && !defined(NO_WIN32_EXCEPTION_HANDLER)
+    __except(EvalException(GetExceptionInformation(), GetExceptionCode()))
     {
 	// EvalException does the good stuff...
     }

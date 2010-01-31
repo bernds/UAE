@@ -33,7 +33,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "threaddep/thread.h"
 #include "uae.h"
@@ -44,6 +43,7 @@
 #include "xwin.h"
 #include "savestate.h"
 #include "autoconf.h"
+#include "traps.h"
 
 #if defined(PICASSO96)
 
@@ -1451,17 +1451,17 @@ d7.l: RGBFormat
 This function is used to paint a line on the board memory possibly using the blitter. It is called by Draw
 and obeyes the destination RGBFormat as well as ForeGround and BackGround pens and draw modes. 
 */
-uae_u32 picasso_DrawLine (void)
+uae_u32 REGPARAM2 picasso_DrawLine (struct regstruct *regs)
 {
     uae_u32 result = 0;
 #ifdef P96_DRAWLINE
     struct Line line;
     struct RenderInfo ri;
-    uae_u8 Mask = m68k_dreg( regs, 0 );
-    RGBFTYPE RGBFormat = m68k_dreg( regs, 7 );
+    uae_u8 Mask = m68k_dreg(regs, 0);
+    RGBFTYPE RGBFormat = m68k_dreg(regs, 7);
 
-    CopyRenderInfoStructureA2U( m68k_areg( regs, 1 ), &ri );
-    CopyLineStructureA2U( m68k_areg( regs, 2 ), &line );
+    CopyRenderInfoStructureA2U(m68k_areg(regs, 1), &ri);
+    CopyLineStructureA2U(m68k_areg(regs, 2), &line);
 #if defined( P96TRACING_ENABLED ) && P96TRACING_LEVEL > 0
     DumpLine( &line );
 #endif
@@ -1597,7 +1597,7 @@ uae_u32 picasso_SetSpriteColor (void)
 * BoardInfo struct supplied by the caller, the rtg.library, for example
 * the MemoryBase, MemorySize and RegisterBase fields.
 */
-uae_u32 picasso_FindCard (void)
+uae_u32 REGPARAM2 picasso_FindCard (struct regstruct *regs)
 {
     uaecptr AmigaBoardInfo = m68k_areg (regs, 0);
 
@@ -1656,26 +1656,26 @@ static void FillBoardInfo (uaecptr amigamemptr, struct LibResolution *res, struc
     put_long (amigamemptr + PSSO_ModeInfo_PixelClock, dm->res.width * dm->res.height * (currprefs.gfx_refreshrate ? abs (currprefs.gfx_refreshrate) : default_freq));
 }
 
-static int AssignModeID( int i, int count )
+static int AssignModeID(int i, int count)
 {
     int result;
-    if( DisplayModes[i].res.width == 320 && DisplayModes[i].res.height == 200 )
+    if(DisplayModes[i].res.width == 320 && DisplayModes[i].res.height == 200)
 	result = 0x50001000;
-    else  if( DisplayModes[i].res.width == 320 && DisplayModes[i].res.height == 240 )
+    else  if(DisplayModes[i].res.width == 320 && DisplayModes[i].res.height == 240)
 	result = 0x50011000;
-    else if( DisplayModes[i].res.width == 640 && DisplayModes[i].res.height == 400 )
+    else if(DisplayModes[i].res.width == 640 && DisplayModes[i].res.height == 400)
 	result = 0x50021000;
-    else if( DisplayModes[i].res.width == 640 && DisplayModes[i].res.height == 480 )
+    else if(DisplayModes[i].res.width == 640 && DisplayModes[i].res.height == 480)
 	result = 0x50031000;
-    else if( DisplayModes[i].res.width == 800 && DisplayModes[i].res.height == 600 )
+    else if(DisplayModes[i].res.width == 800 && DisplayModes[i].res.height == 600)
 	result = 0x50041000;
-    else if( DisplayModes[i].res.width == 1024 && DisplayModes[i].res.height == 768 )
+    else if(DisplayModes[i].res.width == 1024 && DisplayModes[i].res.height == 768)
 	result = 0x50051000;
-    else if( DisplayModes[i].res.width == 1152 && DisplayModes[i].res.height == 864 )
+    else if(DisplayModes[i].res.width == 1152 && DisplayModes[i].res.height == 864)
 	result = 0x50061000;
-    else if( DisplayModes[i].res.width == 1280 && DisplayModes[i].res.height == 1024 )
+    else if(DisplayModes[i].res.width == 1280 && DisplayModes[i].res.height == 1024)
 	result = 0x50071000;
-    else if( DisplayModes[i].res.width == 1600 && DisplayModes[i].res.height == 1280 )
+    else if(DisplayModes[i].res.width == 1600 && DisplayModes[i].res.height == 1280)
 	result = 0x50081000;
     else
 	result = 0x50091000 + count * 0x10000;
@@ -1698,7 +1698,7 @@ static int AssignModeID( int i, int count )
 * gbi_MaxHorResolution: fill this in for all modes (even if you don't support them)
 * gbi_MaxVerResolution: fill this in for all modes (even if you don't support them)
 */
-uae_u32 picasso_InitCard (void)
+uae_u32 REGPARAM2 picasso_InitCard (struct regstruct *regs)
 {
     struct LibResolution res;
     int i;
@@ -1728,7 +1728,7 @@ uae_u32 picasso_InitCard (void)
     while (DisplayModes[i].depth >= 0) {    
 	int j = i;
 	/* Add a LibResolution structure to the ResolutionsList MinList in our BoardInfo */
-	res.DisplayID = AssignModeID( i, LibResolutionStructureCount );
+	res.DisplayID = AssignModeID(i, LibResolutionStructureCount);
 	res.BoardInfo = AmigaBoardInfo;
 	res.Width = DisplayModes[i].res.width;
 	res.Height = DisplayModes[i].res.height;
@@ -1745,8 +1745,8 @@ uae_u32 picasso_InitCard (void)
 	    /* Handle this display mode's depth */
 	    
 	    /* New: Only add the modes when there is enough P96 RTG memory to hold the bitmap */
-	    if( ( allocated_gfxmem - 32768 ) >
-		( DisplayModes[i].res.width * DisplayModes[i].res.height * DisplayModes[i].depth ) )
+	    if((allocated_gfxmem - 32768) >
+		(DisplayModes[i].res.width * DisplayModes[i].res.height * DisplayModes[i].depth))
 	    {
 		amigamemptr = gfxmem_start + allocated_gfxmem - (PSSO_ModeInfo_sizeof * ModeInfoStructureCount++);
 		FillBoardInfo(amigamemptr, &res, &DisplayModes[i]);
@@ -1781,7 +1781,7 @@ extern int x_size, y_size;
 *
 * NOTE: Return the opposite of the switch-state. BDK
 */
-uae_u32 picasso_SetSwitch (void)
+uae_u32 REGPARAM2 picasso_SetSwitch (struct regstruct *regs)
 {
     uae_u16 flag = m68k_dreg (regs, 0) & 0xFFFF;
 
@@ -1816,7 +1816,7 @@ void picasso_enablescreen (int on)
 * per cannon your board has. So you might have to shift the colors
 * before writing them to the hardware.
 */
-uae_u32 picasso_SetColorArray (void)
+uae_u32 REGPARAM2 picasso_SetColorArray (struct regstruct *regs)
 {
 /* Fill in some static UAE related structure about this new CLUT setting
     * We need this for CLUT-based displays, and for mapping CLUT to hi/true colour */
@@ -1852,7 +1852,7 @@ uae_u32 picasso_SetColorArray (void)
 * e.g. from chunky to TrueColor. Usually, all you have to do is to set
 * the RAMDAC of your board accordingly.
 */
-uae_u32 picasso_SetDAC (void)
+uae_u32 REGPARAM2 picasso_SetDAC (struct regstruct *regs)
 {
 /* Fill in some static UAE related structure about this new DAC setting
     * Lets us keep track of what pixel format the Amiga is thinking about in our frame-buffer */
@@ -1894,7 +1894,7 @@ static void init_picasso_screen( void )
 * or linear start adress. They will be set when appropriate by their
 * own functions.
 */
-uae_u32 picasso_SetGC (void)
+uae_u32 REGPARAM2 picasso_SetGC (struct regstruct *regs)
 {
     /* Fill in some static UAE related structure about this new ModeInfo setting */
     uae_u32 border   = m68k_dreg (regs, 0);
@@ -1940,11 +1940,11 @@ uae_u32 picasso_SetGC (void)
   * because SetSwitch() is not called for subsequent Picasso screens.
 */
 
-uae_u32 picasso_SetPanning (void)
+uae_u32 REGPARAM2 picasso_SetPanning (struct regstruct *regs)
 {   
     uae_u16 Width = m68k_dreg (regs, 0);
     uaecptr start_of_screen = m68k_areg (regs, 1);
-    uaecptr bi = m68k_areg( regs, 0 );
+    uaecptr bi = m68k_areg(regs, 0);
     uaecptr bmeptr = get_long( bi + PSSO_BoardInfo_BitMapExtra );  /* Get our BoardInfo ptr's BitMapExtra ptr */
     uae_u16 bme_width, bme_height;
 
@@ -2028,7 +2028,7 @@ static void do_xor8 (uae_u8 *ptr, long len, uae_u32 val)
 * This function is used to invert a rectangular area on the board. It is called by BltBitMap,
 * BltPattern and BltTemplate.
 */
-uae_u32 picasso_InvertRect (void)
+uae_u32 REGPARAM2 picasso_InvertRect (struct regstruct *regs)
 {
     uaecptr renderinfo = m68k_areg (regs, 1);
     unsigned long X = (uae_u16)m68k_dreg (regs, 0);
@@ -2094,7 +2094,7 @@ FillRect:
 * d5: UBYTE Mask
 * d7: uae_u32 RGBFormat
 ***********************************************************/
-uae_u32 picasso_FillRect (void)
+uae_u32 REGPARAM2 picasso_FillRect (struct regstruct *regs)
 {
     uaecptr renderinfo = m68k_areg (regs, 1);
     uae_u32 X = (uae_u16)m68k_dreg (regs, 0);
@@ -2384,7 +2384,7 @@ BlitRect:
 * d6:	UBYTE Mask
 * d7:	uae_u32 RGBFormat
 ***********************************************************/
-uae_u32 picasso_BlitRect (void)
+uae_u32 REGPARAM2 picasso_BlitRect (struct regstruct *regs)
 {
     uaecptr renderinfo = m68k_areg (regs, 1);
     unsigned long srcx = (uae_u16)m68k_dreg (regs, 0);
@@ -2431,7 +2431,7 @@ BlitRectNoMaskComplete:
 *	because the RGBFormat or opcode aren't supported.
 *	OTHERWISE return 1
 ***********************************************************/
-uae_u32 picasso_BlitRectNoMaskComplete (void)
+uae_u32 REGPARAM2 picasso_BlitRectNoMaskComplete (struct regstruct *regs)
 {
     uaecptr srcri = m68k_areg (regs, 1);
     uaecptr dstri = m68k_areg (regs, 2);
@@ -2532,7 +2532,7 @@ STATIC_INLINE void PixelWrite(uae_u8 *mem, int bits, uae_u32 fgpen, uae_u8 Bpp, 
 * always 16 pixels (one word) and the height is calculated as 2^Size. The data must be shifted up
 * and to the left by XOffset and YOffset pixels at the beginning.
 */
-uae_u32 picasso_BlitPattern (void)
+uae_u32 REGPARAM2 picasso_BlitPattern (struct regstruct *regs)
 {
     uaecptr rinf = m68k_areg (regs, 1);
     uaecptr pinf = m68k_areg (regs, 2);
@@ -2707,7 +2707,7 @@ BlitTemplate:
 * using a single plane of image data which will be expanded to the destination RGBFormat
 * using ForeGround and BackGround pens as well as draw modes.
 ***********************************************************************************/
-uae_u32 picasso_BlitTemplate (void)
+uae_u32 REGPARAM2 picasso_BlitTemplate (struct regstruct *regs)
 {
     uae_u8 inversion = 0;
     uaecptr rinf = m68k_areg (regs, 1);
@@ -2884,7 +2884,7 @@ uae_u32 picasso_BlitTemplate (void)
 * This function calculates the amount of bytes needed for a line of
 * "Width" pixels in the given RGBFormat.
 */
-uae_u32 picasso_CalculateBytesPerRow (void)
+uae_u32 REGPARAM2 picasso_CalculateBytesPerRow (struct regstruct *regs)
 {
     uae_u16 width = m68k_dreg (regs, 0);
     uae_u32 type = m68k_dreg (regs, 7);
@@ -2903,7 +2903,7 @@ uae_u32 picasso_CalculateBytesPerRow (void)
 * 
 * NOTE: return the opposite of the state
 */
-uae_u32 picasso_SetDisplay (void)
+uae_u32 REGPARAM2 picasso_SetDisplay (struct regstruct *regs)
 {
     uae_u32 state = m68k_dreg (regs, 0);
     P96TRACE (("SetDisplay(%d)\n", state));
@@ -3029,7 +3029,7 @@ static void PlanarToChunky(struct RenderInfo *ri, struct BitMap *bm,
 * on the board. Watch out for plane pointers that are 0x00000000 (represents a plane with all bits "0")
 * or 0xffffffff (represents a plane with all bits "1").
 */
-uae_u32 picasso_BlitPlanar2Chunky (void)
+uae_u32 REGPARAM2 picasso_BlitPlanar2Chunky (struct regstruct *regs)
 {
     uaecptr bm = m68k_areg (regs, 1);
     uaecptr ri = m68k_areg (regs, 2);
@@ -3184,7 +3184,7 @@ static void PlanarToDirect(struct RenderInfo *ri, struct BitMap *bm,
 * triple bytes or longwords respectively similar to the color values used in FillRect(), BlitPattern() or
 * BlitTemplate(). 
 */
-uae_u32 picasso_BlitPlanar2Direct (void)
+uae_u32 REGPARAM2 picasso_BlitPlanar2Direct (struct regstruct *regs)
 {
     uaecptr bm = m68k_areg (regs, 1);
     uaecptr ri = m68k_areg (regs, 2);

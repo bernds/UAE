@@ -15,9 +15,7 @@
 #include "sysdeps.h"
 
 #include "uae.h"
-#include "config.h"
 #include "options.h"
-#include "threaddep/thread.h"
 #include "memory.h"
 #include "events.h"
 #include "custom.h"
@@ -25,9 +23,7 @@
 #include "disk.h"
 #include "gui.h"
 #include "zfile.h"
-#include "autoconf.h"
 #include "newcpu.h"
-#include "xwin.h"
 #include "osemu.h"
 #include "execlib.h"
 #include "savestate.h"
@@ -216,7 +212,8 @@ static void disk_checksum(uae_u8 *p, uae_u8 *c)
 {
     uae_u32 cs = 0;
     int i;
-    for (i = 0; i < FS_FLOPPY_BLOCKSIZE; i+= 4) cs += (p[i] << 24) | (p[i+1] << 16) | (p[i+2] << 8) | (p[i+3] << 0);
+    for (i = 0; i < FS_FLOPPY_BLOCKSIZE; i+= 4)
+	cs += (p[i] << 24) | (p[i+1] << 16) | (p[i+2] << 8) | (p[i+3] << 0);
     cs = -cs;
     c[0] = cs >> 24; c[1] = cs >> 16; c[2] = cs >> 8; c[3] = cs >> 0;
 }
@@ -474,7 +471,8 @@ static int createimagefromexe (struct zfile *src, struct zfile *dst)
 static int get_floppy_speed (void)
 {
     int m = currprefs.floppy_speed;
-    if (m <= 10) m = 100;
+    if (m <= 10)
+	m = 100;
     m = NORMAL_FLOPPY_SPEED * 100 / m;
     return m;
 }
@@ -575,8 +573,8 @@ static void reset_drive(int i)
     drv->buffered_side = -1;
     gui_led (i + 1, 0);
     drive_settype_id (drv);
-    if (strlen (drv->newname) > 0)
-	strcpy (currprefs.df[i], drv->newname);
+    strcpy (currprefs.df[i], changed_prefs.df[i]);
+    drv->newname[0] = 0;
     if (!drive_insert (drv, &currprefs, i, currprefs.df[i]))
 	disk_eject (i);
 }
@@ -585,7 +583,7 @@ static void reset_drive(int i)
 static void update_drive_gui (int num)
 {
     drive *drv = floppy + num;
-    int writ = dskdmaen == 3 && drv->state ? 1 : 0;
+    int writ = dskdmaen == 3 && drv->state && !(selected & (1 << num));
 
     if (drv->state == gui_data.drive_motor[num]
 	&& drv->cyl == gui_data.drive_track[num]
@@ -2103,7 +2101,7 @@ void DISK_select (uae_u8 data)
     static int step;
 
     if (disk_debug_logging > 1)
-	write_log ("%08.8X %02.2X %s", m68k_getpc(), data, tobin(data));
+	write_log ("%08.8X %02.2X %s", M68K_GETPC, data, tobin(data));
 
     lastselected = selected;
     selected = (data >> 3) & 15;
@@ -2210,7 +2208,7 @@ uae_u8 DISK_status (void)
 		    st &= ~0x20;
 		/* dskrdy needs some cycles after switching the motor off.. (Pro Tennis Tour) */
 		if (drv->motordelay) {
-		    write_log ("MOTORDELAY! %x\n", m68k_getpc());
+		    write_log ("MOTORDELAY! %x\n", M68K_GETPC);
 		    st &= ~0x20;
 		    drv->motordelay = 0;
 		}
@@ -2561,7 +2559,7 @@ static void disk_doupdate_read (drive * drv, int floppybits)
 static void disk_dma_debugmsg(void)
 {
     write_log ("LEN=%04.4X (%d) SYNC=%04.4X PT=%08.8X ADKCON=%04.4X PC=%08.8X\n",
-	dsklength, dsklength, (adkcon & 0x400) ? dsksync : 0xffff, dskpt, adkcon, m68k_getpc());
+	dsklength, dsklength, (adkcon & 0x400) ? dsksync : 0xffff, dskpt, adkcon, M68K_GETPC);
 }
 
 #if 0
@@ -2729,9 +2727,9 @@ void DSKLEN (uae_u16 v, int hpos)
 	if (dskdmaen) {
 	    /* Megalomania and Knightmare does this */
 	    if (disk_debug_logging > 0 && dskdmaen == 2)
-		write_log ("warning: Disk read DMA aborted, %d words left PC=%x\n", dsklength, m68k_getpc());
+		write_log ("warning: Disk read DMA aborted, %d words left PC=%x\n", dsklength, M68K_GETPC);
 	    if (dskdmaen == 3)
-		write_log ("warning: Disk write DMA aborted, %d words left PC=%x\n", dsklength, m68k_getpc());
+		write_log ("warning: Disk write DMA aborted, %d words left PC=%x\n", dsklength, M68K_GETPC);
 	    dskdmaen = 0;
 	}
     }
@@ -2886,7 +2884,7 @@ void DSKDAT (uae_u16 v)
 #endif
     if (count < 5) {
 	count++;
-	write_log ("%04.4X written to DSKDAT. Not good. PC=%08.8X", v, m68k_getpc());
+	write_log ("%04.4X written to DSKDAT. Not good. PC=%08.8X", v, M68K_GETPC);
 	if (count == 5)
 	    write_log ("(further messages suppressed)");
 
@@ -2997,6 +2995,8 @@ end:
 
 /* Disk save/restore code */
 
+#if defined SAVESTATE || defined DEBUGGER
+
 void DISK_save_custom (uae_u32 *pdskpt, uae_u16 *pdsklength, uae_u16 *pdsksync, uae_u16 *pdskbytr)
 {
     if(pdskpt) *pdskpt = dskpt;
@@ -3004,6 +3004,10 @@ void DISK_save_custom (uae_u32 *pdskpt, uae_u16 *pdsklength, uae_u16 *pdsksync, 
     if(pdsksync) *pdsksync = dsksync;
     if(pdskbytr) *pdskbytr = dskbytr_val;
 }
+
+#endif /* SAVESTATE || DEBUGGER */
+
+#ifdef SAVESTATE
 
 void DISK_restore_custom (uae_u32 pdskpt, uae_u16 pdsklength, uae_u16 pdskbytr)
 {
@@ -3145,4 +3149,4 @@ uae_u8 *save_floppy(int *len, uae_u8 *dstptr)
     return dstbak;
 }
 
-
+#endif /* SAVESTATE */

@@ -15,7 +15,6 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
-#include "config.h"
 #include "options.h"
 #include "memory.h"
 #include "custom.h"
@@ -33,6 +32,11 @@
 #ifdef AVIOUTPUT
 #include "avioutput.h"
 #endif
+#ifdef AHI
+#include "traps.h"
+#include "ahidsound.h"
+#endif
+#include "threaddep/thread.h"
 
 #include <math.h>
 
@@ -45,8 +49,6 @@ int audio_channel_mask = 15;
 STATIC_INLINE int isaudio(void)
 {
     if (!currprefs.produce_sound)
-	return 0;
-    if (currprefs.picasso96_nocustom && picasso_on)
 	return 0;
     return 1;
 }
@@ -933,6 +935,33 @@ void sample16si_rh_handler (void)
 }
 #endif
 
+static int audio_work_to_do;
+
+static void audio_deactivate(void)
+{
+    if (!currprefs.sound_auto)
+	return;
+    gui_data.sndbuf_status = 3;
+    gui_data.sndbuf = 0;
+    clear_sound_buffers();
+}
+
+int audio_activate(void)
+{
+    int ret = 0;
+    if (!audio_work_to_do) {
+	restart_sound_buffer();
+	ret = 1;
+    }
+    audio_work_to_do = 4 * maxvpos * 50;
+    return ret;
+}
+STATIC_INLINE int is_audio_active(void)
+{
+    return audio_work_to_do;
+}
+
+
 void schedule_audio (void)
 {
     unsigned long best = MAX_EV;
@@ -961,7 +990,7 @@ static void setirq (int nr, int debug)
 {
 #ifdef DEBUG_AUDIO
     if (debugchannel (nr))
-	write_log ("SETIRQ %d %08.8X (%d)\n", nr, m68k_getpc(), debug);
+	write_log ("SETIRQ %d %08.8X (%d)\n", nr, M68K_GETPC, debug);
 #endif
     INTREQ (0x8000 | (0x80 << nr));
 }
@@ -1016,6 +1045,7 @@ static void audio_handler (int nr, int timed)
     int napnav = (!audav && !audap) || audav;
     int evtime = cdp->evtime;
 
+    audio_activate();
     cdp->evtime = MAX_EV;
     switch (cdp->state)
     {
@@ -1082,7 +1112,7 @@ static void audio_handler (int nr, int timed)
 	    if (currprefs.produce_sound == 0)
 		cdp->per = PERIOD_MAX;
 
-	    if (!cdp->dmaen && isirq (nr) && ((cdp->per <= 30 ) || (evtime == 0 || evtime == MAX_EV || evtime == cdp->per))) {
+	    if (!cdp->dmaen && isirq (nr) && (evtime == 0 || evtime == MAX_EV || evtime == cdp->per)) {
 		zerostate (cdp);
 		return;
 	    }
@@ -1189,7 +1219,7 @@ STATIC_INLINE int sound_prefs_changed (void)
 	    || changed_prefs.sound_mixed_stereo != currprefs.sound_mixed_stereo
 	    || changed_prefs.sound_maxbsiz != currprefs.sound_maxbsiz
 	    || changed_prefs.sound_freq != currprefs.sound_freq
-	    || changed_prefs.sound_adjust != currprefs.sound_adjust
+	    || changed_prefs.sound_auto != currprefs.sound_auto
 	    || changed_prefs.sound_interpol != currprefs.sound_interpol
 	    || changed_prefs.sound_volume != currprefs.sound_volume
 	    || changed_prefs.sound_stereo_swap_paula != currprefs.sound_stereo_swap_paula
@@ -1228,7 +1258,9 @@ void check_prefs_changed_audio (void)
 #ifdef AVIOUTPUT
     AVIOutput_Restart ();
 #endif
+    clear_sound_buffers();
     set_audio();
+    audio_activate();
 }
 
 void set_audio(void)
@@ -1239,7 +1271,7 @@ void set_audio(void)
     currprefs.sound_stereo = changed_prefs.sound_stereo;
     currprefs.sound_stereo_separation = changed_prefs.sound_stereo_separation;
     currprefs.sound_mixed_stereo = changed_prefs.sound_mixed_stereo;
-    currprefs.sound_adjust = changed_prefs.sound_adjust;
+    currprefs.sound_auto = changed_prefs.sound_auto;
     currprefs.sound_interpol = changed_prefs.sound_interpol;
     currprefs.sound_freq = changed_prefs.sound_freq;
     currprefs.sound_maxbsiz = changed_prefs.sound_maxbsiz;
@@ -1327,12 +1359,14 @@ void set_audio(void)
 
 void update_audio (void)
 {
-    unsigned long int n_cycles;
+    unsigned long int n_cycles = 0;
 
     if (!isaudio())
-	return;
+	goto end;
     if (savestate_state == STATE_RESTORE)
-	return;
+	goto end;
+    if (!is_audio_active())
+	goto end;
 
     n_cycles = get_cycles () - last_cycles;
     for (;;) {
@@ -1382,6 +1416,7 @@ void update_audio (void)
 	if (audio_channel[3].evtime == 0)
 	    audio_handler (3, 1);
     }
+end:
     last_cycles = get_cycles () - n_cycles;
 }
 
@@ -1399,8 +1434,23 @@ uae_u16	dmacon;
 void audio_hsync (int dmaaction)
 {
     int nr, handle;
+    static int old_dma;
 
     if (!isaudio())
+	return;
+
+    if (old_dma != (dmacon & (DMA_MASTER | 15))) {
+	old_dma = dmacon & (DMA_MASTER | 15);
+	audio_activate();
+    }
+
+    if (audio_work_to_do > 0) {
+	audio_work_to_do--;
+	if (audio_work_to_do == 0)
+	    audio_deactivate();
+    }
+
+    if (!is_audio_active())
 	return;
 
     update_audio ();
@@ -1445,7 +1495,7 @@ void audio_hsync (int dmaaction)
 #ifdef DEBUG_AUDIO
 	    if (debugchannel (nr))
 		write_log ("AUD%dDMA %d->%d (%d) LEN=%d/%d %08.8X\n", nr, cdp->dmaen, chan_ena,
-		    cdp->state, cdp->wlen, cdp->len, m68k_getpc());
+		    cdp->state, cdp->wlen, cdp->len, M68K_GETPC);
 #endif
 	    cdp->dmaen = chan_ena;
 	    if (cdp->dmaen)
@@ -1468,8 +1518,9 @@ void AUDxDAT (int nr, uae_u16 v)
 #ifdef DEBUG_AUDIO
     if (debugchannel (nr))
 	write_log ("AUD%dDAT: %04.4X STATE=%d IRQ=%d %08.8X\n", nr,
-	    v, cdp->state, isirq(nr) ? 1 : 0, m68k_getpc());
+	    v, cdp->state, isirq(nr) ? 1 : 0, M68K_GETPC);
 #endif
+    audio_activate();
     update_audio ();
     cdp->dat2 = v;
     cdp->request_word = -1;
@@ -1484,34 +1535,39 @@ void AUDxDAT (int nr, uae_u16 v)
 
 void AUDxLCH (int nr, uae_u16 v)
 {
+    audio_activate();
     update_audio ();
     audio_channel[nr].lc = (audio_channel[nr].lc & 0xffff) | ((uae_u32)v << 16);
 #ifdef DEBUG_AUDIO
     if (debugchannel (nr))
-	write_log ("AUD%dLCH: %04.4X %08.8X\n", nr, v, m68k_getpc());
+	write_log ("AUD%dLCH: %04.4X %08.8X\n", nr, v, M68K_GETPC);
 #endif
 }
 
 void AUDxLCL (int nr, uae_u16 v)
 {
+    audio_activate();
     update_audio ();
     audio_channel[nr].lc = (audio_channel[nr].lc & ~0xffff) | (v & 0xFFFE);
 #ifdef DEBUG_AUDIO
     if (debugchannel (nr))
-	write_log ("AUD%dLCL: %04.4X %08.8X\n", nr, v, m68k_getpc());
+	write_log ("AUD%dLCL: %04.4X %08.8X\n", nr, v, M68K_GETPC);
 #endif
 }
 
 void AUDxPER (int nr, uae_u16 v)
 {
     unsigned long per = v * CYCLE_UNIT;
-    update_audio ();
 
+    audio_activate();
+    update_audio ();
     if (per == 0)
 	per = PERIOD_MAX - 1;
 
     if (per < maxhpos * CYCLE_UNIT / 2 && currprefs.produce_sound < 3)
 	per = maxhpos * CYCLE_UNIT / 2;
+    else if (per < 4 * CYCLE_UNIT)
+	per = 4 * CYCLE_UNIT;
 
    if (audio_channel[nr].per == PERIOD_MAX - 1 && per != PERIOD_MAX - 1) {
 	audio_channel[nr].evtime = CYCLE_UNIT;
@@ -1524,23 +1580,26 @@ void AUDxPER (int nr, uae_u16 v)
     audio_channel[nr].per = per;
 #ifdef DEBUG_AUDIO
     if (debugchannel (nr))
-	write_log ("AUD%dPER: %d %08.8X\n", nr, v, m68k_getpc());
+	write_log ("AUD%dPER: %d %08.8X\n", nr, v, M68K_GETPC);
 #endif
 }
 
 void AUDxLEN (int nr, uae_u16 v)
 {
+    audio_activate();
     update_audio ();
     audio_channel[nr].len = v;
 #ifdef DEBUG_AUDIO
     if (debugchannel (nr))
-	write_log ("AUD%dLEN: %d %08.8X\n", nr, v, m68k_getpc());
+	write_log ("AUD%dLEN: %d %08.8X\n", nr, v, M68K_GETPC);
 #endif
 }
 
 void AUDxVOL (int nr, uae_u16 v)
 {
     int v2 = v & 64 ? 63 : v & 63;
+
+    audio_activate();
     update_audio ();
     audio_channel[nr].vol = v2;
 #ifndef	MULTIPLICATION_PROFITABLE
@@ -1548,7 +1607,7 @@ void AUDxVOL (int nr, uae_u16 v)
 #endif
 #ifdef DEBUG_AUDIO
     if (debugchannel (nr))
-	write_log ("AUD%dVOL: %d %08.8X\n", nr, v2, m68k_getpc());
+	write_log ("AUD%dVOL: %d %08.8X\n", nr, v2, M68K_GETPC);
 #endif
 }
 
@@ -1567,7 +1626,7 @@ void audio_update_irq (uae_u16 v)
 	if ((1 << i) & DEBUG_CHANNEL_MASK) {
 	    uae_u16 mask = 0x80 << i;
 	    if ((v2 & mask) != (v3 & mask))
-		write_log("AUD%dINTREQ %d->%d %08.8X\n", i, !!(v3 & mask), !!(v2 & mask), m68k_getpc());
+		write_log("AUD%dINTREQ %d->%d %08.8X\n", i, !!(v3 & mask), !!(v2 & mask), M68K_GETPC);
 	}
     }
 #endif
@@ -1575,20 +1634,20 @@ void audio_update_irq (uae_u16 v)
 
 void audio_update_adkmasks (void)
 {
+    static int prevcon = -1;
     unsigned long t = adkcon | (adkcon >> 4);
+
     audio_channel[0].adk_mask = (((t >> 0) & 1) - 1);
     audio_channel[1].adk_mask = (((t >> 1) & 1) - 1);
     audio_channel[2].adk_mask = (((t >> 2) & 1) - 1);
     audio_channel[3].adk_mask = (((t >> 3) & 1) - 1);
+    if ((prevcon & 0xff) != (adkcon & 0xff)) {
+	audio_activate();
 #ifdef DEBUG_AUDIO
-    {
-	static int prevcon = -1;
-	if ((prevcon & 0xff) != (adkcon & 0xff)) {
-	    write_log("ADKCON=%02.2x %08.8X\n", adkcon & 0xff, m68k_getpc());
-	    prevcon = adkcon;
-	}
-    }
+        write_log("ADKCON=%02.2x %08.8X\n", adkcon & 0xff, M68K_GETPC);
 #endif
+	prevcon = adkcon;
+    }
 }
 
 int init_audio (void)
