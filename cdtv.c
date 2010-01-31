@@ -9,6 +9,8 @@
   *
   */
 
+//#define ROMHACK
+//#define ROMHACK2
 //#define CDTV_DEBUG
 //#define CDTV_DEBUG_CMD
 //#define CDTV_DEBUG_6525
@@ -28,7 +30,6 @@
 #include "threaddep/thread.h"
 #include "a2091.h"
 #include "uae.h"
-
 
 /* DMAC CNTR bits. */
 #define CNTR_TCEN               (1<<7)
@@ -54,6 +55,9 @@
 #define AUDIO_STATUS_PLAY_ERROR     0x14
 #define AUDIO_STATUS_NO_STATUS      0x15
 
+#define MODEL_NAME "MATSHITA0.96"
+/* also MATSHITA0.97 exists but is apparently rare */
+
 static smp_comm_pipe requests;
 static volatile int thread_alive;
 
@@ -74,20 +78,28 @@ static volatile uae_u32 dmac_acr;
 static volatile int dmac_wtc;
 static volatile int dmac_dma;
 
-static volatile int activate_stch, cdrom_command_done, play_state, play_statewait;
+static volatile int activate_stch, cdrom_command_done, play_state, play_state_cmd, play_statewait;
 static volatile int cdrom_sector, cdrom_sectors, cdrom_length, cdrom_offset;
 static volatile int cd_playing, cd_paused, cd_motor, cd_media, cd_error, cd_finished, cd_isready, cd_hunt;
 
 static volatile int cdtv_hsync, dma_finished, cdtv_sectorsize;
 static volatile uae_u64 dma_wait;
 static int first;
+static int cd_volume;
+
+#ifdef ROMHACK
+#define ROM_VECTOR 0x2000
+#define ROM_OFFSET 0x2000
+static int rom_size, rom_mask;
+static uae_u8 *rom;
+#endif
 
 static void do_stch(void);
 
 static void INT2(void)
 {
     if (!(intreq & 8)) {
-	INTREQ_f(0x8000 | 0x0008);
+	INTREQ_0 (0x8000 | 0x0008);
     }
 }
 
@@ -131,9 +143,18 @@ static int get_toc(void)
     memcpy (cdrom_toc, buf, i);
     last_cd_position = (buf[4 + 2 * 11 + 8] << 16) | (buf[4 + 2 * 11 + 9] << 8) | (buf[4 + 2 * 11 + 10] << 0);
     last_cd_position = lsn2msf(msf2lsn(last_cd_position) - 1);
-    if (buf[4 + 3 * 11 + 3] == 1 && (buf[4 + 3 * 11 + 1] & 0x0f) == 0x04)
+    if (buf[4 + 3 * 11 + 3] == 1 && (buf[4 + 3 * 11 + 1] & 0x0c) == 0x04)
 	datatrack = 1;
     return 1;
+}
+
+static void finished_cdplay (void)
+{
+    cd_audio_status = AUDIO_STATUS_PLAY_COMPLETE;
+    cd_playing = 0;
+    cd_finished = 1;
+    cd_paused = 0;
+    do_stch ();
 }
 
 static int get_qcode(void)
@@ -149,15 +170,10 @@ static int get_qcode(void)
     if (cd_playing) {
 	if (s[1] == AUDIO_STATUS_IN_PROGRESS) {
 	    int end = msf2lsn((s[5 + 4] << 16) | (s[6 + 4] << 8) | (s[7 + 4]));
-	    if (end >= play_end - 75) {
-		cd_audio_status = AUDIO_STATUS_PLAY_COMPLETE;
-		cd_playing = 0;
-		do_stch();
-	    }
+	    if (end >= play_end - 75)
+		finished_cdplay ();
 	} else if (s[1] == AUDIO_STATUS_PLAY_COMPLETE) {
-	    cd_audio_status = AUDIO_STATUS_PLAY_COMPLETE;
-	    cd_playing = 0;
-	    do_stch();
+	    finished_cdplay ();
 	}
     }
     s[1] = cd_audio_status;
@@ -251,6 +267,7 @@ static int play_cdtrack (uae_u8 *p)
     write_log ("PLAY CD AUDIO from %d-%d, %06.6X (%d) to %06.6X (%d)\n",
 	track_start, track_end, start, msf2lsn(start), end, msf2lsn(end));
     play_state = 1;
+    play_state_cmd = 1;
     return 0;
 }
 
@@ -289,6 +306,7 @@ static int play_cd(uae_u8 *p)
     write_log ("PLAY CD AUDIO from %06.6X (%d) to %06.6X (%d)\n",
 	start, msf2lsn(start), end, msf2lsn(end));
     play_state = 1;
+    play_state_cmd = 1;
     return 0;
 }
 
@@ -479,9 +497,8 @@ static void cdrom_command_thread(uae_u8 b)
 	    cdrom_command_output[0] = flag;
 	    cdrom_command_accepted(1, s, &cdrom_command_cnt_in);
 	    cd_finished = 0;
-	    if (first)
-		do_stch();
-	    first = 0;
+	    if (first == -1)
+		first = 1;
 	}
 	break;
 	case 0x82:
@@ -494,6 +511,12 @@ static void cdrom_command_thread(uae_u8 b)
 	    cd_finished = 1;
 	}
 	break;
+	case 0x83:
+        if (cdrom_command_cnt_in == 7) {
+	    memcpy (cdrom_command_output, MODEL_NAME, strlen (MODEL_NAME)); 
+	    cdrom_command_accepted(strlen (MODEL_NAME), s, &cdrom_command_cnt_in);
+	    cd_finished = 1;
+	}
 	case 0x84:
 	if (cdrom_command_cnt_in == 7) {
 	    cdrom_command_accepted(cdrom_modeset(cdrom_command_input), s, &cdrom_command_cnt_in);
@@ -574,7 +597,7 @@ static uae_u8 *read_raw(int sector, int size)
 	track = trackcnt;
     }
     if (f) {
-	write_log ("%dx%d=%d\n", sector, size, sector * size);
+	write_log ("CDTV fakeraw: %dx%d=%d\n", sector, size, sector * size);
 	zfile_fseek (f, sector * size, SEEK_SET);
 	zfile_fread (buf, size, 1, f);
 	return buf;
@@ -586,10 +609,16 @@ static void dma_do_thread(void)
 {
     static int readsector;
     uae_u8 *p = NULL;
+    int cnt;
 
-    write_log ("DMAC DMA: sector=%d, addr=%08.8X, words=%d\n", cdrom_offset / cdtv_sectorsize, dmac_acr, dmac_wtc);
-    dma_wait += dmac_wtc * (uae_u64)312 * 50 / 75 + 1;
-    while (dmac_wtc > 0 && dmac_dma) {
+    while (dma_finished)
+	sleep_millis (2);
+
+    cnt = dmac_wtc;
+    write_log ("DMAC DMA: sector=%d, addr=%08.8X, words=%d (of %d)\n",
+	cdrom_offset / cdtv_sectorsize, dmac_acr, cnt, cdrom_length / 2);
+    dma_wait += cnt * (uae_u64)312 * 50 / 75 + 1;
+    while (cnt > 0 && dmac_dma) {
 	if (!p || readsector != (cdrom_offset / cdtv_sectorsize)) {
 	    readsector = cdrom_offset / cdtv_sectorsize;
 	    if (cdtv_sectorsize == 2336)
@@ -606,11 +635,12 @@ static void dma_do_thread(void)
 	}
 	put_byte (dmac_acr, p[(cdrom_offset % cdtv_sectorsize) + 0]);
 	put_byte (dmac_acr + 1, p[(cdrom_offset % cdtv_sectorsize) + 1]);
-	dmac_wtc--;
+	cnt--;
 	dmac_acr+=2;
 	cdrom_length-=2;
 	cdrom_offset+=2;
     }
+    dmac_wtc = 0;
     dmac_dma = 0;
     dma_finished = 1;
     cd_finished = 1;
@@ -678,20 +708,23 @@ static uae_u8 tp_imr, tp_cr, tp_air;
 
 static void tp_check_interrupts(void)
 {
+    /* MC = 1 ? */
     if ((tp_cr & 1) != 1)
 	return;
 
     if (sten == 1) {
-	if (!(tp_air & (1 << 3)) && (tp_cd & (1 << 3))) {
+	sten = -1;
+	if (tp_cd & (1 << 3))
 	    tp_air |= 1 << 3;
-	    INT2();
-	}
     }
+    if ((tp_air & tp_cd) & 0x1f)
+	INT2 ();
 }
 
 
 static void tp_bput (int addr, uae_u8 v)
 {
+    static int volstrobe1, volstrobe2;
 #ifdef CDTV_DEBUG_6525
     write_log ("6525 write %x=%02.2X PC=%x\n", addr, v, M68K_GETPC);
 #endif
@@ -704,7 +737,8 @@ static void tp_bput (int addr, uae_u8 v)
 	tp_b = v;
 	break;
 	case 2:
-	tp_c = v;
+	if (!(tp_cr & 1))
+	    tp_c = v;
 	break;
 	case 3:
 	tp_ad = v;
@@ -726,6 +760,23 @@ static void tp_bput (int addr, uae_u8 v)
     enable = (tp_b >> 1) & 1;
     xaen = (tp_b >> 2) & 1;
     dten = (tp_b >> 3) & 1;
+
+    if (!volstrobe1 && ((tp_b >> 6) & 1)) {
+	cd_volume >>= 1;
+	cd_volume |= ((tp_b >> 5) & 1) << 11;
+	volstrobe1 = 1;
+    } else if (volstrobe1 && !((tp_b >> 6) & 1)) {
+	volstrobe1 = 0;
+    }
+    if (!volstrobe2 && ((tp_b >> 7) & 1)) {
+#ifdef CDTV_DEBUG_CMD
+	write_log ("CDTV CD volume = %d\n", cd_volume);
+#endif
+	cd_volume = 0;
+	volstrobe2 = 1;
+    } else if (volstrobe2 && !((tp_b >> 7) & 1)) {
+	volstrobe2 = 0;
+    }
 }
 
 static uae_u8 tp_bget(int addr)
@@ -786,7 +837,7 @@ static void REGPARAM3 dmac_bput (uaecptr, uae_u32) REGPARAM;
 static void dmac_start_dma(void)
 {
     if (!(dmac_cntr & CNTR_PDMD)) { // non-scsi dma
-	write_comm_pipe_u32 (&requests, 0x100, 1);
+	write_comm_pipe_u32 (&requests, 0x0100, 1);
     }
 }
 
@@ -820,6 +871,7 @@ static void do_hunt(void)
 static void checkint(void)
 {
     int irq = 0;
+
     if (currprefs.cs_cdtvscsi && (wdscsi_getauxstatus() & 0x80)) {
 	dmac_istr |= ISTR_INTS;
 	if ((dmac_cntr & CNTR_INTEN) && (dmac_istr & ISTR_INTS))
@@ -830,6 +882,22 @@ static void checkint(void)
     if (irq)
 	INT2();
 }
+
+void cdtv_scsi_int (void)
+{
+    checkint ();
+}
+void cdtv_scsi_clear_int (void)
+{
+    dmac_istr &= ~ISTR_INTS;
+}
+
+void rethink_cdtv (void)
+{
+    checkint ();
+    tp_check_interrupts ();
+}
+
 
 void CDTV_hsync_handler(void)
 {
@@ -845,6 +913,9 @@ void CDTV_hsync_handler(void)
     if (dma_wait >= 0 && dma_wait < 1024 && dma_finished) {
 	if ((dmac_cntr & (CNTR_INTEN | CNTR_TCEN)) == (CNTR_INTEN | CNTR_TCEN)) {
 	    dmac_istr |= ISTR_INT_P | ISTR_E_INT;
+#ifdef CDTV_DEBUG
+	    write_log ("DMA finished\n");
+#endif
 	}
 	dma_finished = 0;
 	cdtv_hsync = -1;
@@ -861,9 +932,16 @@ void CDTV_hsync_handler(void)
 	return;
     cdtv_hsync = 0;
 
+    if (first > 0) {
+	first--;
+	if (first == 0)
+	    do_stch();
+    }
+
     if (play_state == 1) {
 	play_state = 2;
 	cd_playing = 1;
+	cd_motor = 1;
 	activate_stch = 1;
 	play_statewait = 5;
     } else if (play_statewait > 0) {
@@ -881,10 +959,8 @@ void CDTV_hsync_handler(void)
     if (cd_playing)
 	gui_cd_led (1);
     if (cd_media && (tp_cr & 1)) {
-	if (!(tp_air & (1 << 1))) {
-	    tp_air |= 1 << 1;
-	    INT2();
-	}
+	tp_air |= 1 << 1;
+	INT2();
     }
 
     subqcnt--;
@@ -898,7 +974,7 @@ void CDTV_hsync_handler(void)
 	do_stch();
 }
 
-static void do_stch(void)
+static void do_stch (void)
 {
     static int stch_cnt;
     if ((tp_cr & 1) && !(tp_air & (1 << 2)) && (tp_cd & (1 << 2))) {
@@ -909,7 +985,7 @@ static void do_stch(void)
     }
 }
 
-void bleh(void)
+void bleh (void)
 {
 #if 0
     cd_playing = cd_finished = cd_motor = cd_media = 1;
@@ -929,7 +1005,7 @@ static void cdtv_reset (void)
     cd_error = 0;
     cd_finished = 0;
     stch = 0;
-    first = 1;
+    first = -1;
 }
 
 static uae_u32 dmac_bget2 (uaecptr addr)
@@ -941,6 +1017,16 @@ static uae_u32 dmac_bget2 (uaecptr addr)
 
     if (addr >= 0xb0 && addr < 0xc0)
 	return tp_bget ((addr - 0xb0) / 2);
+
+#ifdef ROMHACK
+    if (addr >= ROM_OFFSET) {
+	if (rom) {
+	    int off = addr & rom_mask;
+	    return rom[off];
+	}
+	return 0;
+    }
+#endif
 
     switch (addr)
     {
@@ -1081,6 +1167,7 @@ static void dmac_bput2 (uaecptr addr, uae_u32 b)
 	case 0xe2:
 	case 0xe3:
 	dmac_dma = 0;
+	dma_finished = 0;
 	break;
 	case 0xe4:
 	case 0xe5:
@@ -1263,11 +1350,38 @@ static void ew (int addr, uae_u32 value)
     }
 }
 
+static uae_u32 REGPARAM2 dmac_wgeti (uaecptr addr)
+{
+    uae_u32 v = 0xffff;
+#ifdef JIT
+    special_mem |= S_READ;
+#endif
+#ifdef ROMHACK
+    addr &= 65535;
+    if (addr >= ROM_OFFSET)
+	v = (rom[addr & rom_mask] << 8) | rom[(addr + 1) & rom_mask];
+#endif
+    return v;
+}
+static uae_u32 REGPARAM2 dmac_lgeti (uaecptr addr)
+{
+    uae_u32 v = 0xffff;
+#ifdef JIT
+    special_mem |= S_READ;
+#endif
+#ifdef ROMHACK
+    addr &= 65535;
+    v = (dmac_wgeti(addr) << 16) | dmac_wgeti(addr + 2);
+#endif
+    return v;
+}
+
+
 addrbank dmac_bank = {
     dmac_lget, dmac_wget, dmac_bget,
     dmac_lput, dmac_wput, dmac_bput,
-    default_xlate, default_check, NULL, "CDTV CD Controller",
-    dummy_lgeti, dummy_wgeti, ABFLAG_IO
+    default_xlate, default_check, NULL, "CDTV DMAC/CD Controller",
+    dmac_lgeti, dmac_wgeti, ABFLAG_IO
 };
 
 
@@ -1373,6 +1487,8 @@ int cdtv_add_scsi_unit(int ch, char *path, int blocksize, int readonly,
 void cdtv_free (void)
 {
     if (thread_alive > 0) {
+	dmac_dma = 0;
+	dma_finished = 0;
 	write_comm_pipe_u32 (&requests, 0x0104, 1);
 	write_comm_pipe_u32 (&requests, 0xffff, 1);
 	while (thread_alive > 0)
@@ -1385,6 +1501,47 @@ void cdtv_free (void)
     unitnum = -1;
     configured = 0;
 }
+
+#ifdef ROMHACK2
+extern uae_u8 *extendedkickmemory, *cardmemory;
+static void romhack (void)
+{
+    struct zfile *z;
+    int roms[5];
+    struct romlist *rl;
+    int rom_size;
+    uae_u8 *rom, *p;
+
+    extendedkickmemory[0x558c] = 0xff;
+
+    roms[0] = 55;
+    roms[1] = 54;
+    roms[2] = 53;
+    roms[3] = -1;
+
+    rl = getromlistbyids(roms);
+    if (rl) {
+	write_log ("A590/A2091 BOOT ROM '%s' %d.%d\n", rl->path, rl->rd->ver, rl->rd->rev);
+	z = zfile_fopen(rl->path, "rb");
+	if (z) {
+	    rom_size = 16384;
+	    rom = (uae_u8*)xmalloc (rom_size);
+	    zfile_fread (rom, rom_size, 1, z);
+	    rom[0x2071] = 0xe0; rom[0x2072] |= 0x40;
+	    rom[0x2075] = 0xe0; rom[0x2076] |= 0x40;
+	    rom[0x207d] = 0xe0; rom[0x207e] |= 0x40;
+	    rom[0x2081] = 0xe0; rom[0x2082] |= 0x40;
+	    rom[0x2085] = 0xe0; rom[0x2086] |= 0x40;
+	    rom[0x207b] = 0x32;
+	    p = cardmemory + 0x4000;
+	    memcpy (p, rom + 0x2000, 0x2000);
+	    memcpy (p + 0x2000, rom, 0x2000);
+	}
+	zfile_fclose(z);
+    }
+    //kickmemory[0x3592c] = 0xff;
+}
+#endif
 
 void cdtv_init (void)
 {
@@ -1412,6 +1569,16 @@ void cdtv_init (void)
     ew (0x08, 0x40);
     ew (0x10, 0x02);
     ew (0x14, 0x02);
+
+    ew (0x18, 0x00); /* ser.no. Byte 0 */
+    ew (0x1c, 0x00); /* ser.no. Byte 1 */
+    ew (0x20, 0x00); /* ser.no. Byte 2 */
+    ew (0x24, 0x00); /* ser.no. Byte 3 */
+
+#ifdef ROMHACK2
+    romhack();
+#endif
+
     /* KS autoconfig handles the rest */
     map_banks (&dmac_bank, 0xe80000 >> 16, 0x10000 >> 16, 0x10000);
     cdtv_battram_reset ();

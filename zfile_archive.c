@@ -141,7 +141,7 @@ struct zfile *archive_access_select (struct zfile *zf, unsigned int id, int dode
 	    select = 0;
 	    if (!zf->zipname)
 		select = 1;
-	    if (zf->zipname && !strcasecmp (zf->zipname, zn->name))
+	    if (zf->zipname && strlen (zn->fullname) >= strlen (zf->zipname) && !strcasecmp (zf->zipname, zn->fullname + strlen (zn->fullname) - strlen (zf->zipname)))
 		select = -1;
 	    if (zf->zipname && zf->zipname[0] == '#' && atol (zf->zipname + 1) == zipcnt)
 		select = -1;
@@ -191,10 +191,15 @@ void archive_access_scan (struct zfile *zf, zfile_callback zc, void *user, unsig
 	if (zn->isfile) {
 	    struct zfile *zf2 = archive_getzfile (zn, id);
 	    if (zf2) {
-		int ret = zc (zf2, user);
-		zfile_fclose(zf2);
-		if (ret)
-		    break;
+		int ztype = iszip (zf2);
+		if (ztype) {
+		    zfile_fclose (zf2);
+		} else {
+		    int ret = zc (zf2, user);
+		    zfile_fclose(zf2);
+		    if (ret)
+			break;
+		}
 	    }
 	}
 	zn = zn->next;
@@ -623,13 +628,13 @@ static void arcacc_free (void)
     arcacc_mod = NULL;
 }
 
-static int arcacc_init (void)
+static int arcacc_init (struct zfile *zf)
 {
     if (arcacc_mod)
 	return 1;
     arcacc_mod = WIN32_LoadLibrary ("archiveaccess.dll");
     if (!arcacc_mod) {
-	write_log ("failed to open archiveaccess.dll\n");
+	write_log ("failed to open archiveaccess.dll ('%s')\n", zfile_getname (zf));
 	return 0;
     }
     aaOpenArchive = (aapOpenArchive) GetProcAddress (arcacc_mod, "aaOpenArchive");
@@ -695,7 +700,7 @@ struct zvolume *archive_directory_arcacc (struct zfile *z, unsigned int id)
     struct zvolume *zv;
     int skipsize = 0;
 
-    if (!arcacc_init ())
+    if (!arcacc_init (z))
 	return NULL;
     zv = zvolume_alloc(z, id, NULL);
     id_r = arcacc_push (z);

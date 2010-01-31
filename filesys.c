@@ -46,6 +46,7 @@
 #include "savestate.h"
 #include "a2091.h"
 #include "cdtv.h"
+#include "sana2.h"
 
 #define TRACING_ENABLED 0
 #if TRACING_ENABLED
@@ -110,7 +111,7 @@ typedef struct {
     struct zvolume *zarchive;
     char *rootdirdiff; /* "diff" file/directory */
     int readonly; /* disallow write access? */
-    int bootpri; /* boot priority */
+    int bootpri; /* boot priority. -128 = no autoboot, -129 = no mount */
     int devno;
     int controller;
     int wasisempty; /* if true, this unit was created empty */
@@ -355,7 +356,8 @@ static int set_filesys_volume(const char *rootdir, int *flags, int *readonly, in
 static int set_filesys_unit_1 (int nr,
 				 char *devname, char *volname, const char *rootdir, int readonly,
 				 int secspertrack, int surfaces, int reserved,
-				 int blocksize, int bootpri, char *filesysdir, int hdc, int flags)
+				 int blocksize, int bootpri, int donotmount, int autoboot,
+				 char *filesysdir, int hdc, int flags)
 {
     UnitInfo *ui;
     int i;
@@ -440,14 +442,18 @@ static int set_filesys_unit_1 (int nr,
     ui->self = 0;
     ui->reset_state = FS_STARTUP;
     ui->wasisempty = emptydrive;
-    ui->canremove = emptydrive;
+    ui->canremove = emptydrive && (flags & MYVOLUMEINFO_REUSABLE);
     ui->rootdir = my_strdup (rootdir);
     ui->devname = my_strdup (devname);
     stripsemicolon(ui->devname);
     if (filesysdir && filesysdir[0])
 	ui->filesysdir = my_strdup (filesysdir);
     ui->readonly = readonly;
-    if (bootpri < -128) bootpri = -128;
+    if (!autoboot)
+	bootpri = -128;
+    if (donotmount)
+	bootpri = -129;
+    if (bootpri < -129) bootpri = -129;
     if (bootpri > 127) bootpri = 127;
     ui->bootpri = bootpri;
     ui->open = 1;
@@ -462,18 +468,21 @@ err:
 static int set_filesys_unit (int nr,
 			char *devname, char *volname, const char *rootdir, int readonly,
 			int secspertrack, int surfaces, int reserved,
-			int blocksize, int bootpri, char *filesysdir, int hdc, int flags)
+			int blocksize, int bootpri, int donotmount, int autoboot,
+			char *filesysdir, int hdc, int flags)
 {
     int ret;
 
     ret = set_filesys_unit_1 (nr, devname, volname, rootdir, readonly,
-	secspertrack, surfaces, reserved, blocksize, bootpri, filesysdir, hdc, flags);
+	secspertrack, surfaces, reserved, blocksize, bootpri, donotmount, autoboot,
+	filesysdir, hdc, flags);
     return ret;
 }
 
 static int add_filesys_unit (char *devname, char *volname, const char *rootdir, int readonly,
 			int secspertrack, int surfaces, int reserved,
-			int blocksize, int bootpri, char *filesysdir, int hdc, int flags)
+			int blocksize, int bootpri, int donotmount, int autoboot,
+			char *filesysdir, int hdc, int flags)
 {
     int ret;
 
@@ -481,7 +490,8 @@ static int add_filesys_unit (char *devname, char *volname, const char *rootdir, 
 	return -1;
 
     ret = set_filesys_unit_1 (-1, devname, volname, rootdir, readonly,
-				 secspertrack, surfaces, reserved, blocksize, bootpri, filesysdir, hdc, flags);
+				 secspertrack, surfaces, reserved, blocksize,
+				 bootpri, donotmount, autoboot, filesysdir, hdc, flags);
     return ret;
 }
 
@@ -532,7 +542,7 @@ static void initialize_mountinfo(void)
 	if (uci->controller == HD_CONTROLLER_UAE) {
 	    idx = set_filesys_unit_1 (-1, uci->devname, uci->ishdf ? NULL : uci->volname, uci->rootdir,
 		uci->readonly, uci->sectors, uci->surfaces, uci->reserved,
-		uci->blocksize, uci->bootpri, uci->filesys, 0, 0);
+		uci->blocksize, uci->bootpri, uci->donotmount, uci->autoboot, uci->filesys, 0, MYVOLUMEINFO_REUSABLE);
 	    if (idx >= 0) {
 		UnitInfo *ui;
 		uci->configoffset = idx;
@@ -986,6 +996,20 @@ void filesys_vsync (void)
 	}
     }
 }
+static void filesys_delayed_change (Unit *u, int frames, const char *rootdir, const char *volume, int readonly, int flags)
+{
+    u->reinsertdelay = 50;
+    u->newflags = flags;
+    u->newreadonly = readonly;
+    u->newrootdir = my_strdup (rootdir);
+    if (volume)
+        u->newvolume = my_strdup (volume);
+    filesys_eject(u->unit);
+    if (!rootdir || strlen (rootdir) == 0)
+        u->reinsertdelay = 0;
+    if (u->reinsertdelay > 0)
+	write_log ("FILESYS: delayed insert %d: '%s' ('%s')\n", u->unit, volume ? volume : "<none>", rootdir);
+}
 
 int filesys_media_change (const char *rootdir, int inserted, struct uaedev_config_info *uci)
 {
@@ -1004,8 +1028,11 @@ int filesys_media_change (const char *rootdir, int inserted, struct uaedev_confi
         if (is_hardfile (u->unit) == FILESYS_VIRTUAL) {
 	    ui = &mountinfo.ui[u->unit];
 	    if (ui->rootdir && !memcmp (ui->rootdir, rootdir, strlen (rootdir)) && strlen (rootdir) + 3 >= strlen (ui->rootdir)) {
-		if (filesys_isvolume (u) && inserted)
+		if (filesys_isvolume (u) && inserted) {
+		    if (uci)
+			filesys_delayed_change (u, 50, rootdir, uci->volname, uci->readonly, 0);
 		    return 0;
+		}
 		nr = u->unit;
 		break;
 	    }
@@ -1049,6 +1076,8 @@ int filesys_media_change (const char *rootdir, int inserted, struct uaedev_confi
 		return filesys_insert (nr, volptr, rootdir, -1, -1);
 	    return 0;
 	}
+	if (inserted < 0) /* -1 = only mount if already exists */
+	    return 0;
 	/* new volume inserted and it was not previously mounted? 
 	 * perhaps we have some empty device slots? */
     	nr = filesys_insert (-1, volptr, rootdir, 0, 0);
@@ -1062,7 +1091,7 @@ int filesys_media_change (const char *rootdir, int inserted, struct uaedev_confi
 	    strcpy (devname, uci->devname);
 	else
 	    sprintf (devname, "RDH%d", nr_units());
-	nr = add_filesys_unit (devname, volptr, rootdir, 0, 0, 0, 0, 0, 0, NULL, 0, 0);
+	nr = add_filesys_unit (devname, volptr, rootdir, 0, 0, 0, 0, 0, 0, 0, 1, NULL, 0, MYVOLUMEINFO_REUSABLE);
 	if (nr < 0)
 	    return 0;
 	if (inserted > 1)
@@ -1101,7 +1130,7 @@ int filesys_insert (int nr, char *volume, const char *rootdir, int readonly, int
     if (nr < 0) {
 	for (u = units; u; u = u->next) {
 	    if (is_hardfile (u->unit) == FILESYS_VIRTUAL) {
-		if (!filesys_isvolume (u))
+		if (!filesys_isvolume (u) && mountinfo.ui[u->unit].canremove)
 		    break;
 	    }
 	}
@@ -1130,17 +1159,7 @@ int filesys_insert (int nr, char *volume, const char *rootdir, int readonly, int
     if (is_hardfile(nr) != FILESYS_VIRTUAL)
 	return 0;
     if (filesys_isvolume (u)) {
-	u->reinsertdelay = 50;
-	u->newflags = flags;
-	u->newreadonly = readonly;
-	u->newrootdir = my_strdup (rootdir);
-	if (volume)
-	    u->newvolume = my_strdup (volume);
-	filesys_eject(nr);
-	if (!rootdir || strlen (rootdir) == 0)
-	    u->reinsertdelay = 0;
-	if (u->reinsertdelay > 0)
-	    write_log ("FILESYS: delayed insert %d '%s' ('%s')\n", nr, volume ? volume : "<none>", rootdir);
+	filesys_delayed_change (u, 50, rootdir, volume, readonly, flags);
 	return -1;
     }
     u->mountcount++;
@@ -3566,9 +3585,12 @@ action_seek (Unit *unit, dpacket packet)
 	long filesize = fs_lseek (unit, k->fd, 0, SEEK_END);
 	fs_lseek (unit, k->fd, old, SEEK_SET);
 
-	if (whence == SEEK_CUR) temppos = old + pos;
-	if (whence == SEEK_SET) temppos = pos;
-	if (whence == SEEK_END) temppos = filesize + pos;
+	if (whence == SEEK_CUR)
+	    temppos = old + pos;
+	if (whence == SEEK_SET)
+	    temppos = pos;
+	if (whence == SEEK_END)
+	    temppos = filesize + pos;
 	if (filesize < temppos) {
 	    res = -1;
 	    PUT_PCK_RES1 (packet,res);
@@ -4078,9 +4100,10 @@ action_set_date (Unit *unit, dpacket packet)
     if (err != 0) {
 	PUT_PCK_RES1 (packet, DOS_FALSE);
 	PUT_PCK_RES2 (packet, err);
-    } else
+    } else {
+	notify_check (unit, a);
 	PUT_PCK_RES1 (packet, DOS_TRUE);
-    notify_check (unit, a);
+    }
     gui_hd_led (2);
 }
 
@@ -4764,6 +4787,9 @@ static uae_u32 REGPARAM2 filesys_diagentry (TrapContext *context)
 #ifdef SCSIEMU
     resaddr = scsidev_startup (resaddr);
 #endif
+#ifdef SANA2
+    resaddr = netdev_startup (resaddr);
+#endif
 #ifdef UAESERIAL
     resaddr = uaeserialdev_startup (resaddr);
 #endif
@@ -4784,9 +4810,9 @@ static uae_u32 REGPARAM2 filesys_diagentry (TrapContext *context)
     }
     /* call setup_exter */
     put_word (resaddr +  0, 0x2079);
-    put_long (resaddr +  2, RTAREA_BASE + 28 + 4); /* move.l RTAREA_BASE+32,a0 */
+    put_long (resaddr +  2, rtarea_base + 28 + 4); /* move.l RTAREA_BASE+32,a0 */
     put_word (resaddr +  6, 0xd1fc);
-    put_long (resaddr +  8, RTAREA_BASE + 8 + 4); /* add.l #RTAREA_BASE+12,a0 */
+    put_long (resaddr +  8, rtarea_base + 8 + 4); /* add.l #RTAREA_BASE+12,a0 */
     put_word (resaddr + 12, 0x4e90); /* jsr (a0) */
     put_word (resaddr + 14, 0x7001); /* moveq.l #1,d0 */
     put_word (resaddr + 16, RTS);
@@ -4833,6 +4859,7 @@ static uae_u32 REGPARAM2 filesys_dev_bootfilesys (TrapContext *context)
     return 0;
 }
 
+extern void picasso96_alloc (TrapContext*);
 static uae_u32 REGPARAM2 filesys_init_storeinfo (TrapContext *context)
 {
     int ret = -1;
@@ -4840,6 +4867,7 @@ static uae_u32 REGPARAM2 filesys_init_storeinfo (TrapContext *context)
     {
 	case 1:
 	mountertask = m68k_areg (&context->regs, 1);
+	picasso96_alloc (context);
 	break;
 	case 2:
 	ret = automountunit;
@@ -5188,7 +5216,7 @@ static void addfakefilesys (uaecptr parmpacket, uae_u32 dostype)
     put_long (parmpacket + PP_FSHDSTART + 44, 0xffffffff);
 }
 
-static void dofakefilesys (UnitInfo *uip, uaecptr parmpacket)
+static int dofakefilesys (UnitInfo *uip, uaecptr parmpacket)
 {
     int i, size;
     char tmp[1024];
@@ -5198,14 +5226,17 @@ static void dofakefilesys (UnitInfo *uip, uaecptr parmpacket)
     hdf_read (&uip->hf, tmp, 0, 4);
     dostype = (tmp[0] << 24) | (tmp[1] << 16) |(tmp[2] << 8) | tmp[3];
     if (dostype == 0)
-	return;
+	return FILESYS_HARDFILE;
     fsres = get_long (parmpacket + PP_FSRES);
     fsnode = get_long (fsres + 18);
     while (get_long (fsnode)) {
 	if (get_long (fsnode + 14) == dostype) {
-	    if ((dostype & 0xffffff00) != 0x444f5300)
+	    if (kickstart_version < 36) {
 		addfakefilesys (parmpacket, dostype);
-	    return;
+	    } else if ((dostype & 0xffffff00) != 0x444f5300) {
+		addfakefilesys (parmpacket, dostype);
+	    }
+	    return FILESYS_HARDFILE;
 	}
 	fsnode = get_long (fsnode);
     }
@@ -5222,25 +5253,32 @@ static void dofakefilesys (UnitInfo *uip, uaecptr parmpacket)
     }
     if (tmp[0] == 0) {
 	write_log ("RDB: no filesystem for dostype 0x%08.8X\n", dostype);
-	return;
+	if ((dostype & 0xffffff00) == 0x444f5300)
+	    return FILESYS_HARDFILE;
+	return -1;
     }
     write_log ("RDB: fakefilesys, trying to load '%s', dostype 0x%08.8X\n", tmp, dostype);
     zf = zfile_fopen (tmp,"rb");
     if (!zf) {
 	write_log ("RDB: filesys not found\n");
-	return;
+	if ((dostype & 0xffffff00) == 0x444f5300)
+	    return FILESYS_HARDFILE;
+	return -1;
     }
 
     zfile_fseek (zf, 0, SEEK_END);
     size = zfile_ftell (zf);
-    zfile_fseek (zf, 0, SEEK_SET);
-    uip->rdb_filesysstore = (uae_u8*)xmalloc (size);
-    zfile_fread (uip->rdb_filesysstore, size, 1, zf);
+    if (size > 0) {
+	zfile_fseek (zf, 0, SEEK_SET);
+	uip->rdb_filesysstore = (uae_u8*)xmalloc (size);
+	zfile_fread (uip->rdb_filesysstore, size, 1, zf);
+    }
     zfile_fclose (zf);
     uip->rdb_filesyssize = size;
     put_long (parmpacket + PP_FSSIZE, uip->rdb_filesyssize);
     addfakefilesys (parmpacket, dostype);
     write_log ("HDF: faked RDB filesystem %08.8X loaded\n", dostype);
+    return FILESYS_HARDFILE;
 }
 
 static void get_new_device (int type, uaecptr parmpacket, char **devname, uaecptr *devname_amiga, int unit_no)
@@ -5304,14 +5342,18 @@ static uae_u32 REGPARAM2 filesys_dev_storeinfo (TrapContext *context)
     put_long (parmpacket + 76, uip[unit_no].bootpri); /* bootPri */
     put_long (parmpacket + 80, 0x444f5300); /* DOS\0 */
     if (type == FILESYS_HARDFILE)
-	dofakefilesys (&uip[unit_no], parmpacket);
+	type = dofakefilesys (&uip[unit_no], parmpacket);
+    if (uip[unit_no].bootpri < -127)
+	m68k_dreg (&regs, 7) = m68k_dreg (&regs, 7) & ~1; /* do not boot */
+    if (uip[unit_no].bootpri < -128)
+	return -1; /* do not mount */
     return type;
 }
 
 static uae_u32 REGPARAM2 mousehack_done (TrapContext *context)
 {
     /* do not allow other fs threads to start another mousehack */
-    rtarea[get_long (RTAREA_BASE + 40) + 12 - 2] = 0xff;
+    rtarea[get_long (rtarea_base + 40) + 12 - 2] = 0xff;
     return 1;
 }
 
@@ -5335,36 +5377,36 @@ void filesys_install (void)
 
     loop = here ();
 
-    org (RTAREA_BASE + 0xFF18);
+    org (rtarea_base + 0xFF18);
     calltrap (deftrap2 (filesys_dev_bootfilesys, 0, "filesys_dev_bootfilesys"));
     dw (RTS);
 
     /* Special trap for the assembly make_dev routine */
-    org (RTAREA_BASE + 0xFF20);
+    org (rtarea_base + 0xFF20);
     calltrap (deftrap2 (filesys_dev_remember, 0, "filesys_dev_remember"));
     dw (RTS);
 
-    org (RTAREA_BASE + 0xFF28);
+    org (rtarea_base + 0xFF28);
     calltrap (deftrap2 (filesys_dev_storeinfo, 0, "filesys_dev_storeinfo"));
     dw (RTS);
 
-    org (RTAREA_BASE + 0xFF30);
+    org (rtarea_base + 0xFF30);
     calltrap (deftrap2 (filesys_handler, 0, "filesys_handler"));
     dw (RTS);
 
-    org (RTAREA_BASE + 0xFF38);
+    org (rtarea_base + 0xFF38);
     calltrap (deftrap2 (mousehack_done, 0, "mousehack_done"));
     dw (RTS);
 
-    org (RTAREA_BASE + 0xFF40);
+    org (rtarea_base + 0xFF40);
     calltrap (deftrap2 (startup_handler, 0, "startup_handler"));
     dw (RTS);
 
-    org (RTAREA_BASE + 0xFF48);
-    calltrap (deftrap2 (filesys_init_storeinfo, 0, "filesys_init_storeinfo"));
+    org (rtarea_base + 0xFF48);
+    calltrap (deftrap2 (filesys_init_storeinfo, TRAPFLAG_EXTRA_STACK, "filesys_init_storeinfo"));
     dw (RTS);
 
-    org (RTAREA_BASE + 0xFF50);
+    org (rtarea_base + 0xFF50);
     calltrap (deftrap2 (exter_int_helper, 0, "exter_int_helper"));
     dw (RTS);
 
@@ -5755,10 +5797,10 @@ static uae_u8 *restore_filesys_virtual (UnitInfo *ui, uae_u8 *src, int num)
 
 static char *getfullaname(a_inode *a)
 {
-    char *p = (char*)xmalloc (2000);
+    char *p;
     int first = 1;
 
-    memset(p, 0, 2000);
+    p = (char*)xcalloc (2000, 1);
     while (a) {
 	int len = strlen(a->aname);
 	memmove (p + len + 1, p, strlen(p) + 1);
@@ -5783,10 +5825,13 @@ static int recurse_aino (UnitInfo *ui, a_inode *a, int cnt, uae_u8 **dstp)
     if (dstp)
 	dst = *dstp;
     while (a) {
+	//write_log("recurse '%s' '%s' %d %08x\n", a->aname, a->nname, a->uniq, a->parent);
 	if (a->elock || a->shlock || a->uniq == 0) {
 	    if (dst) {
-		char *fn = getfullaname(a);
-		write_log ("%04x '%s' s=%d e=%d d=%d\n", a->uniq, fn, a->shlock, a->elock, a->dir);
+		char *fn;
+		write_log ("%04x s=%d e=%d d=%d '%s' '%s'\n", a->uniq, a->shlock, a->elock, a->dir, a->aname, a->nname);
+		fn = getfullaname(a);
+		write_log ("->'%s'\n", fn);
 		save_u64 (a->uniq);
 		save_u32 (a->locked_children);
 		save_u32 (a->exnext_count);
@@ -5944,6 +5989,9 @@ uae_u8 *save_filesys (int num, int *len)
     ui = &mountinfo.ui[num];
     if (!ui->open)
 	return NULL;
+    /* not initialized yet, do not save */
+    if (type == FILESYS_VIRTUAL && (ui->self == NULL || ui->volname == NULL))
+	return NULL;
     write_log ("FS_FILESYS: '%s' '%s'\n", ui->devname, ui->volname);
     dstbak = dst = (uae_u8*)xmalloc (100000);
     save_u32 (2); /* version */
@@ -5989,7 +6037,7 @@ uae_u8 *restore_filesys (uae_u8 *src)
 	src = restore_filesys_hardfile(ui, src);
     if (set_filesys_unit (devno, devname, volname, rootdir, readonly,
 	ui->hf.secspertrack, ui->hf.surfaces, ui->hf.reservedblocks, ui->hf.blocksize,
-	bootpri, filesysdir[0] ? filesysdir : NULL, 0, 0) < 0) {
+	bootpri, 0, 1, filesysdir[0] ? filesysdir : NULL, 0, 0) < 0) {
 	write_log ("filesys '%s' failed to restore\n", rootdir);
 	goto end;
     }

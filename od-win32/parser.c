@@ -33,6 +33,7 @@
 #include "autoconf.h"
 #include "newcpu.h"
 #include "traps.h"
+#include "registry.h"
 #include "od-win32/win32gui.h"
 #include "od-win32/parser.h"
 #include "od-win32/midi.h"
@@ -331,9 +332,9 @@ int load_ghostscript (void)
     }
     if (!gsdll) {
 	HKEY key;
-	DWORD ret = RegOpenKeyEx (HKEY_LOCAL_MACHINE, "SOFTWARE\\AFPL Ghostscript", 0, KEY_ALL_ACCESS, &key);
+	DWORD ret = RegOpenKeyEx (HKEY_LOCAL_MACHINE, "SOFTWARE\\AFPL Ghostscript", 0, KEY_READ, &key);
 	if (ret |= ERROR_SUCCESS)
-	    ret = RegOpenKeyEx (HKEY_LOCAL_MACHINE, "SOFTWARE\\GPL Ghostscript", 0, KEY_ALL_ACCESS, &key);
+	    ret = RegOpenKeyEx (HKEY_LOCAL_MACHINE, "SOFTWARE\\GPL Ghostscript", 0, KEY_READ, &key);
 	if (ret == ERROR_SUCCESS) {
 	    int idx = 0, cnt = 20;
 	    char tmp1[MAX_DPATH];
@@ -342,7 +343,7 @@ int load_ghostscript (void)
 		FILETIME ft;
 		if (RegEnumKeyEx (key, idx, tmp1, &size1, NULL, NULL, NULL, &ft) == ERROR_SUCCESS) {
 		    HKEY key2;
-		    if (RegOpenKeyEx (key, tmp1, 0, KEY_ALL_ACCESS, &key2) == ERROR_SUCCESS) {
+		    if (RegOpenKeyEx (key, tmp1, 0, KEY_READ, &key2) == ERROR_SUCCESS) {
 			DWORD type = REG_SZ;
 			DWORD size = sizeof (path);
 			if (RegQueryValueEx (key2, "GS_DLL", 0, &type, (LPBYTE)path, &size) == ERROR_SUCCESS) {
@@ -1058,7 +1059,7 @@ int setbaud (long baud)
 void initparallel (void)
 {
     uaecptr a = here (); //this install the ahisound
-    org (RTAREA_BASE + 0xFFC0);
+    org (rtarea_base + 0xFFC0);
     calltrap (deftrap (ahi_demux));
     dw (0x4e75);// rts
     org (a);
@@ -1200,21 +1201,36 @@ int enumserialports(void)
 	cnt = enumserialports_2();
     for (i = 0; i < 10; i++) {
 	sprintf(name, "COM%d", i);
-	if (!QueryDosDevice(name, devname, sizeof devname)) {
+	if (!QueryDosDevice(name, devname, sizeof devname))
 	    continue;
-	} else {
-	    for(j = 0; j < cnt; j++) {
-		if (!strcmp(comports[j].cfgname, name))
-		    break;
-	    }
-	    if (j == cnt) {
-		if (cnt >= MAX_SERIAL_PORTS)
-		    break;
+	for(j = 0; j < cnt; j++) {
+	    if (!strcmp(comports[j].cfgname, name))
+	        break;
+	}
+	if (j == cnt) {
+	    if (cnt >= MAX_SERIAL_PORTS)
+	        break;
+	    comports[j].dev = xmalloc(100);
+	    sprintf(comports[cnt].dev, "\\.\\\\%s", name);
+	    comports[j].cfgname = my_strdup (name);
+	    comports[j].name = my_strdup (name);
+	    write_log ("SERPORT: %d:'%s' = '%s' (%s)\n", cnt, comports[j].name, comports[j].dev, devname);
+	    cnt++;
+	}
+    }
+    if (cnt == 0 && !os_winnt) {
+	/* windows 98 hack */
+	for (i = 0; i < 8; i++) {
+	    COMMCONFIG cc;
+	    DWORD size = sizeof(COMMCONFIG);
+	    sprintf(name, "COM%d", i);
+	    if(GetDefaultCommConfig (name, &cc, &size)) {
+		j = cnt;
 		comports[j].dev = xmalloc(100);
 		sprintf(comports[cnt].dev, "\\.\\\\%s", name);
 		comports[j].cfgname = my_strdup (name);
 		comports[j].name = my_strdup (name);
-		write_log ("SERPORT: %d:'%s' = '%s' (%s)\n", cnt, comports[j].name, comports[j].dev, devname);
+		write_log ("W98SERPORT: %d:'%s'\n", cnt, comports[j].name);
 		cnt++;
 	    }
 	}

@@ -799,7 +799,7 @@ static void expamem_map_filesys (void)
     write_log ("Filesystem: mapped memory @$%lx.\n", filesys_start);
     /* 68k code needs to know this. */
     a = here ();
-    org (RTAREA_BASE+0xFFFC);
+    org (rtarea_base + 0xFFFC);
     dl (filesys_start + 0x2000);
     org (a);
 }
@@ -966,6 +966,7 @@ static void expamem_init_gfxcard (void)
 }
 #endif
 
+
 #ifdef SAVESTATE
 static size_t fast_filepos, z3_filepos, p96_filepos;
 #endif
@@ -1061,24 +1062,33 @@ static void allocate_expamem (void)
 #endif /* SAVESTATE */
 }
 
-int need_uae_boot_rom(void)
+uaecptr need_uae_boot_rom(void)
 {
-    if (nr_units() > 0)
-	return 1;
+    int i;
+    uaecptr b = 0xf00000;
+    if (currprefs.cs_cdtvcd || currprefs.cs_cdtvscsi)
+	b = 0xe70000;
+    for (i = 0; i < currprefs.mountitems; i++) {
+	struct uaedev_config_info *uci = &currprefs.mountconfig[i];
+	if (uci->controller == 0)
+	    return b;
+    }
     if (currprefs.socket_emu)
-	return 1;
+	return b;
     if (currprefs.uaeserial)
-	return 1;
+	return b;
     if (currprefs.scsi == 1)
-	return 1;
+	return b;
+    if (currprefs.sana2)
+	return b;
     if (currprefs.win32_outsidemouse)
-	return 1;
+	return b;
     if (currprefs.gfxmem_size)
-	return 1;
+	return b;
     if (currprefs.win32_automount_removable)
-	return 1;
+	return b;
     if (currprefs.chipmem_size > 2 * 1024 * 1024)
-	return 1;
+	return b;
     return 0;
 }
 
@@ -1104,6 +1114,15 @@ static void expamem_init_a2091 (void)
 static void expamem_init_a4091 (void)
 {
     ncr_init();
+}
+
+void p96memstart(void)
+{
+    /* make sure there is always empty space between Z3 and P96 RAM */
+    p96ram_start = currprefs.z3fastmem_start + ((currprefs.z3fastmem_size + 0xffffff) & ~0xffffff);
+    if (p96ram_start == currprefs.z3fastmem_start + currprefs.z3fastmem_size &&
+	(currprefs.z3fastmem_size < 512 * 1024 * 1024 || currprefs.gfxmem_size < 128 * 1024 * 1024))
+	p96ram_start += 0x1000000;
 }
 
 void expamem_reset (void)
@@ -1184,7 +1203,8 @@ void expamem_reset (void)
     }
 
     z3fastmem_start = currprefs.z3fastmem_start;
-    p96ram_start = currprefs.z3fastmem_start + ((currprefs.z3fastmem_size + 0xffffff) & ~0xffffff);
+    if (!p96mode)
+	p96memstart();
     (*card_init[0]) ();
 }
 
@@ -1311,7 +1331,7 @@ uae_u8 *save_expansion (int *len, uae_u8 *dstptr)
     save_u32 (fastmem_start);
     save_u32 (z3fastmem_start);
     save_u32 (gfxmem_start);
-    save_u32 (RTAREA_BASE);
+    save_u32 (rtarea_base);
     *len = 4 + 4 + 4 + 4;
     return dstbak;
 }

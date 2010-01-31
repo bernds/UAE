@@ -192,13 +192,13 @@ static void close_audio_ds (void)
 
 extern HWND hMainWnd;
 extern void setvolume_ahi(LONG);
-static void setvolume (void)
+void set_volume (int volume, int mute)
 {
     HRESULT hr;
     LONG vol = DSBVOLUME_MIN;
 
-    if (currprefs.sound_volume < 100 && !mute)
-	vol = (LONG)((DSBVOLUME_MIN / 2) + (-DSBVOLUME_MIN / 2) * log (1 + (2.718281828 - 1) * (1 - currprefs.sound_volume / 100.0)));
+    if (volume < 100 && !mute)
+	vol = (LONG)((DSBVOLUME_MIN / 2) + (-DSBVOLUME_MIN / 2) * log (1 + (2.718281828 - 1) * (1 - volume / 100.0)));
     hr = IDirectSoundBuffer_SetVolume (lpDSBsecondary, vol);
     if (FAILED(hr))
 	write_log ("SOUND: SetVolume(%d) failed: %s\n", vol, DXError (hr));
@@ -424,7 +424,7 @@ static int open_audio_ds (int size)
     }
     IDirectSound_Release(pdsb);
 
-    setvolume ();
+    set_volume (currprefs.sound_volume, mute);
     cleardsbuffer ();
     init_sound_table16 ();
     if (get_audio_amigachannels() == 4)
@@ -474,16 +474,23 @@ static int open_sound (void)
 
 void close_sound (void)
 {
+    gui_data.sndbuf = 0;
+    gui_data.sndbuf_status = 3;
     if (! have_sound)
 	return;
     pause_sound ();
     close_audio_ds ();
     have_sound = 0;
-    gui_data.sndbuf = 0;
 }
 
 int init_sound (void)
 {
+    gui_data.sndbuf_status = 3;
+    gui_data.sndbuf = 0;
+    if (!sound_available)
+	return 0;
+    if (currprefs.produce_sound <= 1)
+	return 0;
     if (have_sound)
 	return 1;
     if (!open_sound ())
@@ -1014,7 +1021,7 @@ void sound_volume (int dir)
     if (currprefs.sound_volume > 100)
 	currprefs.sound_volume = 100;
     changed_prefs.sound_volume = currprefs.sound_volume;
-    setvolume ();
+    set_volume (currprefs.sound_volume, mute);
 }
 void master_sound_volume (int dir)
 {

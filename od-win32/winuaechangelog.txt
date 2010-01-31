@@ -1,8 +1,382 @@
 
+Beta 19:
+
+- ESS Mega (CDTV) now works, added workaround for another Windows
+  low level CDROM read weirdness..
+
+Beta 18:
+
+- moved Picasso96 resolution list from special reserved display RAM
+  area to regular Amiga RAM (allocated with AllocMem) This should be
+  100% fix to display resolution list corruption in display prefs
+  utility. (if previous fix in b16 didn't fix it)
+- following "fake" display resolutions added to Picasso96 resolution
+  list (if no native support): 320x200, 320x240, 640x400, 640x480.
+  In fullscreen selects next bigger supported resolution automatically.
+  Note: fullscreen display is not centered
+- keyboard led emulation should not cause random key presses anymore
+  (but it still is quite unreliable)
+ 
+Beta 17:
+
+- rom scan detected roms inside archive directory failed to load
+- mouse buttons #4 and #5 default Left ALT + Cursor Left/Right mapping
+  fixed, was mapped to "Wheel +/-" if less than 5 buttons
+
+Beta 16:
+
+- added 2 non-autoconfig ram configuration entries
+  addmem1/addmem2=<address>,<size>
+  Adds fast ram to specified address without autoconfiguring it. Size
+  must be power of 2 and min size is 64k. GUI support in future.
+- uaenet.device unit number >0 abortio fixed
+- 512M Z3Fast and 128M RTG RAM now works without overflowing allocated
+  JIT direct access memory (no garbage gfx modes in display prefs)
+- map extended ROM location depending on advanced chipset CDTV/CD32
+  settings (previously 256k = 0xF0, 512k = 0xE0)
+- Direct3D CreateTexture() return code was ignored, crashed if texture
+  creation failed for some reason (out of video memory?)
+- misc tweaks
+
+Beta 15:
+
+- fullscreen switching should work correctly again
+- mouse moves are now ignored if winuae is not active
+- do not get in "semi mouse captured" mode if WinUAE opens without
+  focus (for example other program got focus before WinUAE opened)
+- some uaenet.device tweaks
+
+Beta 14:
+
+- BPLCON3 BRDRBLNK-bit didn't work when chipset was ECS Denise
+- BPLCON3 KILLEHB-bit was first implemented in ECS Denise (not AGA)
+  It makes 6-plane display to work like normal 5-plane display,
+  6th plane can now be used for genlock mask
+- COPCON CDANG-bit allowing full register writes was first implemented
+  in ECS Agnus, not in AGA. (OCS has low address limit of 0x40)
+- CDTV QS Denise setting corrected (OCS, not ECS Denise)
+- added "slow is fast" option to advanced chipset. (Original A2000
+  with DIP Agnus has real fast at 0xc00000, some A1000 CPU socket
+  fast ram expansions mapped to 0xc00000 instead of usual 0x200000)
+  CPU socket RAM expansions) Speed difference only in CE-mode
+- Windows message handling changes, most likely breaks something but
+  also should fix Direct3D filter fullscreen switch issues (WIP)
+- compressed disk images (dms, adz etc..) inside archives (lha, zip
+  etc..) supported (this may have worked few releases ago, not sure..)
+
+- uaenet.device backend replaced with winpcap
+  http://www.winpcap.org/install/ (version 4.x only tested)
+  differences:
+  - winpcap is easier to use. Install. Done. (*)
+  - promiscuous mode supported
+  - all available network adapters are automatically mapped to
+    uaenet.device. first adapter = unit 0, second = unit 1 etc..
+    (manual configuration someday, maybe..) Check the log.
+  - some (bad) software firewalls may block some/all packets..
+    (at least Vista x64 + eset smart security fw seems to eat all
+    non-broadcast packets..)
+  - fixed bug in dropped packet (packet that nobody wanted) handling
+
+  *) Vista note: winpcap kernel mode driver will be loaded when it is
+  first required. This needs admin privileges (only once after boot)
+  Another easier solution is to enable autostart:
+  Open Device manager, "View"-menu, "Show hidden devices", open
+  "Non-Plug and Play Drivers" from device tree, find "NetGroup Packet
+  Filter Driver", select properties, "Driver"-tab, set type to
+  "Automatic"
+
+Beta 13:
+
+- more cd/dvdrom automount issues fixed
+- S2_ADDMULTICASTADDRESSES and S2_DELMULTICASTADDRESSES were not
+  included in NSCMD_DEVICEQUERY list
+- fixed SANA2IOF_RAW write length
+- S2_ONLINE Sana2DeviceStats->LastStart uses GetSysTime() now
+- -netlog command line parameter added, default logging disabled
+- more compatible with raw (non-AmigaDos format) disk writes that do
+  not fill complete track
+- crash when loading AGA statefiles (usually only when JIT was enabled)
+- CDTV SCSI emulation interrupt handling fix, would freeze randomly
+- UAE boot rom is moved to 0xe70000 if CDTV mode is enabled. Now "UAE"
+  HD controller harddrives work in CDTV mode. (note that other
+  expansions like Picasso96 use absolute jumps and will crash if UAE
+  boot rom is located in non-standard location)
+- autocomplete added to most path text boxes (I didn't know Windows had
+  very easy to use text box autocomplete feature..) TAB (+SHIFT) can be
+  used to move between paths. (SHAutoComplete() does not work exactly
+  like "normal" autocomplete because cursor keys/ESC must go directly
+  to normal text box functions)
+
+Beta 12:
+
+- path selection really fixed now
+- do not mount cd/dvdroms on the fly if removable automount was enabled
+- uaenet partially rewritten, "should" be working properly now
+  * multicast supported, including multicast filter (not tested)
+  * IEEE 802.3 frame support (I think)
+  * CMD_FLUSH implemented
+  * stats trackers implemented, probably do not work correctly yet..
+  * globalstats fixed
+  * multiple openers handled correctly
+  * interrupt handler setup is still very ugly
+  * SANA2IOF_RAW supported
+  * S2_PacketFilter hook supported (not tested)
+  * (Genesis still refuses to send anything but I think the problem
+    can't be uaenet.device but something else. Also Genesis calls
+    S2_ONLINE before S2_CONFIGINTERFACE which is against the spec..)
+
+Beta 11:
+
+- some device insertions caused crashes
+- quick start mode on/off registry setting fixed (b9)
+- A3000 RAM detection problem fixed (b10)
+- some hardfiles didn't automount
+- Sana2 device is working, at least in theory..
+
+Sana 2 device emulation instructions:
+
+Requirements:
+
+OpenVPN Win32 TAP driver
+http://openvpn.net/download.html (OpenVPN 2.1_rc4 or newer)
+run OpenVPN installer, only needed component is "TAP-Win32
+Virtual Ethernet Adapter"
+
+Now TAP Adapter and real network adapter needs to be bridged.
+Go to "Network Connections", select both TAP adapter and your real
+network adapter and select "Bridge Connections" from right mouse menu.
+http://www.pavelec.net/adam/openvpn/bridge/
+(only steps 1 and 2 are needed, name is not important)
+
+Check new bridged adapter has correct IP settings. (This is now your
+"real" network adapter) Windows networking should continue working
+normally.
+
+(Perhaps there is simpler solution?)
+
+Enable "uaenet.device" in misc-panel. Emulation-side device name is
+"uaenet.device" (remember to disable bsdsocket emulation or there may
+be bsdsocket.library conflicts)
+
+Note: without bridging all sent data goes to black hole and nothing
+can be received either. Emulator can't detect bridge's status.
+
+Not supported (yet):
+- multicast
+- tracked stats counters
+- promiscuous mode
+- something I forgot..
+
+Other notes:
+
+- global stats may not be correct
+- stability may not be too good
+- very ugly interrupt routine.. (CopyToBuff,CopyFromBuff made things
+  very complex..)
+- produces lots of logging
+- MiamiDX DHCP and ping worked
+- OS3.9 Genesis never tries to send any data.. Confusing..
+- didn't test AmiTCP, I didn't bother to configure it :)
+- as you can see, not much testing done..
+
+Beta 10:
+
+- added missing "barrier" bytes at end of Z3 fast. Crashed in
+  non-direct JIT-mode if read/write crossed memory boundaries.
+  (for example long read from END_OF_Z3 - 2)
+- paths reseting to default fix (b9)
+
+Beta 9:
+
+- default GUI and main window position is centered, not top/left corner
+- optional ini-file registry replacement.
+  * -ini <file> in command line: use <file>
+  * winuae.ini used if it is in same directory as winuae.exe
+  * file extension must be .ini or it will be ignored
+  * file will be silently deleted and re-created if
+    - it is read-only but not delete-protected
+    - if warning messages in ini-file are modified or deleted
+    - if it is not compatible with new version
+  * message will be added to both logs if registry replacement is
+    enabled. Bug reports without also testing in non-ini mode will be
+    ignored. Pointless Windows feature "discussions" won't be allowed.
+
+Beta 8:
+
+- AGA sprite doublescan fixed (b7)
+- some more doublescan tweaks (Super72 modes are now detected as
+  doublescanned. Other "weird" modes also work more or less, note that
+  some require horizontal centering)
+- sana2 configuration save fixed (but note that sana2 emulation still
+  isn't really doing much)
+- CDTV "Snoopy" fix corrected. Fixes random CDTV boot freeze.
+- increased A590/A2091 SCSI data buffer size (crash while formatting
+  if sectors per track size was large enough)
+- default hardware config (used by QS) clears pc drive mount checkboxes
+- harddrive removal signal was not always send to uaehf.device if drive
+  was removed with disk still in drive (for example USB ZIP drive)
+- directory filesystem ACTION_SET_DATE notification check crashed if
+  file didn't exist
+- directory filesystem and hardfile slowdown fixed (b2)
+- state save crashed if directory harddrives were configured but state
+  was saved before drive initialization, for example when booting
+  non-dos adf
+- always include empty memory space between Z3Fast and RTG RAM
+
+Beta 7:
+
+- added information text to hardfile panel.
+  RDB hardfile: size of selected file, first 4 bytes of data.
+  Regular hardfile: cylinders (warns if > 65535, OS3.5+ only), blocks,
+  current size and total size of hardfile, first 4 bytes of data.
+- analog joystick mouse emulation didn't "repeat"
+- graphics garbage in right border fixed (happened for example when
+  productivity mode with vgaonly was enabled)
+- CDTV CD ROM command 0x83 emulated, returns drive name/version string
+  ("MATSHITA0.97", also "MATSHITA0.96" exists. No idea if there are any
+  real differences). Another quite pointless feature because CDTV's
+  driver does not use command 0x83..
+- ECS superhires sprite positioning fixed. Note that ECS shres sprites
+  always have halved resolution (not size) due to emulation limitation
+- ECS superhires "palette scrambling" emulated, ECS shres colors should
+  be now 100% correct
+- some doublescan emulation tweaks
+
+Beta 6:
+
+- do not call CD32 CD emulation handler when non-CD controller
+  Akiko registers are accessed. Fixes slowdown when program uses
+  C2P feature of Akiko (Wing Commander CD32, perhaps others)
+- debugger ea command AGA genlock color bit support
+- smc command added to debugger help
+- Ghostscript and neroaspi registry detection didn't work without
+  admin privileges
+- directory harddrive read/write status and volume name change
+  work again on the fly
+- directory harddrive eject-button works again
+- directory harddrive readwrite checkbox is not disabled anymore if
+  no path entered
+- filter superhires support
+- ECS Denise hires sprite support removed, hires/shres sprite support
+  is not compatible with OCS ham modes (and who needs ECS hires sprites
+  when AGA is much better choice..)
+
+Beta 5:
+
+- AGA T (genlock transparency) color register bit emulated
+  (=color register read, RDRAM=1 and LOCT=0 -> return stored
+  T-bit, bit 15, value with color RGB value)
+  instead of always returning zero. Nobody probably cares..)
+- AGA sprite doublescan emulated (FMODE SSCAN2 bit)
+  (Does something use this feature?)
+- 16 bit display mode graphics problems fixed (b4)
+- regular hardfiles, KS 1.3 and FFS filesys path set: all hardfiles
+  gets properly mounted. Previously only first hardfile used FFS.
+- switching doublescan<>non-doublescan didn't always reset all display
+  parameters (bottom half of display was sometimes blank)
+
+Beta 4:
+
+- fixed completely broken joystick buttons (b3)
+- input panel mouse wheel "buttons" added. Sends button/key down
+  event, waits one frame, sends button/key up event
+- started implementing "real" ROM image ROM scanner support
+  (2xROM setups like CDTV extended ROM or A1200, Nordic Power etc..)
+- big superhires resolution and hires/superhires sprite update
+* full SuperHires resolution support (without dropped pixels)
+* Doublescan hires modes are now also properly displayed (hires
+  doublescan is really "half-scan" superhires mode)
+* Replaced lores checkbox with lores/hires/superhires selection.
+  SuperHires mode uses 4xdoubling in lores, 2xdoubling in hires and
+  no doubling (and no dropped pixels) in superhires
+  Hires = old non-lores mode, 2xdoubling in lores, no doubling in
+  hires and drop every other pixel in superhires (*)
+  Lores = no doubling in lores, drop every other pixel in hires (*),
+  superhires not supported
+  * = lores smooth filtering supported
+  NOTE: regular (non-doublescan) superhires aspect ratio is wrong,
+  use filters if you need correct aspect ratio
+  NOTE2: interlaced doublescan modes are buggy
+* AGA superhires sprite resolution supported (previously hires only)
+* hires sprites are not converted to lores (and then doubled again..)
+  anymore if screen is doubled (lores program, hires/shres in GUI)
+  Check Super Stardust AGA if you want to see the difference.
+* AGA hires/shres "smooth" scroll BPLCON1 bits supported
+* OCS/ECS (no ECS Denise) uses old code path = no performance change.
+  ECS-Denise and AGA uses new more complex and slower sprite/bitplane
+  drawing code path (optimization still to do..)
+* Probably breaks something...
+
+Beta 3:
+
+- autoboot/donotmount checkbox problems fixed
+- winuaenforcer enabled and VBR not moved: interrupt levels
+  6 and 7 caused enforcer hit flood
+- uae boot rom was always mounted (b2)
+- b2 interrupt fix update, only "pre-delay" vblank interrupt
+- A-Max rom-"dongle" emulation added (manual configuration file
+  editing currently needed, amaxromfile=<rom file>) Yes, this is
+  very pointless feature. (A-Max technical info by Mark Knibbs)
+- C debugger command only worked in byte-mode
+- disk write without drives selected was emulated as a read without
+  drives selected, clearing disk dma buffer
+- input configuration is fully saved again, need design update..
+  (in b2 all default settings disappeared after saving and loading..)
+- added "directional buttons" to input panel list, for example
+  "X-Axis" is available as "X-Axis" (original), "X-Axis [-]" (button
+  event when joystick/dpad moved left) and "X-Axis [+]" (button
+  event when joystick/dpad moved right) Currently new "buttons"
+  are at the end of the list.
+
+Beta 2:
+
+- warp (.wrp) disk compression format supported
+- ce-mode interrupt delay fix, intreq contents was incorrectly delayed
+  (fixes some programs that froze in CE-mode)
+- doublescanned modes look slightly better
+- added 64-bit CMD_READ uaescsi.device support (if there are programs
+  that access DVDs in non-SCSI-direct mode) 
+- missing hardfile dos type select box is back (disappeared few
+  releases ago..)
+- Nordic Power v3.0 support added (Thanks Christian!)
+  Interestingly this one has ROM at 0xf60000, not at 0xf00000
+- EXPERIMENTAL: save only non-default configuration entries. Makes
+  smaller config files but I am not yet sure if this is safe..
+  (at least long list of input config entries can be removed safely)
+- added autoboot (bootpri>=-127) and donotmount (bootpri=-129)
+  checkboxes to GUI
+- Amiga-side dummy Sana2 driver (most commands return bogus errors)
+  Real communication between Sana2 driver and TAP driver (comes with
+  OpenVPN, 2.1rc4 or newer required) will be implemented later,
+  I hope.. current development name is "uaenet.device".
+- do not show rom scan results if rom scan was automatic (missing
+  registry data or new winuae version was detected)
+- high end quickstart cpu changed back to 68040 (68060 does not boot
+  very well without 68060.library..)
+
+Beta 1:
+
+- CDTV and CD32 interrupt handling improved, fixes "Snoopy In The
+  Case Of The Missing Blanket"
+- lzx decompressor compatibility and stability improved, store-mode
+  supported
+- do not include display dimensions in display list if Windows 98/ME
+  (it is garbage, at least on some systems)
+- Windows 98/ME serial port detection update
+- possible fix for overlay issues but it might cause slow downs in
+  some cases..
+- added -busywait debugging command line option
+- DiskSqueeze (dsq) dms-like disk packer format supported (probably
+  totally useless but was easy to do..) cop, dimp, warp (not to be
+  confused with mfmwarp) support may be "useful" too, perhaps in
+  future.. Unfortunately most formats are not documented.
+
+1.4.4
+
 Beta 9: RC2
 
 - deleting file, recycle bin support enabled and deletion fails:
-  return error code was wrong (SHFileOperation() is weird)
+  returned error code was wrong (SHFileOperation() is weird)
 - Action Replay 1/2/3 work again
 - bsdsocket froze if new configuration was loaded on the fly
 - filter crashes (old bug) if display was big, also centering code

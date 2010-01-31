@@ -28,6 +28,7 @@ uaecptr EXPANSION_bootcode, EXPANSION_nullfunc;
 /* ROM tag area memory access */
 
 uae_u8 *rtarea;
+uaecptr rtarea_base;
 
 static uae_u32 REGPARAM3 rtarea_lget (uaecptr) REGPARAM;
 static uae_u32 REGPARAM3 rtarea_wget (uaecptr) REGPARAM;
@@ -63,7 +64,7 @@ static uae_u32 REGPARAM2 rtarea_lget (uaecptr addr)
     special_mem |= S_READ;
 #endif
     addr &= 0xFFFF;
-    return (uae_u32)(rtarea_wget (addr) << 16) + rtarea_wget (addr+2);
+    return (uae_u32)(rtarea_wget (addr) << 16) + rtarea_wget (addr + 2);
 }
 
 static uae_u32 REGPARAM2 rtarea_wget (uaecptr addr)
@@ -72,7 +73,7 @@ static uae_u32 REGPARAM2 rtarea_wget (uaecptr addr)
     special_mem |= S_READ;
 #endif
     addr &= 0xFFFF;
-    return (rtarea[addr]<<8) + rtarea[addr+1];
+    return (rtarea[addr] << 8) + rtarea[addr + 1];
 }
 
 static uae_u32 REGPARAM2 rtarea_bget (uaecptr addr)
@@ -114,7 +115,7 @@ static int rt_straddr;
 
 uae_u32 addr (int ptr)
 {
-    return (uae_u32)ptr + RTAREA_BASE;
+    return (uae_u32)ptr + rtarea_base;
 }
 
 void db (uae_u8 data)
@@ -142,11 +143,13 @@ void dl (uae_u32 data)
 
 uae_u32 ds (const char *str)
 {
-    int len = strlen (str) + 1;
+    int len;
 
+    if (!str)
+	return addr (rt_straddr);
+    len = strlen (str) + 1;
     rt_straddr -= len;
     strcpy ((char *)rtarea + rt_straddr, str);
-
     return addr (rt_straddr);
 }
 
@@ -157,7 +160,9 @@ void calltrap (uae_u32 n)
 
 void org (uae_u32 a)
 {
-    rt_addr = a - RTAREA_BASE;
+    if ( ((a & 0xffff0000) != 0x00f00000) && ((a & 0xffff0000) != rtarea_base) )
+	write_log ("ORG: corrupt address! %08X", a);
+    rt_addr = a & 0xffff;
 }
 
 uae_u32 here (void)
@@ -224,13 +229,13 @@ void rtarea_init (void)
 
     a = here();
     /* Dummy trap - removing this breaks the filesys emulation. */
-    org (RTAREA_BASE + 0xFF00);
+    org (rtarea_base + 0xFF00);
     calltrap (deftrap2 (nullfunc, TRAPFLAG_NO_RETVAL, ""));
 
-    org (RTAREA_BASE + 0xFF80);
+    org (rtarea_base + 0xFF80);
     calltrap (deftrap2 (getchipmemsize, TRAPFLAG_DORET, ""));
 
-    org (RTAREA_BASE + 0xFF10);
+    org (rtarea_base + 0xFF10);
     calltrap (deftrap2 (uae_puts, TRAPFLAG_NO_RETVAL, ""));
     dw (RTS);
 
@@ -240,7 +245,7 @@ void rtarea_init (void)
     filesys_install_code ();
 #endif
 
-    uae_boot_rom_size = here() - RTAREA_BASE;
+    uae_boot_rom_size = here() - rtarea_base;
     init_extended_traps ();
 }
 
@@ -253,4 +258,9 @@ void set_uae_int_flag (void)
 
 void rtarea_setup (void)
 {
+    uaecptr base = need_uae_boot_rom ();
+    if (base) {
+	write_log ("RTAREA located at %08X\n", base);
+	rtarea_base = base;
+    }
 }

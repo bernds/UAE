@@ -463,7 +463,6 @@ int scsi_emulate(struct hardfiledata *hfd, struct hd_hardfiledata *hdhfd, uae_u8
 	if (hdhfd) {
 	    r[2] = hdhfd->ansi_version;
 	    r[3] = hdhfd->ansi_version >= 2 ? 2 : 0;
-	    r[7] = hdhfd->ansi_version >= 2 ? 0x20 : 0;
 	}
 	i = 0; /* vendor id */
 	while (i < 8 && hfd->vendor_id[i]) {
@@ -746,10 +745,10 @@ void hardfile_do_disk_change (int fsid, int insert)
     hfd = get_hardfile_data (fsid);
     if (!hfd)
 	return;
-    write_log("uaehf.device:%d media status=%d\n", fsid, insert);
-    hfd->drive_empty = newstate;
     uae_sem_wait (&change_sem);
     hardfpd[fsid].changenum++;
+    write_log("uaehf.device:%d media status=%d changenum=%d\n", fsid, insert, hardfpd[fsid].changenum);
+    hfd->drive_empty = newstate;
     j = 0;
     while (j < MAX_ASYNC_REQUESTS) {
 	if (hardfpd[fsid].d_request_type[j] == ASYNC_REQUEST_CHANGEINT) {

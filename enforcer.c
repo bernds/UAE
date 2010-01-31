@@ -43,7 +43,7 @@ static int enforcer_installed = 0;
 int enforcermode = 0;
 static int enforcer_hit = 0; /* set to 1 if displaying the hit */
 
-#define ENFORCER_BUF_SIZE 4096
+#define ENFORCER_BUF_SIZE 8192
 static char enforcer_buf[ENFORCER_BUF_SIZE];
 
 uae_u32 (REGPARAM3 *saved_chipmem_lget) (uaecptr addr);
@@ -194,7 +194,7 @@ static void enforcer_display_hit (const char *addressmode, uae_u32 pc, uaecptr a
 
     if (enforcer_hit)
 	return; /* our function itself generated a hit ;), avoid endless loop */
-    if (regs.vbr < 0x100 && addr >= 0x0c && addr < 0x78)
+    if (regs.vbr < 0x100 && addr >= 0x0c && addr < 0x80)
 	return;
 
     enforcer_hit = 1;

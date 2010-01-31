@@ -45,6 +45,7 @@
 #include "a2091.h"
 #include "ncr_scsi.h"
 #include "scsi.h"
+#include "sana2.h"
 #include "blkdev.h"
 
 #ifdef USE_SDL
@@ -367,6 +368,9 @@ void fixup_prefs (struct uae_prefs *p)
     p->scsi = 0;
     p->win32_aspi = 0;
 #endif
+#if !defined (SANA2)
+    p->sana2 = 0;
+#endif
 #if !defined (UAESERIAL)
     p->uaeserial = 0;
 #endif
@@ -374,6 +378,7 @@ void fixup_prefs (struct uae_prefs *p)
     if (p->cpu_cycle_exact)
 	p->gfx_framerate = 1;
 #endif
+    target_fixup_options (p);
 }
 
 int quit_program = 0;
@@ -395,6 +400,7 @@ void uae_quit (void)
     deactivate_debugger ();
     if (quit_program != -1)
 	quit_program = -1;
+    target_quit ();
 }
 
 /* 0 = normal, 1 = nogui, -1 = disable nogui */
@@ -534,7 +540,10 @@ void reset_all_systems (void)
     scsidev_reset ();
     scsidev_start_threads ();
 #endif
-
+#ifdef SANA2
+    netdev_reset ();
+    netdev_start_threads ();
+#endif
 #ifdef FILESYS
     filesys_prepare_reset ();
     filesys_reset ();
@@ -659,17 +668,15 @@ static void real_main2 (int argc, char **argv)
     init_shm ();
 #endif
 
-#ifdef FILESYS
-    rtarea_init ();
-    hardfile_install ();
-#endif
-
     if (restart_config[0])
 	parse_cmdline_and_init_file (argc, argv);
     else
 	currprefs = changed_prefs;
 
-    machdep_init ();
+    if (!machdep_init ()) {
+	restart_program = 0;
+	return;
+    }
 
     if (! setup_sound ()) {
 	write_log ("Sound driver unavailable: Sound output disabled\n");
@@ -706,19 +713,24 @@ static void real_main2 (int argc, char **argv)
     /* force sound settings change */
     currprefs.produce_sound = 0;
 
+#ifdef AUTOCONFIG
+    rtarea_setup ();
+#endif
+#ifdef FILESYS
+    rtarea_init ();
+    hardfile_install ();
+#endif
     savestate_init ();
 #ifdef SCSIEMU
     scsi_reset ();
     scsidev_install ();
 #endif
+#ifdef SANA2
+    netdev_install ();
+#endif
 #ifdef UAESERIAL
     uaeserialdev_install ();
 #endif
-#ifdef AUTOCONFIG
-    /* Install resident module to get 8MB chipmem, if requested */
-    rtarea_setup ();
-#endif
-
     keybuf_init (); /* Must come after init_joystick */
 
 #ifdef AUTOCONFIG
@@ -756,8 +768,10 @@ static void real_main2 (int argc, char **argv)
 	if (currprefs.start_debugger && debuggable ())
 	    activate_debugger ();
 
-	if (sound_available && currprefs.produce_sound > 1 && ! init_audio ()) {
-	    write_log ("Sound driver unavailable: Sound output disabled\n");
+	if (!init_audio ()) {
+	    if (sound_available && currprefs.produce_sound > 1) {
+		write_log ("Sound driver unavailable: Sound output disabled\n");
+	    }
 	    currprefs.produce_sound = 0;
 	}
 

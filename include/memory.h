@@ -65,6 +65,7 @@ extern int ersatzkickfile;
 extern int cloanto_rom;
 extern uae_u16 kickstart_version;
 extern int uae_boot_rom, uae_boot_rom_size;
+extern uaecptr rtarea_base;
 
 extern uae_u8* baseaddr[];
 
@@ -111,6 +112,7 @@ extern addrbank gfxmem_bank, gfxmem_bankx;
 extern addrbank gayle_bank;
 extern addrbank gayle2_bank;
 extern addrbank gayle_attr_bank;
+extern addrbank gayle_common_bank;
 extern addrbank mbres_bank;
 extern addrbank akiko_bank;
 extern addrbank cardmem_bank;
@@ -323,7 +325,6 @@ extern uae_u8 *mapped_malloc (size_t, char *);
 extern void mapped_free (uae_u8 *);
 extern void clearexec (void);
 extern void mapkick (void);
-extern int read_kickstart (struct zfile *f, uae_u8 *mem, int size, int dochecksum, int *cloanto_rom);
 extern int decode_cloanto_rom_do (uae_u8 *mem, int size, int real_size);
 extern void init_shm(void);
 extern void a3000_fakekick(int);

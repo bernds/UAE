@@ -32,6 +32,7 @@
 #include "debug.h"
 #include "arcadia.h"
 #include "audio.h"
+#include "amax.h"
 
 //#define CIAA_DEBUG_R
 //#define CIAA_DEBUG_W
@@ -681,6 +682,10 @@ static void WriteCIAA (uae_u16 addr,uae_u8 val)
 	ciaapra = (ciaapra & ~0xc3) | (val & 0xc3);
 	bfe001_change ();
 	handle_cd32_joystick_cia (ciaapra, ciaadra);
+#ifdef AMAX
+	if (currprefs.amaxromfile[0])
+	    amax_bfe001_write (val, ciaadra);
+#endif
 	break;
     case 1:
 #ifdef DONGLE_DEBUG
@@ -1256,25 +1261,27 @@ static uae_u32 REGPARAM2 clock_wget (uaecptr addr)
 
 static uae_u32 REGPARAM2 clock_bget (uaecptr addr)
 {
-    time_t t = time(0);
+    time_t t;
     struct tm *ct;
 
 #ifdef JIT
     special_mem |= S_READ;
 #endif
-    t += currprefs.cs_rtc_adjust;
+    //write_log("R: %x (%x), PC=%08x\n", addr, addr >> 2, M68K_GETPC);
 #ifdef CDTV
     if (currprefs.cs_cdtvram && addr >= 0xdc8000)
 	return cdtv_battram_read (addr);
 #endif
-    ct = localtime (&t);
     addr &= 0x3f;
-    if ((addr & 3) == 2 || (addr & 3) == 0) {
+    if ((addr & 3) == 2 || (addr & 3) == 0 || currprefs.cs_rtc == 0) {
 	int v = 0;
 	if (currprefs.cpu_model == 68000 && currprefs.cpu_compatible)
 	    v = regs.irc >> 8;
 	return v;
     }
+    t = time (0);
+    t += currprefs.cs_rtc_adjust;
+    ct = localtime (&t);
     addr >>= 2;
     if (currprefs.cs_rtc == 1) { /* MSM6242B */
 	switch (addr) {
@@ -1341,6 +1348,7 @@ static void REGPARAM2 clock_bput (uaecptr addr, uae_u32 value)
 #ifdef JIT
     special_mem |= S_WRITE;
 #endif
+    //write_log("W: %x: %x, PC=%08x\n", addr, value & 0xff, M68K_GETPC);
 #ifdef CDTV
     if (currprefs.cs_cdtvram && addr >= 0xdc8000) {
 	cdtv_battram_write (addr, value);
@@ -1348,7 +1356,7 @@ static void REGPARAM2 clock_bput (uaecptr addr, uae_u32 value)
     }
 #endif
     addr &= 0x3f;
-    if ((addr & 3) != 3)
+    if ((addr & 1) != 1 || currprefs.cs_rtc == 0)
 	return;
     addr >>= 2;
     value &= 0x0f;

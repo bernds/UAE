@@ -25,7 +25,8 @@
 #define CATWEASEL /* Catweasel MK2/3 support */
 #define AHI /* AHI sound emulation */
 #define ENFORCER /* UAE Enforcer */
-#define AGA /* AGA chipset emulation */
+#define ECS_DENISE /* ECS DENISE new features */
+#define AGA /* AGA chipset emulation (ECS_DENISE must be enabled) */
 #define CD32 /* CD32 emulation */
 #define CDTV /* CDTV emulation */
 #define D3D /* D3D display filter support */
@@ -54,6 +55,9 @@
 #define SAVESTATE /* State file support */
 #define A2091 /* A590/A2091 SCSI */
 #define NCR /* A4000T/A4091 SCSI */
+#define SANA2 /* SANA2 network driver */
+#define AMAX /* A-Max ROM adapater emulation */
+#define RETROPLATFORM /* Cloanto RetroPlayer support */
 
 #else
 

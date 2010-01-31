@@ -116,13 +116,16 @@ struct romdata *getromdatabypath(char *path)
     return NULL;
 }
 
-#define NEXT_ROM_ID 70
+#define NEXT_ROM_ID 71
 
 static struct romheader romheaders[] = {
     { "Freezer Cartridges", 1 },
     { "Arcadia Games", 2 },
     { NULL, 0 }
 };
+
+#define ALTROM(id,grp,num,size,flags,crc32,a,b,c,d,e) \
+    { "X", 0, 0, 0, 0, 0, size, id, 0, 0, flags, (grp << 16) | num, 0, crc32, a, b, c, d, e },
 
 static struct romdata roms[] = {
     { "Cloanto Amiga Forever ROM key", 0, 0, 0, 0, 0, 2069, 0, 0, 1, ROMTYPE_KEY, 0, 0,
@@ -186,6 +189,8 @@ static struct romdata roms[] = {
 
     { "CDTV extended ROM v1.00", 1, 0, 1, 0, "CDTV\0", 262144, 20, 0, 0, ROMTYPE_EXTCDTV, 0, 0,
 	0x42baa124, 0x7BA40FFA,0x17E500ED,0x9FED041F,0x3424BD81,0xD9C907BE },
+    ALTROM(20, 1, 1, 131072, ROMTYPE_EVEN, 0x791cb14b,0x277a1778,0x92449635,0x3ffe56be,0x68063d2a,0x334360e4)
+    ALTROM(20, 1, 2, 131072, ROMTYPE_ODD,  0xaccbbc2e,0x41b06d16,0x79c6e693,0x3c3378b7,0x626025f7,0x641ebc5c)
     { "CDTV extended ROM v2.07", 2, 7, 2, 7, "CDTV\0", 262144, 22, 0, 0, ROMTYPE_EXTCDTV, 0, 0,
 	0xceae68d2, 0x5BC114BB,0xA29F60A6,0x14A31174,0x5B3E2464,0xBFA06846 },
     { "CDTV extended ROM v2.30", 2, 30, 2, 30, "CDTV\0", 262144, 21, 0, 0, ROMTYPE_EXTCDTV, 0, 0,
@@ -195,6 +200,9 @@ static struct romdata roms[] = {
 	0x62f11c04, 0xC87F9FAD,0xA4EE4E69,0xF3CCA0C3,0x6193BE82,0x2B9F5FE6 },
     { "A1000 bootstrap ROM", 0, 0, 0, 0, "A1000\0", 65536, 24, 0, 0, ROMTYPE_KICK, 0, 0,
 	0x0b1ad2d0, 0xBA93B8B8,0x5CA0D83A,0x68225CC3,0x3B95050D,0x72D2FDD7 },
+    ALTROM(23, 1, 1, 65536,           0, 0x0b1ad2d0,0xBA93B8B8,0x5CA0D83A,0x68225CC3,0x3B95050D,0x72D2FDD7)
+    ALTROM(23, 2, 1, 4096, ROMTYPE_EVEN, 0x42553bc4,0x8855a97f,0x7a44e3f6,0x2d1c88d9,0x38fee1f4,0xc606af5b)
+    ALTROM(23, 2, 2, 4096, ROMTYPE_ODD , 0x8e5b9a37,0xd10f1564,0xb99f5ffe,0x108fa042,0x362e877f,0x569de2c3)
 
     { "Freezer: Action Replay Mk I v1.00", 1, 0, 1, 0, "AR\0", 65536, 52, 0, 0, ROMTYPE_AR, 0, 1,
 	0x2d921771, 0x1EAD9DDA,0x2DAD2914,0x6441F5EF,0x72183750,0x22E01248 },
@@ -219,13 +227,24 @@ static struct romdata roms[] = {
 	0xe668a0be, 0x633A6E65,0xA93580B8,0xDDB0BE9C,0x9A64D4A1,0x7D4B4801 },
     { "Freezer: X-Power Professional 500 v1.2", 1, 2, 1, 2, "XPOWER\0", 131072, 65, 0, 0, ROMTYPE_XPOWER, 0, 1,
 	0x9e70c231, 0xa2977a1c,0x41a8ca7d,0x4af4a168,0x726da542,0x179d5963 },
+    ALTROM(65, 1, 1, 65536, ROMTYPE_EVEN|ROMTYPE_SCRAMBLED, 0xf98742e4,0xe8e683ba,0xd8b38d1f,0x79f3ad83,0xa9e67c6f,0xa91dc96c)
+    ALTROM(65, 1, 2, 65536, ROMTYPE_ODD |ROMTYPE_SCRAMBLED, 0xdfb9984b,0x8d6bdd49,0x469ec8e2,0x0143fbb3,0x72e92500,0x99f07910)
     { "Freezer: X-Power Professional 500 v1.3", 1, 2, 1, 2, "XPOWER\0", 131072, 68, 0, 0, ROMTYPE_XPOWER, 0, 1,
 	0x31e057f0, 0x84650266,0x465d1859,0x7fd71dee,0x00775930,0xb7e450ee },
+    ALTROM(68, 1, 1, 65536, ROMTYPE_EVEN|ROMTYPE_SCRAMBLED, 0x0b2ce0c7,0x45ad5456,0x89192404,0x956f47ce,0xf66a5274,0x57ace33b)
+    ALTROM(68, 1, 2, 65536, ROMTYPE_ODD |ROMTYPE_SCRAMBLED, 0x34580c35,0x8ad42566,0x7364f238,0x978f4381,0x08f8d5ec,0x470e72ea)
     { "Freezer: Nordic Power v1.5", 1, 5, 1, 5, "NPOWER\0", 65536, 69, 0, 0, ROMTYPE_NORDIC, 0, 1,
 	0x83b4b21c, 0xc56ced25,0x506a5aab,0x3fa13813,0x4fc9e5ae,0x0f9d3709 },
+    ALTROM(69, 1, 1, 32768, ROMTYPE_EVEN|ROMTYPE_SCRAMBLED, 0xdd207174,0xae67652d,0x64f5db20,0x0f4b2110,0xee59567f,0xfbd90a1b)
+    ALTROM(69, 1, 2, 32768, ROMTYPE_ODD |ROMTYPE_SCRAMBLED, 0x8f93d85d,0x73c62d21,0x40c0c092,0x6315b702,0xdd5d0f05,0x3dad7fab)
     { "Freezer: Nordic Power v2.0", 2, 0, 2, 0, "NPOWER\0", 65536, 67, 0, 0, ROMTYPE_NORDIC, 0, 1,
 	0xa4db2906, 0x0aec68f7,0x25470c89,0x6b699ff4,0x6623dec5,0xc777466e },
-
+    ALTROM(67, 1, 1, 32768, ROMTYPE_EVEN|ROMTYPE_SCRAMBLED, 0xb21be46c,0x50dc607c,0xce976bbd,0x3841eaf0,0x591ddc7e,0xa1939ad2)
+    ALTROM(67, 1, 2, 32768, ROMTYPE_ODD |ROMTYPE_SCRAMBLED, 0x96057aed,0xdd9209e2,0x1d5edfc1,0xcdb52abe,0x93de0f35,0xc43da696)
+    { "Freezer: Nordic Power v3.0", 3, 0, 3, 0, "NPOWER\0", 65536, 70, 0, 0, ROMTYPE_NORDIC, 0, 1,
+	0x72850aef, 0x59c91d1f,0xa8f118f9,0x0bdba05a,0x9ae788d7,0x7a6cc7c9 },
+    ALTROM(70, 1, 1, 32768, ROMTYPE_EVEN|ROMTYPE_SCRAMBLED, 0xf3330e1f,0x3a597db2,0xb7d11b6c,0xb8e13496,0xc215f223,0x88c4ca3c)
+    ALTROM(70, 1, 2, 32768, ROMTYPE_EVEN|ROMTYPE_SCRAMBLED, 0xee58e0f9,0x4148f4cb,0xb42cec33,0x8ca144de,0xd4f54118,0xe0f185dd)
     { "Freezer: HRTMon v2.30 (built-in)", 0, 0, 0, 0, "HRTMON\0", 0, 63, 0, 0, ROMTYPE_HRTMON, 0, 1,
 	0xffffffff, 0, 0, 0, 0, 0, "HRTMon" },
 
@@ -287,6 +306,8 @@ struct romlist **getromlistbyident(int ver, int rev, int subver, int subrev, cha
 	    rd = rl[i].rd;
 	else
 	    rd = &roms[i];
+	if (rd->group)
+	    continue;
 	if (model && !strcmpi(model, rd->name))
 	    ok = 2;
 	if (rd->ver == ver && (rev < 0 || rd->rev == rev)) {
@@ -346,7 +367,7 @@ struct romdata *getarcadiarombyname (char *name)
 {
     int i;
     for (i = 0; roms[i].name; i++) {
-	if (roms[i].type == ROMTYPE_ARCADIAGAME || roms[i].type == ROMTYPE_ARCADIAGAME) {
+	if (roms[i].group == 0 && (roms[i].type == ROMTYPE_ARCADIAGAME || roms[i].type == ROMTYPE_ARCADIAGAME)) {
 	    char *p = roms[i].name;
 	    p = p + strlen (p) + 1;
 	    if (strlen (name) >= strlen (p) + 4) {
@@ -367,7 +388,7 @@ struct romlist **getarcadiaroms(void)
 
     max = 0;
     for (i = 0; roms[i].name; i++) {
-	if (roms[i].type == ROMTYPE_ARCADIABIOS || roms[i].type == ROMTYPE_ARCADIAGAME)
+	if (roms[i].group == 0 && (roms[i].type == ROMTYPE_ARCADIABIOS || roms[i].type == ROMTYPE_ARCADIAGAME))
 	    max++;
     }
     buf = xmalloc((sizeof (struct romlist*) + sizeof (struct romlist)) * (max + 1));
@@ -375,7 +396,7 @@ struct romlist **getarcadiaroms(void)
     rltmp = (struct romlist*)((uae_u8*)buf + (max + 1) * sizeof (struct romlist*));
     out = 0;
     for (i = 0; roms[i].name; i++) {
-	if (roms[i].type == ROMTYPE_ARCADIABIOS || roms[i].type == ROMTYPE_ARCADIAGAME) {
+	if (roms[i].group == 0 && (roms[i].type == ROMTYPE_ARCADIABIOS || roms[i].type == ROMTYPE_ARCADIAGAME)) {
 	    rdout[out++] = rltmp;
 	    rltmp->path = NULL;
 	    rltmp->rd = &roms[i];
@@ -592,9 +613,11 @@ struct romdata *getromdatabyname (char *name)
     char tmp[MAX_PATH];
     int i = 0;
     while (roms[i].name) {
-	getromname (&roms[i], tmp);
-	if (!strcmp (tmp, name) || !strcmp (roms[i].name, name))
-	    return &roms[i];
+	if (!roms[i].group) {
+	    getromname (&roms[i], tmp);
+	    if (!strcmp (tmp, name) || !strcmp (roms[i].name, name))
+		return &roms[i];
+	}
 	i++;
     }
     return 0;
@@ -604,7 +627,7 @@ struct romdata *getromdatabyid (int id)
 {
     int i = 0;
     while (roms[i].name) {
-	if (id == roms[i].id)
+	if (id == roms[i].id && roms[i].group == 0)
 	    return &roms[i];
 	i++;
     }
@@ -622,7 +645,7 @@ struct romdata *getromdatabycrc (uae_u32 crc32)
 {
     int i = 0;
     while (roms[i].name) {
-	if (crc32 == roms[i].crc32 && !notcrc32(crc32))
+	if (roms[i].group == 0 && crc32 == roms[i].crc32 && !notcrc32(crc32))
 	    return &roms[i];
 	i++;
     }
@@ -851,7 +874,7 @@ static void dummylog(int rw, uaecptr addr, int size, uae_u32 val, int ins)
     /* extended rom */
     if (addr >= 0xf00000 && addr <= 0xf7ffff)
 	return;
-    /* motherbord ram */
+    /* motherboard ram */
     if (addr >= 0x08000000 && addr <= 0x08000007)
 	return;
     if (addr >= 0x07f00000 && addr <= 0x07f00007)
@@ -1238,7 +1261,7 @@ static uae_u8 *REGPARAM2 bogomem_xlate (uaecptr addr)
 
 /* CDTV expension memory card memory */
 
-static uae_u8 *cardmemory;
+uae_u8 *cardmemory;
 
 static uae_u32 REGPARAM3 cardmem_lget (uaecptr) REGPARAM;
 static uae_u32 REGPARAM3 cardmem_wget (uaecptr) REGPARAM;
@@ -1809,6 +1832,156 @@ addrbank extendedkickmem_bank = {
     extendedkickmem_lget, extendedkickmem_wget, ABFLAG_ROM
 };
 
+
+static uae_u32 allocated_custmem1, allocated_custmem2;
+static uae_u32 custmem1_mask, custmem2_mask;
+static uae_u8 *custmem1, *custmem2;
+
+static uae_u32 REGPARAM3 custmem1_lget (uaecptr) REGPARAM;
+static uae_u32 REGPARAM3 custmem1_wget (uaecptr) REGPARAM;
+static uae_u32 REGPARAM3 custmem1_bget (uaecptr) REGPARAM;
+static void REGPARAM3 custmem1_lput (uaecptr, uae_u32) REGPARAM;
+static void REGPARAM3 custmem1_wput (uaecptr, uae_u32) REGPARAM;
+static void REGPARAM3 custmem1_bput (uaecptr, uae_u32) REGPARAM;
+static int REGPARAM3 custmem1_check (uaecptr addr, uae_u32 size) REGPARAM;
+static uae_u8 *REGPARAM3 custmem1_xlate (uaecptr addr) REGPARAM;
+
+static uae_u32 REGPARAM2 custmem1_lget (uaecptr addr)
+{
+    uae_u8 *m;
+    addr -= currprefs.custom_memory_addrs[0] & custmem1_mask;
+    addr &= custmem1_mask;
+    m = custmem1 + addr;
+    return do_get_mem_long ((uae_u32 *)m);
+}
+static uae_u32 REGPARAM2 custmem1_wget (uaecptr addr)
+{
+    uae_u8 *m;
+    addr -= currprefs.custom_memory_addrs[0] & custmem1_mask;
+    addr &= custmem1_mask;
+    m = custmem1 + addr;
+    return do_get_mem_word ((uae_u16 *)m);
+}
+static uae_u32 REGPARAM2 custmem1_bget (uaecptr addr)
+{
+    addr -= currprefs.custom_memory_addrs[0] & custmem1_mask;
+    addr &= custmem1_mask;
+    return custmem1[addr];
+}
+static void REGPARAM2 custmem1_lput (uaecptr addr, uae_u32 l)
+{
+    uae_u8 *m;
+    addr -= currprefs.custom_memory_addrs[0] & custmem1_mask;
+    addr &= custmem1_mask;
+    m = custmem1 + addr;
+    do_put_mem_long ((uae_u32 *)m, l);
+}
+static void REGPARAM2 custmem1_wput (uaecptr addr, uae_u32 w)
+{
+    uae_u8 *m;
+    addr -= currprefs.custom_memory_addrs[0] & custmem1_mask;
+    addr &= custmem1_mask;
+    m = custmem1 + addr;
+    do_put_mem_word ((uae_u16 *)m, w);
+}
+static void REGPARAM2 custmem1_bput (uaecptr addr, uae_u32 b)
+{
+    addr -= currprefs.custom_memory_addrs[0] & custmem1_mask;
+    addr &= custmem1_mask;
+    custmem1[addr] = b;
+}
+static int REGPARAM2 custmem1_check (uaecptr addr, uae_u32 size)
+{
+    addr -= currprefs.custom_memory_addrs[0] & custmem1_mask;
+    addr &= custmem1_mask;
+    return (addr + size) <= currprefs.custom_memory_sizes[0];
+}
+static uae_u8 *REGPARAM2 custmem1_xlate (uaecptr addr)
+{
+    addr -= currprefs.custom_memory_addrs[0] & custmem1_mask;
+    addr &= custmem1_mask;
+    return custmem1 + addr;
+}
+
+static uae_u32 REGPARAM3 custmem2_lget (uaecptr) REGPARAM;
+static uae_u32 REGPARAM3 custmem2_wget (uaecptr) REGPARAM;
+static uae_u32 REGPARAM3 custmem2_bget (uaecptr) REGPARAM;
+static void REGPARAM3 custmem2_lput (uaecptr, uae_u32) REGPARAM;
+static void REGPARAM3 custmem2_wput (uaecptr, uae_u32) REGPARAM;
+static void REGPARAM3 custmem2_bput (uaecptr, uae_u32) REGPARAM;
+static int REGPARAM3 custmem2_check (uaecptr addr, uae_u32 size) REGPARAM;
+static uae_u8 *REGPARAM3 custmem2_xlate (uaecptr addr) REGPARAM;
+
+static uae_u32 REGPARAM2 custmem2_lget (uaecptr addr)
+{
+    uae_u8 *m;
+    addr -= currprefs.custom_memory_addrs[1] & custmem2_mask;
+    addr &= custmem2_mask;
+    m = custmem2 + addr;
+    return do_get_mem_long ((uae_u32 *)m);
+}
+static uae_u32 REGPARAM2 custmem2_wget (uaecptr addr)
+{
+    uae_u8 *m;
+    addr -= currprefs.custom_memory_addrs[1] & custmem2_mask;
+    addr &= custmem2_mask;
+    m = custmem2 + addr;
+    return do_get_mem_word ((uae_u16 *)m);
+}
+static uae_u32 REGPARAM2 custmem2_bget (uaecptr addr)
+{
+    addr -= currprefs.custom_memory_addrs[1] & custmem2_mask;
+    addr &= custmem2_mask;
+    return custmem2[addr];
+}
+static void REGPARAM2 custmem2_lput (uaecptr addr, uae_u32 l)
+{
+    uae_u8 *m;
+    addr -= currprefs.custom_memory_addrs[1] & custmem2_mask;
+    addr &= custmem2_mask;
+    m = custmem2 + addr;
+    do_put_mem_long ((uae_u32 *)m, l);
+}
+static void REGPARAM2 custmem2_wput (uaecptr addr, uae_u32 w)
+{
+    uae_u8 *m;
+    addr -= currprefs.custom_memory_addrs[1] & custmem2_mask;
+    addr &= custmem2_mask;
+    m = custmem2 + addr;
+    do_put_mem_word ((uae_u16 *)m, w);
+}
+static void REGPARAM2 custmem2_bput (uaecptr addr, uae_u32 b)
+{
+    addr -= currprefs.custom_memory_addrs[1] & custmem2_mask;
+    addr &= custmem2_mask;
+    custmem2[addr] = b;
+}
+static int REGPARAM2 custmem2_check (uaecptr addr, uae_u32 size)
+{
+    addr -= currprefs.custom_memory_addrs[1] & custmem2_mask;
+    addr &= custmem2_mask;
+    return (addr + size) <= currprefs.custom_memory_sizes[1];
+}
+static uae_u8 *REGPARAM2 custmem2_xlate (uaecptr addr)
+{
+    addr -= currprefs.custom_memory_addrs[1] & custmem2_mask;
+    addr &= custmem2_mask;
+    return custmem2 + addr;
+}
+
+addrbank custmem1_bank = {
+    custmem1_lget, custmem1_wget, custmem1_bget,
+    custmem1_lput, custmem1_wput, custmem1_bput,
+    custmem1_xlate, custmem1_check, NULL, "Non-autoconfig RAM #1",
+    custmem1_lget, custmem1_wget, ABFLAG_RAM
+};
+addrbank custmem2_bank = {
+    custmem1_lget, custmem1_wget, custmem1_bget,
+    custmem1_lput, custmem1_wput, custmem1_bput,
+    custmem1_xlate, custmem1_check, NULL, "Non-autoconfig RAM #2",
+    custmem1_lget, custmem1_wget, ABFLAG_RAM
+};
+
 #define fkickmem_size 524288
 void a3000_fakekick(int map)
 {
@@ -1867,7 +2040,7 @@ static int kickstart_checksum (uae_u8 *mem, int size)
 }
 
 static char *kickstring = "exec.library";
-static int read_kickstart (struct zfile *f, uae_u8 *mem, int size, int dochecksum, int *cloanto_rom)
+static int read_kickstart (struct zfile *f, uae_u8 *mem, int size, int dochecksum, int *cloanto_rom, int noalias)
 {
     unsigned char buffer[20];
     int i, j, oldpos;
@@ -1902,7 +2075,7 @@ static int read_kickstart (struct zfile *f, uae_u8 *mem, int size, int dochecksu
 	notify_user (NUMSG_KSROMREADERROR);
 	return 0;
     }
-    if (i == size / 2)
+    if (!noalias && i == size / 2)
 	memcpy (mem + size / 2, mem, size / 2);
 
     if (cr) {
@@ -1952,19 +2125,24 @@ static int load_extendedkickstart (void)
     }
     zfile_fseek (f, 0, SEEK_END);
     size = zfile_ftell (f);
+    extendedkickmem_size = 524288;
     off = 0;
-    if (size > 300000) {
-	extendedkickmem_size = 524288;
+    if (currprefs.cs_cd32cd) {
+	extendedkickmem_type = EXTENDED_ROM_CD32;
+	if (size >= 524288 * 2)
+	    off = 524288;
+    } else if (currprefs.cs_cdtvcd || currprefs.cs_cdtvram) {
+	extendedkickmem_type = EXTENDED_ROM_CDTV;
+    } else if (size > 300000) {
 	extendedkickmem_type = EXTENDED_ROM_CD32;
 	if (size >= 524288 * 2)
 	    off = 524288;
     } else {
-	extendedkickmem_size = 262144;
 	extendedkickmem_type = EXTENDED_ROM_CDTV;
     }
+
     zfile_fseek (f, off, SEEK_SET);
     switch (extendedkickmem_type) {
-
     case EXTENDED_ROM_CDTV:
 	extendedkickmemory = (uae_u8 *) mapped_malloc (extendedkickmem_size, "rom_f0");
 	extendedkickmem_bank.baseaddr = (uae_u8 *) extendedkickmemory;
@@ -1974,7 +2152,7 @@ static int load_extendedkickstart (void)
 	extendedkickmem_bank.baseaddr = (uae_u8 *) extendedkickmemory;
 	break;
     }
-    read_kickstart (f, extendedkickmemory, extendedkickmem_size,  0, 0);
+    read_kickstart (f, extendedkickmemory, extendedkickmem_size,  0, 0, 1);
     extendedkickmem_mask = extendedkickmem_size - 1;
     zfile_fclose (f);
     return 1;
@@ -2141,7 +2319,7 @@ static int load_kickstart (void)
 	    }
 	    zfile_fseek (f, kspos, SEEK_SET);
 	}
-	size = read_kickstart (f, kickmemory, maxsize, 1, &cloanto_rom);
+	size = read_kickstart (f, kickmemory, maxsize, 1, &cloanto_rom, 0);
 	if (size == 0)
 	    goto err;
 	kickmem_mask = size - 1;
@@ -2152,7 +2330,7 @@ static int load_kickstart (void)
 	    extendedkickmemory = (uae_u8 *) mapped_malloc (extendedkickmem_size, "rom_e0");
 	    extendedkickmem_bank.baseaddr = (uae_u8 *) extendedkickmemory;
 	    zfile_fseek (f, extpos, SEEK_SET);
-	    read_kickstart (f, extendedkickmemory, 0x80000,  0, 0);
+	    read_kickstart (f, extendedkickmemory, 0x80000,  0, 0, 1);
 	    extendedkickmem_mask = extendedkickmem_size - 1;
 	}
     }
@@ -2295,7 +2473,7 @@ uae_u8 *mapped_malloc (size_t s, char *file)
 
     if (!canbang) {
 	nocanbang();
-	return xmalloc (s);
+	return xcalloc (s + 4, 1);
     }
 
     id = shmget (IPC_PRIVATE, s, 0x1ff, file);
@@ -2428,6 +2606,31 @@ static void allocate_memory (void)
 	}
 	cdtv_loadcardmem(cardmemory, allocated_cardmem);
     }
+    if (allocated_custmem1 != currprefs.custom_memory_sizes[0]) {
+	if (custmem1)
+	    mapped_free (custmem1);
+	custmem1 = 0;
+	allocated_custmem1 = currprefs.custom_memory_sizes[0];
+	custmem1_mask = allocated_custmem1 - 1;
+	if (allocated_custmem1) {
+	    custmem1 = mapped_malloc (allocated_custmem1, "custmem1");
+	    if (!custmem1)
+		allocated_custmem1 = 0;
+	}
+    }
+    if (allocated_custmem2 != currprefs.custom_memory_sizes[1]) {
+	if (custmem2)
+	    mapped_free (custmem2);
+	custmem2 = 0;
+	allocated_custmem2 = currprefs.custom_memory_sizes[1];
+	custmem2_mask = allocated_custmem2 - 1;
+	if (allocated_custmem2) {
+	    custmem2 = mapped_malloc (allocated_custmem2, "custmem2");
+	    if (!custmem2)
+		allocated_custmem2 = 0;
+	}
+    }
+
     if (savestate_state == STATE_RESTORE) {
 	restore_ram (bootrom_filepos, rtarea);
 	restore_ram (chip_filepos, chipmemory);
@@ -2580,7 +2783,8 @@ void memory_reset (void)
 	if (currprefs.cs_ide == 1) {
 	    map_banks (&gayle_bank, 0xD8, 6, 0);
 	    map_banks (&gayle2_bank, 0xDD, 2, 0);
-	    // map_banks (&gayle_attr_bank, 0xA0, 8, 0); only if PCMCIA card inserted */
+	    //map_banks (&gayle_attr_bank, 0xA0, 8, 0); // only if PCMCIA card inserted
+	    //map_banks (&gayle_common_bank, 0x60, 64, 0); // only if PCMCIA card inserted
 	}
 	if (currprefs.cs_ide == 2 || currprefs.cs_mbdmac == 2) {
 	    map_banks (&gayle_bank, 0xDD, 1, 0);
@@ -2590,7 +2794,7 @@ void memory_reset (void)
 	    map_banks (&gayle_bank, 0xDD, 1, 0);
 	}
     }
-    if (currprefs.cs_rtc)
+    if (currprefs.cs_rtc || currprefs.cs_cdtvram)
 	map_banks (&clock_bank, 0xDC, 1, 0);
     if (currprefs.cs_fatgaryrev >= 0 || currprefs.cs_ramseyrev >= 0)
 	map_banks (&mbres_bank, 0xDE, 1, 0);
@@ -2607,9 +2811,9 @@ void memory_reset (void)
 	map_banks (&cardmem_bank, cardmem_start >> 16, allocated_cardmem >> 16, 0);
 
 #ifdef AUTOCONFIG
-    if (need_uae_boot_rom()) {
+    if (need_uae_boot_rom ()) {
 	uae_boot_rom = 1;
-	map_banks (&rtarea_bank, RTAREA_BASE >> 16, 1, 0);
+	map_banks (&rtarea_bank, rtarea_base >> 16, 1, 0);
     }
 #endif
 
@@ -2638,7 +2842,7 @@ void memory_reset (void)
 	break;
 #ifdef CDTV
     case EXTENDED_ROM_CDTV:
-	map_banks (&extendedkickmem_bank, 0xF0, 4, 0);
+	map_banks (&extendedkickmem_bank, 0xF0, 8, 0);
 	break;
 #endif
 #ifdef CD32
@@ -2657,6 +2861,18 @@ void memory_reset (void)
 	    map_banks (&kickmem_bank, 0xB0, 8, 0);
 	}
     }
+
+    if (currprefs.custom_memory_sizes[0]) {
+	map_banks (&custmem1_bank,
+	    currprefs.custom_memory_addrs[0] >> 16,
+	    currprefs.custom_memory_sizes[0] >> 16, 0);
+    }
+    if (currprefs.custom_memory_sizes[1]) {
+	map_banks (&custmem2_bank,
+	    currprefs.custom_memory_addrs[1] >> 16,
+	    currprefs.custom_memory_sizes[1] >> 16, 0);
+    }
+
 #ifdef ARCADIA
     if (is_arcadia_rom (currprefs.romextfile) == ARCADIA_BIOS) {
 	if (strcmp (currprefs.romextfile, changed_prefs.romextfile) != 0)
@@ -2694,6 +2910,8 @@ void memory_init (void)
     a3000lmemory = a3000hmemory = 0;
     bogomemory = 0;
     cardmemory = 0;
+    custmem1 = 0;
+    custmem2 = 0;
 
     kickmemory = mapped_malloc (0x80000, "kick");
     memset (kickmemory, 0, 0x80000);
@@ -2734,6 +2952,10 @@ void memory_cleanup (void)
 	cdtv_savecardmem (cardmemory, allocated_cardmem);
 	mapped_free (cardmemory);
     }
+    if (custmem1)
+	mapped_free (custmem1);
+    if (custmem2)
+	mapped_free (custmem2);
 
     bogomemory = 0;
     kickmemory = 0;
@@ -2742,6 +2964,8 @@ void memory_cleanup (void)
     a1000_kickstart_mode = 0;
     chipmemory = 0;
     cardmemory = 0;
+    custmem1 = 0;
+    custmem2 = 0;
 
     #ifdef ACTION_REPLAY
     action_replay_cleanup();

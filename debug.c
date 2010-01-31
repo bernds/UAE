@@ -40,6 +40,7 @@ static uae_u32 skipins;
 static int do_skip;
 static int debug_rewind;
 static int memwatch_enabled, memwatch_triggered;
+static uae_u16 sr_bpmask, sr_bpvalue;
 int debugging;
 int exception_debugging;
 int debug_copper;
@@ -104,6 +105,7 @@ static char help[] = {
     "  fp \"<name>\"/<addr>    Step forward until process <name> or <addr> is active\n"
     "  fl                    List breakpoints\n"
     "  fd                    Remove all breakpoints\n"
+    "  fs <val> <mask>       Break when (SR & mask) = val\n"                   
     "  f <addr1> <addr2>     Step forward until <addr1> <= PC <= <addr2>\n"
     "  e                     Dump contents of all custom registers, ea = AGA colors\n"
     "  i [<addr>]            Dump contents of interrupt and trap vectors\n"
@@ -133,6 +135,7 @@ static char help[] = {
     "                        Also enables level 1 disk logging\n"
     "  did <log level>       Enable disk logging\n"
     "  dj [<level bitmask>]  Enable joystick/mouse input debugging\n"
+    "  smc                   Enable self-modifying code detector\n"
     "  dm                    Dump current address space map\n"
 #ifdef _WIN32
     "  x                     Close debugger.\n"
@@ -511,7 +514,7 @@ static void dump_vectors (uaecptr addr)
     while (int_labels[i].name || trap_labels[j].name) {
 	if (int_labels[i].name) {
 	    console_out ("$%08X: %s  \t $%08X\t", int_labels[i].adr + addr,
-		int_labels[i].name, get_long (int_labels[i].adr + (int_labels[i].adr == 4 ? 0 : addr)));
+		int_labels[i].name, get_long (int_labels[i].adr + addr));
 	    i++;
 	} else {
 	    console_out ("\t\t\t\t");
@@ -836,7 +839,7 @@ static void deepcheatsearch (char **c)
 		*p1++ = get_byte (i);
 	    addr = end - 1;
 	}
-	console_out("deep trainer first pass complete.\n");
+	console_out("Deep trainer first pass complete.\n");
 	return;
     }
     inconly = deconly = 0;
@@ -951,16 +954,16 @@ static void cheatsearch (char **c)
     }
     val = readint (c);
     if (first) {
-	ignore_ws (c);
 	if (val > 255)
 	    size = 2;
 	if (val > 65535)
 	    size = 3;
 	if (val > 16777215)
 	    size = 4;
-	if (more_params(c))
-	    size = readint(c);
     }
+    ignore_ws (c);
+    if (more_params(c))
+        size = readint(c);
     if (size > 4)
 	size = 4;
     if (size < 1)
@@ -980,7 +983,8 @@ static void cheatsearch (char **c)
     while ((addr = nextaddr(addr, &end)) != 0xffffffff) {
 	if (addr + size < end) {
 	    for (i = 0; i < size; i++) {
-		if (get_byte (addr + i) != val >> ((size - i - 1) << 8))
+		int shift = (size - i - 1) * 8;
+		if (get_byte (addr + i) != ((val >> shift) & 0xff))
 		    break;
 	    }
 	    if (i == size) {
@@ -1011,10 +1015,11 @@ static void cheatsearch (char **c)
 	    vlist[prevmemcnt >> 3] &= ~(1 << (prevmemcnt & 7));
 	    prevmemcnt++;
 	}
-	listcheater(0, size);
+	listcheater (0, size);
     }
     console_out ("Found %d possible addresses with 0x%X (%u) (%d bytes)\n", count, val, val, size);
-    console_out ("Now continue with 'g' and use 'C' with a different value\n");
+    if (count > 0)
+	console_out ("Now continue with 'g' and use 'C' with a different value\n");
     first = 0;
 }
 
@@ -1092,7 +1097,7 @@ static void illg_init (void)
 	memset (illgdebug + 0xe00000, 1, 512 * 1024);
 #ifdef FILESYS
     if (uae_boot_rom) /* filesys "rom" */
-	memset (illgdebug + RTAREA_BASE, 1, 0x10000);
+	memset (illgdebug + rtarea_base, 1, 0x10000);
 #endif
     if (currprefs.cs_ide > 0)
 	memset (illgdebug + 0xdd0000, 3, 65536);
@@ -1282,6 +1287,7 @@ static int memwatch_func (uaecptr addr, int rwi, int size, uae_u32 *valp)
 		}
 		return 0;
 	    }
+	    mwhit.pc = M68K_GETPC;
 	    mwhit.addr = addr;
 	    mwhit.rwi = rwi;
 	    mwhit.size = size;
@@ -1822,7 +1828,7 @@ static void print_task_info(uaecptr node)
 	int tasknum = get_long (node + 140);
 	if (cli && tasknum) {
 	    uae_u8 *command_bstr = get_real_address (BPTR2APTR (get_long (cli + 16)));
-	    char * command = BSTR2CSTR (command_bstr);
+	    char *command = BSTR2CSTR (command_bstr);
 	    console_out (" [%d, '%s']\n", tasknum, command);
 	    xfree (command);
 	} else {
@@ -1869,7 +1875,18 @@ static int instruction_breakpoint (char **c)
 
     if (more_params (c)) {
 	char nc = toupper((*c)[0]);
-	if (nc == 'I') {
+	if (nc == 'S') {
+	    next_char (c);
+	    sr_bpvalue = sr_bpmask = 0;
+	    if (more_params (c)) {
+		sr_bpmask = 0xffff;
+		sr_bpvalue = readhex (c);
+		if (more_params (c))
+		    sr_bpmask = readhex (c);
+	    }
+	    console_out ("SR breakpoint, value=%04X, mask=%04X\n", sr_bpvalue, sr_bpmask);
+	    return 0;
+	} else if (nc == 'I') {
 	    next_char (c);
 	    if (more_params (c))
 		skipins = readhex (c);
@@ -2533,22 +2550,21 @@ void debug (void)
 		    uaecptr execbase = get_long (4);
 		    uaecptr activetask = get_long (execbase + 276);
 		    int process = get_byte (activetask + 8) == 13 ? 1 : 0;
-		    char *name = (char*)get_real_address (get_long (activetask + 10));
+		    uae_u8 *name = get_real_address (get_long (activetask + 10));
 		    if (process) {
 			uaecptr cli = BPTR2APTR(get_long (activetask + 172));
 			uaecptr seglist = 0;
-			char *command = NULL;
+
+			uae_u8 *command = NULL;
 			if (cli) {
-			    if (processname) {
-				uae_u8 *command_bstr = get_real_address (BPTR2APTR(get_long (cli + 16)));
-				command = BSTR2CSTR(command_bstr);
-			    }
+			    if (processname)
+				command = get_real_address (BPTR2APTR(get_long (cli + 16)));
 			    seglist = BPTR2APTR(get_long (cli + 60));
 			} else {
 			    seglist = BPTR2APTR(get_long (activetask + 128));
 			    seglist = BPTR2APTR(get_long (seglist + 12));
 			}
-			if (activetask == processptr || (processname && (!stricmp(name, processname) || (command && !stricmp(command, processname))))) {
+			if (activetask == processptr || (processname && (!stricmp(name, processname) || (command && command[0] && !strnicmp(command + 1, processname, command[0]) && processname[command[0]] == 0)))) {
 			    while (seglist) {
 				uae_u32 size = get_long (seglist - 4) - 4;
 				if (pc >= (seglist + 4) && pc < (seglist + size)) {
@@ -2558,7 +2574,6 @@ void debug (void)
 				seglist = BPTR2APTR(get_long (seglist));
 			    }
 			}
-			xfree(command);
 		    }
 		} else if (skipins != 0xffffffff) {
 		    if (skipins == 0x10000) {
@@ -2576,16 +2591,23 @@ void debug (void)
 			bp = 1;
 		}
 	    }
+	    if (sr_bpmask || sr_bpvalue) {
+		MakeSR (&regs);
+		if ((regs.sr & sr_bpmask) == sr_bpvalue) {
+		    console_out ("SR breakpoint\n");
+		    bp = 1;
+		}
+	    }
 	    if (!bp) {
 		set_special (&regs, SPCFLAG_BRK);
 		return;
 	    }
 	}
     } else {
-	console_out ("Memwatch %d: break at %08.8X.%c %c%c%c %08.8X\n", memwatch_triggered - 1, mwhit.addr,
+	console_out ("Memwatch %d: break at %08X.%c %c%c%c %08.8X PC=%08X\n", memwatch_triggered - 1, mwhit.addr,
 	    mwhit.size == 1 ? 'B' : (mwhit.size == 2 ? 'W' : 'L'),
 	    (mwhit.rwi & 1) ? 'R' : ' ', (mwhit.rwi & 2) ? 'W' : ' ', (mwhit.rwi & 4) ? 'I' : ' ',
-	    mwhit.val);
+	    mwhit.val, mwhit.pc);
 	memwatch_triggered = 0;
     }
     if (skipaddr_doskip > 0) {
@@ -2624,6 +2646,8 @@ void debug (void)
 	if (bpnodes[i].enabled)
 	    do_skip = 1;
     }
+    if (sr_bpmask || sr_bpvalue)
+	do_skip = 1;
     if (do_skip) {
 	set_special (&regs, SPCFLAG_BRK);
 	unset_special (&regs, SPCFLAG_STOP);

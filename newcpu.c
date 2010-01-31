@@ -1623,7 +1623,7 @@ STATIC_INLINE int in_rom (uaecptr pc)
 
 STATIC_INLINE int in_rtarea (uaecptr pc)
 {
-    return (munge24 (pc) & 0xFFFF0000) == RTAREA_BASE;
+    return (munge24 (pc) & 0xFFFF0000) == rtarea_base;
 }
 
 unsigned long REGPARAM2 op_illg (uae_u32 opcode, struct regstruct *regs)
@@ -2063,7 +2063,6 @@ void doint (void)
 }
 //static uae_u32 pcs[1000];
 
-
 //#define DEBUG_CD32IO
 #ifdef DEBUG_CD32IO
 
@@ -2072,6 +2071,7 @@ static uae_u32 cd32nextpc, cd32request;
 static void out_cd32io2 (void)
 {
     uae_u32 request = cd32request;
+    write_log ("%08x returned\n", request);
     //write_log ("ACTUAL=%d ERROR=%d\n", get_long (request + 32), get_byte (request + 31));
     cd32nextpc = 0;
     cd32request = 0;
@@ -2126,9 +2126,9 @@ static void out_cd32io (uae_u32 pc)
 		activate_debugger (1);
 	}
 #endif
-	write_log ("CMD=%d DATA=%08.8X LEN=%d %OFF=%d\n",
+	write_log ("CMD=%d DATA=%08.8X LEN=%d %OFF=%d PC=%x\n",
 	    cmd, get_long (request + 40),
-	    get_long (request + 36), get_long (request + 44));
+	    get_long (request + 36), get_long (request + 44), M68K_GETPC);
     }
     if (ioreq < 0)
 	;//activate_debugger ();
@@ -2238,7 +2238,7 @@ void exec_nostats (void)
 
 	do_cycles (cpu_cycles);
 
-	if (end_block (opcode) || r->spcflags)
+	if (end_block (opcode) || r->spcflags || uae_int_requested)
 	    return; /* We will deal with the spcflags in the caller */
     }
 }
@@ -2294,6 +2294,7 @@ static void m68k_run_2a (void)
 	/* Whenever we return from that, we should check spcflags */
 	if (uae_int_requested) {
 	    intreq |= 0x0008;
+	    intreqr = intreq;
 	    set_special (&regs, SPCFLAG_INT);
 	}
 	if (regs.spcflags) {

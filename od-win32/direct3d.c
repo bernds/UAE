@@ -383,7 +383,10 @@ const char *D3D_init (HWND ahwnd, int w_w, int w_h, int t_w, int t_h, int depth)
     window_h = w_h;
     tin_w = t_w;
     tin_h = t_h;
-    createtexture (t_w, t_h);
+    if (!createtexture (t_w, t_h)) {
+	sprintf (errmsg, "Direct3D: %d * %d texture creation failed.\n", t_w, t_h);
+	return  errmsg;
+    }
     if (currprefs.gfx_filter_scanlines > 0)
 	createsltexture ();
     createscanlines (1);
@@ -517,7 +520,7 @@ static void calc (float *xp, float *yp, float *sxp, float *syp)
     int fx, fy;
     float x, y, sx, sy;
 
-    xm = currprefs.gfx_lores ? 2 : 1;
+    xm = 2 >> currprefs.gfx_resolution;
     ym = currprefs.gfx_linedbl ? 1 : 2;
     if (window_w >= 1024)
 	xm *= 2;
@@ -527,6 +530,10 @@ static void calc (float *xp, float *yp, float *sxp, float *syp)
 	ym *= 2;
     else if (window_h < 350)
 	ym /= 2;
+    if (xm < 1)
+	xm = 1;
+    if (ym < 1)
+	ym = 1;
     fx = (tin_w * xm - window_w) / 2;
     fy = (tin_h * ym - window_h) / 2;
     x = (float)(window_w * currprefs.gfx_filter_horiz_offset / 1000.0);
@@ -554,13 +561,23 @@ void D3D_unlocktexture (void)
 	D3D_render ();
 }
 
+int D3D_needreset (void)
+{
+    HRESULT hr = IDirect3DDevice9_TestCooperativeLevel(d3ddev);
+    if (hr == D3DERR_DEVICENOTRESET)
+	return 1;
+    return 0;
+}
+
 int D3D_locktexture (void)
 {
     D3DLOCKED_RECT locked;
     HRESULT hr;
 
-    if (FAILED(IDirect3DDevice9_TestCooperativeLevel(d3ddev)))
+    hr = IDirect3DDevice9_TestCooperativeLevel(d3ddev);
+    if (FAILED (hr))
 	return 0;
+
     IDirect3DDevice9_Clear(d3ddev, 0L, NULL, D3DCLEAR_TARGET, 0x00000000, 1.0f, 0L );
 
     hr = IDirect3DDevice9_BeginScene(d3ddev);
@@ -656,7 +673,7 @@ HDC D3D_getDC(HDC hdc)
 	return 0;
     if (!hdc) {
 	hr = IDirect3DDevice9_GetBackBuffer (d3ddev, 0, 0, D3DBACKBUFFER_TYPE_MONO, &bb);
-	if (!SUCCEEDED (hr)) {
+	if (FAILED (hr)) {
 	    write_log ("failed to create backbuffer: %s\n", D3D_ErrorString (hr));
 	    return 0;
 	}

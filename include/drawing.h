@@ -166,7 +166,7 @@ struct color_change {
 
 /* No divisors for MAX_PIXELS_PER_LINE; we support AGA and may one day
    want to use SHRES sprites.  */
-#define MAX_SPR_PIXELS (((MAXVPOS + 1)*2 + 1) * MAX_PIXELS_PER_LINE)
+#define MAX_SPR_PIXELS (((MAXVPOS + 1) * 2 + 1) * MAX_PIXELS_PER_LINE)
 
 struct sprite_entry
 {
@@ -219,7 +219,6 @@ struct decision {
 #endif
     uae_u8 nr_planes;
     uae_u8 bplres;
-    unsigned int any_hires_sprites:1;
     unsigned int ham_seen:1;
     unsigned int ham_at_start:1;
     unsigned int valid:1;

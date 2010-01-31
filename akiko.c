@@ -35,7 +35,7 @@
 static void irq(void)
 {
     if (!(intreq & 8)) {
-	INTREQ_f(0x8000 | 0x0008);
+	INTREQ_0 (0x8000 | 0x0008);
     }
 }
 
@@ -387,13 +387,23 @@ static int unitnum = -1;
 static int cdromok = 0;
 static int cd_hunt;
 
+static void checkint (void)
+{
+    if (cdrom_status1 & cdrom_status2)
+	irq();
+}
 
 static void set_status(uae_u32 status)
 {
     cdrom_status1 |= status;
-    if (cdrom_status1 & cdrom_status2)
-	irq();
+    checkint ();
 }
+
+void rethink_akiko (void)
+{
+    checkint ();
+}
+
 
 static uae_u8 frombcd (uae_u8 v)
 {
@@ -445,36 +455,27 @@ static void cdaudiostop (void)
 static uae_u32 last_play_end;
 static int cd_play_audio (uae_u32 startmsf, uae_u32 endmsf, int scan)
 {
-#if 0
+#if 1
     uae_u8 *buf = cdrom_toc_cd_buffer;
     uae_u8 *s;
     uae_u32 addr;
-    int i, changed;
+    int i;
 
-    changed = 0;
     for (i = 0; i < cdrom_toc_entries; i++) {
 	s = buf + 4 + i * 11;
 	addr = (s[8] << 16) | (s[9] << 8) | (s[10] << 0);
 	if (s[3] > 0 && s[3] < 100 && addr >= startmsf)
 	    break;
     }
-    addr = lsn2msf (cdrom_leadout);
-    if (i + 1 < cdrom_toc_entries) { 
+    if ((s[1] & 0x0c) == 0x04) {
+	write_log ("tried to play data track %d!\n", s[3]);
 	s += 11;
-	addr =(s[8] << 16) | (s[9] << 8) | (s[10] << 0);
+	startmsf = (s[8] << 16) | (s[9] << 8) | (s[10] << 0);
+	s += 11;
+	endmsf = (s[8] << 16) | (s[9] << 8) | (s[10] << 0);
+	//cdrom_audiotimeout = 312;
+	return 0;
     }
-    if (endmsf >= addr) {
-	endmsf = addr;
-	changed = 1;
-    }
-    if (endmsf >= lsn2msf (cdrom_leadout)) {
-	endmsf = lsn2msf (cdrom_leadout);
-	changed = 1;
-    }
-#if AKIKO_DEBUG_IO_CMD
-    if (changed)
-	write_log ("Adjusted from %06.6X to %06.6X\n", startmsf, endmsf);
-#endif
 #endif
     last_play_end = endmsf;
     cdrom_audiotimeout = 0;
@@ -563,7 +564,7 @@ static int cdrom_toc (void)
 	d[8] = tobcd (s[8]);
 	d[9] = tobcd (s[9]);
 	d[10] = tobcd (s[10]);
-	if (s[3] == 1 && (s[1] & 0x0f) == 0x04)
+	if (s[3] == 1 && (s[1] & 0x0c) == 0x04)
 	    datatrack = 1;
 	if (s[3] == 2)
 	    secondtrack = addr;
@@ -774,8 +775,8 @@ static int cdrom_command_multi (void)
 	int cdrom_data_offset_end = msf2lsn (endpos);
 	cdrom_data_offset = msf2lsn (seekpos);
 #if AKIKO_DEBUG_IO_CMD
-	write_log ("READ DATA FROM %06.6X (%d) TO %06.6X (%d) SPEED=%dx\n",
-	    seekpos, cdrom_data_offset, endpos, cdrom_data_offset_end, cdrom_speed);
+	write_log ("READ DATA %06.6X (%d) - %06.6X (%d) SPD=%dx PC=%08X\n",
+	    seekpos, cdrom_data_offset, endpos, cdrom_data_offset_end, cdrom_speed, M68K_GETPC);
 #endif
 	cdrom_result_buffer[1] |= 0x02;
     } else if (cdrom_command_buffer[10] & 4) { /* play audio */
@@ -1158,21 +1159,41 @@ static void REGPARAM3 akiko_bput (uaecptr, uae_u32) REGPARAM;
 
 static uae_u32 akiko_bget2 (uaecptr addr, int msg)
 {
-    uae_u8 v;
+    uae_u8 v = 0;
 
     addr &= 0xffff;
-    uae_sem_wait (&akiko_sem);
+
     switch (addr)
     {
 	/* "CAFE" = Akiko identification.
 	 * Kickstart ignores Akiko C2P if this ID isn't correct */
-    case 0x02:
-	v = 0xCA;
-	break;
-    case 0x03:
-	v = 0xFE;
-	break;
+	case 0x02:
+	return 0xCA;
+	case 0x03:
+	return 0xFE;
+	/* NVRAM */
+	case 0x30:
+	case 0x31:
+	case 0x32:
+	case 0x33:
+	if (currprefs.cs_cd32nvram)
+	    v =  akiko_nvram_read (addr - 0x30);
+	return v;
 
+	/* C2P */
+	case 0x38:
+	case 0x39:
+	case 0x3a:
+	case 0x3b:
+	if (currprefs.cs_cd32c2p)
+	    v = akiko_c2p_read (addr - 0x38);
+	return v;
+    }
+
+
+    uae_sem_wait (&akiko_sem);
+    switch (addr)
+    {
 	if (currprefs.cs_cd32cd) {
 	    /* CDROM control */
 	case 0x04:
@@ -1224,24 +1245,6 @@ static uae_u32 akiko_bget2 (uaecptr addr, int msg)
 	} else if (addr < 0x30) {
 	    break;
 	}
-
-	/* NVRAM */
-	case 0x30:
-	case 0x31:
-	case 0x32:
-	case 0x33:
-	if (currprefs.cs_cd32nvram)
-	    v =  akiko_nvram_read (addr - 0x30);
-	break;
-
-	/* C2P */
-	case 0x38:
-	case 0x39:
-	case 0x3a:
-	case 0x3b:
-	if (currprefs.cs_cd32c2p)
-	    v = akiko_c2p_read (addr - 0x38);
-	break;
 
 	default:
 	write_log ("akiko_bget: unknown address %08.8X\n", addr);
@@ -1314,8 +1317,29 @@ static void akiko_bput2 (uaecptr addr, uae_u32 v, int msg)
 
     addr &= 0xffff;
     v &= 0xff;
+
     if(msg && addr < 0x30 && AKIKO_DEBUG_IO)
 	write_log ("akiko_bput %08.8X: %08.8X=%02.2X\n", M68K_GETPC, addr, v & 0xff);
+
+    switch (addr)
+    {
+	case 0x30:
+	case 0x31:
+	case 0x32:
+	case 0x33:
+	    if (currprefs.cs_cd32nvram)
+		akiko_nvram_write (addr - 0x30, v);
+        return;
+
+	case 0x38:
+	case 0x39:
+	case 0x3a:
+	case 0x3b:
+	    if (currprefs.cs_cd32c2p)
+		akiko_c2p_write (addr - 0x38, v);
+	return;
+    }
+
     uae_sem_wait (&akiko_sem);
     switch (addr)
     {
@@ -1379,22 +1403,6 @@ static void akiko_bput2 (uaecptr addr, uae_u32 v, int msg)
 	} else if (addr < 0x30) {
 	    break;
 	}
-
-	case 0x30:
-	case 0x31:
-	case 0x32:
-	case 0x33:
-	    if (currprefs.cs_cd32nvram)
-		akiko_nvram_write (addr - 0x30, v);
-	break;
-
-	case 0x38:
-	case 0x39:
-	case 0x3a:
-	case 0x3b:
-	    if (currprefs.cs_cd32c2p)
-		akiko_c2p_write (addr - 0x38, v);
-	break;
 
 	default:
 	write_log ("akiko_bput: unknown address %08.8X\n", addr);

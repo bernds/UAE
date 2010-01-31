@@ -147,6 +147,9 @@ static uae_u32 sprite_ab_merge[256];
 /* Tables for collision detection.  */
 static uae_u32 sprclx[16], clxmask[16];
 
+/* AGA T genlock bit in color registers */
+static uae_u8 color_regs_aga_genlock[256];
+
 /*
  * Hardware registers of all sorts.
  */
@@ -155,7 +158,7 @@ static int REGPARAM3 custom_wput_1 (int, uaecptr, uae_u32, int) REGPARAM;
 
 static uae_u16 cregs[256];
 
-uae_u16 intena,intreq;
+uae_u16 intena, intreq, intreqr;
 uae_u16 dmacon;
 uae_u16 adkcon; /* used by audio code */
 
@@ -165,7 +168,7 @@ int maxhpos = MAXHPOS_PAL;
 int maxvpos = MAXVPOS_PAL;
 int maxvpos_max = MAXVPOS_PAL;
 int minfirstline = VBLANK_ENDLINE_PAL;
-int vblank_hz = VBLANK_HZ_PAL, fake_vblank_hz, vblank_skip;
+int vblank_hz = VBLANK_HZ_PAL, fake_vblank_hz, vblank_skip, doublescan;
 frame_time_t syncbase;
 static int fmode;
 unsigned int beamcon0, new_beamcon0;
@@ -183,6 +186,7 @@ struct sprite {
     int xpos;
     int vstart;
     int vstop;
+    int dblscan; /* AGA SSCAN2 */
     int armed;
     int dmastate;
     int dmacycle;
@@ -200,7 +204,8 @@ static uae_u16 sprdata[MAX_SPRITES][1], sprdatb[MAX_SPRITES][1];
 #endif
 static int sprite_last_drawn_at[MAX_SPRITES];
 static int last_sprite_point, nr_armed;
-static int sprite_width, sprres, sprite_buffer_res;
+static int sprite_width, sprres;
+int sprite_buffer_res;
 
 #ifdef CPUEMU_12
 uae_u8 cycle_line[256];
@@ -351,6 +356,11 @@ enum fetchstate {
  * helper functions
  */
 
+STATIC_INLINE int ecsshres(void)
+{
+    return GET_RES (bplcon0) == RES_SUPERHIRES && (currprefs.chipset_mask & CSMASK_ECS_DENISE) && !(currprefs.chipset_mask & CSMASK_AGA);
+}
+
 STATIC_INLINE int nodraw (void)
 {
     return !currprefs.cpu_cycle_exact && framecnt != 0;
@@ -422,6 +432,12 @@ static void hsyncdelay(void)
 #endif
 }
 
+static void update_mirrors(void)
+{
+    aga_mode = (currprefs.chipset_mask & CSMASK_AGA) ? 1 : 0;
+    direct_rgb = aga_mode;
+}
+
 STATIC_INLINE uae_u8 *pfield_xlateptr (uaecptr plpt, int bytecount)
 {
     if (!chipmem_bank.check (plpt, bytecount)) {
@@ -464,6 +480,7 @@ void notice_new_xcolors (void)
 {
     int i;
 
+    update_mirrors ();
     docols(&current_colors);
     docols(&colors_for_drawing);
     for (i = 0; i < (MAXVPOS + 1) * 2; i++) {
@@ -518,7 +535,8 @@ static void remember_ctable_for_border (void)
  * checked.  */
 static void decide_diw (int hpos)
 {
-    int pix_hpos = coord_diw_to_window_x (hpos == 227 ? 455 : hpos * 2); /* (227.5*2 = 455) */
+     /* Last hpos = hpos + 0.5, eg. normal PAL end hpos is 227.5 * 2 = 455 */
+    int pix_hpos = coord_diw_to_window_x (hpos == maxhpos ? hpos * 2 + 1 : hpos * 2);
     if (hdiwstate == DIW_waiting_start && thisline_decision.diwfirstword == -1
 	&& pix_hpos >= diwfirstword && last_diw_pix_hpos < diwfirstword)
     {
@@ -590,8 +608,10 @@ static void finish_playfield_line (void)
 	|| line_decisions[next_lineno].plfleft != thisline_decision.plfleft
 	|| line_decisions[next_lineno].bplcon0 != thisline_decision.bplcon0
 	|| line_decisions[next_lineno].bplcon2 != thisline_decision.bplcon2
-#ifdef AGA
+#ifdef ECS_DENISE
 	|| line_decisions[next_lineno].bplcon3 != thisline_decision.bplcon3
+#endif
+#ifdef AGA
 	|| line_decisions[next_lineno].bplcon4 != thisline_decision.bplcon4
 #endif
 	)
@@ -788,6 +808,8 @@ static void compute_toscr_delay_1 (void)
 {
     int delay1 = (bplcon1 & 0x0f) | ((bplcon1 & 0x0c00) >> 6);
     int delay2 = ((bplcon1 >> 4) & 0x0f) | (((bplcon1 >> 4) & 0x0c00) >> 6);
+    int shdelay1 = (bplcon1 >> 12) & 3;
+    int shdelay2 = (bplcon1 >> 8) & 3;
     int delaymask;
     int fetchwidth = 16 << fetchmode;
 
@@ -795,7 +817,9 @@ static void compute_toscr_delay_1 (void)
     delay2 += delayoffset;
     delaymask = (fetchwidth - 1) >> toscr_res;
     toscr_delay1x = (delay1 & delaymask) << toscr_res;
+    toscr_delay1x |= shdelay1 >> (2 - toscr_res);
     toscr_delay2x = (delay2 & delaymask) << toscr_res;
+    toscr_delay2x |= shdelay2 >> (2 - toscr_res);
 }
 
 static void compute_toscr_delay (int hpos)
@@ -1651,6 +1675,38 @@ static void record_register_change (int hpos, int regno, unsigned long value)
 
 typedef int sprbuf_res_t, cclockres_t, hwres_t,	bplres_t;
 
+static int expand_sprres (uae_u16 con0, uae_u16 con3)
+{
+    int res;
+
+    switch ((con3 >> 6) & 3)
+    {
+    default:
+	res = RES_LORES;
+    break;
+#ifdef ECS_DENISE
+    case 0: /* ECS defaults (LORES,HIRES=LORES sprite,SHRES=HIRES sprite) */
+	if ((currprefs.chipset_mask & CSMASK_ECS_DENISE) && GET_RES (con0) == RES_SUPERHIRES)
+	    res = RES_HIRES;
+	else
+	    res = RES_LORES;
+	break;
+#endif
+#ifdef AGA
+    case 1:
+	res = RES_LORES;
+	break;
+    case 2:
+	res = RES_HIRES;
+	break;
+    case 3:
+	res = RES_SUPERHIRES;
+	break;
+#endif
+    }
+    return res;
+}
+
 /* handle very rarely needed playfield collision (CLXDAT bit 0) */
 static void do_playfield_collisions (void)
 {
@@ -1817,27 +1873,6 @@ static void do_sprite_collisions (void)
 #endif
 }
 
-static void expand_sprres (void)
-{
-    switch ((bplcon3 >> 6) & 3) {
-    case 0: /* ECS defaults (LORES,HIRES=140ns,SHRES=70ns) */
-	if ((currprefs.chipset_mask & CSMASK_ECS_DENISE) && GET_RES (bplcon0) == RES_SUPERHIRES)
-	    sprres = RES_HIRES;
-	else
-	    sprres = RES_LORES;
-	break;
-    case 1:
-	sprres = RES_LORES;
-	break;
-    case 2:
-	sprres = RES_HIRES;
-	break;
-    case 3:
-	sprres = RES_SUPERHIRES;
-	break;
-    }
-}
-
 STATIC_INLINE void record_sprite_1 (uae_u16 *buf, uae_u32 datab, int num, int dbl,
 				    unsigned int mask, int do_collisions, uae_u32 collision_mask)
 {
@@ -1848,8 +1883,12 @@ STATIC_INLINE void record_sprite_1 (uae_u16 *buf, uae_u32 datab, int num, int db
 	tmp |= col;
 	if ((j & mask) == 0)
 	    *buf++ = tmp;
-	if (dbl)
+	if (dbl > 0)
 	    *buf++ = tmp;
+	if (dbl > 1) {
+	    *buf++ = tmp;
+	    *buf++ = tmp;
+	}
 	j++;
 	datab >>= 2;
 	if (do_collisions) {
@@ -1868,8 +1907,8 @@ STATIC_INLINE void record_sprite_1 (uae_u16 *buf, uae_u32 datab, int num, int db
    This function assumes that for all sprites in a given line, SPRXP either
    stays equal or increases between successive calls.
 
-   The data is recorded either in lores pixels (if ECS), or in hires pixels
-   (if AGA).  No support for SHRES sprites.  */
+   The data is recorded either in lores pixels (if OCS/ECS), or in superhires
+   pixels (if AGA).  */
 
 static void record_sprite (int line, int num, int sprxp, uae_u16 *data, uae_u16 *datb, unsigned int ctl)
 {
@@ -1878,24 +1917,18 @@ static void record_sprite (int line, int num, int sprxp, uae_u16 *data, uae_u16 
     int word_offs;
     uae_u16 *buf;
     uae_u32 collision_mask;
-    int width = sprite_width;
-    int dbl = 0, half = 0;
+    int width, dbl, half;
     unsigned int mask = 0;
 
-    if (sprres != RES_LORES)
-	thisline_decision.any_hires_sprites = 1;
-
-#ifdef AGA
-    if (currprefs.chipset_mask & CSMASK_AGA) {
-	width = (width << 1) >> sprres;
-	dbl = sprite_buffer_res - sprres;
-	if (dbl < 0) {
-	    half = -dbl;
-	    dbl = 0;
-	}
-	mask = sprres == RES_SUPERHIRES ? 1 : 0;
+    half = 0;
+    dbl = sprite_buffer_res - sprres;
+    if (dbl < 0) {
+        half = -dbl;
+        dbl = 0;
+	if (ecsshres())
+	    mask = 1;
     }
-#endif
+    width = (sprite_width << sprite_buffer_res) >> sprres;
 
     /* Try to coalesce entries if they aren't too far apart.  */
     if (! next_sprite_forced && e[-1].max + 16 >= sprxp) {
@@ -1952,6 +1985,13 @@ static void record_sprite (int line, int num, int sprxp, uae_u16 *data, uae_u16 
     }
 }
 
+STATIC_INLINE int SSCAN2_H10 (int x)
+{
+    if (fmode & 0x8000)
+	return x & ~(0x100 << sprite_buffer_res);
+    return x;
+}
+
 static void decide_sprites (int hpos)
 {
     int nrs[MAX_SPRITES], posns[MAX_SPRITES];
@@ -1970,21 +2010,26 @@ static void decide_sprites (int hpos)
 
     count = 0;
     for (i = 0; i < MAX_SPRITES; i++) {
-	int sprxp = spr[i].xpos;
-	int hw_xp = (sprxp >> sprite_buffer_res);
+	int sprxp = SSCAN2_H10 (spr[i].xpos);
+	int hw_xp = sprxp >> sprite_buffer_res;
 	int window_xp = coord_hw_to_window_x (hw_xp) + (DIW_DDF_OFFSET << lores_shift);
 	int j, bestp;
 
 	if (!((debug_sprite_mask) & (1 << i)))
 	    continue;
 
-	if (! spr[i].armed || sprxp < 0 || hw_xp <= last_sprite_point || hw_xp > point)
+	if (! spr[i].armed)
 	    continue;
+
+	if (sprxp < 0 || hw_xp <= last_sprite_point || hw_xp > point)
+	    continue;
+
+#ifdef AGA
 	if ( !(bplcon3 & 2) && /* sprites outside playfields enabled? */
 	    ((thisline_decision.diwfirstword >= 0 && window_xp + window_width < thisline_decision.diwfirstword)
 	    || (thisline_decision.diwlastword >= 0 && window_xp > thisline_decision.diwlastword)))
 	    continue;
-
+#endif
 	/* Sort the sprites in order of ascending X position before recording them.  */
 	for (bestp = 0; bestp < count; bestp++) {
 	    if (posns[bestp] > sprxp)
@@ -2002,7 +2047,7 @@ static void decide_sprites (int hpos)
     }
     for (i = 0; i < count; i++) {
 	int nr = nrs[i];
-	record_sprite (next_lineno, nr, spr[nr].xpos, sprdata[nr], sprdatb[nr], sprctl[nr]);
+	record_sprite (next_lineno, nr, SSCAN2_H10 (spr[nr].xpos), sprdata[nr], sprdatb[nr], sprctl[nr]);
     }
     last_sprite_point = point;
 }
@@ -2100,7 +2145,7 @@ static void finish_decisions (void)
 	record_diw_line (thisline_decision.plfleft, diwfirstword, diwlastword);
 
     if (thisline_decision.plfleft != -1 || (bplcon3 & 2))
-	decide_sprites (hpos);
+	decide_sprites (hpos + 1);
 
     dip->last_sprite_entry = next_sprite_entry;
     dip->last_color_change = next_color_change;
@@ -2138,7 +2183,6 @@ static void reset_decisions (void)
 	return;
 
     thisline_decision.bplres = GET_RES (bplcon0);
-    thisline_decision.any_hires_sprites = 0;
     thisline_decision.nr_planes = 0;
 
     thisline_decision.plfleft = -1;
@@ -2183,8 +2227,10 @@ static void reset_decisions (void)
     /* These are for comparison. */
     thisline_decision.bplcon0 = bplcon0;
     thisline_decision.bplcon2 = bplcon2;
-#ifdef AGA
+#ifdef ECS_DENISE
     thisline_decision.bplcon3 = bplcon3;
+#endif
+#ifdef AGA
     thisline_decision.bplcon4 = bplcon4;
 #endif
 }
@@ -2239,10 +2285,12 @@ static void dumpsync (void)
     write_log ("HSSTRT=%04.4X VSSTRT=%04.4X HCENTER=%04.4X\n", hsstrt, vsstrt, hcenter);
 }
 
-/* set PAL or NTSC timing variables */
+/* set PAL/NTSC or custom timing variables */
 void init_hz (void)
 {
     int isntsc;
+    int odbl = doublescan;
+    int hzc = 0;
 
     if ((currprefs.chipset_refreshrate == 50 && !currprefs.ntscmode) ||
 	(currprefs.chipset_refreshrate == 60 && currprefs.ntscmode)) {
@@ -2254,6 +2302,9 @@ void init_hz (void)
 	changed_prefs.chipset_refreshrate = abs (currprefs.gfx_refreshrate);
     }
 
+    doublescan = 0;
+    if ((beamcon0 & 0xA0) != (new_beamcon0 & 0xA0))
+	hzc = 1;
     beamcon0 = new_beamcon0;
     isntsc = beamcon0 & 0x20 ? 0 : 1;
     if (hack_vpos > 0) {
@@ -2296,8 +2347,12 @@ void init_hz (void)
 	    minfirstline = maxvpos - 1;
 	sprite_vblank_endline = minfirstline - 2;
 	maxvpos_max = maxvpos;
+	doublescan = htotal <= 150;
 	dumpsync();
+	hzc = 1;
     }
+    if (doublescan != odbl)
+	hzc = 1;
     /* limit to sane values */
     if (vblank_hz < 10)
 	vblank_hz = 10;
@@ -2306,6 +2361,8 @@ void init_hz (void)
     eventtab[ev_hsync].oldcycles = get_cycles ();
     eventtab[ev_hsync].evtime = get_cycles() + HSYNCTIME;
     events_schedule ();
+    if (hzc)
+        reset_drawing ();
     compute_vsynctime ();
 #ifdef OPENGL
     OGL_refresh ();
@@ -2313,8 +2370,10 @@ void init_hz (void)
 #ifdef PICASSO96
     init_hz_p96 ();
 #endif
-    write_log ("%s mode, %dHz (h=%d v=%d)\n",
-	isntsc ? "NTSC" : "PAL", vblank_hz, maxhpos, maxvpos);
+    write_log ("%s mode, V=%dHz H=%dHz (%dx%d)\n",
+	isntsc ? "NTSC" : "PAL",
+	vblank_hz, vblank_hz * maxvpos,
+	maxhpos, maxvpos);
 }
 
 static void calcdiw (void)
@@ -2359,11 +2418,6 @@ static void calcdiw (void)
     }
 }
 
-static void update_mirrors(void)
-{
-    aga_mode = (currprefs.chipset_mask & CSMASK_AGA) ? 1 : 0;
-    direct_rgb = aga_mode;
-}
 /* display mode changed (lores, doubling etc..), recalculate everything */
 void init_custom (void)
 {
@@ -2423,7 +2477,7 @@ STATIC_INLINE uae_u16 INTENAR (void)
 }
 uae_u16 INTREQR (void)
 {
-    return intreq;
+    return intreqr;
 }
 STATIC_INLINE uae_u16 ADKCONR (void)
 {
@@ -2475,7 +2529,7 @@ static void VPOSW (uae_u16 v)
     if (lof != (v & 0x8000))
 	lof_changed = 1;
     lof = v & 0x8000;
-    if ( (v & 1) && vpos > 0)
+    if ((v & 1) && vpos > 0)
 	hack_vpos = vpos;
 }
 
@@ -2492,7 +2546,7 @@ STATIC_INLINE uae_u16 VHPOSR (void)
 
 static int test_copper_dangerous (unsigned int address)
 {
-    if ((address & 0x1fe) < ((copcon & 2) ? ((currprefs.chipset_mask & CSMASK_AGA) ? 0 : 0x40u) : 0x80u)) {
+    if ((address & 0x1fe) < ((copcon & 2) ? ((currprefs.chipset_mask & CSMASK_ECS_AGNUS) ? 0 : 0x40) : 0x80)) {
 	cop_state.state = COP_stop;
 	copper_enabled_thisline = 0;
 	unset_special (&regs, SPCFLAG_COPPER);
@@ -2683,6 +2737,7 @@ void INTREQ_0 (uae_u16 v)
     if (v & (0x80|0x100|0x200|0x400))
 	audio_update_irq (v);
     setclr (&intreq, v);
+    intreqr = intreq;
     doint ();
 }
 
@@ -2694,10 +2749,19 @@ void INTREQ_f(uae_u32 data)
 #ifdef A2091
     rethink_a2091 ();
 #endif
+#ifdef CDTV
+    rethink_cdtv ();
+#endif
+#ifdef CD32
+    rethink_akiko ();
+#endif
 }
 
 static void INTREQ_d (uae_u16 v, int d)
 {
+    intreqr = intreq;
+    /* data in intreq is immediately available (vsync only currently because there is something unknown..) */
+    setclr (&intreqr, v & (0x8000 | 0x20));
     if (!use_eventmode() || v == 0)
 	INTREQ_f(v);
     else
@@ -2828,10 +2892,10 @@ static void BPLCON0 (int hpos, uae_u16 v)
     bplcon0 = v;
     record_register_change (hpos, 0x100, v);
 
-#ifdef AGA
-    if (currprefs.chipset_mask & CSMASK_AGA) {
+#ifdef ECS_DENISE
+    if (currprefs.chipset_mask & CSMASK_ECS_DENISE) {
 	decide_sprites (hpos);
-	expand_sprres ();
+	sprres = expand_sprres (bplcon0, bplcon3);
     }
 #endif
 
@@ -2863,23 +2927,28 @@ STATIC_INLINE void BPLCON2 (int hpos, uae_u16 v)
     record_register_change (hpos, 0x104, v);
 }
 
-#ifdef AGA
+#ifdef ECS_DENISE
 STATIC_INLINE void BPLCON3 (int hpos, uae_u16 v)
 {
-    if (! (currprefs.chipset_mask & CSMASK_AGA))
+    if (!(currprefs.chipset_mask & CSMASK_ECS_DENISE))
 	return;
+    if (!(currprefs.chipset_mask & CSMASK_AGA)) {
+	v &= 0x3f;
+	v |= 0x0c00;
+    }
     if (bplcon3 == v)
 	return;
     decide_line (hpos);
     decide_sprites (hpos);
     bplcon3 = v;
-    expand_sprres ();
+    sprres = expand_sprres (bplcon0, bplcon3);
     record_register_change (hpos, 0x106, v);
 }
-
+#endif
+#ifdef AGA
 STATIC_INLINE void BPLCON4 (int hpos, uae_u16 v)
 {
-    if (! (currprefs.chipset_mask & CSMASK_AGA))
+    if (!(currprefs.chipset_mask & CSMASK_AGA))
 	return;
     if (bplcon4 == v)
 	return;
@@ -3131,14 +3200,19 @@ STATIC_INLINE void SPRxCTLPOS (int num)
 
     sprstartstop (s);
     sprxp = (sprpos[num] & 0xFF) * 2 + (sprctl[num] & 1);
+    sprxp <<= sprite_buffer_res;
     /* Quite a bit salad in this register... */
+    if (0) {
+    }
 #ifdef AGA
-    if (currprefs.chipset_mask & CSMASK_AGA) {
-	/* We ignore the SHRES 35ns increment for now; SHRES support doesn't
-	   work anyway, so we may as well restrict AGA sprites to a 70ns
-	   resolution.  */
-	sprxp <<= 1;
-	sprxp |= (sprctl[num] >> 4) & 1;
+    else if (currprefs.chipset_mask & CSMASK_AGA) {
+	sprxp |= ((sprctl[num] >> 3) & 3) >> (2 - sprite_buffer_res);
+	s->dblscan = sprpos[num] & 0x80;
+    }
+#endif
+#ifdef ECS_DENISE
+    else if (currprefs.chipset_mask & CSMASK_ECS_DENISE) {
+	sprxp |= ((sprctl[num] >> 3) & 2) >> (2 - sprite_buffer_res);
     }
 #endif
     s->xpos = sprxp;
@@ -3269,10 +3343,10 @@ void dump_aga_custom (void)
 	c2 = c1 + 64;
 	c3 = c2 + 64;
 	c4 = c3 + 64;
-	rgb1 = current_colors.color_regs_aga[c1];
-	rgb2 = current_colors.color_regs_aga[c2];
-	rgb3 = current_colors.color_regs_aga[c3];
-	rgb4 = current_colors.color_regs_aga[c4];
+	rgb1 = current_colors.color_regs_aga[c1] | (color_regs_aga_genlock[c1] << 31);
+	rgb2 = current_colors.color_regs_aga[c2] | (color_regs_aga_genlock[c2] << 31);
+	rgb3 = current_colors.color_regs_aga[c3] | (color_regs_aga_genlock[c3] << 31);
+	rgb4 = current_colors.color_regs_aga[c4] | (color_regs_aga_genlock[c4] << 31);
 	console_out("%3d %08.8X %3d %08.8X %3d %08.8X %3d %08.8X\n",
 	    c1, rgb1, c2, rgb2, c3, rgb3, c4, rgb4);
     }
@@ -3290,10 +3364,13 @@ static uae_u16 COLOR_READ (int num)
     cr = current_colors.color_regs_aga[colreg] >> 16;
     cg = (current_colors.color_regs_aga[colreg] >> 8) & 0xFF;
     cb = current_colors.color_regs_aga[colreg] & 0xFF;
-    if (bplcon3 & 0x200)
+    if (bplcon3 & 0x200) {
 	cval = ((cr & 15) << 8) | ((cg & 15) << 4) | ((cb & 15) << 0);
-    else
+    } else {
 	cval = ((cr >> 4) << 8) | ((cg >> 4) << 4) | ((cb >> 4) << 0);
+	if (color_regs_aga_genlock[num])
+	    cval |= 0x8000;
+    }
     return cval;
 }
 #endif
@@ -3328,6 +3405,7 @@ static void COLOR_WRITE (int hpos, uae_u16 v, int num)
 	    cr = r + (r << 4);
 	    cg = g + (g << 4);
 	    cb = b + (b << 4);
+	    color_regs_aga_genlock[colreg] = v >> 15;
 	}
 	cval = (cr << 16) | (cg << 8) | cb;
 	if (cval == current_colors.color_regs_aga[colreg])
@@ -3778,6 +3856,12 @@ STATIC_INLINE void do_sprites_1 (int num, int cycle, int hpos)
     if (vpos == sprite_vblank_endline)
 	spr_arm (num, 0);
 
+#ifdef AGA
+    if (s->dblscan && (fmode & 0x8000) && (vpos & 1) != (s->vstart & 1) && s->dmastate) {
+	spr_arm (num, 1);
+	return;
+    }
+#endif
 #if SPRITE_DEBUG > 3
     if (vpos >= SPRITE_DEBUG_MINY && vpos <= SPRITE_DEBUG_MAXY)
 	write_log ("%d:%d:slot%d:%d\n", vpos, hpos, num, cycle);
@@ -3892,23 +3976,6 @@ static void do_sprites (int hpos)
     int maxspr, minspr;
     int i;
 
-    /* I don't know whether this is right. Some programs write the sprite pointers
-     * directly at the start of the copper list. With the test against currvp, the
-     * first two words of data are read on the second line in the frame. The problem
-     * occurs when the program jumps to another copperlist a few lines further down
-     * which _also_ writes the sprite pointer registers. This means that a) writing
-     * to the sprite pointers sets the state to SPR_restart; or b) that sprite DMA
-     * is disabled until the end of the vertical blanking interval. The HRM
-     * isn't clear - it says that the vertical sprite position can be set to any
-     * value, but this wouldn't be the first mistake... */
-    /* Update: I modified one of the programs to write the sprite pointers the
-     * second time only _after_ the VBlank interval, and it showed the same behaviour
-     * as it did unmodified under UAE with the above check. This indicates that the
-     * solution below is correct. */
-    /* Another update: seems like we have to use the NTSC value here (see Sanity Turmoil
-     * demo).  */
-    /* Maximum for Sanity Turmoil: 27.
-       Minimum for Sanity Arte: 22.  */
     if (vpos < sprite_vblank_endline)
 	return;
 
@@ -4426,7 +4493,7 @@ static void hsync_handler (void)
 	    notice_interlace_seen ();
 
 	nextline_how = nln_normal;
-	if (currprefs.gfx_linedbl) {
+	if (currprefs.gfx_linedbl && !doublescan) {
 	    lineno *= 2;
 	    nextline_how = currprefs.gfx_linedbl == 1 ? nln_doubled : nln_nblack;
 	    if (bplcon0 & 4) {
@@ -4447,10 +4514,20 @@ static void hsync_handler (void)
     }
 
     {
-	extern void bsdsock_fake_int_handler(void);
-	extern int bsd_int_requested;
+	//extern void uaenet_fake_int_handler (void);
+	extern int volatile uaenet_int_requested;
+	extern int volatile uaenet_vsync_requested;
+	if (uaenet_int_requested || (uaenet_vsync_requested && vpos == 10)) {
+	    INTREQ (0x8000 | 0x2000);
+	    //uaenet_fake_int_handler ();
+	}
+    }
+
+    {
+	extern void bsdsock_fake_int_handler (void);
+	extern int volatile bsd_int_requested;
 	if (bsd_int_requested)
-	    bsdsock_fake_int_handler();
+	    bsdsock_fake_int_handler ();
     }
 
     /* See if there's a chance of a copper wait ending this line.  */
@@ -4596,7 +4673,7 @@ void customreset (int hardreset)
     int zero = 0;
 
     reset_all_systems ();
-    write_log ("Reset at %08.8X\n", m68k_getpc (&regs));
+    write_log ("Reset at %08X\n", m68k_getpc (&regs));
     memory_map_dump();
 
     hsync_counter = 0;
@@ -4633,8 +4710,8 @@ void customreset (int hardreset)
 	DSKLEN (0, 0);
 
 	bplcon0 = 0;
-	bplcon4 = 0x11; /* Get AGA chipset into ECS compatibility mode */
-	bplcon3 = 0xC00;
+	bplcon4 = 0x0011; /* Get AGA chipset into ECS compatibility mode */
+	bplcon3 = 0x0C00;
 
 	diwhigh = 0;
 	diwhigh_written = 0;
@@ -4704,7 +4781,7 @@ void customreset (int hardreset)
 
     bogusframe = 1;
 
-    sprite_buffer_res = currprefs.chipset_mask & CSMASK_AGA ? RES_HIRES : RES_LORES;
+    sprite_buffer_res = (currprefs.chipset_mask & CSMASK_AGA) ? RES_SUPERHIRES : RES_LORES;
     if (savestate_state == STATE_RESTORE) {
 	uae_u16 v;
 	uae_u32 vv;
@@ -4712,9 +4789,6 @@ void customreset (int hardreset)
 	audio_update_adkmasks ();
 	INTENA_f (0);
 	INTREQ_f (0);
-#if 0
-	DMACON (0, 0);
-#endif
 	COPJMP (1);
 	v = bplcon0;
 	BPLCON0 (0, 0);
@@ -4752,7 +4826,7 @@ void customreset (int hardreset)
 	    events_schedule ();
 	}
     }
-    expand_sprres ();
+    sprres = expand_sprres (bplcon0, bplcon3);
 
     #ifdef ACTION_REPLAY
     /* Doing this here ensures we can use the 'reset' command from within AR */
@@ -4862,11 +4936,11 @@ int custom_init (void)
 	uaecptr pos;
 	pos = here ();
 
-	org (RTAREA_BASE+0xFF70);
+	org (rtarea_base + 0xFF70);
 	calltrap (deftrap (mousehack_helper_old));
 	dw (RTS);
 
-	org (RTAREA_BASE+0xFFA0);
+	org (rtarea_base + 0xFFA0);
 	calltrap (deftrap (timehack_helper));
 	dw (RTS);
 
@@ -5137,7 +5211,7 @@ static int REGPARAM2 custom_wput_1 (int hpos, uaecptr addr, uae_u32 value, int n
      case 0x100: BPLCON0 (hpos, value); break;
      case 0x102: BPLCON1 (hpos, value); break;
      case 0x104: BPLCON2 (hpos, value); break;
-#ifdef AGA
+#ifdef ECS_DENISE
      case 0x106: BPLCON3 (hpos, value); break;
 #endif
 
@@ -5193,6 +5267,7 @@ static int REGPARAM2 custom_wput_1 (int hpos, uaecptr addr, uae_u32 value, int n
 
 #ifndef CUSTOM_SIMPLE
      case 0x1DC: BEAMCON0 (value); break;
+#ifdef ECS_DENISE
      case 0x1C0: if (htotal != value) { htotal = value; varsync (); } break;
      case 0x1C2: if (hsstop != value) { hsstop = value; varsync (); } break;
      case 0x1C4: if (hbstrt != value) { hbstrt = value; varsync (); } break;
@@ -5204,6 +5279,7 @@ static int REGPARAM2 custom_wput_1 (int hpos, uaecptr addr, uae_u32 value, int n
      case 0x1DE: if (hsstrt != value) { hsstrt = value; varsync (); } break;
      case 0x1E0: if (vsstrt != value) { vsstrt = value; varsync (); } break;
      case 0x1E2: if (hcenter != value) { hcenter = value; varsync (); } break;
+#endif
 #endif
 
 #ifdef AGA
@@ -5372,7 +5448,7 @@ uae_u8 *restore_custom (uae_u8 *src)
     dmacon = RW & ~(0x2000|0x4000); /* 096 DMACON */
     CLXCON(RW);			/* 098 CLXCON */
     intena = RW;		/* 09A INTENA */
-    intreq = RW;		/* 09C INTREQ */
+    intreq = intreqr = RW;	/* 09C INTREQ */
     adkcon = RW;		/* 09E ADKCON */
     for (i = 0; i < 8; i++)
 	bplpt[i] = RL;
@@ -5596,12 +5672,18 @@ uae_u8 *restore_custom_agacolors (uae_u8 *src)
 {
     int i;
 
-    for (i = 0; i < 256; i++)
+    for (i = 0; i < 256; i++) {
 #ifdef AGA
-	current_colors.color_regs_aga[i] = RL;
+	uae_u32 v = RL;
+	color_regs_aga_genlock[i] = 0;
+	if (v & 0x80000000)
+	    color_regs_aga_genlock[i] = 1;
+	v &= 0x00ffffff;
+	current_colors.color_regs_aga[i] = v;
 #else
 	RL;
 #endif
+    }
     return src;
 }
 
@@ -5616,7 +5698,7 @@ uae_u8 *save_custom_agacolors (int *len, uae_u8 *dstptr)
 	dstbak = dst = (uae_u8*)malloc (256*4);
     for (i = 0; i < 256; i++)
 #ifdef AGA
-    SL (current_colors.color_regs_aga[i]);
+	SL (current_colors.color_regs_aga[i] | (color_regs_aga_genlock[i] ? 0x80000000 : 0));
 #else
     SL (0);
 #endif
@@ -5691,6 +5773,7 @@ void check_prefs_changed_custom (void)
     currprefs.cs_deniserev = changed_prefs.cs_deniserev;
     currprefs.cs_mbdmac = changed_prefs.cs_mbdmac;
     currprefs.cs_df0idhw = changed_prefs.cs_df0idhw;
+    currprefs.cs_slowmemisfast = changed_prefs.cs_slowmemisfast;
 
     if (currprefs.chipset_mask != changed_prefs.chipset_mask ||
 	currprefs.gfx_avsync != changed_prefs.gfx_avsync ||

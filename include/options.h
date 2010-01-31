@@ -9,7 +9,7 @@
 
 #define UAEMAJOR 1
 #define UAEMINOR 4
-#define UAESUBREV 4
+#define UAESUBREV 5
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -40,6 +40,7 @@ struct uae_input_device {
 };
 
 #define MAX_SPARE_DRIVES 20
+#define MAX_CUSTOM_MEMORY_ADDRS 2
 
 #define CONFIG_TYPE_HARDWARE 1
 #define CONFIG_TYPE_HOST 2
@@ -58,6 +59,8 @@ struct uaedev_config_info {
     int ishdf;
     int readonly;
     int bootpri;
+    int autoboot;
+    int donotmount;
     char filesys[MAX_DPATH];
     int surfaces;
     int sectors;
@@ -149,13 +152,13 @@ struct uae_prefs {
     int gfx_autoresolution;
     int gfx_refreshrate;
     int gfx_avsync, gfx_pvsync;
-    int gfx_lores;
+    int gfx_resolution;
     int gfx_lores_mode;
     int gfx_linedbl;
     int gfx_correct_aspect;
     int gfx_afullscreen, gfx_pfullscreen;
-    int gfx_xcenter;
-    int gfx_ycenter;
+    int gfx_xcenter, gfx_xcenter_adjust;
+    int gfx_ycenter, gfx_ycenter_adjust;
     int gfx_saturation, gfx_luminance, gfx_contrast, gfx_gamma;
     int color_mode;
 
@@ -180,6 +183,7 @@ struct uae_prefs {
     int keyboard_leds[3];
     int keyboard_leds_in_use;
     int scsi;
+    int sana2;
     int uaeserial;
     int catweasel;
     int cpu_idle;
@@ -212,6 +216,7 @@ struct uae_prefs {
     int cs_cdtvscsi;
     int cs_a2091, cs_a4091;
     int cs_df0idhw;
+    int cs_slowmemisfast;
 
     char df[4][MAX_DPATH];
     char dfxlist[MAX_SPARE_DRIVES][MAX_DPATH];
@@ -226,6 +231,7 @@ struct uae_prefs {
     char pci_devices[256];
     char prtname[256];
     char sername[256];
+    char amaxromfile[MAX_DPATH];
 
     char path_floppy[256];
     char path_hardfile[256];
@@ -248,6 +254,8 @@ struct uae_prefs {
     uae_u32 mbresmem_low_size;
     uae_u32 mbresmem_high_size;
     uae_u32 gfxmem_size;
+    uae_u32 custom_memory_addrs[MAX_CUSTOM_MEMORY_ADDRS];
+    uae_u32 custom_memory_sizes[MAX_CUSTOM_MEMORY_ADDRS];
 
     int kickshifter;
     int filesys_no_uaefsdb;
@@ -325,7 +333,9 @@ struct uae_prefs {
 extern char optionsfile[];
 extern void save_options (struct zfile *, struct uae_prefs *, int);
 extern void cfgfile_write (struct zfile *, char *format,...);
+extern void cfgfile_dwrite (struct zfile *, char *format,...);
 extern void cfgfile_target_write (struct zfile *, char *format,...);
+extern void cfgfile_target_dwrite (struct zfile *, char *format,...);
 extern void cfgfile_backup (const char *path);
 extern struct uaedev_config_info *add_filesys_config (struct uae_prefs *p, int index,
 			char *devname, char *volname, char *rootdir, int readonly,
@@ -346,7 +356,9 @@ extern char *cfgfile_subst_path (const char *path, const char *subst, const char
 extern int target_parse_option (struct uae_prefs *, char *option, char *value);
 extern void target_save_options (struct zfile*, struct uae_prefs *);
 extern void target_default_options (struct uae_prefs *, int type);
+extern void target_fixup_options (struct uae_prefs *);
 extern int target_cfgfile_load (struct uae_prefs *, char *filename, int type, int isdefault);
+extern void target_quit (void);
 extern void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type);
 
 extern int cfgfile_load (struct uae_prefs *p, const char *filename, int *type, int ignorelink);
@@ -374,7 +386,7 @@ extern int check_prefs_changed_gfx (void);
 
 extern struct uae_prefs currprefs, changed_prefs;
 
-extern void machdep_init (void);
+extern int machdep_init (void);
 extern void machdep_free (void);
 
 /* AIX doesn't think it is Unix. Neither do I. */

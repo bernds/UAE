@@ -17,16 +17,18 @@
 #include <mmsystem.h>
 #include <ddraw.h>
 #include <dsound.h>
-#include <dxerr8.h>
+#include <dxerr9.h>
 
 #include "sysdeps.h"
 #include "options.h"
+#include "custom.h"
+#include "memory.h"
+#include "newcpu.h"
 #include "picasso96.h"
 #include "dxwrap.h"
 #include "win32.h"
 #include "win32gfx.h"
 #include "machdep/rpt.h"
-#include "custom.h"
 
 static BOOL bColourKeyAvailable = FALSE;
 static BOOL bOverlayAvailable = FALSE;
@@ -197,7 +199,7 @@ const char *DXError (HRESULT ddrval)
 	HRESULT_FACILITY(ddrval),
 	HRESULT_CODE(ddrval),
 	HRESULT_CODE(ddrval),
-	DXGetErrorDescription8 (ddrval));
+	DXGetErrorDescription9 (ddrval));
     return dderr;
 }
 
@@ -1269,11 +1271,11 @@ HRESULT DirectDraw_GetClipList(LPRGNDATA cliplist, LPDWORD size)
  *   1999.08.02  Brian King             Creation
  *
  */
-BYTE DirectDraw_GetBytesPerPixel(void)
+int DirectDraw_GetBytesPerPixel(void)
 {
-    int bpp;
-    bpp = (DirectDrawState.lockable.lpdesc->ddpfPixelFormat.dwRGBBitCount + 7) >> 3;
-    return bpp;
+    if(DirectDrawState.lockable.lpdesc)
+	return (DirectDrawState.lockable.lpdesc->ddpfPixelFormat.dwRGBBitCount + 7) >> 3;
+    return 0;
 }
 
 /*

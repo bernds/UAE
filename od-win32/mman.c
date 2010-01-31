@@ -14,6 +14,8 @@
 
 #if defined(NATMEM_OFFSET)
 
+#define BARRIER 32
+
 static struct shmid_ds shmids[MAX_SHMID];
 
 extern int p96mode;
@@ -75,7 +77,7 @@ void init_shm(void)
     // Letting the system decide doesn't seem to work on some systems (Win9x..)
     LPBYTE address = (LPBYTE)0x10000000;
     uae_u32 size;
-    uae_u32 add = 0x11000000;
+    uae_u32 add = 0x10000000 + 128 * 1024 * 1024;
     uae_u32 inc = 0x100000;
     uae_u64 size64, total64;
     uae_u64 totalphys64;
@@ -114,6 +116,8 @@ void init_shm(void)
     if (size64 < 8 * 1024 * 1024)
 	size64 = 8 * 1024 * 1024;
     size = max_z3fastmem = (uae_u32)size64;
+    if (size < 1024 * 1024 * 1024)
+	max_z3fastmem = 512 * 1024 * 1024;
 
     canbang = 0;
     shm_start = 0;
@@ -129,7 +133,7 @@ void init_shm(void)
 	if (blah)
 	    break;
 	write_log ("NATMEM: %dM area failed to allocate, err=%d\n", (size + add) >> 20, GetLastError());
-	size >>= 1;
+	size -= 128 * 1024 * 1024;
 	if (size < 0x10000000) {
 	    write_log ("NATMEM: No special area could be allocated (2)!\n");
 	    return;
@@ -163,8 +167,10 @@ void init_shm(void)
 	write_log ("NATMEM: No special area could be allocated! (1)\n");
     } else {
 	max_z3fastmem = size;
-	write_log ("NATMEM: Our special area: 0x%p-0x%p (%dM)\n",
-	    natmem_offset, (uae_u8*)natmem_offset + size + add, (size + add) >> 20);
+	write_log ("NATMEM: Our special area: 0x%p-0x%p (%08x %dM)\n",
+	    natmem_offset, (uae_u8*)natmem_offset + size + add,
+	    size + add,
+	    (size + add) >> 20);
 	canbang = 1;
 	allocated = 1;
     }
@@ -214,7 +220,7 @@ static key_t get_next_shmkey(void)
     key_t result = -1;
     int i;
     for (i = 0; i < MAX_SHMID; i++) {
-	if( shmids[i].key == -1) {
+	if (shmids[i].key == -1) {
 	    shmids[i].key = i;
 	    result = i;
 	    break;
@@ -242,6 +248,7 @@ void *shmat(int shmid, void *shmaddr, int shmflg)
 {
     void *result = (void *)-1;
     BOOL got = FALSE;
+    int p96special = FALSE;
 
 #ifdef NATMEM_OFFSET
     unsigned int size=shmids[shmid].size;
@@ -252,12 +259,12 @@ void *shmat(int shmid, void *shmaddr, int shmflg)
 	    shmaddr=natmem_offset;
 	    got = TRUE;
 	    if (currprefs.fastmem_size == 0 || currprefs.chipmem_size < 2 * 1024 * 1024)
-		size += 32;
+		size += BARRIER;
 	}
 	if(!strcmp(shmids[shmid].name,"kick")) {
 	    shmaddr=natmem_offset + 0xf80000;
 	    got = TRUE;
-	    size += 32;
+	    size += BARRIER;
 	}
 	if(!strcmp(shmids[shmid].name,"rom_a8")) {
 	    shmaddr=natmem_offset + 0xa80000;
@@ -272,14 +279,14 @@ void *shmat(int shmid, void *shmaddr, int shmflg)
 	    got = TRUE;
 	}
 	if(!strcmp(shmids[shmid].name,"rtarea")) {
-	    shmaddr=natmem_offset + RTAREA_BASE;
+	    shmaddr=natmem_offset + rtarea_base;
 	    got = TRUE;
-	    size += 32;
+	    size += BARRIER;
 	}
 	if(!strcmp(shmids[shmid].name,"fast")) {
 	    shmaddr=natmem_offset + 0x200000;
 	    got = TRUE;
-	    size += 32;
+	    size += BARRIER;
 	}
 	if(!strcmp(shmids[shmid].name,"ramsey_low")) {
 	    shmaddr=natmem_offset + a3000lmem_start;
@@ -291,15 +298,19 @@ void *shmat(int shmid, void *shmaddr, int shmflg)
 	}
 	if(!strcmp(shmids[shmid].name,"z3")) {
 	    shmaddr=natmem_offset + currprefs.z3fastmem_start;
+	    size += BARRIER;
 	    got = TRUE;
 	}
 	if(!strcmp(shmids[shmid].name,"gfx")) {
 	    got = TRUE;
 	    if (p96mode) {
+		p96special = TRUE;
 		p96ram_start = p96mem_offset - natmem_offset;
 		shmaddr = natmem_offset + p96ram_start;
+		size += BARRIER;
 	    } else {
-		p96ram_start = currprefs.z3fastmem_start + ((currprefs.z3fastmem_size + 0xffffff) & ~0xffffff);
+		extern void p96memstart(void);
+		p96memstart();
 		shmaddr = natmem_offset + p96ram_start;
 		virtualfreewithlock(shmaddr, os_winnt ? size : 0, os_winnt ? MEM_DECOMMIT : MEM_RELEASE);
 		xfree(p96fakeram);
@@ -312,10 +323,10 @@ void *shmat(int shmid, void *shmaddr, int shmflg)
 	    shmaddr=natmem_offset+0x00C00000;
 	    got = TRUE;
 	    if (currprefs.bogomem_size <= 0x100000)
-		size+=32;
+		size += BARRIER;
 	}
 	if(!strcmp(shmids[shmid].name,"filesys")) {
-	    result = xmalloc (size);
+	    result = xcalloc (size, 1);
 	    shmids[shmid].attached=result;
 	    return result;
 	}
@@ -339,6 +350,14 @@ void *shmat(int shmid, void *shmaddr, int shmflg)
 	    shmaddr=natmem_offset + 0x00e00000;
 	    got = TRUE;
 	}
+	if(!strcmp(shmids[shmid].name,"custmem1")) {
+	    shmaddr=natmem_offset + currprefs.custom_memory_addrs[0];
+	    got = TRUE;
+	}
+	if(!strcmp(shmids[shmid].name,"custmem2")) {
+	    shmaddr=natmem_offset + currprefs.custom_memory_addrs[1];
+	    got = TRUE;
+	}
 }
 #endif
 
@@ -347,7 +366,7 @@ void *shmat(int shmid, void *shmaddr, int shmflg)
 	if (got == FALSE) {
 	    if (shmaddr)
 		virtualfreewithlock(shmaddr, os_winnt ? size : 0, os_winnt ? MEM_DECOMMIT : MEM_RELEASE);
-	    result = virtualallocwithlock(shmaddr, size, os_winnt ? MEM_COMMIT : (MEM_RESERVE | MEM_COMMIT | (p96mode ? MEM_WRITE_WATCH : 0)),
+	    result = virtualallocwithlock(shmaddr, size, os_winnt ? MEM_COMMIT : (MEM_RESERVE | MEM_COMMIT | (p96special ? MEM_WRITE_WATCH : 0)),
 		PAGE_EXECUTE_READWRITE);
 	    if (result == NULL) {
 		result = (void*)-1;
@@ -358,9 +377,9 @@ void *shmat(int shmid, void *shmaddr, int shmflg)
 		if (memorylocking && os_winnt)
 		    VirtualLock(shmaddr, size);
 		shmids[shmid].attached = result;
-		write_log ("VirtualAlloc %08.8X - %08.8X %x (%dk) ok\n",
+		write_log ("VirtualAlloc %08.8X - %08.8X %x (%dk) ok%s\n",
 		    (uae_u8*)shmaddr - natmem_offset, (uae_u8*)shmaddr - natmem_offset + size,
-		    size, size >> 10);
+		    size, size >> 10, p96special ? " P96" : "");
 	    }
 	} else {
 	    shmids[shmid].attached = shmaddr;

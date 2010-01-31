@@ -45,6 +45,7 @@
 #include "zfile.h"
 #include "cia.h"
 #include "autoconf.h"
+#include "rp.h"
 
 int inputdevice_logging = 0;
 
@@ -400,7 +401,6 @@ static struct input_queue_struct input_queue[INPUT_QUEUE_SIZE];
 static void out_config (struct zfile *f, int id, int num, char *s1, char *s2)
 {
     cfgfile_write (f, "input.%d.%s%d=%s\n", id, s1, num, s2);
-    //write_log ("-input.%d.%s%d=%s\n", id, s1, num, s2);
 }
 
 static void write_config2 (struct zfile *f, int idnum, int i, int offset, char *tmp1, struct uae_input_device *id)
@@ -792,11 +792,13 @@ static uaecptr get_intuitionbase(void)
 
 static void mousehack_enable (void)
 {
+    int off;
     if (!uae_boot_rom)
 	return;
-    if (rtarea[get_long (RTAREA_BASE + 40) + 12 - 2] == 0xff)
+    off = get_long (rtarea_base + 40);
+    if (rtarea[off + 12 - 2] == 0xff)
 	return;
-    rtarea[get_long (RTAREA_BASE + 40) + 12 - 2] = 1;
+    rtarea[off + 12 - 2] = 1;
 }
 
 static void mousehack_setpos(int mousexpos, int mouseypos)
@@ -804,7 +806,7 @@ static void mousehack_setpos(int mousexpos, int mouseypos)
     uae_u8 *p;
     if (!uae_boot_rom)
 	return;
-    p = rtarea + get_long (RTAREA_BASE + 40) + 12;
+    p = rtarea + get_long (rtarea_base + 40) + 12;
     p[0] = mousexpos >> 8;
     p[1] = mousexpos;
     p[2] = mouseypos >> 8;
@@ -1742,26 +1744,33 @@ int handle_input_event (int nr, int state, int max, int autofire)
 	case 4: /* ->Parallel port joystick adapter port #2 */
 	    joy = ie->unit - 1;
 	    if (ie->type & 4) {
+
 		if (state)
 		    joybutton[joy] |= 1 << ie->data;
 		else
 		    joybutton[joy] &= ~(1 << ie->data);
+
 	    } else if (ie->type & 8) {
+
 		/* real mouse / analog stick mouse emulation */
 		int delta;
 		int deadzone = currprefs.input_joymouse_deadzone * max / 100;
 		if (max) {
-		    if (state < deadzone && state > -deadzone) {
+		    if (state <= deadzone && state >= -deadzone) {
 			state = 0;
+			mouse_deltanoreset[joy][ie->data] = 0;
 		    } else if (state < 0) {
 			state += deadzone;
+			mouse_deltanoreset[joy][ie->data] = 1;
 		    } else {
 			state -= deadzone;
+			mouse_deltanoreset[joy][ie->data] = 1;
 		    }
 		    max -= deadzone;
 		    delta = state * currprefs.input_joymouse_multiplier / max;
 		} else {
 		    delta = state;
+	    	    mouse_deltanoreset[joy][ie->data] = 0;
 		}
 		mouse_delta[joy][ie->data] += delta;
 
@@ -1790,9 +1799,10 @@ int handle_input_event (int nr, int state, int max, int autofire)
 		    mouse_deltanoreset[joy][0] = 0;
 
 	    } else if (ie->type & 128) { /* analog (paddle) */
+
 		int deadzone = currprefs.input_joymouse_deadzone * max / 100;
 		if (max) {
-		    if (state < deadzone && state > -deadzone) {
+		    if (state <= deadzone && state >= -deadzone) {
 			state = 0;
 		    } else if (state < 0) {
 			state += deadzone;
@@ -1803,7 +1813,9 @@ int handle_input_event (int nr, int state, int max, int autofire)
 		}
 		state = state / 256 + 128;
 		joydirpot[joy][ie->data] = state;
+
 	    } else {
+
 		int left = oleft[joy], right = oright[joy], top = otop[joy], bot = obot[joy];
 		if (ie->type & 16) {
 		    /* button to axis mapping */
@@ -1829,6 +1841,7 @@ int handle_input_event (int nr, int state, int max, int autofire)
 		if (right) joydir[joy] |= DIR_RIGHT;
 		if (top) joydir[joy] |= DIR_UP;
 		if (bot) joydir[joy] |= DIR_DOWN;
+
 	    }
 	break;
 	case 0: /* ->KEY */
@@ -2970,6 +2983,9 @@ void warpmode (int mode)
 	}  else {
 	    turbo_emulation = currprefs.gfx_framerate;
 	}
+#ifdef RETROPLATFORM
+	rp_turbo (turbo_emulation);
+#endif
     } else if (mode == 0 && turbo_emulation > 0) {
 	changed_prefs.gfx_framerate = currprefs.gfx_framerate = turbo_emulation;
 	turbo_emulation = 0;

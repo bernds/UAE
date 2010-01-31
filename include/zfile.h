@@ -23,7 +23,9 @@ extern size_t zfile_fwrite  (void *b, size_t l1, size_t l2, struct zfile *z);
 extern char *zfile_fgets(char *s, int size, struct zfile *z);
 extern size_t zfile_fputs (struct zfile *z, char *s);
 extern int zfile_getc (struct zfile *z);
+extern int zfile_putc (int c, struct zfile *z);
 extern int zfile_ferror (struct zfile *z);
+extern char *zfile_getdata (struct zfile *z, int offset, int len);
 extern void zfile_exit (void);
 extern int execute_command (char *);
 extern int zfile_iscompressed (struct zfile *z);
@@ -36,6 +38,7 @@ extern uae_u32 zfile_crc32 (struct zfile *f);
 extern struct zfile *zfile_dup (struct zfile *f);
 extern struct zfile *zfile_gunzip (struct zfile *z);
 extern int zfile_isdiskimage (const char *name);
+extern int iszip (struct zfile *z);
 
 #define ZFILE_UNKNOWN 0
 #define ZFILE_CONFIGURATION 1
