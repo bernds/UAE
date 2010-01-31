@@ -549,8 +549,10 @@ BOOL CALLBACK displaysCallback (GUID *guid, LPSTR desc, LPSTR name, LPVOID ctx, 
     write_log ("'%s' '%s' %s\n", desc, name, outGUID(guid));
     if ((strstr(desc, "X1900") || strstr(desc, "X1800") || strstr(desc, "X1600")) && !b0rken_ati_overlay) {
 	b0rken_ati_overlay = 1;
-	write_log ("** Radeon X1x00 series display card detected, enabling overlay workaround.\n");
-	write_log ("** (blank display with Catalyst 6.1 and newer). Use -disableowr to disable workaround.\n");
+	if (!os_vista) {
+	    write_log ("** Radeon X1x00 series display card detected, enabling overlay workaround.\n");
+	    write_log ("** (blank display with Catalyst 6.1 and newer). Use -disableowr to disable workaround.\n");
+	}
     }
     return 1;
 }
@@ -887,7 +889,7 @@ static int DX_Flip(void)
     }
 #endif
     result = DirectDraw_Flip(0);
-    if( result )
+    if (result)
     {
 //	result = DirectDraw_BltFast(primary_surface, 0, 0, secondary_surface, NULL);
 //	result = DirectDraw_BltFast(primary_surface, 0, 0, tertiary_surface, NULL);
@@ -1111,8 +1113,10 @@ int check_prefs_changed_gfx (void)
     c |= currprefs.gfx_size_fs.height != changed_prefs.gfx_size_fs.height ? (2|8) : 0;
     c |= currprefs.gfx_size_win.width != changed_prefs.gfx_size_win.width ? (2|8) : 0;
     c |= currprefs.gfx_size_win.height != changed_prefs.gfx_size_win.height ? (2|8) : 0;
+#if 0
     c |= currprefs.gfx_size_win.x != changed_prefs.gfx_size_win.x ? 16 : 0;
     c |= currprefs.gfx_size_win.y != changed_prefs.gfx_size_win.y ? 16 : 0;
+#endif
     c |= currprefs.color_mode != changed_prefs.color_mode ? (2|8) : 0;
     c |= currprefs.gfx_afullscreen != changed_prefs.gfx_afullscreen ? (2|8) : 0;
     c |= currprefs.gfx_pfullscreen != changed_prefs.gfx_pfullscreen ? (2|8) : 0;

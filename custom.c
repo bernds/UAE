@@ -70,7 +70,7 @@ void uae_abort (const char *format,...)
     char buffer[1000];
 
     va_start (parms, format);
-    _vsnprintf( buffer, sizeof (buffer) -1, format, parms );
+    _vsnprintf(buffer, sizeof (buffer) - 1, format, parms );
     va_end (parms);
     if (nomore) {
 	write_log(buffer);
@@ -114,6 +114,7 @@ long cycles_to_hsync_event;
 
 static int rpt_did_reset;
 struct ev eventtab[ev_max];
+struct ev2 eventtab2[ev2_max];
 
 volatile frame_time_t vsynctime, vsyncmintime;
 
@@ -165,6 +166,7 @@ unsigned int beamcon0, new_beamcon0;
 uae_u16 vtotal = MAXVPOS_PAL, htotal = MAXHPOS_PAL;
 static uae_u16 hsstop, hbstrt, hbstop, vsstop, vbstrt, vbstop, hsstrt, vsstrt, hcenter;
 static int interlace_started;
+static int ciavsyncmode;
 
 #define HSYNCTIME (maxhpos * CYCLE_UNIT);
 
@@ -279,7 +281,8 @@ static int cop_min_waittime;
  */
 
 /* Used also by bebox.cpp */
-unsigned long int frametime = 0, lastframetime = 0, timeframes = 0, hsync_counter = 0;
+unsigned long int frametime = 0, lastframetime = 0, timeframes = 0;
+unsigned long hsync_counter = 0, vsync_counter = 0, ciavsync_counter = 0;
 unsigned long int idletime;
 int bogusframe;
 
@@ -2220,6 +2223,7 @@ void init_hz (void)
 	changed_prefs.chipset_refreshrate = abs (currprefs.gfx_refreshrate);
     }
 
+    ciavsyncmode = 0;
     beamcon0 = new_beamcon0;
     isntsc = beamcon0 & 0x20 ? 0 : 1;
     if (hack_vpos > 0) {
@@ -2257,8 +2261,11 @@ void init_hz (void)
 	minfirstline = vsstop;
 	if (minfirstline < 2)
 	    minfirstline = 2;
+	if (minfirstline >= maxvpos)
+	    minfirstline = maxvpos - 1;
 	sprite_vblank_endline = minfirstline - 2;
 	dumpsync();
+	ciavsyncmode = 1;
     }
     /* limit to sane values */
     if (vblank_hz < 10)
@@ -2452,12 +2459,12 @@ static void perform_copper_write (int old_hpos);
 static void immediate_copper (int num)
 {
     cop_state.state = COP_stop;
-    if (!dmaen (DMA_COPPER))
-	return;
     cop_state.vpos = vpos;
     cop_state.hpos = current_hpos () & ~1;
     cop_state.ip = num == 1 ? cop1lc : cop2lc;
     for (;;) {
+	if (!dmaen(DMA_COPPER))
+	    break;
 	cop_state.i1 = chipmem_agnus_wget (cop_state.ip);
 	cop_state.i2 = chipmem_agnus_wget (cop_state.ip + 2);
 	cop_state.ip += 4;
@@ -2472,12 +2479,13 @@ static void immediate_copper (int num)
 		continue;
 	    }
 	    perform_copper_write (0);
-	} else { // wait or skip
+	} else { // wait or skip, simply ignore them
 	    if (cop_state.i1 >= 0xffdf && cop_state.i2 == 0xfffe)
-		return;
+		break;
 	}
     }
-
+    cop_state.state = COP_stop;
+    unset_special (&regs, SPCFLAG_COPPER);
 }
 
 STATIC_INLINE void COP1LCH (uae_u16 v) { cop1lc = (cop1lc & 0xffff) | ((uae_u32)v << 16); }
@@ -2485,18 +2493,11 @@ STATIC_INLINE void COP1LCL (uae_u16 v) { cop1lc = (cop1lc & ~0xffff) | (v & 0xff
 STATIC_INLINE void COP2LCH (uae_u16 v) { cop2lc = (cop2lc & 0xffff) | ((uae_u32)v << 16); }
 STATIC_INLINE void COP2LCL (uae_u16 v) { cop2lc = (cop2lc & ~0xffff) | (v & 0xfffe); }
 
+static void compute_spcflag_copper (void);
+
 static void COPJMP (int num)
 {
-    int was_active = eventtab[ev_copper].active;
     int oldstrobe = cop_state.strobe;
-
-    eventtab[ev_copper].active = 0;
-    if (nocustom()) {
-	immediate_copper (num);
-	return;
-    }
-    if (was_active)
-	events_schedule ();
 
     unset_special (&regs, SPCFLAG_COPPER);
     cop_state.ignore_next = 0;
@@ -2508,9 +2509,13 @@ static void COPJMP (int num)
     copper_enabled_thisline = 0;
     cop_state.strobe = num;
 
+    if (nocustom()) {
+	immediate_copper (num);
+	return;
+    }
+
     if (dmaen (DMA_COPPER)) {
-	copper_enabled_thisline = 1;
-	set_special (&regs, SPCFLAG_COPPER);
+	compute_spcflag_copper ();
     } else if (oldstrobe > 0 && oldstrobe != num && cop_state.state_prev == COP_wait) {
 	/* dma disabled, copper idle and accessing both COPxJMPs -> copper stops! */
 	cop_state.state = COP_stop;
@@ -2522,7 +2527,6 @@ STATIC_INLINE void COPCON (uae_u16 a)
     copcon = a;
 }
 
-static void compute_spcflag_copper (void);
 static void DMACON (int hpos, uae_u16 v)
 {
     int oldcop, newcop;
@@ -2543,7 +2547,6 @@ static void DMACON (int hpos, uae_u16 v)
     newcop = (dmacon & DMA_COPPER) && (dmacon & DMA_MASTER);
 
     if (oldcop != newcop) {
-	eventtab[ev_copper].active = 0;
 	if (newcop && !oldcop) {
 	    compute_spcflag_copper ();
 	} else if (!newcop) {
@@ -2577,97 +2580,30 @@ static void DMACON (int hpos, uae_u16 v)
     events_schedule();
 }
 
-#define INTDELAY
-
-static int intlev_2 (void)
+int intlev (void)
 {
     uae_u16 imask = intreq & intena;
-    unsigned long cycles = get_cycles ();
-    int c = 4;
-    int i;
-
-    if (!(imask && (intena & 0x4000))) {
-	unset_special (&regs, SPCFLAG_INT);
+    if (!(imask && (intena & 0x4000)))
 	return -1;
-    }
-    for (i = 14; i >= 0; i--) {
-	if (imask & (1 << i)) {
-#ifdef INTDELAY
-	    if (!(irqdelay[i] && (cycles - irqcycles[i]) < c * CYCLE_UNIT)) {
-#endif
-		irqdelay[i] = 0;
-		if (i == 13 || i == 14)
-		    return 6;
-		else if (i == 11 || i == 12)
-		    return 5;
-		else if (i >= 7 && i <= 10)
-		    return 4;
-		else if (i >= 4 && i <= 6)
-		    return 3;
-		else if (i == 3)
-		    return 2;
-		else
-		    return 1;
-	    }
-#ifdef INTDELAY
-	}
-#endif
-    }
+    if (imask & (0x4000 | 0x2000)) // 13 14
+        return 6;
+    if (imask & (0x1000 | 0x0800)) // 11 12
+        return 5;
+    if (imask & (0x0400 | 0x0200 | 0x0100 | 0x0080)) // 7 8 9 10
+        return 4;
+    if (imask & (0x0040 | 0x0020 | 0x0010)) // 4 5 6
+        return 3;
+    if (imask & 0x0008) // 3
+        return 2;
+    if (imask & (0x0001 | 0x0002 | 0x0004)) // 0 1 2
+        return 1;
     return -1;
 }
 
-int intlev (void)
+static void INTENA_f(uae_u32 data)
 {
-    int il = -1;
-#ifdef JIT
-    if (currprefs.cachesize) {
-	uae_u16 imask = intreq & intena;
-	if (imask && (intena & 0x4000)) {
-	    if (imask & 0x6000)
-		il = 6;
-	    if (imask & 0x1800)
-		il = 5;
-	    if (imask & 0x0780)
-		il = 4;
-	    if (imask & 0x0070)
-		il = 3;
-	    if (imask & 0x0008)
-		il = 2;
-	    if (imask & 0x0007)
-		il = 1;
-	}
-    } else {
-#endif
-	il = intlev_2 ();
-	if (il >= 0 && il <= regs.intmask)
-	    unset_special (&regs, SPCFLAG_INT);
-#ifdef JIT
-    }
-#endif
-    return il;
+    doint();
 }
-
-static void doint (void)
-{
-    int i;
-    uae_u16 imask;
-
-    set_special (&regs, SPCFLAG_INT);
-#ifdef JIT
-    if (currprefs.cachesize)
-	return;
-#endif
-    imask = intreq & intena;
-    if (imask && (intena & 0x4000)) {
-	for (i = 0; i < 15; i++) {
-	    if ((imask & (1 << i)) && irqdelay[i] == 0) {
-		irqdelay[i] = 1;
-		irqcycles[i] = get_cycles ();
-	    }
-	}
-    }
-}
-
 STATIC_INLINE void INTENA (uae_u16 v)
 {
     setclr (&intena,v);
@@ -2675,35 +2611,43 @@ STATIC_INLINE void INTENA (uae_u16 v)
     if (v & 0x40)
 	write_log("INTENA %04.4X (%04.4X) %p\n", intena, v, M68K_GETPC);
 #endif
-    if (v & 0x8000)
-	doint ();
+    if (v & 0x8000) {
+	if (!currprefs.cpu_compatible > 0)
+	    INTENA_f(0);
+	else
+	    event2_newevent2 (6, 0, INTENA_f);
+    }
 }
 
 void INTREQ_0 (uae_u16 v)
 {
-    int i;
     if (v & (0x80|0x100|0x200|0x400))
 	audio_update_irq (v);
     setclr (&intreq, v);
-    if (!(v & 0x8000)) {
-	for (i = 0; i < 15; i++) {
-	    if (v & (1 << i))
-		irqdelay[i] = 0;
-	}
-    }
     doint ();
+}
+
+static void INTREQ_f(uae_u32 data)
+{
+    INTREQ_0 (data);
+    serial_check_irq ();
+    rethink_cias ();
+}
+
+static void INTREQ_d (uae_u16 v, int d)
+{
+    if (!currprefs.cpu_compatible || v == 0)
+	INTREQ_f(v);
+    else
+	event2_newevent2(d, v, INTREQ_f);
 }
 
 void INTREQ (uae_u16 v)
 {
-#if 0
-    if ((v & (0xc000)) == 0xc000)
-	write_log("%d INTREQ %04.4X (%04.4X) %x %x %x\n",
-	    vpos, intreq, v, M68K_GETPC, cop1lc, cop2lc);
-#endif
-    INTREQ_0 (v);
-    serial_check_irq ();
-    rethink_cias ();
+    if (!currprefs.cpu_compatible)
+	INTREQ_f(v);
+    else
+	INTREQ_d(v, 6);
 }
 
 static void ADKCON (int hpos, uae_u16 v)
@@ -2933,8 +2877,9 @@ static void DIWSTOP (int hpos, uae_u16 v)
 
 static void DIWHIGH (int hpos, uae_u16 v)
 {
-    if (! (currprefs.chipset_mask & CSMASK_ECS_AGNUS))
+    if (!(currprefs.chipset_mask & CSMASK_ECS_AGNUS))
 	return;
+    v &= ~(0x8000 | 0x4000 | 0x0080 | 0x0040);
     if (diwhigh_written && diwhigh == v)
 	return;
     decide_line (hpos);
@@ -3067,8 +3012,10 @@ static void BLTSIZE (uae_u16 v)
 
     blt_info.vblitsize = v >> 6;
     blt_info.hblitsize = v & 0x3F;
-    if (!blt_info.vblitsize) blt_info.vblitsize = 1024;
-    if (!blt_info.hblitsize) blt_info.hblitsize = 64;
+    if (!blt_info.vblitsize)
+	blt_info.vblitsize = 1024;
+    if (!blt_info.hblitsize)
+	blt_info.hblitsize = 64;
     do_blitter (current_hpos());
 }
 
@@ -3463,17 +3410,12 @@ static int isagnus[]= {
 
 static void dump_copper (char *error, int until_hpos)
 {
-    static int warned = 10;
-
-    if (warned < 0)
-	return;
-    warned--;
     write_log("%s: vpos=%d until_hpos=%d\n",
 	error, vpos, until_hpos);
     write_log("cvcmp=%d chcmp=%d chpos=%d cvpos=%d ci1=%04.4X ci2=%04.4X\n",
 	cop_state.vcmp,cop_state.hcmp,cop_state.hpos,cop_state.vpos,cop_state.saved_i1,cop_state.saved_i2);
-    write_log("cstate=%d ip=%08.8X ev_copper=%d\n",
-	cop_state.state,cop_state.ip,eventtab[ev_copper].active);
+    write_log("cstate=%d ip=%x SPCFLAGS=%x\n",
+	cop_state.state, cop_state.ip, regs.spcflags);
 }
 
 static void update_copper (int until_hpos)
@@ -3481,21 +3423,14 @@ static void update_copper (int until_hpos)
     int vp = vpos & (((cop_state.saved_i2 >> 8) & 0x7F) | 0x80);
     int c_hpos = cop_state.hpos;
 
-    if (nocustom()) {
-	eventtab[ev_copper].active = 0;
+    if (nocustom())
 	return;
-    }
-
-    if (eventtab[ev_copper].active) {
-	dump_copper ("error1",until_hpos);
-	eventtab[ev_copper].active = 0;
-	return;
-    }
-
+ 
     if (cop_state.state == COP_wait && vp < cop_state.vcmp) {
-	dump_copper ("error2",until_hpos);
-	eventtab[ev_copper].active = 0;
+	dump_copper ("error2", until_hpos);
 	copper_enabled_thisline = 0;
+	cop_state.state = COP_stop;
+	unset_special(&regs, SPCFLAG_COPPER);
 	return;
     }
 
@@ -3686,13 +3621,7 @@ static void update_copper (int until_hpos)
 
 	case COP_skip1:
 	{
-	    static int skipped_before;
 	    unsigned int vcmp, hcmp, vp1, hp1;
-
-	    if (! skipped_before) {
-		skipped_before = 1;
-		write_log ("Program uses Copper SKIP instruction.\n");
-	    }
 
 	    if (c_hpos >= (maxhpos & ~1))
 		break;
@@ -3749,20 +3678,7 @@ static void compute_spcflag_copper (void)
 	    return;
     }
     copper_enabled_thisline = 1;
-
-    if (! eventtab[ev_copper].active)
-	set_special (&regs, SPCFLAG_COPPER);
-}
-
-static void copper_handler (void)
-{
-    /* This will take effect immediately, within the same cycle.  */
     set_special (&regs, SPCFLAG_COPPER);
-
-    if (! copper_enabled_thisline)
-	uae_abort ("copper_handler");
-
-    eventtab[ev_copper].active = 0;
 }
 
 void blitter_done_notify (void)
@@ -3790,12 +3706,6 @@ void do_copper (void)
 STATIC_INLINE void sync_copper_with_cpu (int hpos, int do_schedule)
 {
     /* Need to let the copper advance to the current position.  */
-    if (eventtab[ev_copper].active) {
-	eventtab[ev_copper].active = 0;
-	if (do_schedule)
-	    events_schedule ();
-	set_special (&regs, SPCFLAG_COPPER);
-    }
     if (copper_enabled_thisline)
 	update_copper (hpos);
 }
@@ -4220,7 +4130,7 @@ static void vsync_handler (void)
 
     handle_events ();
 
-    INTREQ (0x8020);
+    INTREQ_d (0x8000 | 0x0020, 2);
     if (bplcon0 & 4)
 	lof ^= 0x8000;
 
@@ -4259,7 +4169,6 @@ static void vsync_handler (void)
 
     lof_changed = 0;
 
-    eventtab[ev_copper].active = 0;
     COPJMP (1);
 
     init_hardware_frame ();
@@ -4309,15 +4218,35 @@ static void copper_check (int n)
     if (cop_state.state == COP_wait) {
 	int vp = vpos & (((cop_state.saved_i2 >> 8) & 0x7F) | 0x80);
 	if (vp < cop_state.vcmp) {
-	    if (eventtab[ev_copper].active || copper_enabled_thisline)
-		write_log ("COPPER BUG %d: vp=%d vpos=%d vcmp=%d act=%d thisline=%d\n", n, vp, vpos, cop_state.vcmp, eventtab[ev_copper].active, copper_enabled_thisline);
+	    if (copper_enabled_thisline)
+		write_log ("COPPER BUG %d: vp=%d vpos=%d vcmp=%d act=%d thisline=%d\n", n, vp, vpos, cop_state.vcmp, copper_enabled_thisline);
 	}
     }
 }
 
+static void CIA_vsync_prehandler(void)
+{
+    CIA_vsync_handler ();
+#if 0
+    if (input_recording > 0) {
+        inprec_rstart(INPREC_CIAVSYNC);
+        inprec_ru32(ciavsync_counter);
+        inprec_rend();
+    } else if (input_recording < 0) {
+        uae_u32 v = -1;
+        while (inprec_pstart(INPREC_CIAVSYNC)) {
+	    v = inprec_pu32();
+	    inprec_pend();
+	}
+	if (v != ciavsync_counter)
+	    write_log("INPREC: ciavsync sync error %d <> %d\n", v, ciavsync_counter);
+    }
+#endif
+    ciavsync_counter++;
+}
+
 static void hsync_handler (void)
 {
-    static int ciahsync;
     int hpos = current_hpos ();
 
     if (!nocustom()) {
@@ -4362,14 +4291,17 @@ static void hsync_handler (void)
     picasso_handle_hsync ();
 #endif
 
-    ciahsync++;
-    if (ciahsync >= (currprefs.ntscmode ? MAXVPOS_NTSC : MAXVPOS_PAL) * MAXHPOS_PAL / maxhpos) { /* not so perfect.. */
-	CIA_vsync_handler ();
-	ciahsync = 0;
+    if (ciavsyncmode) {
+	static int ciahsync;
+	ciahsync++;
+	if (ciahsync >= (currprefs.ntscmode ? MAXVPOS_NTSC : MAXVPOS_PAL) * MAXHPOS_PAL / maxhpos) { /* not so perfect.. */
+	    CIA_vsync_prehandler ();
+	    ciahsync = 0;
+	}
     }
 
     if ((currprefs.chipset_mask & CSMASK_AGA) || (!currprefs.chipset_mask & CSMASK_ECS_AGNUS))
-	last_custom_value = rand ();
+	last_custom_value = uaerand ();
     else
 	last_custom_value = 0xffff;
 
@@ -4397,6 +4329,24 @@ static void hsync_handler (void)
 	}
 	vpos = 0;
 	vsync_handler ();
+#if 0
+	if (input_recording > 0) {
+	    inprec_rstart(INPREC_VSYNC);
+	    inprec_ru32(vsync_counter);
+	    inprec_rend();
+	} else if (input_recording < 0) {
+	    uae_u32 v = -1;
+	    while (inprec_pstart(INPREC_VSYNC)) {
+		v = inprec_pu32();
+		inprec_pend();
+	    }
+	    if (v != vsync_counter)
+	        write_log("INPREC: vsync sync error %d <> %d\n", v, vsync_counter);
+	}
+#endif
+	vsync_counter++;
+	if (!ciavsyncmode)
+	    CIA_vsync_prehandler();
     }
 
     DISK_hsync (maxhpos);
@@ -4421,32 +4371,29 @@ static void hsync_handler (void)
 #endif
 
     if (!nocustom()) {
+        int lineno = vpos;
 	if (bplcon0 & 4)
 	    notice_interlace_seen ();
 
-	if (!nodraw ()) {
-	    int lineno = vpos;
-	    nextline_how = nln_normal;
-	    if (currprefs.gfx_linedbl) {
-		lineno *= 2;
-		nextline_how = currprefs.gfx_linedbl == 1 ? nln_doubled : nln_nblack;
-		if (bplcon0 & 4) {
-		    if (!lof) {
-			lineno++;
-			nextline_how = nln_lower;
-		    } else {
-			nextline_how = nln_upper;
-		    }
+        nextline_how = nln_normal;
+        if (currprefs.gfx_linedbl) {
+	    lineno *= 2;
+	    nextline_how = currprefs.gfx_linedbl == 1 ? nln_doubled : nln_nblack;
+	    if (bplcon0 & 4) {
+	        if (!lof) {
+		    lineno++;
+		    nextline_how = nln_lower;
+		} else {
+		    nextline_how = nln_upper;
 		}
 	    }
-	    next_lineno = lineno;
-	    reset_decisions ();
 	}
+	next_lineno = lineno;
+	reset_decisions ();
     }
 
 #ifdef FILESYS
     if (uae_int_requested) {
-	set_uae_int_flag ();
 	INTREQ (0x8000 | 0x0008);
     }
 #endif
@@ -4461,24 +4408,102 @@ static void hsync_handler (void)
 #endif
 
     while (input_recording < 0 && inprec_pstart(INPREC_KEY)) {
-	record_key_direct (inprec_pu8());
-	inprec_pend();
+        record_key_direct (inprec_pu8());
+        inprec_pend();
     }
     while (input_recording < 0 && inprec_pstart(INPREC_DISKREMOVE)) {
-	disk_eject (inprec_pu8());
-	inprec_pend();
+        disk_eject (inprec_pu8());
+        inprec_pend();
     }
     while (input_recording < 0 && inprec_pstart(INPREC_DISKINSERT)) {
-	int drv = inprec_pu8();
-	inprec_pstr (currprefs.df[drv]);
-	strcpy (changed_prefs.df[drv], currprefs.df[drv]);
-	disk_insert_force (drv, currprefs.df[drv]);
-	inprec_pend();
+        int drv = inprec_pu8();
+        inprec_pstr (currprefs.df[drv]);
+        strcpy (changed_prefs.df[drv], currprefs.df[drv]);
+        disk_insert_force (drv, currprefs.df[drv]);
+        inprec_pend();
     }
+
     inputdevice_hsync ();
 
     hsync_counter++;
     //copper_check (2);
+}
+
+static void MISC_handler(void)
+{
+    int i, recheck;
+    evt mintime;
+    evt ct = get_cycles();
+    static int recursive;
+
+    if (recursive)
+	return;
+    recursive++;
+    eventtab[ev_misc].active = 0;
+    recheck = 1;
+    while (recheck) {
+	recheck = 0;
+	mintime = ~0L;
+	for (i = 0; i < ev2_max; i++) {
+	    if (eventtab2[i].active) {
+		if (eventtab2[i].evtime == ct) {
+		    eventtab2[i].active = 0;
+		    eventtab2[i].handler(eventtab2[i].data);
+		    if (eventtab2[i].active)
+			recheck = 1;
+		} else {
+		    evt eventtime = eventtab2[i].evtime - ct;
+		    if (eventtime < mintime)
+			mintime = eventtime;
+		}
+	    }
+	}
+    }
+    if (mintime != ~0L) {
+	eventtab[ev_misc].active = 1;
+	eventtab[ev_misc].oldcycles = ct;
+	eventtab[ev_misc].evtime = ct + mintime;
+	events_schedule();
+    }
+    recursive--;
+}
+
+STATIC_INLINE void event2_newevent_x(int no, evt t, uae_u32 data, evfunc2 func)
+{
+    evt et = t * CYCLE_UNIT + get_cycles();
+
+    if (no < 0) {
+	for (no = ev2_misc; no < ev2_max; no++) {
+	    if (!eventtab2[no].active)
+		break;
+	    if (eventtab2[no].evtime == et && eventtab2[no].handler == func) {
+		eventtab2[no].handler(eventtab2[no].data);
+		break;
+	    }
+	}
+	if (no == ev2_max) {
+	    write_log("out of event2's! PC=%x\n", M68K_GETPC);
+	    return;
+	}
+    }
+    eventtab2[no].active = 1;
+    eventtab2[no].evtime = et;
+    eventtab2[no].handler = func;
+    eventtab2[no].data = data;
+    MISC_handler();
+}
+void event2_newevent(int no, evt t)
+{
+    event2_newevent_x(no, t, 0, eventtab2[no].handler);
+}
+void event2_newevent2(evt t, uae_u32 data, evfunc2 func)
+{
+    event2_newevent_x(-1, t, data, func);
+}
+
+void event2_remevent(int no)
+{
+    eventtab2[no].active = 0;
 }
 
 void init_eventtab (void)
@@ -4491,20 +4516,20 @@ void init_eventtab (void)
 	eventtab[i].active = 0;
 	eventtab[i].oldcycles = 0;
     }
+    for (i = 0; i < ev2_max; i++) {
+	eventtab2[i].active = 0;
+    }
 
     eventtab[ev_cia].handler = CIA_handler;
     eventtab[ev_hsync].handler = hsync_handler;
     eventtab[ev_hsync].evtime = get_cycles () + HSYNCTIME;
     eventtab[ev_hsync].active = 1;
-
-    eventtab[ev_copper].handler = copper_handler;
-    eventtab[ev_copper].active = 0;
-    eventtab[ev_blitter].handler = blitter_handler;
-    eventtab[ev_blitter].active = 0;
-    eventtab[ev_disk].handler = DISK_handler;
-    eventtab[ev_disk].active = 0;
+    eventtab[ev_misc].handler = MISC_handler;
     eventtab[ev_audio].handler = audio_evhandler;
-    eventtab[ev_audio].active = 0;
+
+    eventtab2[ev2_blitter].handler = blitter_handler;
+    eventtab2[ev2_disk].handler = DISK_handler;
+
     events_schedule ();
 }
 
@@ -4513,8 +4538,11 @@ void customreset (void)
     int i;
     int zero = 0;
 
-    write_log ("reset at %x\n", m68k_getpc(&regs));
+    write_log ("Reset at %08.8X\n", m68k_getpc(&regs));
+    memory_map_dump();
     hsync_counter = 0;
+    vsync_counter = 0;
+    ciavsync_counter = 0;
     lightpen_x = lightpen_y = lightpen_triggered = 0;
     lightpen_cx = lightpen_cy = -1;
     if (! savestate_state) {
@@ -4547,6 +4575,9 @@ void customreset (void)
 	bplcon0 = 0;
 	bplcon4 = 0x11; /* Get AGA chipset into ECS compatibility mode */
 	bplcon3 = 0xC00;
+
+	diwhigh = 0;
+	diwhigh_written = 0;
 
 	FMODE (0);
 	CLXCON (0);
@@ -4611,8 +4642,8 @@ void customreset (void)
 	uae_u32 vv;
 
 	audio_update_adkmasks ();
-	INTENA (0);
-	INTREQ (0);
+	INTENA_f (0);
+	INTREQ_f (0);
 #if 0
 	DMACON (0, 0);
 #endif
@@ -4797,7 +4828,21 @@ addrbank custom_bank = {
     custom_lget, custom_wget, custom_bget,
     custom_lput, custom_wput, custom_bput,
     default_xlate, default_check, NULL, "Custom chipset",
+    custom_lgeti, custom_wgeti, ABFLAG_IO
 };
+
+static uae_u32 REGPARAM2 custom_wgeti (uaecptr addr)
+{
+    if (currprefs.cpu_level >= 2)
+	return dummy_wgeti(addr);
+    return custom_wget(addr);
+}
+static uae_u32 REGPARAM2 custom_lgeti (uaecptr addr)
+{
+    if (currprefs.cpu_level >= 2)
+	return dummy_lgeti(addr);
+    return custom_lget(addr);
+}
 
 STATIC_INLINE uae_u32 REGPARAM2 custom_wget_1 (uaecptr addr, int noput)
 {
@@ -5129,8 +5174,8 @@ static void REGPARAM2 custom_bput (uaecptr addr, uae_u32 value)
 #endif
     custom_wput (addr & ~1, rval);
     if (warned < 10) {
-	if (m68k_getpc(&regs) < 0xe00000 || m68k_getpc(&regs) >= 0x10000000) {
-	    write_log ("Byte put to custom register %04.4X PC=%08.8X\n", addr, m68k_getpc(&regs));
+	if (M68K_GETPC < 0xe00000 || M68K_GETPC >= 0x10000000) {
+	    write_log ("Byte put to custom register %04.4X PC=%08.8X\n", addr, M68K_GETPC);
 	    warned++;
 	}
     }
@@ -5149,6 +5194,14 @@ static void REGPARAM2 custom_lput(uaecptr addr, uae_u32 value)
 
 void custom_prepare_savestate (void)
 {
+    int i;
+
+    for (i = 0; i < ev2_max; i++) {
+	if (eventtab2[i].active) {
+	    eventtab2[i].active = 0;
+	    eventtab2[i].handler(eventtab2[i].data);
+	}
+    }
 }
 
 #define RB restore_u8 ()
@@ -5270,8 +5323,7 @@ uae_u8 *restore_custom (uae_u8 *src)
     vsstrt = RW;		/* 1E0 VSSTT  */
     hcenter = RW;		/* 1E2 HCENTER */
     diwhigh = RW;		/* 1E4 DIWHIGH */
-    if (diwhigh & 0x8000)
-	diwhigh_written = 1;
+    diwhigh_written = (diwhigh & 0x8000) ? 1 : 0;
     diwhigh &= 0x7fff;
     RW;				/* 1E6 ? */
     RW;				/* 1E8 ? */
@@ -5568,11 +5620,6 @@ void check_prefs_changed_custom (void)
 
 STATIC_INLINE void sync_copper (int hpos)
 {
-    if (eventtab[ev_copper].active) {
-	eventtab[ev_copper].active = 0;
-	update_copper (hpos);
-	return;
-    }
     if (copper_enabled_thisline)
 	update_copper (hpos);
 }

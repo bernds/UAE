@@ -10,8 +10,8 @@
 			>
 			<DebugSettings
 				Command="$(TargetPath)"
-				WorkingDirectory="f:\amiga"
-				CommandArguments="-log -scsilog"
+				WorkingDirectory="d:\amiga"
+				CommandArguments="-log -scsilog -sounddebug"
 				Attach="false"
 				DebuggerType="3"
 				Remote="1"
@@ -66,7 +66,7 @@
 			>
 			<DebugSettings
 				Command="$(TargetPath)"
-				WorkingDirectory="f:\amiga"
+				WorkingDirectory="d:\amiga"
 				CommandArguments="-log"
 				Attach="false"
 				DebuggerType="3"
@@ -94,8 +94,8 @@
 			>
 			<DebugSettings
 				Command="$(TargetPath)"
-				WorkingDirectory="d:\amiga"
-				CommandArguments="-log"
+				WorkingDirectory=""
+				CommandArguments=""
 				Attach="false"
 				DebuggerType="3"
 				Remote="1"
@@ -106,7 +106,7 @@
 				SQLDebugging=""
 				Environment=""
 				EnvironmentMerge="true"
-				DebuggerFlavor="0"
+				DebuggerFlavor=""
 				MPIRunCommand=""
 				MPIRunArguments=""
 				MPIRunWorkingDirectory=""
@@ -206,8 +206,8 @@
 			>
 			<DebugSettings
 				Command="$(TargetPath)"
-				WorkingDirectory="d:\amiga"
-				CommandArguments="-log"
+				WorkingDirectory=""
+				CommandArguments=""
 				Attach="false"
 				DebuggerType="3"
 				Remote="1"
@@ -218,7 +218,7 @@
 				SQLDebugging=""
 				Environment=""
 				EnvironmentMerge="true"
-				DebuggerFlavor="0"
+				DebuggerFlavor=""
 				MPIRunCommand=""
 				MPIRunArguments=""
 				MPIRunWorkingDirectory=""
@@ -262,6 +262,34 @@
 			>
 			<DebugSettings
 				Command="$(TargetPath)"
+				WorkingDirectory=""
+				CommandArguments=""
+				Attach="false"
+				DebuggerType="3"
+				Remote="1"
+				RemoteMachine="SUPERPC"
+				RemoteCommand=""
+				HttpUrl=""
+				PDBPath=""
+				SQLDebugging=""
+				Environment=""
+				EnvironmentMerge="true"
+				DebuggerFlavor=""
+				MPIRunCommand=""
+				MPIRunArguments=""
+				MPIRunWorkingDirectory=""
+				ApplicationCommand=""
+				ApplicationArguments=""
+				ShimCommand=""
+				MPIAcceptMode=""
+				MPIAcceptFilter=""
+			/>
+		</Configuration>
+		<Configuration
+			Name="FullRelease|Win32"
+			>
+			<DebugSettings
+				Command="$(TargetPath)"
 				WorkingDirectory="d:\amiga"
 				CommandArguments="-log"
 				Attach="false"
@@ -275,6 +303,34 @@
 				Environment=""
 				EnvironmentMerge="true"
 				DebuggerFlavor="0"
+				MPIRunCommand=""
+				MPIRunArguments=""
+				MPIRunWorkingDirectory=""
+				ApplicationCommand=""
+				ApplicationArguments=""
+				ShimCommand=""
+				MPIAcceptMode=""
+				MPIAcceptFilter=""
+			/>
+		</Configuration>
+		<Configuration
+			Name="FullRelease|x64"
+			>
+			<DebugSettings
+				Command="$(TargetPath)"
+				WorkingDirectory=""
+				CommandArguments=""
+				Attach="false"
+				DebuggerType="3"
+				Remote="1"
+				RemoteMachine="SUPERPC"
+				RemoteCommand=""
+				HttpUrl=""
+				PDBPath=""
+				SQLDebugging=""
+				Environment=""
+				EnvironmentMerge="true"
+				DebuggerFlavor=""
 				MPIRunCommand=""
 				MPIRunArguments=""
 				MPIRunWorkingDirectory=""

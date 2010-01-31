@@ -36,6 +36,7 @@
 #include "uaeexe.h"
 #include "native2amiga.h"
 #include "scsidev.h"
+#include "uaeserial.h"
 #include "akiko.h"
 #include "savestate.h"
 #include "filesys.h"
@@ -59,6 +60,10 @@ char warning_buffer[256];
 
 char optionsfile[256];
 
+int uaerand(void)
+{
+    return rand();
+}
 /* If you want to pipe printer output to a file, put something like
  * "cat >>printerfile.tmp" above.
  * The printer support was only tested with the driver "PostScript" on
@@ -306,12 +311,13 @@ void fixup_prefs (struct uae_prefs *p)
     p->scsi = 0;
     p->win32_aspi = 0;
 #endif
+#if !defined (UAESERIAL)
+    p->uaeserial = 0;
+#endif
 #if defined(CPUEMU_6)
     if (p->cpu_cycle_exact)
 	p->gfx_framerate = 1;
 #endif
-    if (err)
-	write_log ("Please use \"uae -h\" to get usage information.\n");
 }
 
 int quit_program = 0;
@@ -483,6 +489,10 @@ void reset_all_systems (void)
     scsidev_reset ();
     scsidev_start_threads ();
 #endif
+#ifdef UAESERIAL
+    uaeserialdev_reset ();
+    uaeserialdev_start_threads ();
+#endif
 #if defined (PARALLEL_PORT)
     initparallel ();
 #endif
@@ -625,6 +635,9 @@ static void real_main2 (int argc, char **argv)
     savestate_init ();
 #ifdef SCSIEMU
     scsidev_install ();
+#endif
+#ifdef UAESERIAL
+    uaeserialdev_install ();
 #endif
 #ifdef AUTOCONFIG
     /* Install resident module to get 8MB chipmem, if requested */

@@ -1,8 +1,8 @@
-cd d:\projects\winuae_bak
+cd c:\projects\winuae_bak
 rm -rf bak
 mkdir bak
-copy /s d:\projects\winuae\src\*.* d:\projects\winuae_bak\bak\
-copy f:\amiga\text\winuaechangelog.txt d:\projects\winuae_bak\bak\od-win32
+copy /s c:\projects\winuae\src\*.* c:\projects\winuae_bak\bak\
+copy d:\amiga\text\winuaechangelog.txt c:\projects\winuae_bak\bak\od-win32
 cd bak
 del *.obj *.ilk *.exe *.pdb *.pch *.idb /s
 
@@ -71,6 +71,7 @@ rm -rf release
 rm -rf debug64
 rm -rf release64
 rm -rf x64
+rm -rf fullrelease
 rm -rf _UpgradeReport_Files
 cd ..
 
@@ -88,12 +89,18 @@ cd resourcedll
 rm -rf debug
 rm -rf release
 cd ..
+
+cd fdrawcmd
+rm -rf debug
+rm -rf release
+cd ..
+
 cd ..
 
 zip -9 -r winuaesrc *
 
-copy winuaesrc.zip f:\amiga\winuaepackets\winuaesrc%1.zip
-move winuaesrc.zip f:\amiga
-cd d:\projects\winuae\src\od-win32
-zip -9 winuaedebug%1 winuae_msvc\release\winuae.pdb
-move winuaedebug%1.zip f:\amiga\winuaepackets\
+copy winuaesrc.zip d:\amiga\winuaepackets\winuaesrc%1.zip
+move winuaesrc.zip d:\amiga
+cd c:\projects\winuae\src\od-win32
+zip -9 winuaedebug%1 winuae_msvc\release\winuae.pdb winuae_msvc\fullrelease\winuae.pdb
+move winuaedebug%1.zip d:\amiga\winuaepackets\

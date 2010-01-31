@@ -40,6 +40,7 @@
 #include "fsusage.h"
 #include "native2amiga.h"
 #include "scsidev.h"
+#include "uaeserial.h"
 #include "fsdb.h"
 #include "zfile.h"
 #include "gui.h"
@@ -606,8 +607,6 @@ typedef struct _unit {
 
     /* Keys */
     struct key *keys;
-    uae_u32 key_uniq;
-    uae_u32 a_uniq;
 
     a_inode rootnode;
     unsigned long aino_cache_size;
@@ -620,6 +619,8 @@ typedef struct _unit {
     int volflags;
 
 } Unit;
+
+static uae_u32 a_uniq, key_uniq;
 
 typedef uae_u8 *dpacket;
 #define PUT_PCK_RES1(p,v) do { do_put_mem_long ((uae_u32 *)((p) + dp_Res1), (v)); } while (0)
@@ -1061,8 +1062,8 @@ static char *get_aname (Unit *unit, a_inode *base, char *rel)
 
 static void init_child_aino (Unit *unit, a_inode *base, a_inode *aino)
 {
-    aino->uniq = ++unit->a_uniq;
-    if (unit->a_uniq == 0xFFFFFFFF) {
+    aino->uniq = ++a_uniq;
+    if (a_uniq == 0xFFFFFFFF) {
 	write_log ("Running out of a_inodes (prepare for big trouble)!\n");
     }
     aino->shlock = 0;
@@ -1325,7 +1326,6 @@ static Unit *startup_create_unit (UnitInfo *uinfo)
     unit->total_locked_ainos = 0;
     unit->next_exkey = 1;
     unit->keys = 0;
-    unit->a_uniq = unit->key_uniq = 0;
 
     unit->rootnode.aname = uinfo->volname;
     unit->rootnode.nname = uinfo->rootdir;
@@ -1514,7 +1514,7 @@ static Key *lookup_key (Unit *unit, uae_u32 uniq)
 static Key *new_key (Unit *unit)
 {
     Key *k = (Key *) xmalloc(sizeof(Key));
-    k->uniq = ++unit->key_uniq;
+    k->uniq = ++key_uniq;
     k->fd = NULL;
     k->file_pos = 0;
     k->next = unit->keys;
@@ -2059,6 +2059,21 @@ get_fileinfo (Unit *unit, dpacket packet, uaecptr info, a_inode *aino)
     PUT_PCK_RES1 (packet, DOS_TRUE);
 }
 
+int get_native_path(uae_u32 lock, char *out)
+{
+    int i = 0;
+    for (i = 0; i < MAX_FILESYSTEM_UNITS; i++) {
+	if (current_mountinfo.ui[i].self) {
+	    a_inode *a = lookup_aino (current_mountinfo.ui[i].self, get_long ((lock << 2) + 4));
+	    if (a) {
+		strcpy (out, a->nname);
+		return 0;
+	    }
+	}
+    }
+    return -1;
+}
+
 static void action_examine_object (Unit *unit, dpacket packet)
 {
     uaecptr lock = GET_PCK_ARG1 (packet) << 2;
@@ -2314,13 +2329,13 @@ action_lock_from_fh (Unit *unit, dpacket packet)
 {
     uaecptr out;
     Key *k = lookup_key (unit, GET_PCK_ARG1 (packet));
-    write_log("lock_from_fh %x\n", k);
+    //write_log("lock_from_fh %x\n", k);
     if (k == 0) {
 	PUT_PCK_RES1 (packet, DOS_FALSE);
 	return;
     }
     out = action_dup_lock_2 (unit, packet, make_lock (unit, k->aino->uniq, -2));
-    write_log("=%x\n", out);
+    //write_log("=%x\n", out);
 }
 
 static void
@@ -3272,12 +3287,6 @@ action_flush (Unit *unit, dpacket packet)
     PUT_PCK_RES1 (packet, DOS_TRUE);
 }
 
-int last_n, last_n2;
-void blehint(void)
-{
-    do_uae_int_requested();
-}
-
 /* We don't want multiple interrupts to be active at the same time. I don't
  * know whether AmigaOS takes care of that, but this does. */
 static uae_sem_t singlethread_int_sem;
@@ -3288,9 +3297,6 @@ static uae_u32 REGPARAM2 exter_int_helper (TrapContext *context)
     uaecptr port;
     int n = m68k_dreg (&context->regs, 0);
     static int unit_no;
-
-    last_n = n;
-    last_n2 = -1;
 
     switch (n) {
      case 0:
@@ -3644,6 +3650,8 @@ void filesys_reset (void)
     }
     unit_num = 0;
     units = 0;
+    key_uniq = 0;
+    a_uniq = 0;
 }
 
 static void free_all_ainos (Unit *u, a_inode *parent)
@@ -3747,8 +3755,12 @@ static uae_u32 REGPARAM2 filesys_diagentry (TrapContext *context)
      * diag entry. */
 
     //resaddr = uaeresource_startup(resaddr);
-    resaddr = scsidev_startup(resaddr);
-
+#ifdef SCSIEMU
+    resaddr = scsidev_startup (resaddr);
+#endif
+#ifdef UAESERIAL
+    resaddr = uaeserialdev_startup (resaddr);
+#endif
     /* scan for Residents and return pointer to array of them */
     residents = resaddr;
     while (tmp < residents && tmp > start) {
@@ -3869,7 +3881,7 @@ int rdb_checksum (char *id, uae_u8 *p, int block)
     sum = -sum;
     if (sum) {
 	write_log ("RDB: block %d ('%s') checksum error\n", block, id);
-	return 1;
+	return 0;
     }
     return 1;
 }
@@ -3910,10 +3922,10 @@ static char *device_dupfix (uaecptr expbase, char *devname)
     return strdup (newname);
 }
 
-static void dump_partinfo (char *name, int num, uaecptr pp)
+static void dump_partinfo (char *name, int num, uaecptr pp, int partblock)
 {
     uae_u32 dostype = get_long (pp + 80);
-    write_log ("RDB: '%s' dostype=%08.8X\n", name, dostype);
+    write_log ("RDB: '%s' dostype=%08.8X. PartBlock=%d\n", name, dostype, partblock);
     write_log ("BlockSize: %d, Surfaces: %d, SectorsPerBlock %d\n",
 	get_long (pp + 20) * 4, get_long (pp + 28), get_long (pp + 32));
     write_log ("SectorsPerTrack: %d, Reserved: %d, LowCyl %d, HighCyl %d\n",
@@ -3988,19 +4000,28 @@ static int rdb_mount (UnitInfo *uip, int unit_no, int partnum, uaecptr parmpacke
     hfd->sectors = rl (bufrdb + 68);
     hfd->heads = rl (bufrdb + 72);
     fileblock = rl (bufrdb + 32);
-    partblock = rl (bufrdb + 28);
+
+    if (partnum == 0) {
+	write_log("RDB: RDSK detected at %d, FSHD=%d, C=%d S=%d H=%d\n",
+	    rdblock, fileblock, hfd->cylinders, hfd->sectors, hfd->heads);
+    }
+
     buf = xmalloc (readblocksize);
     for (i = 0; i <= partnum; i++) {
+	if (i == 0)
+	    partblock = rl (bufrdb + 28);
+	else
+	    partblock = rl (buf + 4 * 4);
 	if (!legalrdbblock (uip, partblock)) {
 	    err = -2;
 	    goto error;
 	}
+	memset (buf, 0, readblocksize);
 	hdf_read (hfd, buf, partblock * hfd->blocksize, readblocksize);
 	if (!rdb_checksum ("PART", buf, partblock)) {
 	    err = -2;
 	    goto error;
 	}
-	partblock = rl (buf + 4 * 4);
     }
 
     rdbmnt
@@ -4022,7 +4043,7 @@ static int rdb_mount (UnitInfo *uip, int unit_no, int partnum, uaecptr parmpacke
     put_long (parmpacket + 12, 0); /* Device flags */
     for (i = 0; i < PP_MAXSIZE; i++)
 	put_byte (parmpacket + 16 + i, buf[128 + i]);
-    dump_partinfo (buf + 37, uip->devno, parmpacket);
+    dump_partinfo (buf + 37, uip->devno, parmpacket, partblock);
     dostype = get_long (parmpacket + 80);
 
     if (dostype == 0) {
@@ -4066,13 +4087,12 @@ static int rdb_mount (UnitInfo *uip, int unit_no, int partnum, uaecptr parmpacke
 	}
 	if (!legalrdbblock (uip, fileblock)) {
 	    write_log("RDB: corrupt FSHD pointer %d\n", fileblock);
-	    err = -1;
 	    goto error;
 	}
+	memset (buf, 0, readblocksize);
 	hdf_read (hfd, buf, fileblock * hfd->blocksize, readblocksize);
 	if (!rdb_checksum ("FSHD", buf, fileblock)) {
 	    write_log("RDB: checksum error in FSHD block %d\n", fileblock);
-	    err = -1;
 	    goto error;
 	}
 	fileblock = rl (buf + 16);
@@ -4099,12 +4119,16 @@ static int rdb_mount (UnitInfo *uip, int unit_no, int partnum, uaecptr parmpacke
     lsegblock = rl (buf + 72);
     i = 0;
     for (;;) {
+	int pb = lsegblock;
 	if (!legalrdbblock (uip, lsegblock))
 	    goto error;
+	memset (buf, 0, readblocksize);
 	hdf_read (hfd, buf, lsegblock * hfd->blocksize, readblocksize);
 	if (!rdb_checksum ("LSEG", buf, lsegblock))
 	    goto error;
 	lsegblock = rl (buf + 16);
+	if (lsegblock == pb)
+	    goto error;
 	memcpy (fsmem + i * (blocksize - 20), buf + 20, blocksize - 20);
 	i++;
 	if (lsegblock == -1)
@@ -4317,8 +4341,8 @@ static uae_u8 *restore_filesys_virtual (UnitInfo *ui, uae_u8 *src)
     Unit *u = startup_create_unit (ui);
     int cnt;
 
-    u->a_uniq = restore_u64 ();
-    u->key_uniq = restore_u64 ();
+    a_uniq = restore_u64 ();
+    key_uniq = restore_u64 ();
     u->dosbase = restore_u32 ();
     u->volume = restore_u32 ();
     u->port = restore_u32 ();
@@ -4344,8 +4368,8 @@ static uae_u8 *save_filesys_virtual (UnitInfo *ui, uae_u8 *dst)
     Key *k;
     int cnt;
 
-    save_u64 (u->a_uniq);
-    save_u64 (u->key_uniq);
+    save_u64 (a_uniq);
+    save_u64 (key_uniq);
     save_u32 (u->dosbase);
     save_u32 (u->volume);
     save_u32 (u->port);

@@ -19,9 +19,9 @@ static uae_u32 gfxoffs;
 
 uae_u8 *natmem_offset = NULL;
 #ifdef CPU_64_BIT
-uae_u32 max_allowed_mman = 2048;
+int max_allowed_mman = 2048;
 #else
-uae_u32 max_allowed_mman = 512;
+int max_allowed_mman = 512;
 #endif
 
 void cache_free(void *cache)
@@ -56,17 +56,30 @@ void init_shm(void)
 
     memstats.dwLength = sizeof(memstats);
     GlobalMemoryStatus(&memstats);
-
     totalphys64 = memstats.dwTotalPhys;
-    size64 = 16 * 1024 * 1024;
     total64 = (uae_u64)memstats.dwAvailPageFile + (uae_u64)memstats.dwAvailPhys;
+    if (os_winnt) {
+	typedef BOOL (CALLBACK* GLOBALMEMORYSTATUSEX)(LPMEMORYSTATUSEX);
+	GLOBALMEMORYSTATUSEX pGlobalMemoryStatusEx;
+	MEMORYSTATUSEX memstatsex;
+	pGlobalMemoryStatusEx = (GLOBALMEMORYSTATUSEX)GetProcAddress(GetModuleHandle("kernel32.dll"), "GlobalMemoryStatusEx");
+	if (pGlobalMemoryStatusEx) {
+	    memstatsex.dwLength = sizeof (MEMORYSTATUSEX);
+	    if (pGlobalMemoryStatusEx(&memstatsex)) {
+		totalphys64 = memstatsex.ullTotalPhys;
+		total64 = memstatsex.ullAvailPageFile + memstatsex.ullAvailPhys;
+	    }
+	}
+    }
+
+    size64 = 16 * 1024 * 1024;
     while (total64 >= (size64 << 1)
 	&& size64 != ((uae_u64)2048) * 1024 * 1024)
 	    size64 <<= 1;
     if (size64 > max_allowed_mman * 1024 * 1024)
 	size64 = max_allowed_mman * 1024 * 1024;
-    if (size64 > 0x40000000)
-	size64 = 0x40000000;
+    if (size64 > 0x80000000)
+	size64 = 0x80000000;
     if (size64 < 8 * 1024 * 1024)
 	size64 = 8 * 1024 * 1024;
     size = max_z3fastmem = (uae_u32)size64;
@@ -85,6 +98,7 @@ void init_shm(void)
 	blah = VirtualAlloc(NULL, size + add, MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 	if (blah)
 	    break;
+	write_log("NATMEM: %dM area failed to allocate, err=%d\n", (size + add) >> 20, GetLastError());
 	size >>= 1;
 	if (size < 0x10000000) {
 	    write_log("NATMEM: No special area could be allocated (2)!\n");
@@ -137,7 +151,7 @@ void mapped_free(uae_u8 *mem)
 	    if (shmctl(x->id, IPC_STAT, &blah) == 0) {
 		shmctl(x->id, IPC_RMID, &blah);
 	    } else {
-		VirtualFree((LPVOID)mem, 0, os_winnt ? MEM_RESET : (MEM_DECOMMIT | MEM_RELEASE));
+		VirtualFree((LPVOID)mem, 0, os_winnt ? MEM_DECOMMIT : MEM_RELEASE);
 	    }
 	}
 	x = x->next;
@@ -259,7 +273,7 @@ void *shmat(int shmid, void *shmaddr, int shmflg)
 	got = FALSE;
 	if (got == FALSE) {
 	    if (shmaddr)
-		VirtualFree(shmaddr, 0, os_winnt ? MEM_RESET : MEM_RELEASE);
+		VirtualFree(shmaddr, os_winnt ? size : 0, os_winnt ? MEM_DECOMMIT : MEM_RELEASE);
 	    result = VirtualAlloc(shmaddr, size, os_winnt ? MEM_COMMIT : (MEM_RESERVE | MEM_COMMIT),
 		PAGE_EXECUTE_READWRITE);
 	    if (result == NULL) {

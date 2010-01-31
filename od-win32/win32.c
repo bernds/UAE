@@ -16,7 +16,7 @@
 #include <stdarg.h>
 #include <signal.h>
 
-#define _WIN32_WINNT 0x501 /* XButtons */
+#define _WIN32_WINNT 0x600 /* XButtons + MOUSEHWHEEL */
 
 #include <windows.h>
 #include <commctrl.h>
@@ -88,6 +88,7 @@ static int TaskbarRestartOk;
 static int forceroms;
 
 char VersionStr[256];
+char BetaStr[64];
 
 int in_sizemove;
 int manual_painting_needed;
@@ -106,6 +107,7 @@ int ignore_messages_all;
 int pause_emulation;
 
 static int didmousepos;
+static int sound_closed;
 int mouseactive, focus;
 
 static int mm_timerres;
@@ -298,9 +300,9 @@ static int figure_processor_speed (void)
     if (QueryPerformanceFrequency(&freq)) {
 	qpc_avail = 1;
 	qpfrate = freq.QuadPart;
-	 /* we don't want 32-bit overflow, limit to 100MHz */
+	 /* limit to 10MHz */
 	qpcdivisor = 0;
-	while (qpfrate > 100000000) {
+	while (qpfrate > 10000000) {
 	    qpfrate >>= 1;
 	    qpcdivisor++;
 	    qpc_avail = -1;
@@ -454,7 +456,7 @@ void setmouseactive (int active)
 {
     int oldactive = mouseactive;
     static int mousecapture, showcursor;
-    char txt[100], txt2[110];
+    char txt[400], txt2[200];
 
     if (active > 0 && mousehack_allowed () && mousehack_alive ()) {
 	if (!isfullscreen ())
@@ -464,10 +466,15 @@ void setmouseactive (int active)
 
     mouseactive = active;
     strcpy (txt, "WinUAE");
+    txt2[0] = 0;
     if (mouseactive > 0) {
 	focus = 1;
 	WIN32GUI_LoadUIString (currprefs.win32_middle_mouse ? IDS_WINUAETITLE_MMB : IDS_WINUAETITLE_NORMAL,
 	    txt2, sizeof (txt2));
+    }
+    if (WINUAEBETA > 0)
+	strcat (txt, BetaStr);
+    if (txt2[0]) {
 	strcat (txt, " - ");
 	strcat (txt, txt2);
     }
@@ -508,7 +515,6 @@ static int avioutput_video = 0;
 void setpriority (struct threadpriorities *pri)
 {
     int err;
-    write_log ("changing priority to %s\n", pri->name);
     if (os_winnt)
 	err = SetPriorityClass (GetCurrentProcess (), pri->classvalue);
     else
@@ -533,7 +539,6 @@ static void winuae_active (HWND hWnd, int minimized)
 	timeend();  
 
     focus = 1;
-    write_log ("WinUAE now active via WM_ACTIVATE\n");
     pri = &priorities[currprefs.win32_inactive_priority];
 #ifndef	_DEBUG
     if (!minimized)
@@ -549,6 +554,14 @@ static void winuae_active (HWND hWnd, int minimized)
     if (emulation_paused > 0)
 	emulation_paused = -1;
     ShowWindow (hWnd, SW_RESTORE);
+    if (sound_closed) {
+#ifdef AHI
+	ahi_open_sound ();
+#endif
+	set_audio ();
+	sound_closed = 0;
+    }
+#if 0
 #ifdef AHI
     ahi_close_sound ();
 #endif
@@ -557,6 +570,7 @@ static void winuae_active (HWND hWnd, int minimized)
     ahi_open_sound ();
 #endif
     set_audio ();
+#endif
     if (WIN32GFX_IsPicassoScreen ())
 	WIN32GFX_EnablePicasso();
     getcapslock ();
@@ -576,7 +590,6 @@ static void winuae_inactive (HWND hWnd, int minimized)
     if (minimized)
 	exit_gui (0);
     focus = 0;
-    write_log ("WinUAE now inactive via WM_ACTIVATE\n");
     wait_keyrelease ();
     setmouseactive (0);
     pri = &priorities[currprefs.win32_inactive_priority];
@@ -589,6 +602,7 @@ static void winuae_inactive (HWND hWnd, int minimized)
     #ifdef AHI
 		ahi_close_sound ();
     #endif
+		sound_closed = 1;
 	    }
 	    if (!avioutput_video) {
 		set_inhibit_frame (IHF_WINDOWHIDDEN);
@@ -599,12 +613,14 @@ static void winuae_inactive (HWND hWnd, int minimized)
 		ahi_close_sound ();
     #endif
 		emulation_paused = 1;
+		sound_closed = 1;
 	    }
 	} else {
 	    if (currprefs.win32_inactive_nosound) {
 		close_sound ();
     #ifdef AHI
 		ahi_close_sound ();
+		sound_closed = 1;
     #endif
 	    }
 	}
@@ -613,15 +629,17 @@ static void winuae_inactive (HWND hWnd, int minimized)
 #ifdef FILESYS
     filesys_flush_cache ();
 #endif
+#if 0
     close_sound ();
 #ifdef AHI
     ahi_close_sound ();
 #endif
-     if (gui_active)
+    if (gui_active)
 	return;
     set_audio ();
 #ifdef AHI
     ahi_open_sound ();
+#endif
 #endif
 }
 
@@ -633,9 +651,11 @@ void minimizewindow (void)
 void disablecapture (void)
 {
     setmouseactive (0);
+#if 0
     close_sound ();
 #ifdef AHI
     ahi_close_sound ();
+#endif
 #endif
 }
 
@@ -824,6 +844,10 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 	if (dinput_winmouse () >= 0)
 	    setmousestate (dinput_winmouse(), 2, ((short)HIWORD(wParam)), 0);
     return 0;
+    case WM_MOUSEHWHEEL:
+	if (dinput_winmouse () >= 0)
+	    setmousestate (dinput_winmouse(), 3, ((short)HIWORD(wParam)), 0);
+    return 0;
 
     case WM_PAINT:
     {
@@ -869,8 +893,8 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
     case WM_WINDOWPOSCHANGED:
 	GetWindowRect (hWnd, &amigawin_rect);
 	if (!isfullscreen()) {
-	    currprefs.gfx_size_win.x = amigawin_rect.left;
-	    currprefs.gfx_size_win.y = amigawin_rect.top;
+	    changed_prefs.gfx_size_win.x = amigawin_rect.left;
+	    changed_prefs.gfx_size_win.y = amigawin_rect.top;
 	}
     break;
 
@@ -993,15 +1017,15 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 		{
 		    LPNMMOUSE lpnm = (LPNMMOUSE) lParam; 
 		    int num = (int)lpnm->dwItemSpec;
-		    if (num >= 6 && num <= 9) {
-			num -= 6;
+		    if (num >= 7 && num <= 10) {
+			num -= 7;
 			if (nm->code == NM_RCLICK) {
 			    disk_eject (num);
 			} else if (changed_prefs.dfxtype[num] >= 0) {
 			    DiskSelection (hWnd, IDC_DF0 + num, 0, &changed_prefs, 0);
 			    disk_insert (num, changed_prefs.df[num]);
 			}
-		    } else if (num == 3) {
+		    } else if (num == 4) {
 			if (nm->code == NM_CLICK)
 			    gui_display (-1);
 			else
@@ -1164,8 +1188,8 @@ static LRESULT CALLBACK MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 			RegSetValueEx(hWinUAEKey, "xPos", 0, REG_DWORD, (LPBYTE)&left, sizeof(LONG));
 			RegSetValueEx(hWinUAEKey, "yPos", 0, REG_DWORD, (LPBYTE)&top, sizeof(LONG));
 		    }
-		    currprefs.gfx_size_win.x = left;
-		    currprefs.gfx_size_win.y = top;
+		    changed_prefs.gfx_size_win.x = left;
+		    changed_prefs.gfx_size_win.y = top;
 		}
 		return 0;
 	    }
@@ -1483,7 +1507,7 @@ HMODULE language_load(WORD language)
 			    if (vsFileInfo &&
 				HIWORD(vsFileInfo->dwProductVersionMS) == UAEMAJOR
 				&& LOWORD(vsFileInfo->dwProductVersionMS) == UAEMINOR
-				/* && HIWORD(vsFileInfo->dwProductVersionLS) <= UAESUBREV */ ) {
+				&& HIWORD(vsFileInfo->dwProductVersionLS) == UAESUBREV) {
 				success = TRUE;
 				write_log ("Translation DLL '%s' loaded and enabled\n", dllbuf);
 			    } else {
@@ -1676,7 +1700,7 @@ void target_default_options (struct uae_prefs *p, int type)
 	p->win32_iconified_pause = 1;
 	p->win32_inactive_nosound = 0;
 	p->win32_inactive_pause = 0;
-	p->win32_no_overlay = 0;
+	p->win32_no_overlay = os_vista ? 1 : 0;
 	p->win32_ctrl_F11_is_quit = 0;
 	p->win32_soundcard = 0;
 	p->win32_active_priority = 1;
@@ -1706,7 +1730,9 @@ void target_save_options (struct zfile *f, struct uae_prefs *p)
     cfgfile_target_write (f, "logfile=%s\n", p->win32_logfile ? "true" : "false");
     cfgfile_target_write (f, "map_drives=%s\n", p->win32_automount_drives ? "true" : "false");
     cfgfile_target_write (f, "map_net_drives=%s\n", p->win32_automount_netdrives ? "true" : "false");
-    cfgfile_target_write (f, "serial_port=%s\n", p->use_serial ? p->sername : "none" );
+    serdevtoname(p->sername);
+    cfgfile_target_write (f, "serial_port=%s\n", p->sername[0] ? p->sername : "none" );
+    sernametodev(p->sername);
     cfgfile_target_write (f, "parallel_port=%s\n", p->prtname[0] ? p->prtname : "none" );
 
     cfgfile_target_write (f, "active_priority=%d\n", priorities[p->win32_active_priority].value);
@@ -1772,8 +1798,6 @@ int target_parse_option (struct uae_prefs *p, char *option, char *value)
 	    || cfgfile_intval (option, value, "midiout_device", &p->win32_midioutdev, 1)
 	    || cfgfile_intval (option, value, "midiin_device", &p->win32_midiindev, 1)
 	    || cfgfile_intval (option, value, "soundcard", &p->win32_soundcard, 1)
-	    || cfgfile_string (option, value, "serial_port", &p->sername[0], 256)
-	    || cfgfile_string (option, value, "parallel_port", &p->prtname[0], 256)
 	    || cfgfile_yesno (option, value, "notaskbarbutton", &p->win32_notaskbarbutton)
 	    || cfgfile_yesno (option, value, "always_on_top", &p->win32_alwaysontop)
 	    || cfgfile_yesno (option, value, "powersavedisabled", &p->win32_powersavedisabled)
@@ -1810,10 +1834,20 @@ int target_parse_option (struct uae_prefs *p, char *option, char *value)
 	return 1;
     }
 
-    if (p->sername[0] == 'n')
-	p->use_serial = 0;
-    else
-	p->use_serial = 1;
+    if (cfgfile_string (option, value, "serial_port", &p->sername[0], 256)) {
+	sernametodev(p->sername);
+	if (p->sername[0])
+	    p->use_serial = 1;
+	else
+	    p->use_serial = 0;
+	return 1;
+    }
+
+    if (cfgfile_string (option, value, "parallel_port", &p->prtname[0], 256)) {
+	if (!strcmp(p->prtname, "none"))
+	    p->prtname[0] = 0;
+	return 1;
+    }
 
     i = 0;
     while (obsolete[i]) {
@@ -2094,8 +2128,7 @@ static void WIN32_HandleRegistryStuff(void)
 	initpath ("SaveimagePath", start_path_data);
 	initpath ("VideoPath", start_path_data);
 	initpath ("InputPath", start_path_data);
-	if (disposition == REG_CREATED_NEW_KEY)
-	{
+	if (disposition == REG_CREATED_NEW_KEY) {
 	    /* Create and initialize all our sub-keys to the default values */
 	    colortype = 0;
 	    RegSetValueEx(hWinUAEKey, "DisplayInfo", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof(colortype));
@@ -2167,8 +2200,89 @@ static void WIN32_HandleRegistryStuff(void)
     load_keyring(NULL, NULL);
 }
 
-static void betamessage (void)
+#if WINUAEPUBLICBETA > 0
+static char *BETAMESSAGE = {
+    "This is unstable beta software. Click cancel if you are not comfortable using software that is incomplete and can have serious programming errors."
+};
+#endif
+
+static int betamessage (void)
 {
+#if WINUAEPUBLICBETA > 0
+    int showmsg = TRUE;
+    HANDLE h = INVALID_HANDLE_VALUE;
+    ULONGLONG regft64;
+    ULARGE_INTEGER ft64;
+    ULARGE_INTEGER sft64;
+    struct tm *t;
+    __int64 ltime;
+    DWORD dwType, size, data;
+
+    ft64.QuadPart = 0;
+    for (;;) {
+	FILETIME ft, sft;
+	SYSTEMTIME st;
+	char tmp1[MAX_DPATH];
+
+	if (!hWinUAEKey)
+	    break;
+        if (GetModuleFileName(NULL, tmp1, sizeof tmp1) == 0)
+	    break;
+	h = CreateFile(tmp1, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (h == INVALID_HANDLE_VALUE)
+	    break;
+	if (GetFileTime(h, &ft, NULL, NULL) == 0)
+	    break;
+	ft64.LowPart = ft.dwLowDateTime;
+	ft64.HighPart = ft.dwHighDateTime;
+	dwType = REG_QWORD;
+	size = sizeof regft64;
+	if (RegQueryValueEx(hWinUAEKey, "BetaToken", 0, &dwType, (LPBYTE)&regft64, &size) != ERROR_SUCCESS)
+	    break;
+	GetSystemTime(&st);
+	SystemTimeToFileTime(&st, &sft);
+	sft64.LowPart = sft.dwLowDateTime;
+	sft64.HighPart = sft.dwHighDateTime;
+	if (ft64.QuadPart == regft64)
+	    showmsg = FALSE;
+	/* complain again in 7 days */
+	if (sft64.QuadPart > regft64 + (ULONGLONG)1000000000 * 60 * 60 * 24 * 7)
+	    showmsg = TRUE;
+	break;
+    }
+    if (h != INVALID_HANDLE_VALUE)
+	CloseHandle(h);
+    if (showmsg) {
+	int r;
+	char title[MAX_DPATH];
+
+	dwType = REG_DWORD;
+	size = sizeof data;
+	if (hWinUAEKey && RegQueryValueEx(hWinUAEKey, "Beta_Just_Shut_Up", 0, &dwType, (LPBYTE)&data, &size) == ERROR_SUCCESS) {
+	    if (data == 68000) {
+		write_log("I was told to shut up :(\n");
+		return 1;
+	    }
+	}
+
+	_time64(&ltime);
+	t = _gmtime64 (&ltime);
+	/* "expire" in 1 month */
+	if (MAKEBD(t->tm_year + 1900, t->tm_mon + 1, t->tm_mday) > WINUAEDATE + 100)
+	    pre_gui_message("This beta build of WinUAE is obsolete.\nPlease download newer version.");
+
+	strcpy (title, "WinUAE Public Beta Disclaimer");
+	strcat (title, BetaStr);
+	r = MessageBox (NULL, BETAMESSAGE, title, MB_OKCANCEL | MB_TASKMODAL | MB_SETFOREGROUND | MB_ICONWARNING | MB_DEFBUTTON2);
+	if (r == IDABORT || r == IDCANCEL)
+	    return 0;
+	if (ft64.QuadPart > 0) {
+	    regft64 = ft64.QuadPart;
+	    RegSetValueEx(hWinUAEKey, "BetaToken", 0, REG_QWORD, (LPBYTE)&regft64, sizeof regft64);
+	}
+    }
+#endif
+    return 1;
 }
 
 static int dxdetect (void)
@@ -2189,7 +2303,7 @@ static int dxdetect (void)
 #endif
 }
 
-int os_winnt, os_winnt_admin, os_64bit;
+int os_winnt, os_winnt_admin, os_64bit, os_vista;
 
 static int isadminpriv (void) 
 {
@@ -2255,6 +2369,7 @@ static int osdetect (void)
 {
     os_winnt = 0;
     os_winnt_admin = 0;
+    os_vista = 0;
     os_64bit = 0;
 
     pGetNativeSystemInfo = (PGETNATIVESYSTEMINFO)GetProcAddress(
@@ -2275,6 +2390,8 @@ static int osdetect (void)
 	}
 	if (osVersion.dwPlatformId == VER_PLATFORM_WIN32_NT)
 	    os_winnt = 1;
+	if (osVersion.dwMajorVersion >= 6)
+	    os_vista = 1;
 	if (SystemInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64)
 	    os_64bit = 1;
     }
@@ -2412,20 +2529,154 @@ static void getstartpaths(int start_data)
 }
 
 extern void test (void);
-extern int screenshotmode, b0rken_ati_overlay, postscript_print_debugging, sound_debug;
-extern int force_direct_catweasel, cpu_affinity;
+extern int screenshotmode, b0rken_ati_overlay, postscript_print_debugging, sound_debug, log_uaeserial;
+extern int force_direct_catweasel, max_allowed_mman;
 
-static int original_affinity;
+extern DWORD_PTR cpu_affinity;
+static DWORD_PTR original_affinity;
 
-static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
-		    int nCmdShow)
+static int getval(char *s)
+{
+    int base = 10;
+    int v;
+    char *endptr;
+
+    if (s[0] == '0' && s[1] == 'x')
+	s += 2, base = 16;
+    v = strtol (s, &endptr, base);
+    if (*endptr != '\0' || *s == '\0')
+	return 0;
+    return v;
+}
+
+static void makeverstr(char *s)
+{
+#if WINUAEBETA > 0
+    sprintf(BetaStr, " (%sBeta %d, %d.%02d.%02d)", WINUAEPUBLICBETA > 0 ? "Public " : "", WINUAEBETA,
+	GETBDY(WINUAEDATE), GETBDM(WINUAEDATE), GETBDD(WINUAEDATE));
+    sprintf(s, "WinUAE %d.%d.%d%s",
+	UAEMAJOR, UAEMINOR, UAESUBREV, BetaStr);
+#else
+    sprintf(s, "WinUAE %d.%d.%d (%d.%02d.%02d)",
+	UAEMAJOR, UAEMINOR, UAESUBREV, GETBDY(WINUAEDATE), GETBDM(WINUAEDATE), GETBDD(WINUAEDATE));
+#endif
+}
+
+static int multi_display = 1;
+static int start_data = 0;
+
+static int process_arg(char **xargv)
+{
+    int i, argc, xargc;
+    char **argv;
+
+    xargc = 0;
+    argc = __argc; argv = __argv;
+    xargv[xargc++] = my_strdup(argv[0]);
+    for (i = 1; i < argc; i++) {
+	char *arg = argv[i];
+	if (!strcmp (arg, "-log")) {
+	    console_logging = 1;
+	    continue;
+	}
+#ifdef FILESYS
+	if (!strcmp (arg, "-rdbdump")) {
+	    do_rdbdump = 1;
+	    continue;
+	}
+	if (!strcmp (arg, "-disableharddrivesafetycheck")) {
+	    harddrive_dangerous = 0x1234dead;
+	    continue;
+	}
+	if (!strcmp (arg, "-noaspifiltering")) {
+	    aspi_allow_all = 1;
+	    continue;
+	}
+#endif
+	if (!strcmp (arg, "-disableowr")) {
+	    b0rken_ati_overlay = -1;
+	    continue;
+	}
+	if (!strcmp (arg, "-enableowr")) {
+	    b0rken_ati_overlay = 1;
+	    continue;
+	}
+	if (!strcmp (arg, "-nordtsc")) {
+	    no_rdtsc = 1;
+	    continue;
+	}
+	if (!strcmp (arg, "-forcerdtsc")) {
+	    no_rdtsc = -1;
+	    continue;
+	}
+	if (!strcmp (arg, "-norawinput")) {
+	    no_rawinput = 1;
+	    continue;
+	}
+	if (!strcmp (arg, "-scsilog")) {
+	    log_scsi = 1;
+	    continue;
+	}
+	if (!strcmp (arg, "-seriallog")) {
+	    log_uaeserial = 1;
+	    continue;
+	}
+	if (!strcmp (arg, "-nomultidisplay")) {
+	    multi_display = 0;
+	    continue;
+	}
+	if (!strcmp (arg, "-legacypaths")) {
+	    start_data = -1;
+	    continue;
+	}
+	if (!strcmp (arg, "-screenshotbmp")) {
+	    screenshotmode = 0;
+	    continue;
+	}
+	if (!strcmp (arg, "-psprintdebug")) {
+	    postscript_print_debugging = 1;
+	    continue;
+	}
+	if (!strcmp (arg, "-sounddebug")) {
+	    sound_debug = 1;
+	    continue;
+	}
+	if (!strcmp (arg, "-directcatweasel")) {
+	    force_direct_catweasel = 1;
+	    if (i + 1 < argc)
+		force_direct_catweasel = getval (argv[++i]);
+	    continue;
+	}
+	if (!strcmp (arg, "-affinity") && i + 1 < argc) {
+	    cpu_affinity = getval (argv[++i]);
+	    if (cpu_affinity == 0)
+		cpu_affinity = original_affinity;
+	    SetThreadAffinityMask(GetCurrentThread(), cpu_affinity);
+	    continue;
+	}
+	if (!strcmp (arg, "-datapath") && i + 1 < argc) {
+	    strcpy(start_path_data, argv[++i]);
+	    start_data = 1;
+	    continue;
+	}
+	if (!strcmp (arg, "-maxmem") && i + 1 < argc) {
+	    max_allowed_mman = getval (argv[++i]);
+	    continue;
+	}
+	xargv[xargc++] = my_strdup(arg);
+    }
+#if 0
+    argv = 0;
+    argv[0] = 0;
+#endif
+    return xargc;
+}
+
+static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
     HANDLE hMutex;
     char **argv;
-    int argc;
-    int i;
-    int multi_display = 1;
-    int start_data = 0;
+    int argc, i;
 
 #ifdef _DEBUG
     {
@@ -2450,63 +2701,19 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
     AVIOutput_Initialize();
 #endif
 
-#ifdef __MINGW32__
-    argc = _argc; argv = _argv;
-#else
-    argc = __argc; argv = __argv;
-#endif
-    for (i = 1; i < argc; i++) {
-	char *arg = argv[i];
-	if (!strcmp (arg, "-log")) console_logging = 1;
-#ifdef FILESYS
-	if (!strcmp (arg, "-rdbdump")) do_rdbdump = 1;
-	if (!strcmp (arg, "-disableharddrivesafetycheck")) harddrive_dangerous = 0x1234dead;
-	if (!strcmp (arg, "-noaspifiltering")) aspi_allow_all = 1;
-#endif
-	if (!strcmp (arg, "-disableowr")) b0rken_ati_overlay = -1;
-	if (!strcmp (arg, "-enableowr")) b0rken_ati_overlay = 1;
-	if (!strcmp (arg, "-nordtsc")) no_rdtsc = 1;
-	if (!strcmp (arg, "-forcerdtsc")) no_rdtsc = -1;
-	if (!strcmp (arg, "-norawinput")) no_rawinput = 1;
-	if (!strcmp (arg, "-scsilog")) log_scsi = 1;
-	if (!strcmp (arg, "-nomultidisplay")) multi_display = 0;
-	if (!strcmp (arg, "-legacypaths")) start_data = -1;
-	if (!strcmp (arg, "-screenshotbmp")) screenshotmode = 0;
-	if (!strcmp (arg, "-psprintdebug")) postscript_print_debugging = 1;
-	if (!strcmp (arg, "-sounddebug")) sound_debug = 1;
-	if (!strcmp (arg, "-directcatweasel")) force_direct_catweasel = 1;
-	if (!strcmp (arg, "-affinity") && i + 1 < argc) {
-	    cpu_affinity = atol (argv[i + 1]);
-	    if (cpu_affinity == 0)
-		cpu_affinity = original_affinity;
-	    SetThreadAffinityMask(GetCurrentThread(), cpu_affinity);
-	    i++;
-	}
-	if (!strcmp (arg, "-datapath") && i + 1 < argc) {
-	    strcpy(start_path_data, argv[i + 1]);
-	    start_data = 1;
-	    i++;
-	}
-    }
-#if 0
-    argv = 0;
-    argv[0] = 0;
-#endif
     getstartpaths(start_data);
-    sprintf(VersionStr, "WinUAE %d.%d.%d%s (%d-bit)",
-	UAEMAJOR, UAEMINOR, UAESUBREV, WINUAEBETA ? WINUAEBETASTR : "",
-	#if defined(WIN64)
-	64
-	#else
-	32
-	#endif
-    );
+    makeverstr(VersionStr);
     SetCurrentDirectory (start_path_data);
+
+    if (!os_winnt && max_allowed_mman > 256)
+	max_allowed_mman = 256;
+
+    argv = xcalloc (sizeof (char*),  __argc);
+    argc = process_arg(argv);
 
     logging_init ();
 
-    if(WIN32_RegisterClasses() && WIN32_InitLibraries() && DirectDraw_Start(NULL))
-    {
+    if(WIN32_RegisterClasses() && WIN32_InitLibraries() && DirectDraw_Start(NULL)) {
 	DEVMODE devmode;
 	DWORD i = 0;
 
@@ -2516,7 +2723,7 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
 	write_log ("Sorting devices and modes..\n");
 	sortdisplays ();
 	write_log ("done\n");
-	    
+
 	memset (&devmode, 0, sizeof(devmode));
 	devmode.dmSize = sizeof(DEVMODE);
 	if (EnumDisplaySettings (NULL, ENUM_CURRENT_SETTINGS, &devmode)) {
@@ -2530,16 +2737,18 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
 	WIN32_InitLang();
 	WIN32_InitHtmlHelp();
 	DirectDraw_Release();
-	betamessage ();
-	keyboard_settrans ();
+	if (betamessage ()) {
+	    keyboard_settrans ();
 #ifdef CATWEASEL
-	catweasel_init();
+	    catweasel_init();
 #endif
 #ifdef PARALLEL_PORT
-	paraport_mask = paraport_init ();
+	    paraport_mask = paraport_init ();
 #endif
-	createIPC();
-	real_main (argc, argv);
+	    createIPC();
+	    enumserialports();
+	    real_main (argc, argv);
+	}
     }
 
     closeIPC();
@@ -2565,9 +2774,13 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
     // show memory leaks
     //_CrtSetDbgFlag ( _CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF );
 #endif
+    for (i = 0; i < argc; i++)
+	free (argv[i]);
+    free(argv);
     return FALSE;
 }
 
+#if 0
 int execute_command (char *cmd)
 {
     STARTUPINFO si;
@@ -2583,6 +2796,7 @@ int execute_command (char *cmd)
     }
     return 0;
 }
+#endif
 
 #include "driveclick.h"
 static int drvsampleres[] = {
@@ -2653,7 +2867,7 @@ static LONG WINAPI ExceptionFilter( struct _EXCEPTION_POINTERS * pExceptionPoint
     if (ec == EXCEPTION_ACCESS_VIOLATION && !er->ExceptionFlags &&
 	er->NumberParameters >= 2 && !er->ExceptionInformation[0] && regs.pc_p) {
 	    void *p = (void*)er->ExceptionInformation[1];
-	    write_log ("%p %p %p\n", p, regs.pc_p, prevpc);
+	    write_log ("ExceptionFilter Trap: %p %p %p\n", p, regs.pc_p, prevpc);
 	    if ((p >= (void*)regs.pc_p && p < (void*)(regs.pc_p + 32))
 		|| (p >= (void*)prevpc && p < (void*)(prevpc + 32))) {
 		int got = 0;
@@ -2872,12 +3086,23 @@ end:
     return m;
 }
 
+typedef BOOL (CALLBACK* CHANGEWINDOWMESSAGEFILTER)(UINT, DWORD);
+#define MSGFLT_ADD 1
+
 int PASCAL WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
     HANDLE thread;
 
     thread = GetCurrentThread();
     original_affinity = SetThreadAffinityMask(thread, 1); 
+    SetThreadAffinityMask(thread, original_affinity);
+#if 0
+    CHANGEWINDOWMESSAGEFILTER pChangeWindowMessageFilter;
+    pChangeWindowMessageFilter = (CHANGEWINDOWMESSAGEFILTER)GetProcAddress(
+	GetModuleHandle("user32.dll"), "ChangeWindowMessageFilter");
+    if (pChangeWindowMessageFilter)
+	pChangeWindowMessageFilter(WM_DROPFILES, MSGFLT_ADD);
+#endif
     __try {
 	WinMain2 (hInstance, hPrevInstance, lpCmdLine, nCmdShow);
     } __except(ExceptionFilter(GetExceptionInformation(), GetExceptionCode())) {

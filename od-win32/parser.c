@@ -21,6 +21,8 @@
 #include <sys/stat.h>
 #include <io.h>
 
+#include <setupapi.h>
+
 #include "sysdeps.h"
 #include "options.h"
 #include "gensound.h"
@@ -40,6 +42,7 @@
 #include "parallel.h"
 #include "zfile.h"
 #include "threaddep/thread.h"
+#include "serial.h"
 
 #include <Ghostscript/errors.h>
 #include <Ghostscript/iapi.h>
@@ -297,7 +300,7 @@ static void DoSomeWeirdPrintingStuff (char val)
 
 int isprinter (void)
 {
-    if (!strcasecmp(currprefs.prtname,"none"))
+    if (!currprefs.prtname[0])
 	return 0;
     if (!memcmp(currprefs.prtname,"LPT", 3)) {
 	paraport_open (currprefs.prtname);
@@ -403,7 +406,7 @@ void openprinter( void )
     static int first;
     
     closeprinter ();
-    if (!strcasecmp(currprefs.prtname,"none"))
+    if (!currprefs.prtname[0])
 	return;
 
     if (currprefs.parallel_postscript_emulation) {
@@ -417,19 +420,19 @@ void openprinter( void )
 	    DocInfo.pOutputFile = NULL;
 	    DocInfo.pDatatype = "RAW";
 	    // Inform the spooler the document is beginning.
-	    if( (dwJob = StartDocPrinter( hPrt, 1, (LPSTR)&DocInfo )) == 0 ) {
-		ClosePrinter( hPrt );
+	    if( (dwJob = StartDocPrinter(hPrt, 1, (LPSTR)&DocInfo)) == 0) {
+		ClosePrinter(hPrt );
 		hPrt = INVALID_HANDLE_VALUE;
-	    } else if( StartPagePrinter( hPrt ) ) {
+	    } else if(StartPagePrinter(hPrt)) {
 		prtopen = 1;
 	    }
 	} else {
 	    hPrt = INVALID_HANDLE_VALUE; // Stupid bug in Win32, where OpenPrinter fails, but hPrt ends up being zero
 	}
     }
-    if( hPrt != INVALID_HANDLE_VALUE ) {
+    if (hPrt != INVALID_HANDLE_VALUE) {
 	write_log( "PRINTER: Opening printer \"%s\" with handle 0x%x.\n", currprefs.prtname, hPrt );
-    } else if( *currprefs.prtname ) {
+    } else if (*currprefs.prtname) {
 	write_log( "PRINTER: ERROR - Couldn't open printer \"%s\" for output.\n", currprefs.prtname );
     }
 }
@@ -480,9 +483,264 @@ int doprinter (uae_u8 val)
     return prtopen;
 }
 
+struct uaeserialdatawin32
+{
+    HANDLE hCom;
+    HANDLE evtr, evtw, evtt, evtwce;
+    OVERLAPPED olr, olw, olwce;
+    int writeactive;
+    void *readdata, *writedata;
+    volatile int threadactive;
+    uae_thread_id tid;
+    uae_sem_t change_sem, sync_sem;
+    void *user;
+};
+
+int uaeser_getdatalenght (void)
+{
+    return sizeof (struct uaeserialdatawin32);
+}
+
+static void uaeser_initdata (struct uaeserialdatawin32 *sd, void *user)
+{
+    memset (sd, 0, sizeof (struct uaeserialdatawin32));
+    sd->hCom = INVALID_HANDLE_VALUE;
+    sd->evtr = sd->evtw = sd->evtt = sd->evtwce = 0;
+    sd->user = user;
+}
+
+int uaeser_query (struct uaeserialdatawin32 *sd, uae_u16 *status, uae_u32 *pending)
+{
+    DWORD err, modem;
+    COMSTAT ComStat;
+    uae_u16 s = 0;
+
+    if (!ClearCommError (sd->hCom, &err, &ComStat))
+        return 0;
+    *pending = ComStat.cbInQue;
+    if (status) {
+	s |= (err & CE_BREAK) ? (1 << 10) : 0;
+	s |= (err & CE_RXOVER) ? (1 << 8) : 0;
+	if (GetCommModemStatus (sd->hCom, &modem)) {
+	    s |= (modem & MS_CTS_ON) ? 0 : (1 << 4);
+	    s |= (modem & MS_DSR_ON) ? 0 : (1 << 7);
+	    s |= (modem & MS_RING_ON) ? (1 << 2) : 0;
+	}
+	*status = s;
+    }
+    return 1;
+}
+
+int uaeser_break (struct uaeserialdatawin32 *sd, int brklen)
+{
+    if (!SetCommBreak (sd->hCom))
+	return 0;
+    Sleep (brklen / 1000);
+    ClearCommBreak (sd->hCom);
+    return 1;
+}
+
+int uaeser_setparams (struct uaeserialdatawin32 *sd, int baud, int rbuffer, int bits, int sbits, int rtscts, int parity)
+{
+    DCB dcb;
+
+    dcb.DCBlength = sizeof (DCB);
+    if (!GetCommState (sd->hCom, &dcb))
+	return 0;
+
+    dcb.BaudRate = baud;
+    dcb.ByteSize = bits;
+    dcb.Parity = parity == 0 ? NOPARITY : (parity == 1 ? ODDPARITY : EVENPARITY);
+    dcb.StopBits = sbits == 1 ? ONESTOPBIT : TWOSTOPBITS;
+
+    dcb.fDsrSensitivity = FALSE;
+    dcb.fOutxDsrFlow = FALSE;
+    dcb.fDtrControl = DTR_CONTROL_DISABLE;
+   
+    if (rtscts) {
+        dcb.fOutxCtsFlow = TRUE;
+        dcb.fRtsControl = RTS_CONTROL_HANDSHAKE;
+    } else {
+        dcb.fRtsControl = RTS_CONTROL_DISABLE;
+        dcb.fOutxCtsFlow = FALSE;
+    }   
+
+    dcb.fTXContinueOnXoff = FALSE;
+    dcb.fOutX = FALSE;
+    dcb.fInX = FALSE;
+
+    dcb.fErrorChar = FALSE;
+    dcb.fNull = FALSE;
+    dcb.fAbortOnError = FALSE;
+
+    dcb.XoffLim = 512;
+    dcb.XonLim = 2048;
+
+    dcb.ByteSize = rbuffer;
+
+    if (!SetCommState (sd->hCom, &dcb))
+	return 0;
+    return 1;
+}
+
+static void startwce(struct uaeserialdatawin32 *sd, DWORD *evtmask)
+{
+    SetEvent(sd->evtwce);
+    WaitCommEvent(sd->hCom, evtmask, &sd->olwce);
+}
+
+static void *uaeser_trap_thread (void *arg)
+{
+    struct uaeserialdatawin32 *sd = arg;
+    HANDLE handles[4];
+    int cnt, actual;
+    DWORD evtmask;
+
+    uae_set_thread_priority (2);
+    sd->threadactive = 1;
+    uae_sem_post (&sd->sync_sem);
+    startwce(sd, &evtmask);
+    while (sd->threadactive == 1) {
+	int sigmask = 0;
+	uae_sem_wait (&sd->change_sem);
+	if (WaitForSingleObject(sd->evtwce, 0) == WAIT_OBJECT_0) {
+	    if (evtmask & EV_RXCHAR)
+		sigmask |= 1;
+	    if ((evtmask & EV_TXEMPTY) && !sd->writeactive)
+		sigmask |= 2;
+	    startwce(sd, &evtmask);
+	}
+	cnt = 0;
+	handles[cnt++] = sd->evtt;
+	handles[cnt++] = sd->evtwce;
+	if (sd->writeactive) {
+	    if (GetOverlappedResult (sd->hCom, &sd->olw, &actual, FALSE)) {
+		sd->writeactive = 0;
+		sigmask |= 2;
+	    } else {
+		handles[cnt++] = sd->evtw;
+	    }
+	}
+	if (!sd->writeactive)
+	    sigmask |= 2;
+	uaeser_signal (sd->user, sigmask | 1);
+	uae_sem_post (&sd->change_sem);
+	WaitForMultipleObjects(cnt, handles, FALSE, INFINITE);
+    }
+    sd->threadactive = 0;
+    uae_sem_post (&sd->sync_sem);
+    return 0;
+}
+
+void uaeser_trigger (struct uaeserialdatawin32 *sd)
+{
+    SetEvent (sd->evtt);
+}
+
+int uaeser_write (struct uaeserialdatawin32 *sd, uae_u8 *data, uae_u32 len)
+{
+    int ret = 1;
+    if (!WriteFile (sd->hCom, data, len, NULL, &sd->olw)) {
+	sd->writeactive = 1;
+	if (GetLastError() != ERROR_IO_PENDING) {
+	    ret = 0;
+	    sd->writeactive = 0;
+	}
+    }
+    SetEvent (sd->evtt);
+    return ret;
+}
+
+int uaeser_read (struct uaeserialdatawin32 *sd, uae_u8 *data, uae_u32 len)
+{
+    int ret = 1;
+    DWORD err;
+    COMSTAT ComStat;
+
+    if (!ClearCommError (sd->hCom, &err, &ComStat))
+        return 0;
+    if (len > ComStat.cbInQue)
+	return 0;
+    if (!ReadFile (sd->hCom, data, len, NULL, &sd->olr)) {
+	if (GetLastError() == ERROR_IO_PENDING)
+	    WaitForSingleObject(sd->evtr, INFINITE);
+	else
+	    ret = 0;
+    }
+    SetEvent (sd->evtt);
+    return ret;
+}
+
+void uaeser_clearbuffers (struct uaeserialdatawin32 *sd)
+{
+    PurgeComm (sd->hCom, PURGE_TXCLEAR | PURGE_RXCLEAR);
+}
+
+int uaeser_open (struct uaeserialdatawin32 *sd, void *user, int unit)
+{
+    char buf[256];
+    COMMTIMEOUTS CommTimeOuts;
+
+    sd->user = user;
+    sprintf (buf, "\\.\\\\COM%d", unit);
+    sd->evtr = CreateEvent (NULL, TRUE, FALSE, NULL);
+    sd->evtw = CreateEvent (NULL, TRUE, FALSE, NULL);
+    sd->evtt = CreateEvent (NULL, FALSE, FALSE, NULL);
+    sd->evtwce = CreateEvent (NULL, TRUE, FALSE, NULL);
+    if (!sd->evtt || !sd->evtw || !sd->evtt || !sd->evtwce)
+	goto end;
+    sd->olr.hEvent = sd->evtr;
+    sd->olw.hEvent = sd->evtw;
+    sd->olwce.hEvent = sd->evtwce;
+    sd->hCom = CreateFile (buf, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING,
+		FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
+    if (sd->hCom == INVALID_HANDLE_VALUE) {
+	write_log("UAESER: '%s' failed to open, err=%d\n", buf, GetLastError());
+	goto end;
+    }
+    uae_sem_init (&sd->sync_sem, 0, 0);
+    uae_sem_init (&sd->change_sem, 0, 1);
+    uae_start_thread (uaeser_trap_thread, sd, &sd->tid);
+    uae_sem_wait (&sd->sync_sem);
+
+    CommTimeOuts.ReadIntervalTimeout = 0;
+    CommTimeOuts.ReadTotalTimeoutMultiplier = 0;
+    CommTimeOuts.ReadTotalTimeoutConstant = 0;
+    CommTimeOuts.WriteTotalTimeoutMultiplier = 0;
+    CommTimeOuts.WriteTotalTimeoutConstant = 0;
+    SetCommTimeouts (sd->hCom, &CommTimeOuts);
+    SetCommMask (sd->hCom, EV_RXCHAR | EV_TXEMPTY | EV_BREAK);
+
+    return 1;
+
+end:
+    uaeser_close (sd);
+    return 0;
+}
+
+void uaeser_close (struct uaeserialdatawin32 *sd)
+{
+    if (sd->threadactive) {
+        sd->threadactive = -1;
+        SetEvent (sd->evtt);
+        while (sd->threadactive)
+	    Sleep(10);
+	CloseHandle (sd->evtt);
+    }
+    if (sd->hCom)
+	CloseHandle(sd->hCom);
+    if (sd->evtr)
+	CloseHandle(sd->evtr);
+    if (sd->evtw)
+	CloseHandle(sd->evtw);
+    if (sd->evtwce)
+	CloseHandle(sd->evtwce);
+    uaeser_initdata (sd, sd->user);
+}
+
 static HANDLE hCom = INVALID_HANDLE_VALUE;
 static DCB dcb;
-static HANDLE writeevent;
+static HANDLE writeevent, readevent;
 #define SERIAL_WRITE_BUFFER 100
 #define SERIAL_READ_BUFFER 100
 static uae_u8 outputbuffer[SERIAL_WRITE_BUFFER];
@@ -495,72 +753,83 @@ static writepending;
 
 int openser (char *sername)
 {
-    char buf[32];
     COMMTIMEOUTS CommTimeOuts;
 
-    sprintf (buf, "\\.\\\\%s", sername);
+    if (!(readevent = CreateEvent (NULL, TRUE, FALSE, NULL))) {
+	write_log ("SERIAL: Failed to create r event!\n");
+	return 0;
+    }
+    readol.hEvent = readevent;
 
-   if (!(writeevent = CreateEvent (NULL, TRUE, FALSE, NULL))) {
-	write_log ("SERIAL: Failed to create event!\n");
+    if (!(writeevent = CreateEvent (NULL, TRUE, FALSE, NULL))) {
+	write_log ("SERIAL: Failed to create w event!\n");
 	return 0;
     }
     SetEvent (writeevent);
     writeol.hEvent = writeevent;
+
     uartbreak = 0;
-    if ((hCom = CreateFile (buf, GENERIC_READ | GENERIC_WRITE,
+
+    hCom = CreateFile (sername, GENERIC_READ | GENERIC_WRITE,
 			    0,
 			    NULL,
 			    OPEN_EXISTING,
 			    FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED,
-			    NULL)) != INVALID_HANDLE_VALUE) {
-	SetCommMask (hCom, EV_RXFLAG);
-	SetupComm (hCom, 65536,128);
-	PurgeComm (hCom, PURGE_TXABORT | PURGE_RXABORT | PURGE_TXCLEAR | PURGE_RXCLEAR);
-	CommTimeOuts.ReadIntervalTimeout = 0xFFFFFFFF;
-	CommTimeOuts.ReadTotalTimeoutMultiplier = 0;
-	CommTimeOuts.ReadTotalTimeoutConstant = 0;
-	CommTimeOuts.WriteTotalTimeoutMultiplier = 0;
-	CommTimeOuts.WriteTotalTimeoutConstant = 0;
-	SetCommTimeouts (hCom, &CommTimeOuts);
-
-	GetCommState (hCom, &dcb);
-
-	dcb.BaudRate = 9600;
-	dcb.ByteSize = 8;
-	dcb.Parity = NOPARITY;
-	dcb.StopBits = ONESTOPBIT;
-
-	dcb.fDsrSensitivity = FALSE;
-	dcb.fOutxDsrFlow = FALSE;
-	dcb.fDtrControl = DTR_CONTROL_DISABLE;
-   
-	if (currprefs.serial_hwctsrts) {
-	    dcb.fOutxCtsFlow = TRUE;
-	    dcb.fRtsControl = RTS_CONTROL_HANDSHAKE;
-	} else {
-	    dcb.fRtsControl = RTS_CONTROL_DISABLE;
-	    dcb.fOutxCtsFlow = FALSE;
-	}   
-
-	dcb.fTXContinueOnXoff = FALSE;
-	dcb.fOutX = FALSE;
-	dcb.fInX = FALSE;
-
-	dcb.fErrorChar = FALSE;
-	dcb.fNull = FALSE;
-	dcb.fAbortOnError = FALSE;
-	
-	dcb.XoffLim = 512;
-	dcb.XonLim = 2048;
-
-	if (SetCommState (hCom, &dcb)) {
-	    write_log ("SERIAL: Using %s CTS/RTS=%d\n", sername, currprefs.serial_hwctsrts);
-	    return 1;
-	}
-	write_log ("SERIAL: serial driver didn't accept new parameters\n");
-	CloseHandle (hCom);
-	hCom = INVALID_HANDLE_VALUE;
+			    NULL);
+    if (hCom == INVALID_HANDLE_VALUE) {
+	write_log ("SERIAL: failed to open '%s' err=%d\n", sername, GetLastError());
+	closeser();
+	return 0;
     }
+
+    SetCommMask (hCom, EV_RXFLAG);
+    SetupComm (hCom, 65536,128);
+    PurgeComm (hCom, PURGE_TXABORT | PURGE_RXABORT | PURGE_TXCLEAR | PURGE_RXCLEAR);
+    CommTimeOuts.ReadIntervalTimeout = 0xFFFFFFFF;
+    CommTimeOuts.ReadTotalTimeoutMultiplier = 0;
+    CommTimeOuts.ReadTotalTimeoutConstant = 0;
+    CommTimeOuts.WriteTotalTimeoutMultiplier = 0;
+    CommTimeOuts.WriteTotalTimeoutConstant = 0;
+    SetCommTimeouts (hCom, &CommTimeOuts);
+
+    dcb.DCBlength = sizeof (DCB);
+    GetCommState (hCom, &dcb);
+
+    dcb.BaudRate = 9600;
+    dcb.ByteSize = 8;
+    dcb.Parity = NOPARITY;
+    dcb.StopBits = ONESTOPBIT;
+
+    dcb.fDsrSensitivity = FALSE;
+    dcb.fOutxDsrFlow = FALSE;
+    dcb.fDtrControl = DTR_CONTROL_DISABLE;
+   
+    if (currprefs.serial_hwctsrts) {
+        dcb.fOutxCtsFlow = TRUE;
+        dcb.fRtsControl = RTS_CONTROL_HANDSHAKE;
+    } else {
+        dcb.fRtsControl = RTS_CONTROL_DISABLE;
+        dcb.fOutxCtsFlow = FALSE;
+    }   
+
+    dcb.fTXContinueOnXoff = FALSE;
+    dcb.fOutX = FALSE;
+    dcb.fInX = FALSE;
+
+    dcb.fErrorChar = FALSE;
+    dcb.fNull = FALSE;
+    dcb.fAbortOnError = FALSE;
+	
+    dcb.XoffLim = 512;
+    dcb.XonLim = 2048;
+
+    if (SetCommState (hCom, &dcb)) {
+        write_log ("SERIAL: Using %s CTS/RTS=%d\n", sername, currprefs.serial_hwctsrts);
+        return 1;
+    }
+
+    write_log ("SERIAL: serial driver didn't accept new parameters\n");
+    closeser();
     return 0;
 }
 
@@ -570,11 +839,19 @@ void closeser (void)
 	CloseHandle (hCom);
 	hCom = INVALID_HANDLE_VALUE;
     }
-    if (midi_ready)
+    if (midi_ready) {
+	extern uae_u16 serper;
 	Midi_Close();
-    if( writeevent )
-	CloseHandle( writeevent );
+	//need for camd Midi Stuff(it close midi and reopen it but serial.c think the baudrate
+	//is the same and do not open midi), so setting serper to different value helps
+        serper = 0x30;
+    }
+    if(writeevent)
+	CloseHandle(writeevent);
     writeevent = 0;
+    if(readevent)
+	CloseHandle(readevent);
+    readevent = 0;
     uartbreak = 0;
 }
 
@@ -590,13 +867,10 @@ static void outser (void)
 
 void writeser (int c)
 {
-    if (midi_ready)
-    {
+    if (midi_ready) {
 	BYTE outchar = (BYTE)c;
-	Midi_Parse( midi_output, &outchar );
-    }
-    else
-    {
+	Midi_Parse(midi_output, &outchar);
+    } else {
 	if (!currprefs.use_serial)
 	    return;
 	if (datainoutput + 1 < sizeof(outputbuffer)) {
@@ -651,15 +925,12 @@ int readser (int *buffer)
     DWORD actual;
     
     
-    if (midi_ready)
-    {
+    if (midi_ready) {
 	*buffer = getmidibyte ();
 	if (*buffer < 0)
 	    return 0;
 	return 1;
-    }
-    else
-    {
+    } else {
 	if (!currprefs.use_serial)
 	    return 0;
 	if (dataininput > dataininputcnt) {
@@ -668,24 +939,24 @@ int readser (int *buffer)
 	}
 	dataininput = 0;
 	dataininputcnt = 0;
-	if (hCom != INVALID_HANDLE_VALUE) 
-	{
+	if (hCom != INVALID_HANDLE_VALUE)  {
 	    /* only try to read number of bytes in queue */
 	    ClearCommError (hCom, &dwErrorFlags, &ComStat);
-	    if (ComStat.cbInQue) 
-	    {
+	    if (ComStat.cbInQue)  {
 		int len = ComStat.cbInQue;
-		
 		if (len > sizeof (inputbuffer))
 		    len = sizeof (inputbuffer);
-		if (ReadFile (hCom, inputbuffer, len, &actual, &readol)) 
-		{
-		    dataininput = actual;
-		    dataininputcnt = 0;
-		    if (actual == 0)
+		if (!ReadFile (hCom, inputbuffer, len, &actual, &readol))  {
+		    if (GetLastError() == ERROR_IO_PENDING)
+			WaitForSingleObject(&readol, INFINITE);
+		    else
 			return 0;
-		    return readser (buffer);
 		}
+		dataininput = actual;
+		dataininputcnt = 0;
+		if (actual == 0)
+		    return 0;
+		return readser (buffer);
 	    }
 	}
     }
@@ -740,35 +1011,27 @@ void setserstat (int mask, int onoff)
 
 int setbaud (long baud)
 {
-    if( baud == 31400 && currprefs.win32_midioutdev >= -1) /* MIDI baud-rate */
-    {
-	if (!midi_ready)
-	{
+    if(baud == 31400 && currprefs.win32_midioutdev >= -1) {
+	 /* MIDI baud-rate */
+	if (!midi_ready) {
 	    if (Midi_Open())
 		write_log ("Midi enabled\n");
 	}
 	return 1;
-    }
-    else
-    {
-	if (midi_ready)
-	{
+    } else {
+	if (midi_ready) {
 	    Midi_Close();
 	}
 	if (!currprefs.use_serial)
 	    return 1;
-	if (hCom != INVALID_HANDLE_VALUE) 
-	{
-	    if (GetCommState (hCom, &dcb)) 
-	    {
+	if (hCom != INVALID_HANDLE_VALUE)  {
+	    if (GetCommState (hCom, &dcb))  {
 		dcb.BaudRate = baud;
 		if (!SetCommState (hCom, &dcb)) {
 		    write_log ("SERIAL: Error setting baud rate %d!\n", baud);
 		    return 0;
 		}
-	    } 
-	    else
-	    {
+	    } else {
 		write_log ("SERIAL: setbaud internal error!\n");
 	    }
 	}
@@ -832,4 +1095,133 @@ void hsyncstuff(void)
 	}
     }
 #endif
+}
+
+static int enumserialports_2(void)
+{
+    // Create a device information set that will be the container for 
+    // the device interfaces.
+    HDEVINFO hDevInfo = INVALID_HANDLE_VALUE;
+    SP_DEVICE_INTERFACE_DETAIL_DATA *pDetData = NULL;
+    BOOL bOk = TRUE;
+    SP_DEVICE_INTERFACE_DATA ifcData;
+    DWORD dwDetDataSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA) + 256;
+    DWORD ii;
+    int cnt = 0;
+
+    hDevInfo = SetupDiGetClassDevs(&GUID_CLASS_COMPORT, NULL, NULL, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+    if(hDevInfo == INVALID_HANDLE_VALUE)
+        return 0;
+    // Enumerate the serial ports
+    pDetData = xmalloc (dwDetDataSize);
+    // This is required, according to the documentation. Yes,
+    // it's weird.
+    ifcData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
+    pDetData->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
+    for (ii = 0; bOk; ii++) {
+        bOk = SetupDiEnumDeviceInterfaces(hDevInfo, NULL, &GUID_CLASS_COMPORT, ii, &ifcData);
+        if (bOk) {
+	    // Got a device. Get the details.
+	    SP_DEVINFO_DATA devdata = {sizeof(SP_DEVINFO_DATA)};
+	    bOk = SetupDiGetDeviceInterfaceDetail(hDevInfo,
+	    	&ifcData, pDetData, dwDetDataSize, NULL, &devdata);
+	    if (bOk) {
+	        // Got a path to the device. Try to get some more info.
+	        TCHAR fname[256];
+	        TCHAR desc[256];
+	        BOOL bSuccess = SetupDiGetDeviceRegistryProperty(
+		    hDevInfo, &devdata, SPDRP_FRIENDLYNAME, NULL,
+		    (PBYTE)fname, sizeof(fname), NULL);
+		bSuccess = bSuccess && SetupDiGetDeviceRegistryProperty(
+		    hDevInfo, &devdata, SPDRP_DEVICEDESC, NULL,
+		    (PBYTE)desc, sizeof(desc), NULL);
+		if (bSuccess && cnt < MAX_SERIAL_PORTS) {
+		    char *p;
+		    comports[cnt].dev = my_strdup (pDetData->DevicePath);
+		    comports[cnt].name = my_strdup (fname);
+		    p = strstr(fname,"(COM");
+		    if (p && (p[5] == ')' || p[6] == ')')) {
+			comports[cnt].cfgname = xmalloc (100);
+			if (isdigit(p[5]))
+			    sprintf(comports[cnt].cfgname, "COM%c%c", p[4], p[5]);
+			else
+			    sprintf(comports[cnt].cfgname, "COM%c", p[4]);
+		    } else {
+			comports[cnt].cfgname = my_strdup (pDetData->DevicePath);
+		    }
+		    write_log("SERPORT: '%s' = '%s' = '%s'\n", comports[cnt].name, comports[cnt].cfgname, comports[cnt].dev);
+		    cnt++;
+		}
+	    } else {
+	        write_log("SetupDiGetDeviceInterfaceDetail failed, err=%d", GetLastError());
+	        goto end;
+	    }
+	} else {
+	    DWORD err = GetLastError();
+	    if (err != ERROR_NO_MORE_ITEMS) {
+		write_log("SetupDiEnumDeviceInterfaces failed, err=%d", err);
+		goto end;
+	    }
+	}
+    }
+end:
+    xfree(pDetData);
+    if (hDevInfo != INVALID_HANDLE_VALUE)
+	SetupDiDestroyDeviceInfoList(hDevInfo);
+    return cnt;
+}
+
+int enumserialports(void)
+{
+    int port, cnt;
+    char name[256];
+    COMMCONFIG cc;
+    DWORD size = sizeof(COMMCONFIG);
+
+    write_log("Serial port enumeration..\n");
+    if (os_winnt) {
+	cnt = enumserialports_2();
+    } else {
+	cnt = 0;
+	for(port = 0; port < MAX_SERIAL_PORTS; port++) {
+	    sprintf(name, "COM%d", port);
+	    if(GetDefaultCommConfig(name, &cc, &size)) {
+		if (cnt < MAX_SERIAL_PORTS) {
+		    comports[cnt].dev = xmalloc(100);
+		    sprintf(comports[cnt].dev, "\\.\\\\%s", name);
+		    comports[cnt].cfgname = my_strdup (name);
+		    comports[cnt].name = my_strdup (name);
+		    write_log("SERPORT: '%s' = '%s'\n", comports[cnt].name, comports[cnt].dev);
+		    cnt++;
+		}
+	    }
+	}
+    }
+    write_log("Serial port enumeration end\n");
+    return cnt;
+}
+
+void sernametodev(char *sername)
+{
+    int i;
+
+    for (i = 0; i < MAX_SERIAL_PORTS && comports[i].name; i++) {
+	if (!strcmp(sername, comports[i].cfgname)) {
+	    strcpy (sername, comports[i].dev);
+	    return;
+	}
+    }
+    sername[0] = 0;
+}
+
+void serdevtoname(char *sername)
+{
+    int i;
+    for (i = 0; i < MAX_SERIAL_PORTS && comports[i].name; i++) {
+	if (!strcmp(sername, comports[i].dev)) {
+	    strcpy (sername, comports[i].cfgname);
+	    return;
+	}
+    }
+    sername[0] = 0;
 }

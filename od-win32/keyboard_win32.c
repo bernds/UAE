@@ -163,7 +163,8 @@ static struct uae_input_device_kbr_default keytrans[] = {
 //    { DIK_SYSRQ, INPUTEVENT_KEY_6E },
 //    { DIK_F12, INPUTEVENT_KEY_6F },
     { DIK_INSERT, INPUTEVENT_KEY_47 },
-    { DIK_PRIOR, INPUTEVENT_KEY_48 },
+//    { DIK_PRIOR, INPUTEVENT_KEY_48 },
+    { DIK_PRIOR, INPUTEVENT_SPC_FREEZEBUTTON },
     { DIK_NEXT, INPUTEVENT_KEY_49 },
     { DIK_F11, INPUTEVENT_KEY_4B },
 
@@ -310,6 +311,9 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
     int code = 0;
     static int swapperdrive = 0;
 
+    if (scancode == specialkeycode())
+	return;
+
     //write_log( "keyboard = %d scancode = 0x%02.2x state = %d\n", keyboard, scancode, newstate ); 
     if (newstate) {
 	switch (scancode)
@@ -414,13 +418,6 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 	    case DIK_SCROLL:
 	    code = AKS_INHIBITSCREEN;
 	    break;
-	    case DIK_PRIOR:
-#ifdef ACTION_REPLAY
-	    code = AKS_FREEZEBUTTON;
-#endif
-	    break;
-	    case DIK_NEXT:
-	    break;
 	    case DIK_NUMPADMINUS:
 	    if (specialpressed ()) {
 		if (shiftpressed ())
@@ -453,8 +450,6 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 	return;
     }
 
-    if (scancode == specialkeycode())
-	return;
     if (specialpressed())
 	return;
 

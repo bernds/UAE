@@ -1,8 +1,167 @@
 
-- CPU emulation changes needed for some new future features, will
-  explain later, not yet finished.. breakage possible.
+Beta 9:
+
+- interrupt timing tweak (Gravity Force in ce-mode)
+- CPU Idle tweak (slightly less aggressive)
+- file dialogs work again in Windows9X/ME..
+- sound problems really fixed now
+
+Beta 8: (RC3, really final?)
+
+- random sound automatic restart delay fixed
+- sound underflow handling improved
+- JIT NATMEM VirtalFree() incorrect parameters fixed (MS Application
+  Verifier report)
+
+Beta 7: (RC2)
+
+- AGA sprites outside display window emulated when sprite is above or
+  below the display window. Previously they were only visible when
+  it was on left or right side of display window.
+  (fixes Spheris Legacy missing status graphics)
+- clear garbage at the bottom of screen for example when switching from
+  doubled to non-doubled 
+- serial port set to none in config file didn't work properly
+- cloned stereo and 4 channel sound mode uses proper initialization
+  (according to MSDN WAVEFORMATEXTENSIBLE is required if >2 channels but
+  for some reason "incorrect" way also worked previously..)
+- mask unused DIWHIGH bits, could have caused narrow image appearing on
+  screen when loading statefile with DIWHIGH having highest bit set and
+  ECS Agnus or AGA enabled.
+- border blanking feature (ECS/AGA BPLCON3 BRDRBLNK-bit) now also
+  updates top and bottom borders
+
+Beta 6: (RC)
+
+- serial port "friendly" names listed in serial port selection,
+  also detects virtual (for example bluetooth) serial ports.
+  Windows 2000+ only. W9X/ME shows normal "legacy" names.
+- more bsdsocket stability fixes
+- 1M ROM image support (upper half maps to regular KS space,
+  lower half to 0xe00000) Apparently A600/A1200/A4000 does the
+  same with 2x512K EPROMs
+- compiler optimization settings changed for release build
+
+Beta 5:
+
+- remove winuae-specific command line parameters before passing
+  them to configuration parser.
+- internal serial and parallel port selection updates
+  (partially in b4 + fixes in b5)
+- Paula serial port emulation fixed (broke in b4)
+- more uaeserial.device tweaks
+- defined more Picasso96 modeIDs, now most PC display modes have
+  unique ID (updating display card/drivers, moving between PCs
+  does not anymore cause mysterious mode changes)
+  NOTE: you may need to reset your Picasso96 display mode if you
+  used mode other than 640x480, 800x600, 1024x768, 1280x1024 or
+  1600x1200.
+- fixed another random Picasso96<>native switching crash
+- added -maxmem command line parameter, "-maxmem 1024" enables 1G
+  Z3Fast support. (32-bit max) Note: can cause random side-effects
+  depending on total memory and/or Windows version.. Large RTG RAM
+  sizes require larger maxmem parameter (but values over ~1060 may
+  not work, check winuaebootlog.txt). Pointless but fun option :)
+- vsync mode sound pitch shifting fixed. Pitch can still shift
+  slightly in some cases.
+- bsdsocket stability fix
+
+Beta 4:
+
+- uaeserial.device tweaks
+- added more logging to RDB parser
+- do not reopen DirectSound when losing/gaining focus
+- DirectSound initialization changes
+- drivesound disk selection menu selected wrong entry in some cases
+- rare divide by zero error when running Amiga program tries to
+  program 1 line tall display mode
+- final MSVC 2005 SP1 installed
+- dual core/SMP hardfile freeze fix (RD)
+- bsdsocket bug fix that could have caused buffer overflows
+
+Beta 3:
+
+- uaeserial.device implemented, serial.device-like device that maps
+  unit numbers directly to host's COMx-ports (unit 1 = COM1, 2 = COM2
+  etc..) Supports most serial.device features (No xOn/xOff support)
+  Bugs possible. Tested using Term and Nokia E70 via bluetooth serial
+  connection :)
+- page down is now properly configurable in input-panel (previously
+  was internally always mapped to freeze button)
+- GUI AHI sound volume adjustment support (previously was Paula only)
+- disk emulation event handler error fixed, broke most custom loaders
+  (bug introduced in b1)
+- X-Arcade GUI tooltip compatibility update, in some cases only tiny
+  piece of upper left corner was visible. (Vista only?)
+- more blitter tweaks, try to be compatible with broken programs that
+  write to blitter registers while previous blit has not yet finished.
+- some DirectSound tweaks
+
+Beta 2:
+
+- fixed possible crash when input recording stops (introduced in b1)
+- log memory map after reset and also after autoconfig
+- log loaded KS ROM information in memory map dump
+- fixed boot crash (some CPU/KS combinations only)
+- bug in new event handler fixed (symptom was random really slow
+  non-ce/non-immediate blitter)
+- interrupt priorities are correct again (broke in b1) Some tweaks.
+- filesystem flag emulation updates (again) Protection flags on FAT
+  volumes should now work properly in non-UAEFSDB mode.
+- filesystem directory protection flags supported (on FAT volumes)
+  Very old comment says: "Unix dirs behave differently than AmigaOS
+  ones. windows dirs go where no dir has gone before..." Perhaps
+  Windows 95 had some issues? Hope I didn't miss something..
+
+Beta 1:
+
+- dms files inside archives automatically added to disk history
+- Windows98/ME direct MK4 catweasel support. Need command line
+  parameter "-directcatweasel 0xyzzzz". y = CW model (3 or 4,
+  3 is default), zzzz is io address in hexadecimal. (simple, quick
+  workaround if someone really wants to use MK3/4 under 98/ME for
+  some unknown reason) IO address in configuration file is obsoleted
+  (was never compatible with CW joystick or mouse port detection)
+- Catweasel MK4 mouse support fixed (broke in 1.3.3)
+- Catweasel direct mode automatically enabled if Windows is 2000
+  or newer, IO library is installed and CW driver is not installed
+  (previously was automatically enabled only if OS was 64-bit)
+- compiler updated to beta SP1. I am very anti-"don't fix it if it
+  is not broken" person but I think you must already know it :)
+- updated to latest Windows SDK
+- winuaeclipboard crash fix (BR)
+- finally replaced really ugly interrupt delay hack with more
+  cleaner and accurate method (fixes Fun School 4)
+- made non-ce "more compatible" CPU emulators' main loop more
+  compatible with programs requiring delayed interrups
+- windowed mode "leds" had incorrect mouse click positions
+- debugger memwatch "freeze" option now also accepts memory values
+- added separate memory bank function for 680x0 opcode fetches
 - debugger memwatch points can now detect between opcode fetch
-  and data fetch, 68000-only currently. (see above)
+  and data fetch, 68000-only currently.
+- basic self modifying code (SMC) detection implemented in
+  debugger (smc-command) Works in 68000-mode only.
+- Windows Vista rawinput crash fix (weird change in vista..)
+- avioutput sound sync errors fixed (broke in 1.3.3)
+- avioutput video codec type registry saving improved
+- fixed CPU emulation condition code bug caused by compiler bug or
+  undefined C behaviour (not sure yet..) Affected some copy
+  protections. Introduced in E-UAE merge.
+- added horizontal mouse wheel input-panel support (hwheel support
+  added in Windows Vista, not tested)
+- add single "fake" button entry if joystick driver reports zero
+  buttons (PPJoy in two-player mode, no idea if this helps)
+- cleaned up AHI emulation, initialize and start recording only
+  when requested for the first time
+- disk image dragndrop caused instant disk swap instead of delayed
+  swap (eject, wait 1.5s, insert new disk)
+- fixed Windows only bug in new stack magic replacement code, both
+  bsdsocket and AHI leaked Windows handles (SR)
+- less aggressive sound adjustment
+- horizontally scrolling list view selection fix (for example input
+  panel with wide enough key name could have made autofire selection
+  impossible)
+- inputrecording reliability increased (but it still loses sync)
 
 Final 1.3.3
 
