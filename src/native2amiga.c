@@ -43,6 +43,15 @@ void native2amiga_startup (void)
 }
 
 #ifdef SUPPORT_THREADS
+
+void uae_Cause(uaecptr interrupt)
+{
+    write_comm_pipe_int (&native2amiga_pending, 3, 0);
+    write_comm_pipe_u32 (&native2amiga_pending, interrupt, 1);
+
+    uae_int_requested = 1;
+}
+
 void uae_ReplyMsg(uaecptr msg)
 {
     write_comm_pipe_int (&native2amiga_pending, 2, 0);
@@ -70,6 +79,16 @@ void uae_Signal(uaecptr task, uae_u32 mask)
     
     uae_int_requested = 1;
 }
+
+void uae_NotificationHack(uaecptr port, uaecptr nr)
+{
+    write_comm_pipe_int (&native2amiga_pending, 4, 0);
+    write_comm_pipe_int (&native2amiga_pending, port, 0);
+    write_comm_pipe_int (&native2amiga_pending, nr, 1);
+    
+    uae_int_requested = 1;
+}
+
 #endif
 
 void uae_NewList(uaecptr list)
@@ -83,6 +102,7 @@ uaecptr uae_AllocMem (uae_u32 size, uae_u32 flags)
 {
     m68k_dreg (regs, 0) = size;
     m68k_dreg (regs, 1) = flags;
+    write_log ("allocmem(%d,%08.8X)\n", size, flags);
     return CallLib (get_long (4), -198); /* AllocMem */
 }
 

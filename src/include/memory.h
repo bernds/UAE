@@ -7,10 +7,15 @@
   */
 
 extern void memory_reset (void);
+extern void a1000_reset (void);
 
+#ifdef JIT
 extern int special_mem;
 #define S_READ 1
 #define S_WRITE 2
+extern uae_u8 *cache_alloc (int);
+extern void cache_free (int);
+#endif
 
 typedef uae_u32 (*mem_get_func)(uaecptr) REGPARAM;
 typedef void (*mem_put_func)(uaecptr, uae_u32) REGPARAM;
@@ -27,6 +32,9 @@ extern uae_u32 allocated_gfxmem;
 extern uae_u32 allocated_z3fastmem;
 extern uae_u32 allocated_a3000mem;
 
+extern uae_u32 wait_cpu_cycle_read (uaecptr addr, int mode);
+extern void wait_cpu_cycle_write (uaecptr addr, int mode, uae_u32 v);
+
 #undef DIRECT_MEMFUNCS_SUCCESSFUL
 #include "machdep/maccess.h"
 
@@ -34,8 +42,10 @@ extern uae_u32 allocated_a3000mem;
 #undef USE_COMPILER
 #endif
 
+#ifdef JIT
 #if defined(USE_COMPILER) && !defined(USE_MAPPED_MEMORY)
 #define USE_MAPPED_MEMORY
+#endif
 #endif
 
 #define kickmem_size 0x080000
@@ -47,6 +57,7 @@ extern uae_u32 allocated_a3000mem;
 
 extern int ersatzkickfile;
 extern int cloanto_rom;
+extern uae_u16 kickstart_version;
 
 extern uae_u8* baseaddr[];
 
@@ -75,6 +86,7 @@ extern uae_u8 *filesysory;
 extern uae_u8 *rtarea;
 
 extern addrbank chipmem_bank;
+extern addrbank chipmem_bank_ce2;
 extern addrbank kickmem_bank;
 extern addrbank custom_bank;
 extern addrbank clock_bank;
@@ -115,6 +127,7 @@ extern uae_u8 *baseaddr[65536];
 extern void memory_init (void);
 extern void memory_cleanup (void);
 extern void map_banks (addrbank *bank, int first, int count, int realsize);
+extern void map_overlay (int chip);
 
 #ifndef NO_INLINE_MEMORY_ACCESS
 
@@ -192,6 +205,18 @@ extern void chipmem_lput (uaecptr, uae_u32) REGPARAM;
 extern void chipmem_wput (uaecptr, uae_u32) REGPARAM;
 extern void chipmem_bput (uaecptr, uae_u32) REGPARAM;
 
+extern uae_u32 chipmem_mask, kickmem_mask;
+extern uae_u8 *kickmemory;
+extern addrbank dummy_bank;
+
+/* 68020+ Chip RAM DMA contention emulation */
+extern uae_u32 chipmem_lget_ce2 (uaecptr) REGPARAM;
+extern uae_u32 chipmem_wget_ce2 (uaecptr) REGPARAM;
+extern uae_u32 chipmem_bget_ce2 (uaecptr) REGPARAM;
+extern void chipmem_lput_ce2 (uaecptr, uae_u32) REGPARAM;
+extern void chipmem_wput_ce2 (uaecptr, uae_u32) REGPARAM;
+extern void chipmem_bput_c2 (uaecptr, uae_u32) REGPARAM;
+
 #ifdef NATMEM_OFFSET
 
 typedef struct shmpiece_reg {
@@ -203,9 +228,12 @@ typedef struct shmpiece_reg {
 } shmpiece;
 
 extern shmpiece *shm_start;
-extern int canbang;
 
 #endif
 
+extern int canbang;
+
 extern uae_u8 *mapped_malloc (size_t, char *);
 extern void mapped_free (uae_u8 *);
+extern void clearexec (void);
+extern void mapkick (void);

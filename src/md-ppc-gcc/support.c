@@ -1,9 +1,10 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Miscellaneous machine dependent support functions and definitions
   *
   * Copyright 1996 Bernd Schmidt
+  * Copyright 2003 Richard Drummond
   */
 
 #include "sysconfig.h"
@@ -22,20 +23,16 @@ static volatile int loops_to_go;
 void machdep_init (void)
 {
     rpt_available = 1;
-    write_log ("Calibrating delay loop.. ");
-    fflush(stderr);
+    write_log ("Calibrating timebase: ");
+    fflush (stderr);
     loops_to_go = 5;
 
-    sync();
-    last_time = read_processor_time();
-    usleep(loops_to_go * 1000000);
-    best_time = read_processor_time()-last_time;
-    sync();
+    sync ();
+    last_time = read_processor_time ();
+    usleep (loops_to_go * 1000000);
+    best_time = read_processor_time () - last_time;
+    sync ();
 
-    vsynctime = best_time / (50*loops_to_go);
-    write_log("ok - %d\n",best_time/loops_to_go);
-    last_time = read_processor_time();
-    best_time = read_processor_time()-last_time;
+    syncbase = best_time / loops_to_go;
+    write_log ("%.6f MHz\n", (double)syncbase / 1000000);
 }
-
-

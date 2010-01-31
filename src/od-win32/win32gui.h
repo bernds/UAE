@@ -45,13 +45,12 @@ typedef struct
 } ConfigStruct, *ConfigStructPtr;
 
 void WIN32GUI_LoadUIString( DWORD id, char *string, DWORD dwStringLen );
-void WIN32GUI_DisplayGUI( int drive );
 extern int GetSettings (int all_options);
-extern void DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs );
+extern int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs );
 ConfigStructPtr AllocateConfigStruct( void );
 void FreeConfigStruct( ConfigStructPtr cfgptr );
 ConfigStructPtr GetFirstConfigEntry( HANDLE *file_handle, LPWIN32_FIND_DATA find_data );
 ConfigStructPtr GetNextConfigEntry( HANDLE *file_handle, LPWIN32_FIND_DATA find_data );
-void HandleConfiguration( HWND hDlg, int flag );
 void InitializeListView( HWND hDlg );
+extern void pre_gui_message (const char*,...);
 #endif

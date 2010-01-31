@@ -17,6 +17,11 @@
 #define CMD_FLUSH   8
 #define CMD_NONSTD  9
 
+#define TD_READ64   24
+#define TD_WRITE64  25
+#define TD_SEEK64   26
+#define TD_FORMAT64 27
+
 #define NT_TASK     1
 #define NT_DEVICE   3
 #define NT_MSGPORT  4

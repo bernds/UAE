@@ -1,4 +1,4 @@
-This is version 0.8.23 of UAE, the UAE Amiga Emulator.
+This is version 0.8.22 of UAE, the UAE Amiga Emulator.
 
 Versions numbered 0.8.x are considered beta versions, but they generally
 tend to work better than the last "stable" release 0.7.
@@ -697,38 +697,20 @@ press ^C at any time to enter this debugger.
 Each debugger command consists of a single letter and occasionally some
 parameters.
 
-g [<address>]         Start execution at the current address or <address>
-c                     Dump state of the CIA, disk drives and custom registers
-r                     Dump state of the CPU
-m <address> [<lines>] Memory dump starting at <address>
-d <address> [<lines>] Disassembly starting at <address>
-t [instructions]      Step one or more instructions
-z                     Step through one instruction - useful for JSR, DBRA etc
-f                     Step forward until PC in RAM
-f <address>           Add/remove breakpoint
-fi                    Step forward until PC points to RTS/RTD or RTE
-fi <opcode>           Step forward until PC points to <opcode>
-fl                    List breakpoints
-fd                    Remove all breakpoints
-f <addr1> <addr2>     Step forward until <addr1> <= PC <= <addr2>
-e                     Dump contents of all custom registers
-i                     Dump contents of interrupt and trap vectors
-o <1|2|addr> [<lines>]View memory as Copper instructions
-O                     Display bitplane offsets
-O <plane> <offset>    Offset a bitplane
-H <count>             Show PC history <count> instructions
-M                     Search for *Tracker sound modules
-C <value>             Search for values like energy or lifes in games
-W <address> <value>   Write into Amiga memory
-w <num> <address> <length> <R/W/RW> [<value>]
-                      Add/remove memory watchpoints
-wd                    Enable illegal access logger
-S <file> <addr> <n>   Save a block of Amiga memory
-s <string>/<values> [<addr>] [<length>]
-                      Search for string/bytes
-T                     Show exec tasks and their PCs
-h,?                   Show this help page
-q                     Quit the emulator. You don't want to use this command.
+g:                    Start execution at the current address. 
+c:                    Dump state of the CIA and custom chips.
+r:                    Dump state of the CPU
+m <address> <lines>:  Memory dump starting at <address>
+d <address> <lines>:  Disassembly starting at <address>
+t:                    Step one instruction
+z:                    Step through one instruction - useful for JSR, DBRA etc.
+f <address>:          Step forward until PC == <address>
+q:                    Quit the emulator. You don't want to use this command.
+M:                    hunt for sound modules
+S <filename> <address> <len>:
+                      save a sound module
+C <value>:            Search for values like energy or lifes in games
+W <address> <value>:  Write into Amiga memory
 
 
 Sound
@@ -825,17 +807,20 @@ Authors/Maintainers
 
 My email address is (please read the section "Before you send email" below):
 
-bernds_cb1@t-online.de
+bernds@btinternet.com
+
+(please do not put this into your Outlook addressbook; I get enough viruses
+already)
 
 or, via snailmail
 
 Bernd Schmidt
-Toelzer Strasse 27a
-81379 Muenchen
-Germany
+21 St Stephen's Place
+Cambridge CB3 0JE
+UK
 
 Email is more likely to be answered, and will definitely be answered much
-faster.
+faster. Please avoid phonecalls if you can.
 I won't distribute software, neither PD or commercial. Don't send me floppy
 disks without at least asking first, you will not get them back.
 

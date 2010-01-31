@@ -1,9 +1,10 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Support for Linux/USS sound
-  * 
+  *
   * Copyright 1997 Bernd Schmidt
+  * Copyright 2003 Richard Drummond
   */
 
 #include "sysconfig.h"
@@ -34,6 +35,7 @@ static unsigned long formats;
 uae_u16 sndbuffer[44100];
 uae_u16 *sndbufpt;
 int sndbufsize;
+static int obtainedfreq;
 
 static int exact_log2 (int v)
 {
@@ -41,6 +43,27 @@ static int exact_log2 (int v)
     while ((v >>= 1) != 0)
 	l++;
     return l;
+}
+
+void update_sound (int freq)
+{
+    int scaled_sample_evtime_orig;
+    static int lastfreq =0;
+
+    if (freq < 0)
+        freq = lastfreq;
+    lastfreq = freq;
+    if (have_sound) {
+	if (currprefs.gfx_vsync && currprefs.gfx_afullscreen) {
+	    if (currprefs.ntscmode)
+		scaled_sample_evtime_orig = (unsigned long)(MAXHPOS_NTSC * MAXVPOS_NTSC * freq * CYCLE_UNIT + obtainedfreq - 1) / obtainedfreq;
+	    else
+		scaled_sample_evtime_orig = (unsigned long)(MAXHPOS_PAL * MAXVPOS_PAL * freq * CYCLE_UNIT + obtainedfreq - 1) / obtainedfreq;
+	} else {
+	    scaled_sample_evtime_orig = (unsigned long)(312.0 * 50 * CYCLE_UNIT / (obtainedfreq  / 227.0));
+	}
+	scaled_sample_evtime = scaled_sample_evtime_orig;
+    }
 }
 
 void close_sound (void)
@@ -115,7 +138,7 @@ int init_sound (void)
 	return 0;
     }
 
-    tmp = currprefs.sound_stereo;
+    tmp = currprefs.stereo;
     ioctl (sound_fd, SNDCTL_DSP_STEREO, &tmp);
 
     rate = currprefs.sound_freq;
@@ -127,25 +150,33 @@ int init_sound (void)
 	return 0;
     }
 
-    scaled_sample_evtime = (unsigned long)MAXHPOS_PAL * MAXVPOS_PAL * VBLANK_HZ_PAL * CYCLE_UNIT / rate;
-    scaled_sample_evtime_ok = 1;
+    update_sound(vblank_hz );
+    obtainedfreq = currprefs.sound_freq;
 
     if (dspbits == 16) {
-	/* Will this break horribly on bigendian machines? Possible... */
-	if (!(formats & AFMT_S16_LE))
+	/* Will this break horribly on bigendian machines? Possible... Not any more - Rich */
+	if (!(formats & AFMT_S16_NE))
 	    return 0;
 	init_sound_table16 ();
-	sample_handler = currprefs.sound_stereo ? sample16s_handler : sample16_handler;
+	sample_handler = currprefs.stereo ? sample16s_handler : sample16_handler;
     } else {
 	if (!(formats & AFMT_U8))
 	    return 0;
 	init_sound_table8 ();
-	sample_handler = currprefs.sound_stereo ? sample8s_handler : sample8_handler;
+	sample_handler = currprefs.stereo ? sample8s_handler : sample8_handler;
     }
     sound_available = 1;
     printf ("Sound driver found and configured for %d bits at %d Hz, buffer is %d bytes\n",
 	    dspbits, rate, sndbufsize);
     sndbufpt = sndbuffer;
-    
+
+#ifdef FRAME_RATE_HACK
+    vsynctime = vsynctime * 9 / 10;
+#endif
+
     return 1;
+}
+
+void reset_sound (void)
+{
 }

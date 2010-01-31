@@ -37,10 +37,13 @@
 #include "newcpu.h"
 #include "filesys.h"
 #include "autoconf.h"
+#include "compiler.h"
 #include "fsusage.h"
 #include "native2amiga.h"
 #include "scsidev.h"
 #include "fsdb.h"
+#include "zfile.h"
+#include "gui.h"
 
 #define TRACING_ENABLED 0
 #if TRACING_ENABLED
@@ -50,6 +53,40 @@
 #define TRACE(x)
 #define DUMPLOCK(u,x)
 #endif
+
+void xfree (void *p)
+{
+    free (p);
+}
+
+static void aino_test (a_inode *aino)
+{
+#ifdef AINO_DEBUG
+    a_inode *aino2 = aino, *aino3;
+    for (;;) {
+        if (!aino || !aino->next)
+	    return;
+	if ((aino->checksum1 ^ aino->checksum2) != 0xaaaa5555) {
+	    write_log ("PANIC: corrupted or freed but used aino detected!", aino);
+	}
+	aino3 = aino;
+	aino = aino->next;
+	if (aino->prev != aino3) {
+	    write_log ("PANIC: corrupted aino linking!\n");
+	    break;
+	}
+	if (aino == aino2) break;
+    }
+#endif
+}
+
+static void aino_test_init (a_inode *aino)
+{
+#ifdef AINO_DEBUG
+    aino->checksum1 = (uae_u32)aino;
+    aino->checksum2 = aino->checksum1 ^ 0xaaaa5555;
+#endif
+}
 
 static long dos_errno(void)
 {
@@ -111,6 +148,8 @@ static uae_u32 fsdevname, filesys_configdev;
 #define FS_STARTUP 0
 #define FS_GO_DOWN 1
 
+#define DEVNAMES_PER_HDF 32
+
 typedef struct {
     char *devname; /* device name, e.g. UAE0: */
     uaecptr devname_amiga;
@@ -118,24 +157,34 @@ typedef struct {
     char *volname; /* volume name, e.g. CDROM, WORK, etc. */
     char *rootdir; /* root unix directory */
     int readonly; /* disallow write access? */
+    int bootpri; /* boot priority */
     int devno;
     
     struct hardfiledata hf;
 
     /* Threading stuff */
-    smp_comm_pipe *unit_pipe, *back_pipe;
+    smp_comm_pipe *volatile unit_pipe, *volatile back_pipe;
     uae_thread_id tid;
-    struct _unit *volatile self;
+    struct _unit *self;
     /* Reset handling */
-    uae_sem_t reset_sync_sem;
-    int reset_state;
-} UnitInfo;
+    volatile uae_sem_t reset_sync_sem;
+    volatile int reset_state;
 
-#define MAX_UNITS 20
+    /* RDB stuff */
+    uaecptr rdb_devname_amiga[DEVNAMES_PER_HDF];
+    int rdb_lowcyl;
+    int rdb_highcyl;
+    int rdb_cylblocks;
+    uae_u8 *rdb_filesysstore;
+    int rdb_filesyssize;
+    char *filesysdir;
+
+
+} UnitInfo;
 
 struct uaedev_mount_info {
     int num_units;
-    UnitInfo ui[MAX_UNITS];
+    UnitInfo ui[MAX_FILESYSTEM_UNITS];
 };
 
 static struct uaedev_mount_info *current_mountinfo;
@@ -147,37 +196,44 @@ int nr_units (struct uaedev_mount_info *mountinfo)
 
 int is_hardfile (struct uaedev_mount_info *mountinfo, int unit_no)
 {
-    return mountinfo->ui[unit_no].volname == 0;
+    if (mountinfo->ui[unit_no].volname)
+	return FILESYS_VIRTUAL;
+    if (mountinfo->ui[unit_no].hf.secspertrack == 0) {
+	if (mountinfo->ui[unit_no].hf.flags & 1)
+	    return FILESYS_HARDDRIVE;
+	return FILESYS_HARDFILE_RDB;
+    }
+    return FILESYS_HARDFILE;
 }
 
 static void close_filesys_unit (UnitInfo *uip)
 {
-    if (uip->hf.fd != 0)
-	fclose (uip->hf.fd);
+    if (uip->hf.handle != 0)
+	hdf_close (&uip->hf);
     if (uip->volname != 0)
-	free (uip->volname);
+	xfree (uip->volname);
     if (uip->devname != 0)
-	free (uip->devname);
+	xfree (uip->devname);
     if (uip->rootdir != 0)
-	free (uip->rootdir);
+	xfree (uip->rootdir);
     if (uip->unit_pipe)
-	free (uip->unit_pipe);
+	xfree (uip->unit_pipe);
     if (uip->back_pipe)
-	free (uip->back_pipe);
+	xfree (uip->back_pipe);
 
     uip->unit_pipe = 0;
     uip->back_pipe = 0;
 
-    uip->hf.fd = 0;
+    uip->hf.handle = 0;
     uip->volname = 0;
     uip->devname = 0;
     uip->rootdir = 0;
 }
 
 char *get_filesys_unit (struct uaedev_mount_info *mountinfo, int nr,
-			char **volname, char **rootdir, int *readonly,
+			char **devname, char **volname, char **rootdir, int *readonly,
 			int *secspertrack, int *surfaces, int *reserved,
-			int *cylinders, int *size, int *blocksize)
+			int *cylinders, uae_u64 *size, int *blocksize, int *bootpri, char **filesysdir)
 {
     UnitInfo *uip = mountinfo->ui + nr;
 
@@ -185,78 +241,115 @@ char *get_filesys_unit (struct uaedev_mount_info *mountinfo, int nr,
 	return "No slot allocated for this unit";
     
     *volname = uip->volname ? my_strdup (uip->volname) : 0;
+    if (uip->devname == 0 || strlen(uip->devname) == 0) {
+	*devname = xmalloc (10);
+	sprintf (*devname, "DH%d", nr);
+    } else {
+	*devname = my_strdup (uip->devname);
+    }
     *rootdir = uip->rootdir ? my_strdup (uip->rootdir) : 0;
     *readonly = uip->readonly;
     *secspertrack = uip->hf.secspertrack;
     *surfaces = uip->hf.surfaces;
     *reserved = uip->hf.reservedblocks;
-    *size = uip->hf.size;
     *cylinders = uip->hf.nrcyls;
     *blocksize = uip->hf.blocksize;
+    *size = uip->hf.size;
+    *bootpri = uip->bootpri;
+    if (filesysdir)
+	*filesysdir = uip->filesysdir ? my_strdup (uip->filesysdir) : 0;
     return 0;
 }
 
 static char *set_filesys_unit_1 (struct uaedev_mount_info *mountinfo, int nr,
-				 char *volname, char *rootdir, int readonly,
+				 char *devname, char *volname, char *rootdir, int readonly,
 				 int secspertrack, int surfaces, int reserved,
-				 int blocksize)
+				 int blocksize, int bootpri, char *filesysdir)
 {
     UnitInfo *ui = mountinfo->ui + nr;
+    int v;
+    static char errmsg[1024];
 
     if (nr >= mountinfo->num_units)
 	return "No slot allocated for this unit";
 
-    ui->hf.fd = 0;
     ui->devname = 0;
     ui->volname = 0;
     ui->rootdir = 0;
     ui->unit_pipe = 0;
     ui->back_pipe = 0;
+    ui->hf.handle = 0;
+    ui->bootpri = 0;
+    ui->filesysdir = 0;
 
     if (volname != 0) {
+        struct stat statbuf;
+	memset (&statbuf, 0, sizeof (statbuf));
 	ui->volname = my_strdup (volname);
-	ui->hf.fd = 0;
+	v = isspecialdrive (rootdir);
+	if (v < 0) {
+	    sprintf (errmsg, "invalid drive '%s'", rootdir);
+	    return errmsg;
+	}
+	if (v == 0) {
+            if (stat (rootdir, &statbuf) < 0) {
+		sprintf (errmsg, "directory '%s' not found", rootdir);
+	        return errmsg;
+	    }
+	    if (!(statbuf.st_mode & FILEFLAG_WRITE)) {
+		write_log ("'%s' set to read-only\n", rootdir);
+		readonly = 1;
+	    }
+	}
     } else {
-	ui->volname = 0;
-	ui->hf.fd = fopen (rootdir, "r+b");
-	if (ui->hf.fd == 0) {
-	    readonly = 1;
-	    ui->hf.fd = fopen (rootdir, "rb");
-	}
-	if (ui->hf.fd == 0)
-	    return "Hardfile not found";
-
-	if (secspertrack < 1 || secspertrack > 32767
-	    || surfaces < 1 || surfaces > 1023
-	    || reserved < 0 || reserved > 1023
-	    || (blocksize & (blocksize - 1)) != 0)
-	{
-	    return "Bad hardfile geometry";
-	}
-	fseek (ui->hf.fd, 0, SEEK_END);
-	ui->hf.size = ftell (ui->hf.fd);
 	ui->hf.secspertrack = secspertrack;
 	ui->hf.surfaces = surfaces;
 	ui->hf.reservedblocks = reserved;
-	ui->hf.nrcyls = (ui->hf.size / blocksize) / (secspertrack * surfaces);
 	ui->hf.blocksize = blocksize;
+	ui->volname = 0;
+	ui->hf.readonly = readonly;
+	if (!hdf_open (&ui->hf, rootdir) && !readonly) {
+	    ui->hf.readonly = readonly = 1;
+	    hdf_open (&ui->hf, rootdir);
+	}
+        ui->hf.readonly = readonly;
+	if (ui->hf.handle == 0)
+	    return "Hardfile not found";
+
+	if ((blocksize & (blocksize - 1)) != 0)
+	    return "Bad blocksize";
+	if ((secspertrack || surfaces || reserved) &&
+	    (secspertrack < 1 || surfaces < 1 || surfaces > 1023 || reserved < 0 || reserved > 1023) != 0)
+	{
+	    return "Bad hardfile geometry";
+	}
+	ui->hf.nrcyls = (int)(secspertrack * surfaces ? (ui->hf.size / blocksize) / (secspertrack * surfaces) : 0);
     }
     ui->self = 0;
     ui->reset_state = FS_STARTUP;
     ui->rootdir = my_strdup (rootdir);
+    ui->devname = my_strdup (devname);
+    if (filesysdir)
+	ui->filesysdir = my_strdup (filesysdir);
     ui->readonly = readonly;
+    if (bootpri < -128) bootpri = -128;
+    if (bootpri > 127) bootpri = 127;
+    ui->bootpri = bootpri;
 
     return 0;
 }
 
 char *set_filesys_unit (struct uaedev_mount_info *mountinfo, int nr,
-			char *volname, char *rootdir, int readonly,
+			char *devname, char *volname, char *rootdir, int readonly,
 			int secspertrack, int surfaces, int reserved,
-			int blocksize)
+			int blocksize, int bootpri, char *filesysdir)
 {
+    char *result;
     UnitInfo ui = mountinfo->ui[nr];
-    char *result = set_filesys_unit_1 (mountinfo, nr, volname, rootdir, readonly,
-				       secspertrack, surfaces, reserved, blocksize);
+
+    hdf_close (&ui.hf);
+    result = set_filesys_unit_1 (mountinfo, nr, devname, volname, rootdir, readonly,
+				       secspertrack, surfaces, reserved, blocksize, bootpri, filesysdir);
     if (result)
 	mountinfo->ui[nr] = ui;
     else
@@ -266,20 +359,20 @@ char *set_filesys_unit (struct uaedev_mount_info *mountinfo, int nr,
 }
 
 char *add_filesys_unit (struct uaedev_mount_info *mountinfo,
-			char *volname, char *rootdir, int readonly,
+			char *devname, char *volname, char *rootdir, int readonly,
 			int secspertrack, int surfaces, int reserved,
-			int blocksize)
+			int blocksize, int bootpri, char *filesysdir)
 {
     char *retval;
     int nr = mountinfo->num_units;
     UnitInfo *uip = mountinfo->ui + nr;
 
-    if (nr >= MAX_UNITS)
+    if (nr >= MAX_FILESYSTEM_UNITS)
 	return "Maximum number of file systems mounted";
 
     mountinfo->num_units++;
-    retval = set_filesys_unit_1 (mountinfo, nr, volname, rootdir, readonly,
-				 secspertrack, surfaces, reserved, blocksize);
+    retval = set_filesys_unit_1 (mountinfo, nr, devname, volname, rootdir, readonly,
+				 secspertrack, surfaces, reserved, blocksize, bootpri, filesysdir);
     if (retval)
 	mountinfo->num_units--;
     return retval;
@@ -333,8 +426,8 @@ int sprintf_filesys_unit (struct uaedev_mount_info *mountinfo, char *buffer, int
 	sprintf (buffer, "(DH%d:) Filesystem, %s: %s %s", num, uip[num].volname,
 		 uip[num].rootdir, uip[num].readonly ? "ro" : "");
     else
-	sprintf (buffer, "(DH%d:) Hardfile, \"%s\", size %d bytes", num,
-		 uip[num].rootdir, uip[num].hf.size);
+	sprintf (buffer, "(DH%d:) Hardfile, \"%s\", size %d Mbytes", num,
+	uip[num].rootdir, uip[num].hf.size / (1024 * 1024));
     return 0;
 }
 
@@ -348,23 +441,29 @@ void write_filesys_config (struct uaedev_mount_info *mountinfo,
 	char *str;
 	str = cfgfile_subst_path (default_path, unexpanded, uip[i].rootdir);
 	if (uip[i].volname != 0) {
+	    fprintf (f, "filesystem2=%s,%s:%s:%s,%d\n", uip[i].readonly ? "ro" : "rw",
+		uip[i].devname ? uip[i].devname : "", uip[i].volname, str, uip[i].bootpri);
 	    fprintf (f, "filesystem=%s,%s:%s\n", uip[i].readonly ? "ro" : "rw",
-		     uip[i].volname, str);
+		uip[i].volname, str);
 	} else {
+	    fprintf (f, "hardfile2=%s,%s:%s,%d,%d,%d,%d,%d,%s\n",
+		     uip[i].readonly ? "ro" : "rw",
+		     uip[i].devname ? uip[i].devname : "", str,
+		     uip[i].hf.secspertrack, uip[i].hf.surfaces, uip[i].hf.reservedblocks, uip[i].hf.blocksize,
+		     uip[i].bootpri,uip[i].filesysdir ? uip[i].filesysdir : "");
 	    fprintf (f, "hardfile=%s,%d,%d,%d,%d,%s\n",
 		     uip[i].readonly ? "ro" : "rw", uip[i].hf.secspertrack,
-		     uip[i].hf.surfaces, uip[i].hf.reservedblocks,
-		     uip[i].hf.blocksize, str);
+		     uip[i].hf.surfaces, uip[i].hf.reservedblocks, uip[i].hf.blocksize, str);
 	}
-	free (str);
+	xfree (str);
     }
 }
 
 struct uaedev_mount_info *alloc_mountinfo (void)
 {
     struct uaedev_mount_info *info;
-    info = (struct uaedev_mount_info *)malloc (sizeof *info);
-    /*    memset (info, 0xaa, sizeof *info);*/
+    info = malloc (sizeof *info);
+    memset (info, 0, sizeof *info);
     info->num_units = 0;
     return info;
 }
@@ -380,10 +479,12 @@ struct uaedev_mount_info *dup_mountinfo (struct uaedev_mount_info *mip)
 	UnitInfo *uip = i2->ui + i;
 	if (uip->volname)
 	    uip->volname = my_strdup (uip->volname);
+	if (uip->devname)
+	    uip->devname = my_strdup (uip->devname);
 	if (uip->rootdir)
 	    uip->rootdir = my_strdup (uip->rootdir);
-	if (uip->hf.fd)
-	    uip->hf.fd = fdopen ( dup (fileno (uip->hf.fd)), uip->readonly ? "rb" : "r+b");
+	if (uip->hf.handle)
+	    hdf_dup (&uip->hf, uip->hf.handle);
     }
     return i2;
 }
@@ -391,9 +492,11 @@ struct uaedev_mount_info *dup_mountinfo (struct uaedev_mount_info *mip)
 void free_mountinfo (struct uaedev_mount_info *mip)
 {
     int i;
+    if (!mip)
+	return;
     for (i = 0; i < mip->num_units; i++)
 	close_filesys_unit (mip->ui + i);
-    free (mip);
+    xfree (mip);
 }
 
 struct hardfiledata *get_hardfile_data (int nr)
@@ -487,7 +590,17 @@ typedef struct key {
     uae_u32 uniq;
     int fd;
     off_t file_pos;
+    int dosmode;
+    int createmode;
+    int notifyactive;
 } Key;
+
+typedef struct notify {
+    struct notify *next;
+    uaecptr notifyrequest;
+    char *fullname;
+    char *partname;
+} Notify;
 
 /* Since ACTION_EXAMINE_NEXT is so braindamaged, we have to keep
  * some of these around
@@ -495,6 +608,7 @@ typedef struct key {
 
 #define EXKEYS 100
 #define MAX_AINO_HASH 128
+#define NOTIFY_HASH_SIZE 127
 
 /* handler state info */
 
@@ -533,6 +647,9 @@ typedef struct _unit {
     a_inode *aino_hash[MAX_AINO_HASH];
     unsigned long nr_cache_hits;
     unsigned long nr_cache_lookups;
+
+    struct notify *notifyhash[NOTIFY_HASH_SIZE];
+
 } Unit;
 
 typedef uae_u8 *dpacket;
@@ -545,6 +662,17 @@ typedef uae_u8 *dpacket;
 #define GET_PCK_ARG2(p) ((uae_s32)(do_get_mem_long ((uae_u32 *)((p) + dp_Arg2))))
 #define GET_PCK_ARG3(p) ((uae_s32)(do_get_mem_long ((uae_u32 *)((p) + dp_Arg3))))
 #define GET_PCK_ARG4(p) ((uae_s32)(do_get_mem_long ((uae_u32 *)((p) + dp_Arg4))))
+
+static char *char1 (uaecptr addr)
+{
+    static char buf[1024];
+    int i = 0;
+    do {
+	buf[i] = get_byte(addr);
+	addr++;
+    } while (buf[i++] && i < sizeof(buf));
+    return buf;
+}
 
 static char *bstr1 (uaecptr addr)
 {
@@ -621,6 +749,7 @@ static void prepare_for_open (char *name)
 
 static void de_recycle_aino (Unit *unit, a_inode *aino)
 {
+    aino_test (aino);
     if (aino->next == 0 || aino == &unit->rootnode)
 	return;
     aino->next->prev = aino->prev;
@@ -639,15 +768,16 @@ static void dispose_aino (Unit *unit, a_inode **aip, a_inode *aino)
 	fsdb_dir_writeback (aino->parent);
 
     *aip = aino->sibling;
+    xfree (aino->aname);
     if (aino->comment)
-	free (aino->comment);
-    free (aino->nname);
-    free (aino->aname);
-    free (aino);
+	xfree (aino->comment);
+    xfree (aino->nname);
+    xfree (aino);
 }
 
 static void recycle_aino (Unit *unit, a_inode *new_aino)
 {
+    aino_test (new_aino);
     if (new_aino->dir || new_aino->shlock > 0
 	|| new_aino->elock || new_aino == &unit->rootnode)
 	/* Still in use */
@@ -655,7 +785,7 @@ static void recycle_aino (Unit *unit, a_inode *new_aino)
 
     TRACE (("Recycling; cache size %d, total_locked %d\n",
 	    unit->aino_cache_size, unit->total_locked_ainos));
-    if (unit->aino_cache_size > 500 + unit->total_locked_ainos) {
+    if (unit->aino_cache_size > 5000 + unit->total_locked_ainos) {
 	/* Reap a few. */
 	int i = 0;
 	while (i < 50) {
@@ -663,18 +793,19 @@ static void recycle_aino (Unit *unit, a_inode *new_aino)
 	    a_inode **aip;
 	    aip = &parent->child;
 
-	    if (! parent->locked_children)
+	    aino_test (parent);
+	    if (! parent->locked_children) {
 		for (;;) {
 		    a_inode *aino = *aip;
+		    aino_test (aino);
 		    if (aino == 0)
 			break;
-
 		    /* Not recyclable if next == 0 (i.e., not chained into
 		       recyclable list), or if parent directory is being
 		       ExNext()ed.  */
-		    if (aino->next == 0)
+		    if (aino->next == 0) {
 			aip = &aino->sibling;
-		    else {
+		    } else {
 			if (aino->shlock > 0 || aino->elock)
 			    write_log ("panic: freeing locked a_inode!\n");
 
@@ -683,6 +814,7 @@ static void recycle_aino (Unit *unit, a_inode *new_aino)
 			i++;
 		    }
 		}
+	    }
 	    /* In the previous loop, we went through all children of one
 	       parent.  Re-arrange the recycled list so that we'll find a
 	       different parent the next time around.  */
@@ -703,11 +835,15 @@ static void recycle_aino (Unit *unit, a_inode *new_aino)
 #endif
     }
 
+    aino_test (new_aino);
     /* Chain it into circular list. */
     new_aino->next = unit->rootnode.next;
     new_aino->prev = &unit->rootnode;
     new_aino->prev->next = new_aino;
     new_aino->next->prev = new_aino;
+    aino_test (new_aino->next);
+    aino_test (new_aino->prev);
+
     unit->aino_cache_size++;
 }
 
@@ -730,7 +866,7 @@ static void update_child_names (Unit *unit, a_inode *a, a_inode *parent)
 	strcpy (new_name, parent->nname);
 	strcat (new_name, dirsep);
 	strcat (new_name, name_start);
-	free (a->nname);
+	xfree (a->nname);
 	a->nname = new_name;
 	if (a->child)
 	    update_child_names (unit, a->child, a);
@@ -740,6 +876,8 @@ static void update_child_names (Unit *unit, a_inode *a, a_inode *parent)
 
 static void move_aino_children (Unit *unit, a_inode *from, a_inode *to)
 {
+    aino_test (from);
+    aino_test (to);
     to->child = from->child;
     from->child = 0;
     update_child_names (unit, to->child, to);
@@ -748,10 +886,10 @@ static void move_aino_children (Unit *unit, a_inode *from, a_inode *to)
 static void delete_aino (Unit *unit, a_inode *aino)
 {
     a_inode **aip;
-    int hash;
 
     TRACE(("deleting aino %x\n", aino->uniq));
 
+    aino_test (aino);
     aino->dirty = 1;
     aino->deleted = 1;
     de_recycle_aino (unit, aino);
@@ -832,6 +970,7 @@ static a_inode *lookup_aino (Unit *unit, uae_u32 uniq)
 	unit->nr_cache_hits++;
     unit->nr_cache_lookups++;
     unit->aino_hash[hash] = a;
+    aino_test (a);
     return a;
 }
 
@@ -861,6 +1000,8 @@ static char *get_nname (Unit *unit, a_inode *base, char *rel,
 {
     char *found;
     char *p = 0;
+
+    aino_test (base);
 
     *modified_rel = 0;
     
@@ -895,23 +1036,27 @@ static char *create_nname (Unit *unit, a_inode *base, char *rel)
 {
     char *p;
 
+    aino_test (base);
     /* We are trying to create a file called REL.  */
     
     /* If the name is used otherwise in the directory (or globally), we
      * need a new unique nname.  */
     if (fsdb_name_invalid (rel) || fsdb_used_as_nname (base, rel)) {
+#if 0
 	oh_dear:
+#endif
 	p = fsdb_create_unique_nname (base, rel);
 	return p;
     }
     p = build_nname (base->nname, rel);
-
+#if 0
     /* Delete this code once we know everything works.  */
     if (access (p, R_OK) >= 0 || errno != ENOENT) {
 	write_log ("Filesystem in trouble... please report.\n");
-	free (p);
+	xfree (p);
 	goto oh_dear;
     }
+#endif
     return p;
 }
 
@@ -957,6 +1102,9 @@ static void init_child_aino (Unit *unit, a_inode *base, a_inode *aino)
     aino->sibling = base->child;
     base->child = aino;
     aino->next = aino->prev = 0;
+
+    aino_test_init (aino);
+    aino_test (aino);
 }
 
 static a_inode *new_child_aino (Unit *unit, a_inode *base, char *rel)
@@ -1020,6 +1168,9 @@ static a_inode *lookup_child_aino (Unit *unit, a_inode *base, char *rel, uae_u32
     a_inode *c = base->child;
     int l0 = strlen (rel);
 
+    aino_test (base);
+    aino_test (c);
+
     if (base->dir == 0) {
 	*err = ERROR_OBJECT_WRONG_TYPE;
 	return 0;
@@ -1046,6 +1197,9 @@ static a_inode *lookup_child_aino_for_exnext (Unit *unit, a_inode *base, char *r
     a_inode *c = base->child;
     int l0 = strlen (rel);
 
+    aino_test (base);
+    aino_test (c);
+
     *err = 0;
     while (c != 0) {
 	int l1 = strlen (c->nname);
@@ -1059,7 +1213,7 @@ static a_inode *lookup_child_aino_for_exnext (Unit *unit, a_inode *base, char *r
 	return c;
     c = fsdb_lookup_aino_nname (base, rel);
     if (c == 0) {
-	c = (a_inode *)malloc (sizeof (a_inode));
+	c = xcalloc (sizeof (a_inode), 1);
 	if (c == 0) {
 	    *err = ERROR_NO_FREE_STORE;
 	    return 0;
@@ -1087,6 +1241,8 @@ static a_inode *get_aino (Unit *unit, a_inode *base, const char *rel, uae_u32 *e
     char *p;
     a_inode *curr;
     int i;
+
+    aino_test (base);
 
     *err = 0;
     TRACE(("get_path(%s,%s)\n", base->aname, rel));
@@ -1130,7 +1286,7 @@ static a_inode *get_aino (Unit *unit, a_inode *base, const char *rel, uae_u32 *e
 
 	}
     }
-    free (tmp);
+    xfree (tmp);
     return curr;
 }
 
@@ -1214,6 +1370,7 @@ static uae_u32 startup_handler (void)
     unit->rootnode.elock = 0;
     unit->rootnode.comment = 0;
     unit->rootnode.has_dbentry = 0;
+    aino_test_init (&unit->rootnode);
     unit->aino_cache_size = 0;
     for (i = 0; i < MAX_AINO_HASH; i++)
 	unit->aino_hash[i] = 0;
@@ -1320,7 +1477,7 @@ static void free_key (Unit *unit, Key *k)
     if (k->fd >= 0)
 	close (k->fd);
 
-    free(k);
+    xfree(k);
 }
 
 static Key *lookup_key (Unit *unit, uae_u32 uniq)
@@ -1397,6 +1554,7 @@ static a_inode *find_aino (Unit *unit, uaecptr lock, const char *name, uae_u32 *
     if (a) {
 	TRACE(("aino=\"%s\"\n", a->nname));
     }
+    aino_test (a);
     return a;
 }
 
@@ -1420,6 +1578,159 @@ static uaecptr make_lock (Unit *unit, uae_u32 uniq, long mode)
 
     DUMPLOCK(unit, lock);
     return lock;
+}
+
+static uae_u32 notifyhash (char *s)
+{
+    uae_u32 hash = 0;
+    while (*s) hash = (hash << 5) + *s++;
+    return hash % NOTIFY_HASH_SIZE;
+}
+
+static Notify *new_notify (Unit *unit, char *name)
+{
+    Notify *n = xmalloc(sizeof(Notify));
+    int hash = notifyhash (name);
+    n->next = unit->notifyhash[hash];
+    unit->notifyhash[hash] = n;
+    n->partname = name;
+    return n;
+}
+
+static void free_notify (Unit *unit, int hash, Notify *n)
+{
+    Notify *n1, *prev = 0;
+    for (n1 = unit->notifyhash[hash]; n1; n1 = n1->next) {
+	if (n == n1) {
+	    if (prev)
+		prev->next = n->next;
+	    else
+		unit->notifyhash[hash] = n->next;
+	    break;
+	}
+	prev = n1;
+    }
+    xfree(n);
+}
+
+#define NOTIFY_CLASS	0x40000000
+#define NOTIFY_CODE	0x1234
+
+#define NRF_SEND_MESSAGE 1
+#define NRF_SEND_SIGNAL 2
+#define NRF_WAIT_REPLY 8
+#define NRF_NOTIFY_INITIAL 16
+#define NRF_MAGIC (1 << 31)
+
+static void notify_send (Unit *unit, Notify *n)
+{
+    uaecptr nr = n->notifyrequest;
+    int flags = get_long (nr + 12);
+
+    if (flags & NRF_SEND_MESSAGE) {
+	if (!(flags & NRF_WAIT_REPLY) || ((flags & NRF_WAIT_REPLY) && !(flags & NRF_MAGIC))) {
+	    uae_NotificationHack (unit->port, nr);
+	} else if (flags & NRF_WAIT_REPLY) {
+	    put_long (nr + 12, get_long (nr + 12) | NRF_MAGIC);
+	}
+    } else if (flags & NRF_SEND_SIGNAL) {
+	uae_Signal (get_long (nr + 16), 1 << get_byte (nr + 20));
+    }
+}
+
+static void notify_check (Unit *unit, a_inode *a)
+{
+    Notify *n;
+    int hash = notifyhash (a->aname);
+    for (n = unit->notifyhash[hash]; n; n = n->next) {
+	uaecptr nr = n->notifyrequest;
+	if (same_aname(n->partname, a->aname)) {
+	    uae_u32 err;
+	    a_inode *a2 = find_aino (unit, 0, n->fullname, &err);
+	    if (err == 0 && a == a2)
+	        notify_send (unit, n);
+	}
+    }
+    if (a->parent) {
+	hash = notifyhash (a->parent->aname);
+	for (n = unit->notifyhash[hash]; n; n = n->next) {
+	    uaecptr nr = n->notifyrequest;
+	    if (same_aname(n->partname, a->parent->aname)) {
+		uae_u32 err;
+		a_inode *a2 = find_aino (unit, 0, n->fullname, &err);
+		if (err == 0 && a->parent == a2)
+		    notify_send (unit, n);
+	    }
+	}
+    }
+}
+
+static void
+action_add_notify (Unit *unit, dpacket packet)
+{
+    uaecptr nr = GET_PCK_ARG1 (packet);
+    int flags;
+    Notify *n;
+    char *name, *p, *partname;
+
+    TRACE(("ACTION_ADD_NOTIFY\n"));
+
+    name = my_strdup (char1 (get_long (nr + 4)));
+    flags = get_long (nr + 12);
+
+#if 0
+    write_log ("Notify:\n");
+    write_log ("nr_Name '%s'\n", char1 (get_long (nr + 0)));
+    write_log ("nr_FullName '%s'\n", name);
+    write_log ("nr_UserData %08.8X\n", get_long (nr + 8));
+    write_log ("nr_Flags %08.8X\n", flags);
+    if (flags & NRF_SEND_MESSAGE) {
+	write_log ("Message NotifyRequest, port = %08.8X\n", get_long (nr + 16));
+    } else if (flags & NRF_SEND_SIGNAL) {
+	write_log ("Signal NotifyRequest, Task = %08.8X signal = %d\n", get_long (nr + 16), get_long (nr + 20));
+    } else {
+	write_log ("corrupt NotifyRequest\n");
+    }
+#endif
+
+    p = name + strlen (name) - 1;
+    if (p[0] == ':') p--;
+    while (p > name && p[0] != ':' && p[0] != '/') p--;
+    if (p[0] == ':' || p[0] == '/') p++;
+    partname = my_strdup (p);
+    n = new_notify (unit, partname);
+    n->notifyrequest = nr;
+    n->fullname = name;
+    if (flags & NRF_NOTIFY_INITIAL) {
+	uae_u32 err;
+	a_inode *a = find_aino (unit, 0, n->fullname, &err);
+	if (err == 0)
+	    notify_send (unit, n);
+    }
+    PUT_PCK_RES1 (packet, DOS_TRUE);
+}
+static void
+action_remove_notify (Unit *unit, dpacket packet)
+{
+    uaecptr nr = GET_PCK_ARG1 (packet);
+    Notify *n;
+    int hash;
+
+    TRACE(("ACTION_REMOVE_NOTIFY\n"));
+    for (hash = 0; hash < NOTIFY_HASH_SIZE; hash++) {
+        for (n = unit->notifyhash[hash]; n; n = n->next) {
+	    if (n->notifyrequest == nr) {
+		//write_log ("NotifyRequest %08.8X freed\n", n->notifyrequest);
+		xfree (n->fullname);
+		xfree (n->partname);
+		free_notify (unit, hash, n);
+		PUT_PCK_RES1 (packet, DOS_TRUE);
+		return;
+	    }
+	}
+    }
+    //write_log ("Tried to free non-existing NotifyRequest %08.8X\n", nr);
+    PUT_PCK_RES1 (packet, DOS_TRUE);
 }
 
 static void free_lock (Unit *unit, uaecptr lock)
@@ -1751,6 +2062,8 @@ static void populate_directory (Unit *unit, a_inode *base)
     DIR *d = opendir (base->nname);
     a_inode *aino;
 
+    if (!d)
+	return;
     for (aino = base->child; aino; aino = aino->sibling) {
 	base->locked_children++;
 	unit->total_locked_ainos++;
@@ -1758,7 +2071,6 @@ static void populate_directory (Unit *unit, a_inode *base)
     TRACE(("Populating directory, child %p, locked_children %d\n",
 	   base->child, base->locked_children));
     for (;;) {
-	struct dirent de_space;
 	struct dirent *de;
 	uae_u32 err;
 
@@ -1778,15 +2090,13 @@ static void populate_directory (Unit *unit, a_inode *base)
 
 static void do_examine (Unit *unit, dpacket packet, ExamineKey *ek, uaecptr info)
 {
-    a_inode *aino;
-
     if (ek->curr_file == 0)
 	goto no_more_entries;
 
     get_fileinfo (unit, packet, info, ek->curr_file);
     ek->curr_file = ek->curr_file->sibling;
     TRACE (("curr_file set to %p %s\n", ek->curr_file,
-	    ek->curr_file ? ek->curr_file->aname : "NULL"));
+	ek->curr_file ? ek->curr_file->aname : "NULL"));
     return;
 
   no_more_entries:
@@ -1857,7 +2167,7 @@ static void do_find (Unit *unit, dpacket packet, int mode, int create, int fallb
     mode_t openmode;
     int aino_created = 0;
 
-    TRACE(("ACTION_FIND_*(0x%lx,0x%lx,\"%s\",%d)\n", fh, lock, bstr (unit, name), mode));
+    TRACE(("ACTION_FIND_*(0x%lx,0x%lx,\"%s\",%d,%d)\n", fh, lock, bstr (unit, name), mode, create));
     DUMPLOCK(unit, lock);
 
     aino = find_aino (unit, lock, bstr (unit, name), &err);
@@ -1946,6 +2256,9 @@ static void do_find (Unit *unit, dpacket packet, int mode, int create, int fallb
     k = new_key (unit);
     k->fd = fd;
     k->aino = aino;
+    k->dosmode = mode;
+    k->createmode = create;
+    k->notifyactive = create ? 1 : 0;
 
     put_long (fh+36, k->uniq);
     if (create == 2)
@@ -1982,6 +2295,7 @@ action_fh_from_lock (Unit *unit, dpacket packet)
     mode = aino->amigaos_mode; /* Use same mode for opened filehandle as existing Lock() */
 
     prepare_for_open (aino->nname);
+
     TRACE (("  mode is %d\n", mode));
     openmode = (((mode & A_FIBF_READ) ? O_WRONLY
 		 : (mode & A_FIBF_WRITE) ? O_RDONLY
@@ -2041,6 +2355,26 @@ action_find_write (Unit *unit, dpacket packet)
     do_find(unit, packet, A_FIBF_READ|A_FIBF_WRITE, 1, 0);
 }
 
+/* change file/dir's parent dir modification time */
+static void updatedirtime (a_inode *a1, int now)
+{
+    struct stat statbuf;
+    struct utimbuf ut;
+    long days, mins, ticks;
+
+    if (!a1->parent)
+	return;
+    if (!now) {
+	if (stat (a1->nname, &statbuf) == -1)
+	    return;
+	get_time (statbuf.st_mtime, &days, &mins, &ticks);
+	ut.actime = ut.modtime = put_time(days, mins, ticks);
+	utime (a1->parent->nname, &ut);
+    } else {
+	utime (a1->parent->nname, NULL);
+    }
+}
+
 static void
 action_end (Unit *unit, dpacket packet)
 {
@@ -2049,6 +2383,10 @@ action_end (Unit *unit, dpacket packet)
 
     k = lookup_key (unit, GET_PCK_ARG1 (packet));
     if (k != 0) {
+	if (k->notifyactive) {
+	    notify_check (unit, k->aino);
+	    updatedirtime (k->aino, 1);
+	}
 	if (k->aino->elock)
 	    k->aino->elock = 0;
 	else
@@ -2074,6 +2412,7 @@ action_read (Unit *unit, dpacket packet)
 	return;
     }
     TRACE(("ACTION_READ(%s,0x%lx,%ld)\n",k->aino->nname,addr,size));
+    gui_hd_led (1);
 #ifdef RELY_ON_LOADSEG_DETECTION
     /* HACK HACK HACK HACK
      * Try to detect a LoadSeg() */
@@ -2103,8 +2442,17 @@ action_read (Unit *unit, dpacket packet)
 	}
     } else {
 	char *buf;
-	write_log ("unixfs warning: Bad pointer passed for read: %08x\n", addr);
+	unsigned long old, filesize;
+
+	write_log ("unixfs warning: Bad pointer passed for read: %08x, size %d\n", addr, size);
 	/* ugh this is inefficient but easy */
+
+	old = lseek (k->fd, 0, SEEK_CUR);
+	filesize = lseek (k->fd, 0, SEEK_END);
+	lseek (k->fd, old, SEEK_SET);
+	if (size > filesize)
+	    size = filesize;
+
 	buf = (char *)malloc(size);
 	if (!buf) {
 	    PUT_PCK_RES1 (packet, -1);
@@ -2123,7 +2471,7 @@ action_read (Unit *unit, dpacket packet)
 		put_byte(addr + i, buf[i]);
 	    k->file_pos += actual;
 	}
-	free (buf);
+	xfree (buf);
     }
 }
 
@@ -2142,6 +2490,7 @@ action_write (Unit *unit, dpacket packet)
 	return;
     }
 
+    gui_hd_led (1);
     TRACE(("ACTION_WRITE(%s,0x%lx,%ld)\n",k->aino->nname,addr,size));
 
     if (unit->ui.readonly) {
@@ -2167,7 +2516,8 @@ action_write (Unit *unit, dpacket packet)
     if (GET_PCK_RES1 (packet) >= 0)
 	k->file_pos += GET_PCK_RES1 (packet);
 
-    free (buf);
+    k->notifyactive = 1;
+    xfree (buf);
 }
 
 static void
@@ -2192,7 +2542,7 @@ action_seek (Unit *unit, dpacket packet)
     TRACE(("ACTION_SEEK(%s,%d,%d)\n", k->aino->nname, pos, mode));
 
     old = lseek (k->fd, 0, SEEK_CUR);
-    {      
+    {
 	uae_s32 temppos;
 	long filesize = lseek (k->fd, 0, SEEK_END);
 	lseek (k->fd, old, SEEK_SET);
@@ -2207,7 +2557,6 @@ action_seek (Unit *unit, dpacket packet)
 	    return;
 	}
     }
-
     res = lseek (k->fd, pos, whence);
 
     if (-1 == res) {
@@ -2249,6 +2598,7 @@ action_set_protect (Unit *unit, dpacket packet)
     } else {
 	PUT_PCK_RES1 (packet, DOS_TRUE);
     }
+    notify_check (unit, a);
 }
 
 static void action_set_comment (Unit * unit, dpacket packet)
@@ -2259,7 +2609,6 @@ static void action_set_comment (Unit * unit, dpacket packet)
     char *commented;
     a_inode *a;
     uae_u32 err;
-    long res1, res2;
 
     if (unit->ui.readonly) {
 	PUT_PCK_RES1 (packet, DOS_FALSE);
@@ -2278,7 +2627,7 @@ static void action_set_comment (Unit * unit, dpacket packet)
 
 	maybe_free_and_out:
 	if (commented)
-	    free (commented);
+	    xfree (commented);
 	return;
     }
     PUT_PCK_RES1 (packet, DOS_TRUE);
@@ -2288,9 +2637,10 @@ static void action_set_comment (Unit * unit, dpacket packet)
     if (a->comment != 0 && commented != 0 && strcmp (a->comment, commented) == 0)
 	goto maybe_free_and_out;
     if (a->comment)
-	free (a->comment);
+	xfree (a->comment);
     a->comment = commented;
     a->dirty = 1;
+    notify_check (unit, a);
 }
 
 static void
@@ -2473,6 +2823,8 @@ action_create_dir (Unit *unit, dpacket packet)
     }
     aino->shlock = 1;
     de_recycle_aino (unit, aino);
+    notify_check (unit, aino);
+    updatedirtime (aino, 0);
     PUT_PCK_RES1 (packet, make_lock (unit, aino->uniq, -2) >> 2);
 }
 
@@ -2523,6 +2875,7 @@ action_set_file_size (Unit *unit, dpacket packet)
 	return;
     }
 
+    k->notifyactive = 1;
     /* If any open files have file pointers beyond this size, truncate only
      * so far that these pointers do not become invalid.  */
     for (k1 = unit->keys; k1; k1 = k1->next) {
@@ -2596,11 +2949,13 @@ action_delete_object (Unit *unit, dpacket packet)
 	}
     } else {
 	if (unlink (a->nname) == -1) {
-	    PUT_PCK_RES1 (packet, DOS_FALSE);
+            PUT_PCK_RES1 (packet, DOS_FALSE);
 	    PUT_PCK_RES2 (packet, dos_errno());
-	    return;
+    	    return;
 	}
     }
+    notify_check (unit, a);
+    updatedirtime (a, 1);
     if (a->child != 0) {
 	write_log ("Serious error in action_delete_object.\n");
     } else {
@@ -2637,6 +2992,7 @@ action_set_date (Unit *unit, dpacket packet)
 	PUT_PCK_RES2 (packet, err);
     } else
 	PUT_PCK_RES1 (packet, DOS_TRUE);
+    notify_check (unit, a);
 }
 
 static void
@@ -2648,6 +3004,8 @@ action_rename_object (Unit *unit, dpacket packet)
     uaecptr name2 = GET_PCK_ARG4 (packet) << 2;
     a_inode *a1, *a2;
     uae_u32 err1, err2;
+    Key *k1, *knext;
+    int wehavekeys = 0;
 
     TRACE(("ACTION_RENAME_OBJECT(0x%lx,\"%s\",", lock1, bstr (unit, name1)));
     TRACE(("0x%lx,\"%s\")\n", lock2, bstr (unit, name2)));
@@ -2664,12 +3022,26 @@ action_rename_object (Unit *unit, dpacket packet)
 	PUT_PCK_RES2 (packet, err1);
 	return;
     }
+
+    /* rename always fails if file is open for writing */
+    for (k1 = unit->keys; k1; k1 = knext) {
+        knext = k1->next;
+	if (k1->aino == a1 && k1->fd >= 0 && k1->createmode == 2) {
+	    PUT_PCK_RES1 (packet, DOS_FALSE);
+	    PUT_PCK_RES2 (packet, ERROR_OBJECT_IN_USE);
+	    return;
+	}
+    }
+
     /* See whether the other name already exists in the filesystem.  */
     a2 = find_aino (unit, lock2, bstr (unit, name2), &err2);
+
     if (a2 == a1) {
 	/* Renaming to the same name, but possibly different case.  */
 	if (strcmp (a1->aname, bstr_cut (unit, name2)) == 0) {
 	    /* Exact match -> do nothing.  */
+	    notify_check (unit, a1);
+	    updatedirtime (a1, 1);
 	    PUT_PCK_RES1 (packet, DOS_TRUE);
 	    return;
 	}
@@ -2687,19 +3059,71 @@ action_rename_object (Unit *unit, dpacket packet)
 	return;
     }
 
-    /* @@@ what should we do if there are locks on a1? */
     if (-1 == rename (a1->nname, a2->nname)) {
-	PUT_PCK_RES1 (packet, DOS_FALSE);
-	PUT_PCK_RES2 (packet, dos_errno ());
-	return;
+	int ret = -1;
+	/* maybe we have open file handles that caused failure? */
+	write_log ("rename '%s' -> '%s' failed, trying relocking..\n", a1->nname, a2->nname);
+	for (k1 = unit->keys; k1; k1 = knext) {
+	    knext = k1->next;
+	    if (k1->aino == a1 && k1->fd >= 0) {
+		wehavekeys++;
+	        close (k1->fd);
+		write_log ("handle %d freed\n", k1->fd);
+	    }
+        }
+	/* try again... */
+	ret = rename (a1->nname, a2->nname);
+	for (k1 = unit->keys; k1; k1 = knext) {
+	    knext = k1->next;
+	    if (k1->aino == a1 && k1->fd >= 0) {
+		int mode = (k1->dosmode & A_FIBF_READ) == 0 ? O_WRONLY : (k1->dosmode & A_FIBF_WRITE) == 0 ? O_RDONLY : O_RDWR;
+		mode |= O_BINARY;
+		if (ret == -1) {
+		    /* rename still failed, restore fd */
+		    k1->fd = open (a1->nname, mode, 0777);
+		    write_log ("restoring old handle '%s' %d\n", a1->nname, k1->dosmode);
+		} else {
+		    /* transfer fd to new name */
+		    k1->aino = a2;
+		    k1->fd = open (a2->nname, mode, 0777);
+		    write_log ("restoring new handle '%s' %d\n", a2->nname, k1->dosmode);
+		}
+	        if (k1->fd < 0) {
+		    write_log ("relocking failed '%s' -> '%s'\n", a1->nname, a2->nname);
+		    free_key (unit, k1);
+		} else {
+		    lseek (k1->fd, k1->file_pos, SEEK_SET);
+		}
+	    }
+        }
+	if (ret == -1) {
+	    delete_aino (unit, a2);
+	    PUT_PCK_RES1 (packet, DOS_FALSE);
+	    PUT_PCK_RES2 (packet, dos_errno ());
+	    return;
+	}
     }
+
+    notify_check (unit, a1);
+    notify_check (unit, a2);
     a2->comment = a1->comment;
     a1->comment = 0;
     a2->amigaos_mode = a1->amigaos_mode;
     a2->uniq = a1->uniq;
+    a2->elock = a1->elock;
+    a2->shlock = a1->shlock;
+    a2->has_dbentry = a1->has_dbentry;
+    a2->db_offset = a1->db_offset;
+    a2->dirty = 0;
     move_exkeys (unit, a1, a2);
     move_aino_children (unit, a1, a2);
     delete_aino (unit, a1);
+    a2->dirty = 1;
+    if (a2->parent)
+	fsdb_dir_writeback (a2->parent);
+    updatedirtime (a2, 1);
+    if (a2->elock > 0 || a2->shlock > 0 || wehavekeys > 0)
+	de_recycle_aino (unit, a2);
     PUT_PCK_RES1 (packet, DOS_TRUE);
 }
 
@@ -2726,7 +3150,7 @@ action_rename_disk (Unit *unit, dpacket packet)
 
     /* get volume name */
     namelen = get_byte (name); name++;
-    free (unit->ui.volname);
+    xfree (unit->ui.volname);
     unit->ui.volname = (char *) xmalloc (namelen + 1);
     for (i = 0; i < namelen; i++, name++)
 	unit->ui.volname[i] = get_byte (name);
@@ -2788,6 +3212,7 @@ static uae_u32 exter_int_helper (void)
 #ifdef UAE_FILESYS_THREADS
 	{
 	    Unit *unit = find_unit (m68k_areg (regs, 5));
+	    uaecptr msg = m68k_areg (regs, 4);
 	    unit->cmds_complete = unit->cmds_acked;
 	    while (comm_pipe_has_data (unit->ui.back_pipe)) {
 		uaecptr locks, lockend;
@@ -2808,7 +3233,11 @@ static uae_u32 exter_int_helper (void)
 	 * return d0 = 0: none
 	 *        d0 = 1: PutMsg(), port in a0, message in a1
 	 *        d0 = 2: Signal(), task in a1, signal set in d1
-	 *        d0 = 3: ReplyMsg(), message in a1 */
+	 *        d0 = 3: ReplyMsg(), message in a1
+	 *        d0 = 4: Cause(), interrupt in a1
+	 *        d0 = 5: AllocMem(), size in d0, flags in d1, pointer to address at a0
+	 *        d0 = 6: FreeMem(), memory in a1, size in d0
+	 */
 
 #ifdef SUPPORT_THREADS
 	/* First, check signals/messages */
@@ -2827,6 +3256,15 @@ static uae_u32 exter_int_helper (void)
 	     case 2: /* ReplyMsg() */
 		m68k_areg (regs, 1) = read_comm_pipe_u32_blocking (&native2amiga_pending);
 		return 3;
+
+	     case 3: /* Cause() */
+		m68k_areg (regs, 1) = read_comm_pipe_u32_blocking (&native2amiga_pending);
+		return 4;
+
+	     case 4: /* NotifyHack() */
+		m68k_areg (regs, 0) = read_comm_pipe_u32_blocking (&native2amiga_pending);
+		m68k_areg (regs, 1) = read_comm_pipe_u32_blocking (&native2amiga_pending);
+		return 5;
 
 	     default:
 		write_log ("exter_int_helper: unknown native action\n");
@@ -2908,6 +3346,8 @@ static int handle_packet (Unit *unit, dpacket pck)
      case ACTION_FH_FROM_LOCK: action_fh_from_lock (unit, pck); break;
      case ACTION_CHANGE_MODE: action_change_mode (unit, pck); break;
      case ACTION_PARENT_FH: action_parent_fh (unit, pck); break;
+     case ACTION_ADD_NOTIFY: action_add_notify (unit, pck); break;
+     case ACTION_REMOVE_NOTIFY: action_remove_notify (unit, pck); break;
 
      /* unsupported packets */
      case ACTION_LOCK_RECORD:
@@ -2917,8 +3357,6 @@ static int handle_packet (Unit *unit, dpacket pck)
      case ACTION_MAKE_LINK:
      case ACTION_READ_LINK:
      case ACTION_FORMAT:
-     case ACTION_ADD_NOTIFY:
-     case ACTION_REMOVE_NOTIFY:
      default:
 	TRACE(("*** UNSUPPORTED PACKET %ld\n", type));
 	return 0;
@@ -2930,11 +3368,12 @@ static int handle_packet (Unit *unit, dpacket pck)
 static void *filesys_thread (void *unit_v)
 {
     UnitInfo *ui = (UnitInfo *)unit_v;
+
+    set_thread_priority (2);
     for (;;) {
 	uae_u8 *pck;
 	uae_u8 *msg;
 	uae_u32 morelocks;
-	int i;
 
 	pck = (uae_u8 *)read_comm_pipe_pvoid_blocking (ui->unit_pipe);
 	msg = (uae_u8 *)read_comm_pipe_pvoid_blocking (ui->unit_pipe);
@@ -3028,50 +3467,24 @@ static uae_u32 filesys_handler (void)
     return 0;
 }
 
-static int current_deviceno = 0;
-static int current_cdrom = 0;
-
-static void reset_uaedevices (void)
-{
-    current_deviceno = 0;
-    current_cdrom = 0;
-}
-
-static int get_new_device (char **devname, uaecptr *devname_amiga, int cdrom)
-{
-    int result;
-    char buffer[80];
-
-    if (cdrom) {
-	sprintf (buffer, "CD%d", current_cdrom);
-	result = current_cdrom++;
-    } else {
-	sprintf (buffer, "DH%d", current_deviceno);
-	result = current_deviceno++;
-    }
-
-    *devname_amiga = ds (*devname = my_strdup (buffer));
-    return result;
-}
-
 void filesys_start_threads (void)
 {
     UnitInfo *uip;
     int i;
 
-    current_mountinfo = dup_mountinfo (currprefs.mountinfo);
-
-    reset_uaedevices ();
-    
+    current_mountinfo = currprefs.mountinfo;
     uip = current_mountinfo->ui;
     for (i = 0; i < current_mountinfo->num_units; i++) {
-	uip[i].unit_pipe = 0;
-	uip[i].devno = get_new_device (&uip[i].devname, &uip[i].devname_amiga, 0);
-
+	UnitInfo *ui = &uip[i];
+	ui->unit_pipe = 0;
+	ui->back_pipe = 0;
+	ui->startup = 0;
+	ui->reset_state = 0;
+	ui->self = 0;
 #ifdef UAE_FILESYS_THREADS
-	if (! is_hardfile (current_mountinfo, i)) {
-	    uip[i].unit_pipe = (smp_comm_pipe *)xmalloc (sizeof (smp_comm_pipe));
-	    uip[i].back_pipe = (smp_comm_pipe *)xmalloc (sizeof (smp_comm_pipe));
+	if (is_hardfile (current_mountinfo, i) == FILESYS_VIRTUAL) {
+	    ui->unit_pipe = (smp_comm_pipe *)xmalloc (sizeof (smp_comm_pipe));
+	    ui->back_pipe = (smp_comm_pipe *)xmalloc (sizeof (smp_comm_pipe));
 	    init_comm_pipe (uip[i].unit_pipe, 50, 3);
 	    init_comm_pipe (uip[i].back_pipe, 50, 1);
 	    uae_start_thread (filesys_thread, (void *)(uip + i), &uip[i].tid);
@@ -3091,25 +3504,25 @@ void filesys_reset (void)
 
     for (u = units; u; u = u1) {
 	u1 = u->next;
-	free (u);
+	xfree (u);
     }
     unit_num = 0;
     units = 0;
-
-    free_mountinfo (current_mountinfo);
     current_mountinfo = 0;
 }
 
 static void free_all_ainos (Unit *u, a_inode *parent)
 {
-  a_inode *a;
-  while (a = parent->child)
-    {
-      free_all_ainos (u, a);
-      dispose_aino (u, &parent->child, a);
+    a_inode *a;
+    while (a = parent->child) {
+	free_all_ainos (u, a);
+	dispose_aino (u, &parent->child, a);
     }
 }
 
+void filesys_flush_cache (void)
+{
+}
 
 void filesys_prepare_reset (void)
 {
@@ -3202,7 +3615,6 @@ static uae_u32 filesys_diagentry (void)
     put_word (resaddr +  6, 0xd1fc);
     put_long (resaddr +  8, RTAREA_BASE + 8 + 4); /* add.l #RTAREA_BASE+12,a0 */
     put_word (resaddr + 12, 0x4e90); /* jsr (a0) */
-
     put_word (resaddr + 14, 0x7001); /* moveq.l #1,d0 */
     put_word (resaddr + 16, RTS);
 
@@ -3210,33 +3622,416 @@ static uae_u32 filesys_diagentry (void)
     return 1;
 }
 
+/* don't forget filesys.asm! */
+#define PP_MAXSIZE 4 * 96
+#define PP_FSSIZE 400
+#define PP_FSPTR 404
+#define PP_FSRES 408
+#define PP_EXPLIB 412
+#define PP_FSHDSTART 416
+
+static uae_u32 filesys_dev_bootfilesys (void)
+{
+    uaecptr devicenode = m68k_areg (regs, 3);
+    uaecptr parmpacket = m68k_areg (regs, 1);
+    uaecptr fsres = get_long (parmpacket + PP_FSRES);
+    uaecptr fsnode;
+    uae_u32 dostype, dostype2;
+    UnitInfo *uip = current_mountinfo->ui;
+    int no = m68k_dreg (regs, 6);
+    int unit_no = no & 65535;
+    int type = is_hardfile (current_mountinfo, unit_no);
+
+    if (type == FILESYS_VIRTUAL)
+	return 0;
+    dostype = get_long (parmpacket + 80);
+    fsnode = get_long (fsres + 18);
+    while (get_long (fsnode)) {
+        dostype2 = get_long (fsnode + 14);
+        if (dostype2 == dostype) {
+	    if (get_long (fsnode + 22) & (1 << 7)) {
+	        put_long (devicenode + 32, get_long (fsnode + 54)); /* dn_SegList */
+	        put_long (devicenode + 36, -1); /* dn_GlobalVec */
+	    }
+	    return 1;
+        }
+        fsnode = get_long (fsnode);
+    }
+    return 0;
+}
+
 /* Remember a pointer AmigaOS gave us so we can later use it to identify
  * which unit a given startup message belongs to.  */
 static uae_u32 filesys_dev_remember (void)
 {
-    int unit_no = m68k_dreg (regs, 6);
+    int no = m68k_dreg (regs, 6);
+    int unit_no = no & 65535;
+    int sub_no = no >> 16;
+    UnitInfo *uip = &current_mountinfo->ui[unit_no];
+    int i;
     uaecptr devicenode = m68k_areg (regs, 3);
+    uaecptr parmpacket = m68k_areg (regs, 1);
 
-    current_mountinfo->ui[unit_no].startup = get_long (devicenode + 28);
+    /* copy filesystem loaded from RDB */
+    if (get_long (parmpacket + PP_FSPTR)) {
+	for (i = 0; i < uip->rdb_filesyssize; i++)
+	    put_byte (get_long (parmpacket + PP_FSPTR) + i, uip->rdb_filesysstore[i]);
+	xfree (uip->rdb_filesysstore);
+	uip->rdb_filesysstore = 0;
+	uip->rdb_filesyssize = 0;
+    }
+    if (m68k_dreg (regs, 3) >= 0)
+        uip->startup = get_long (devicenode + 28);
     return devicenode;
+}
+
+static int legalrdbblock (UnitInfo *uip, int block)
+{
+    if (block <= 0)
+	return 0;
+    if (block >= uip->hf.size / uip->hf.blocksize)
+	return 0;
+    return 1;
+}
+
+static int rl (uae_u8 *p)
+{
+    return (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | (p[3]);
+}
+
+static int rdb_checksum (char *id, uae_u8 *p, int block)
+{
+    uae_u32 sum = 0;
+    int i, blocksize;
+
+    if (memcmp (id, p, 4))
+	return 0;
+    blocksize = rl (p + 4);
+    if (blocksize < 1 || blocksize * 4 > FILESYS_MAX_BLOCKSIZE)
+	return 0;
+    for (i = 0; i < blocksize; i++)
+	sum += rl (p + i * 4);
+    sum = -sum;
+    if (sum) {
+	write_log ("RDB: block %d ('%s') checksum error\n", block, id);
+	return 1;
+    }
+    return 1;
+}
+
+static char *device_dupfix (uaecptr expbase, char *devname)
+{
+    uaecptr bnode, dnode, name;
+    int len, i, modified;
+    char dname[256], newname[256];
+
+    strcpy (newname, devname);
+    modified = 1;
+    while (modified) {
+	modified = 0;
+	bnode = get_long (expbase + 74); /* expansion.library bootnode list */
+	while (get_long (bnode)) {
+	    dnode = get_long (bnode + 16); /* device node */
+	    name = get_long (dnode + 40) << 2; /* device name BSTR */
+	    len = get_byte(name);
+	    for (i = 0; i < len; i++)
+		dname[i] = get_byte (name + 1 + i);
+	    dname[len] = 0;
+	    for (;;) {
+		if (!strcmpi (newname, dname)) {
+		    if (strlen (newname) > 2 && newname[strlen (newname) - 2] == '_') {
+			newname[strlen (newname) - 1]++;
+		    } else {
+			strcat (newname, "_0");
+		    }
+		    modified = 1;
+		} else {
+		    break;
+		}
+	    }
+	    bnode = get_long (bnode);
+	}
+    }
+    return strdup (newname);
+}
+
+static int rdb_mount (UnitInfo *uip, int unit_no, int partnum, uaecptr parmpacket)
+{
+    int lastblock = 63, blocksize, readblocksize, badblock, driveinitblock;
+    uae_u8 bufrdb[FILESYS_MAX_BLOCKSIZE], *buf = 0;
+    uae_u8 *fsmem = 0;
+    int rdblock, partblock, fileblock, lsegblock, i;
+    uae_u32 flags;
+    struct hardfiledata *hfd = &uip->hf;
+    uae_u32 dostype;
+    uaecptr fsres, fsnode;
+    int err = 0;
+    int oldversion, oldrevision;
+    int newversion, newrevision;
+
+    if (lastblock * hfd->blocksize > hfd->size)
+	return -2;
+    for (rdblock = 0; rdblock < lastblock; rdblock++) {
+	hdf_read (hfd, bufrdb, rdblock * hfd->blocksize, hfd->blocksize);
+	if (rdb_checksum ("RDSK", bufrdb, rdblock))
+	    break;
+	hdf_read (hfd, bufrdb, rdblock * hfd->blocksize, hfd->blocksize);
+	if (!memcmp ("RDSK", bufrdb, 4)) {
+	    bufrdb[0xdc] = 0;
+	    bufrdb[0xdd] = 0;
+	    bufrdb[0xde] = 0;
+	    bufrdb[0xdf] = 0;
+	    if (rdb_checksum ("RDSK", bufrdb, rdblock)) {
+		write_log ("Windows trashed RDB detected, fixing..\n");
+		hdf_write (hfd, bufrdb, rdblock * hfd->blocksize, hfd->blocksize);
+		break;
+	    }
+	}
+    }
+    if (rdblock == lastblock)
+	return -2;
+    blocksize = rl (bufrdb + 16);
+    readblocksize = blocksize > hfd->blocksize ? blocksize : hfd->blocksize;
+    badblock = rl (bufrdb + 24);
+    if (badblock != -1) {
+	write_log ("RDB: badblock list is not yet supported. Contact the author.\n");
+	return -2;
+    }
+    driveinitblock = rl (bufrdb + 36);
+    if (driveinitblock != -1) {
+	write_log ("RDB: driveinit is not yet supported. Contact the author.\n");
+	return -2;
+    }
+    fileblock = rl (bufrdb + 32);
+    partblock = rl (bufrdb + 28);
+    buf = xmalloc (readblocksize);
+    for (i = 0; i <= partnum; i++) {
+	if (!legalrdbblock (uip, partblock)) {
+	    err = -2;
+	    goto error;
+	}
+	hdf_read (hfd, buf, partblock * hfd->blocksize, readblocksize);
+	if (!rdb_checksum ("PART", buf, partblock)) {
+	    err = -2;
+	    goto error;
+	}
+	partblock = rl (buf + 4 * 4);
+    }
+
+    flags = rl (buf + 20);
+    if (flags & 2) { /* do not mount */
+	err = -1;
+	goto error;
+    }
+
+    if (!(flags & 1)) /* not bootable */
+	m68k_dreg (regs, 7) = 0;
+
+    buf[37 + buf[36]] = 0; /* zero terminate BSTR */
+    uip->rdb_devname_amiga[partnum] = ds (device_dupfix (get_long (parmpacket + PP_EXPLIB), buf + 37));
+    put_long (parmpacket, uip->rdb_devname_amiga[partnum]); /* name */
+    put_long (parmpacket + 4, ROM_hardfile_resname);
+    put_long (parmpacket + 8, uip->devno);
+    put_long (parmpacket + 12, 0); /* Device flags */
+    for (i = 0; i < PP_MAXSIZE; i++)
+	put_byte (parmpacket + 16 + i, buf[128 + i]);
+    dostype = get_long (parmpacket + 80);
+    write_log ("RDB: '%s' uaehf.device:%d, dostype=%08.8X\n", buf + 37, uip->devno, dostype);
+
+    if (dostype == 0) {
+	err = -1;
+	goto error;
+    }
+    
+    err = 2;
+
+    /* load custom filesystems if needed */
+    if (!legalrdbblock (uip, fileblock))
+	goto error;
+    fsres = get_long (parmpacket + PP_FSRES);
+    if (!fsres) {
+	write_log ("FileSystem.resource not found, this shouldn't happen!\n");
+	goto error;
+    }
+
+    for (;;) {
+	if (!legalrdbblock (uip, fileblock)) {
+	    err = -1;
+	    goto error;
+	}
+	hdf_read (hfd, buf, fileblock * hfd->blocksize, readblocksize);
+	if (!rdb_checksum ("FSHD", buf, fileblock)) {
+	    err = -1;
+	    goto error;
+	}
+	fileblock = rl (buf + 16);
+	if ((dostype >> 8) == (rl (buf + 32) >> 8))
+	    break;
+    }
+
+    fsnode = get_long (fsres + 18);
+    while (get_long (fsnode)) {
+	if (get_long (fsnode + 14) == dostype)
+	    break;
+	fsnode = get_long (fsnode);
+    }
+
+    oldversion = oldrevision = -1;
+    newversion = (buf[36] << 8) | buf[37];
+    newrevision = (buf[38] << 8) | buf[39];
+    write_log ("RDB: RDB filesystem %08.8X version %d.%d\n", dostype, newversion, newrevision);
+    if (get_long (fsnode)) {
+	oldversion = get_word (fsnode + 18);
+	oldrevision = get_word (fsnode + 20);
+	write_log ("RDB: ROM filesystem version %d.%d\n", oldversion, oldrevision);
+    }
+    if (newversion * 65536 + newrevision <= oldversion * 65536 + oldrevision && oldversion >= 0) {
+	write_log ("RDB: ROM filesystem is newer or same, ignoring RDB filesystem\n");
+	goto error;
+    }
+
+    for (i = 0; i < 140; i++)
+	put_byte (parmpacket + PP_FSHDSTART + i, buf[32 + i]);
+    put_long (parmpacket + PP_FSHDSTART, dostype);
+    /* we found required FSHD block */
+    fsmem = xmalloc (262144);
+    lsegblock = rl (buf + 72);
+    i = 0;
+    for (;;) {
+	if (!legalrdbblock (uip, lsegblock))
+	    goto error;
+	hdf_read (hfd, buf, lsegblock * hfd->blocksize, readblocksize);
+	if (!rdb_checksum ("LSEG", buf, lsegblock))
+	    goto error;
+	lsegblock = rl (buf + 16);
+	memcpy (fsmem + i * (blocksize - 20), buf + 20, blocksize - 20);
+	i++;
+	if (lsegblock == -1)
+	    break;
+    }
+    write_log ("RDB: Filesystem loaded, %d bytes\n", i * (blocksize - 20));
+    put_long (parmpacket + PP_FSSIZE, i * (blocksize - 20)); /* RDB filesystem size hack */
+    uip->rdb_filesysstore = fsmem;
+    uip->rdb_filesyssize = i * (blocksize - 20);
+    xfree (buf);
+    return 2;
+error:
+    xfree (buf);
+    xfree (fsmem);
+    return err;
+}
+
+static void addfakefilesys (uaecptr parmpacket, uae_u32 dostype)
+{
+    int i;
+
+    for (i = 0; i < 140; i++)
+	put_byte (parmpacket + PP_FSHDSTART + i, 0);
+    put_long (parmpacket + 80, dostype);
+    put_long (parmpacket + PP_FSHDSTART, dostype);
+    put_long (parmpacket + PP_FSHDSTART + 8, 0x100 | (dostype == 0x444f5300 ? 0x0 : 0x80));
+    put_long (parmpacket + PP_FSHDSTART + 44, 0xffffffff);
+}
+
+static void dofakefilesys (UnitInfo *uip, uaecptr parmpacket)
+{
+    int i, size;
+    char tmp[1024];
+    struct zfile *zf;
+    uae_u32 dostype, fsres, fsnode;
+
+    hdf_read (&uip->hf, tmp, 0, 4);
+    dostype = (tmp[0] << 24) | (tmp[1] << 16) |(tmp[2] << 8) | tmp[3];
+    if (dostype == 0)
+	return;
+    fsres = get_long (parmpacket + PP_FSRES);
+    fsnode = get_long (fsres + 18);
+    while (get_long (fsnode)) {
+	if (get_long (fsnode + 14) == dostype) {
+	    if ((dostype & 0xffffff00) != 0x444f5300)
+		addfakefilesys (parmpacket, dostype);
+	    return;
+	}
+        fsnode = get_long (fsnode);
+    }
+
+    tmp[0] = 0;
+    if (uip->filesysdir && strlen(uip->filesysdir) > 0) {
+	strcpy (tmp, uip->filesysdir);
+    } else if ((dostype & 0xffffff00) == 0x444f5300) {
+	strcpy (tmp, currprefs.romfile);
+	i = strlen (tmp);
+	while (i > 0 && tmp[i - 1] != '/' && tmp[i - 1] != '\\')
+	    i--;
+        strcpy (tmp + i, "FastFileSystem");
+    }
+    if (tmp[0] == 0) {
+	write_log ("RDB: no filesystem for dostype 0x%08.8X\n", dostype);
+	return;
+    }
+    write_log ("RDB: fakefilesys, trying to load '%s', dostype 0x%08.8X\n", tmp, dostype);
+    zf = zfile_fopen (tmp,"rb");
+    if (!zf) {
+	write_log ("RDB: filesys not found\n");
+        return;
+    }
+
+    zfile_fseek (zf, 0, SEEK_END);
+    size = zfile_ftell (zf);
+    zfile_fseek (zf, 0, SEEK_SET);
+    uip->rdb_filesysstore = xmalloc (size);
+    zfile_fread (uip->rdb_filesysstore, size, 1, zf);
+    zfile_fclose (zf);
+    uip->rdb_filesyssize = size;
+    put_long (parmpacket + PP_FSSIZE, uip->rdb_filesyssize);
+    addfakefilesys (parmpacket, dostype);
+    write_log ("HDF: faked RDB filesystem %08.8X loaded\n", dostype);
+}
+
+static void get_new_device (int type, uaecptr parmpacket, char **devname, uaecptr *devname_amiga, int unit_no)
+{
+    char buffer[80];
+
+    if (*devname == 0 || strlen(*devname) == 0) {
+        sprintf (buffer, "DH%d", unit_no);
+    } else {
+	strcpy (buffer, *devname);
+    }
+    *devname_amiga = ds (device_dupfix (get_long (parmpacket + PP_EXPLIB), buffer));
+    if (type == FILESYS_VIRTUAL)
+	write_log ("FS: mounted virtual unit %s\n", buffer);
+    else
+	write_log ("FS: mounted HDF unit %s\n", buffer);
 }
 
 /* Fill in per-unit fields of a parampacket */
 static uae_u32 filesys_dev_storeinfo (void)
 {
     UnitInfo *uip = current_mountinfo->ui;
-    int unit_no = m68k_dreg (regs, 6);
+    int no = m68k_dreg (regs, 6);
+    int unit_no = no & 65535;
+    int sub_no = no >> 16;
+    int type = is_hardfile (current_mountinfo, unit_no);
     uaecptr parmpacket = m68k_areg (regs, 0);
 
-    put_long (parmpacket, current_mountinfo->ui[unit_no].devname_amiga);
-    put_long (parmpacket + 4, is_hardfile (current_mountinfo, unit_no) ? ROM_hardfile_resname : fsdevname);
+    if (type == FILESYS_HARDFILE_RDB || type == FILESYS_HARDDRIVE) {
+	/* RDB hardfile */
+        uip[unit_no].devno = unit_no;
+	return rdb_mount (&uip[unit_no], unit_no, sub_no, parmpacket);
+    }
+    if (sub_no)
+        return -2;
+    get_new_device (type, parmpacket, &uip[unit_no].devname, &uip[unit_no].devname_amiga, unit_no);
+    uip[unit_no].devno = unit_no;
+    put_long (parmpacket, uip[unit_no].devname_amiga);
+    put_long (parmpacket + 4, type != FILESYS_VIRTUAL ? ROM_hardfile_resname : fsdevname);
     put_long (parmpacket + 8, uip[unit_no].devno);
     put_long (parmpacket + 12, 0); /* Device flags */
     put_long (parmpacket + 16, 16); /* Env. size */
     put_long (parmpacket + 20, uip[unit_no].hf.blocksize >> 2); /* longwords per block */
     put_long (parmpacket + 24, 0); /* unused */
     put_long (parmpacket + 28, uip[unit_no].hf.surfaces); /* heads */
-    put_long (parmpacket + 32, 0); /* unused */
+    put_long (parmpacket + 32, 1); /* sectors per block */
     put_long (parmpacket + 36, uip[unit_no].hf.secspertrack); /* sectors per track */
     put_long (parmpacket + 40, uip[unit_no].hf.reservedblocks); /* reserved blocks */
     put_long (parmpacket + 44, 0); /* unused */
@@ -3247,16 +4042,15 @@ static uae_u32 filesys_dev_storeinfo (void)
     put_long (parmpacket + 64, 0); /* Buffer mem type */
     put_long (parmpacket + 68, 0x7FFFFFFF); /* largest transfer */
     put_long (parmpacket + 72, ~1); /* addMask (?) */
-    put_long (parmpacket + 76, (uae_u32)-1); /* bootPri */
+    put_long (parmpacket + 76, uip[unit_no].bootpri); /* bootPri */
     put_long (parmpacket + 80, 0x444f5300); /* DOS\0 */
-    put_long (parmpacket + 84, 0); /* pad */
-
-    return is_hardfile (current_mountinfo, unit_no);
+    if (type == FILESYS_HARDFILE)
+	dofakefilesys (&uip[unit_no], parmpacket);
+    return type;
 }
 
 void filesys_install (void)
 {
-    int i;
     uaecptr loop;
 
     TRACE (("Installing filesystem\n"));
@@ -3271,6 +4065,11 @@ void filesys_install (void)
     dw(0x4ED0); /* JMP (a0) - jump to code that inits Residents */
 
     loop = here ();
+
+    org (RTAREA_BASE + 0xFF18);
+    calltrap (deftrap (filesys_dev_bootfilesys));
+    dw (RTS);
+
     /* Special trap for the assembly make_dev routine */
     org (RTAREA_BASE + 0xFF20);
     calltrap (deftrap (filesys_dev_remember));
@@ -3304,81 +4103,168 @@ void filesys_install_code (void)
     /* Ouch. Make sure this is _always_ a multiple of two bytes. */
     filesys_initcode = here() + 8 + 0x28 + 4;
 
+ /* see filesys.asm for source */
+
  db(0x00); db(0x00); db(0x00); db(0x10); db(0x00); db(0x00); db(0x00); db(0x00);
- db(0x60); db(0x00); db(0x02); db(0x34); db(0x00); db(0x00); db(0x01); db(0x8c);
- db(0x00); db(0x00); db(0x00); db(0x2c); db(0x00); db(0x00); db(0x00); db(0xc4);
- db(0x00); db(0x00); db(0x00); db(0x18); db(0x00); db(0x00); db(0x01); db(0x54);
- db(0x43); db(0xfa); db(0x03); db(0x89); db(0x4e); db(0xae); db(0xff); db(0xa0);
+ db(0x60); db(0x00); db(0x04); db(0xdc); db(0x00); db(0x00); db(0x03); db(0x98);
+ db(0x00); db(0x00); db(0x00); db(0x2c); db(0x00); db(0x00); db(0x00); db(0xcc);
+ db(0x00); db(0x00); db(0x00); db(0x18); db(0x00); db(0x00); db(0x01); db(0x86);
+ db(0x43); db(0xfa); db(0x06); db(0x87); db(0x4e); db(0xae); db(0xff); db(0xa0);
  db(0x20); db(0x40); db(0x20); db(0x28); db(0x00); db(0x16); db(0x20); db(0x40);
  db(0x4e); db(0x90); db(0x4e); db(0x75); db(0x48); db(0xe7); db(0xff); db(0xfe);
  db(0x2c); db(0x78); db(0x00); db(0x04); db(0x30); db(0x3c); db(0xff); db(0xfc);
- db(0x61); db(0x00); db(0x03); db(0x4c); db(0x2a); db(0x50); db(0x43); db(0xfa);
- db(0x03); db(0x6f); db(0x70); db(0x24); db(0x7a); db(0x00); db(0x4e); db(0xae);
+ db(0x61); db(0x00); db(0x06); db(0x4a); db(0x2a); db(0x50); db(0x43); db(0xfa);
+ db(0x06); db(0x6d); db(0x70); db(0x24); db(0x7a); db(0x00); db(0x4e); db(0xae);
  db(0xfd); db(0xd8); db(0x4a); db(0x80); db(0x66); db(0x0c); db(0x43); db(0xfa);
- db(0x03); db(0x5f); db(0x70); db(0x00); db(0x7a); db(0x01); db(0x4e); db(0xae);
- db(0xfd); db(0xd8); db(0x28); db(0x40); db(0x70); db(0x58); db(0x72); db(0x01);
- db(0x4e); db(0xae); db(0xff); db(0x3a); db(0x26); db(0x40); db(0x7e); db(0x54);
- db(0x27); db(0xb5); db(0x78); db(0x00); db(0x78); db(0x00); db(0x59); db(0x87);
- db(0x64); db(0xf6); db(0x7c); db(0x00); db(0xbc); db(0xad); db(0x01); db(0x0c);
- db(0x64); db(0x18); db(0x20); db(0x4b); db(0x48); db(0xe7); db(0x02); db(0x10);
- db(0x2e); db(0x3c); db(0x00); db(0x00); db(0x00); db(0x01); db(0x61); db(0x00);
- db(0x01); db(0x04); db(0x4c); db(0xdf); db(0x08); db(0x40); db(0x52); db(0x86);
- db(0x60); db(0xe2); db(0x2c); db(0x78); db(0x00); db(0x04); db(0x22); db(0x4c);
+ db(0x06); db(0x5d); db(0x70); db(0x00); db(0x7a); db(0x01); db(0x4e); db(0xae);
+ db(0xfd); db(0xd8); db(0x28); db(0x40); db(0x20); db(0x3c); db(0x00); db(0x00);
+ db(0x02); db(0x2c); db(0x72); db(0x01); db(0x4e); db(0xae); db(0xff); db(0x3a);
+ db(0x26); db(0x40); db(0x27); db(0x4c); db(0x01); db(0x9c); db(0x7c); db(0x00);
+ db(0xbc); db(0xad); db(0x01); db(0x0c); db(0x64); db(0x24); db(0x2f); db(0x06);
+ db(0x7e); db(0x01); db(0x2f); db(0x0b); db(0x20); db(0x4b); db(0x61); db(0x00);
+ db(0x03); db(0x18); db(0x26); db(0x5f); db(0x0c); db(0x80); db(0xff); db(0xff);
+ db(0xff); db(0xfe); db(0x67); db(0x08); db(0x48); db(0x46); db(0x52); db(0x46);
+ db(0x48); db(0x46); db(0x60); db(0xe4); db(0x2c); db(0x1f); db(0x52); db(0x46);
+ db(0x60); db(0xd6); db(0x2c); db(0x78); db(0x00); db(0x04); db(0x22); db(0x4c);
  db(0x4e); db(0xae); db(0xfe); db(0x62); db(0x30); db(0x3c); db(0xff); db(0x80);
- db(0x61); db(0x00); db(0x02); db(0xe4); db(0x4e); db(0x90); db(0x72); db(0x03);
+ db(0x61); db(0x00); db(0x05); db(0xda); db(0x4e); db(0x90); db(0x72); db(0x03);
  db(0x74); db(0xf6); db(0x20); db(0x7c); db(0x00); db(0x20); db(0x00); db(0x00);
  db(0x90); db(0x88); db(0x65); db(0x0a); db(0x67); db(0x08); db(0x78); db(0x00);
  db(0x22); db(0x44); db(0x4e); db(0xae); db(0xfd); db(0x96); db(0x4c); db(0xdf);
  db(0x7f); db(0xff); db(0x4e); db(0x75); db(0x48); db(0xe7); db(0x00); db(0x20);
- db(0x30); db(0x3c); db(0xff); db(0x50); db(0x61); db(0x00); db(0x02); db(0xb8);
- db(0x70); db(0x00); db(0x4e); db(0x90); db(0x4a); db(0x80); db(0x67); db(0x76);
- db(0x2c); db(0x78); db(0x00); db(0x04); db(0x30); db(0x3c); db(0xff); db(0x50);
- db(0x61); db(0x00); db(0x02); db(0xa4); db(0x70); db(0x02); db(0x4e); db(0x90);
- db(0x0c); db(0x80); db(0x00); db(0x00); db(0x00); db(0x01); db(0x6d); db(0x50);
- db(0x6e); db(0x06); db(0x4e); db(0xae); db(0xfe); db(0x92); db(0x60); db(0xe4);
- db(0x0c); db(0x80); db(0x00); db(0x00); db(0x00); db(0x02); db(0x6e); db(0x08);
- db(0x20); db(0x01); db(0x4e); db(0xae); db(0xfe); db(0xbc); db(0x60); db(0xd4);
- db(0x0c); db(0x80); db(0x00); db(0x00); db(0x00); db(0x03); db(0x6e); db(0x06);
- db(0x4e); db(0xae); db(0xfe); db(0x86); db(0x60); db(0xc6); db(0x0c); db(0x80);
- db(0x00); db(0x00); db(0x00); db(0x04); db(0x6e); db(0x06); db(0x4e); db(0xae);
- db(0xff); db(0x4c); db(0x60); db(0xb8); db(0x48); db(0xe7); db(0x00); db(0x24);
- db(0x24); db(0x49); db(0x22); db(0x6a); db(0x00); db(0x14); db(0x2a); db(0x6a);
- db(0x00); db(0x18); db(0x2f); db(0x0a); db(0x4e); db(0x95); db(0x24); db(0x1f);
- db(0x42); db(0xaa); db(0x00); db(0x18); db(0x4c); db(0xdf); db(0x24); db(0x00);
- db(0x30); db(0x3c); db(0xff); db(0x50); db(0x61); db(0x00); db(0x02); db(0x40);
- db(0x70); db(0x04); db(0x4e); db(0x90); db(0x70); db(0x01); db(0x4c); db(0xdf);
- db(0x04); db(0x00); db(0x4e); db(0x75); db(0x70); db(0x1a); db(0x22); db(0x3c);
+ db(0x30); db(0x3c); db(0xff); db(0x50); db(0x61); db(0x00); db(0x05); db(0xae);
+ db(0x70); db(0x00); db(0x4e); db(0x90); db(0x4a); db(0x80); db(0x67); db(0x00);
+ db(0x00); db(0xa0); db(0x2c); db(0x78); db(0x00); db(0x04); db(0x30); db(0x3c);
+ db(0xff); db(0x50); db(0x61); db(0x00); db(0x05); db(0x98); db(0x70); db(0x02);
+ db(0x4e); db(0x90); db(0x0c); db(0x40); db(0x00); db(0x01); db(0x6d); db(0x7a);
+ db(0x6e); db(0x06); db(0x4e); db(0xae); db(0xfe); db(0x92); db(0x60); db(0xe6);
+ db(0x0c); db(0x40); db(0x00); db(0x02); db(0x6e); db(0x08); db(0x20); db(0x01);
+ db(0x4e); db(0xae); db(0xfe); db(0xbc); db(0x60); db(0xd8); db(0x0c); db(0x40);
+ db(0x00); db(0x03); db(0x6e); db(0x06); db(0x4e); db(0xae); db(0xfe); db(0x86);
+ db(0x60); db(0xcc); db(0x0c); db(0x40); db(0x00); db(0x04); db(0x6e); db(0x06);
+ db(0x4e); db(0xae); db(0xff); db(0x4c); db(0x60); db(0xc0); db(0x0c); db(0x40);
+ db(0x00); db(0x05); db(0x6e); db(0x46); db(0x48); db(0xe7); db(0x00); db(0xc0);
+ db(0x70); db(0x26); db(0x22); db(0x3c); db(0x00); db(0x01); db(0x00); db(0x01);
+ db(0x4e); db(0xae); db(0xff); db(0x3a); db(0x4c); db(0xdf); db(0x03); db(0x00);
+ db(0x24); db(0x40); db(0x15); db(0x7c); db(0x00); db(0x08); db(0x00); db(0x08);
+ db(0x25); db(0x48); db(0x00); db(0x0e); db(0x35); db(0x7c); db(0x00); db(0x26);
+ db(0x00); db(0x12); db(0x25); db(0x7c); db(0x40); db(0x00); db(0x00); db(0x00);
+ db(0x00); db(0x14); db(0x35); db(0x7c); db(0x12); db(0x34); db(0x00); db(0x18);
+ db(0x25); db(0x49); db(0x00); db(0x1a); db(0x20); db(0x69); db(0x00); db(0x10);
+ db(0x22); db(0x4a); db(0x4e); db(0xae); db(0xfe); db(0x92); db(0x60); db(0x00);
+ db(0xff); db(0x76); db(0x30); db(0x3c); db(0xff); db(0x50); db(0x61); db(0x00);
+ db(0x05); db(0x0c); db(0x70); db(0x04); db(0x4e); db(0x90); db(0x70); db(0x01);
+ db(0x4c); db(0xdf); db(0x04); db(0x00); db(0x4e); db(0x75); db(0x48); db(0xe7);
+ db(0xc0); db(0xc0); db(0x70); db(0x1a); db(0x22); db(0x3c); db(0x00); db(0x01);
+ db(0x00); db(0x01); db(0x4e); db(0xae); db(0xff); db(0x3a); db(0x22); db(0x40);
+ db(0x41); db(0xfa); db(0x04); db(0xf8); db(0x23); db(0x48); db(0x00); db(0x0a);
+ db(0x41); db(0xfa); db(0xff); db(0x2a); db(0x23); db(0x48); db(0x00); db(0x0e);
+ db(0x41); db(0xfa); db(0xff); db(0x22); db(0x23); db(0x48); db(0x00); db(0x12);
+ db(0x33); db(0x7c); db(0x02); db(0x14); db(0x00); db(0x08); db(0x70); db(0x03);
+ db(0x4e); db(0xae); db(0xff); db(0x58); db(0x4c); db(0xdf); db(0x03); db(0x03);
+ db(0x4e); db(0x75); db(0x48); db(0xe7); db(0xc0); db(0xf2); db(0x2c); db(0x78);
+ db(0x00); db(0x04); db(0x24); db(0x48); db(0x26); db(0x49); db(0x20); db(0x3c);
+ db(0x00); db(0x00); db(0x00); db(0xbe); db(0x22); db(0x3c); db(0x00); db(0x01);
+ db(0x00); db(0x01); db(0x4e); db(0xae); db(0xff); db(0x3a); db(0x20); db(0x40);
+ db(0x70); db(0x00); db(0x43); db(0xeb); db(0x01); db(0xa0); db(0x11); db(0xb1);
+ db(0x00); db(0x00); db(0x00); db(0x0e); db(0x52); db(0x40); db(0x0c); db(0x40);
+ db(0x00); db(0x8c); db(0x66); db(0xf2); db(0x20); db(0x0a); db(0xe4); db(0x88);
+ db(0x21); db(0x40); db(0x00); db(0x36); db(0x22); db(0x48); db(0x41); db(0xfa);
+ db(0x04); db(0x92); db(0x23); db(0x48); db(0x00); db(0x0a); db(0x20); db(0x6b);
+ db(0x01); db(0x98); db(0x41); db(0xe8); db(0x00); db(0x12); db(0x4e); db(0xae);
+ db(0xff); db(0x10); db(0x4c); db(0xdf); db(0x4f); db(0x03); db(0x4e); db(0x75);
+ db(0x48); db(0xe7); db(0x7f); db(0x7e); db(0x2c); db(0x78); db(0x00); db(0x04);
+ db(0x24); db(0x48); db(0x0c); db(0x9a); db(0x00); db(0x00); db(0x03); db(0xf3);
+ db(0x66); db(0x00); db(0x00); db(0xdc); db(0x50); db(0x8a); db(0x2e); db(0x2a);
+ db(0x00); db(0x04); db(0x9e); db(0x92); db(0x50); db(0x8a); db(0x52); db(0x87);
+ db(0x26); db(0x4a); db(0x20); db(0x07); db(0xd0); db(0x80); db(0xd0); db(0x80);
+ db(0xd7); db(0xc0); db(0x28); db(0x4a); db(0x9b); db(0xcd); db(0x7c); db(0x00);
+ db(0x24); db(0x12); db(0xe5); db(0x8a); db(0x72); db(0x01); db(0x08); db(0x03);
+ db(0x00); db(0x1e); db(0x67); db(0x04); db(0x08); db(0xc1); db(0x00); db(0x01);
+ db(0x08); db(0xc1); db(0x00); db(0x10); db(0x08); db(0x83); db(0x00); db(0x1f);
+ db(0x08); db(0x83); db(0x00); db(0x1e); db(0x20); db(0x02); db(0x66); db(0x04);
+ db(0x42); db(0x9a); db(0x60); db(0x1e); db(0x50); db(0x80); db(0x4e); db(0xae);
+ db(0xff); db(0x3a); db(0x4a); db(0x80); db(0x67); db(0x00); db(0x00); db(0x90);
+ db(0x20); db(0x40); db(0x20); db(0xc2); db(0x24); db(0xc8); db(0x22); db(0x0d);
+ db(0x67); db(0x06); db(0x20); db(0x08); db(0xe4); db(0x88); db(0x2a); db(0x80);
+ db(0x2a); db(0x48); db(0x52); db(0x86); db(0xbe); db(0x86); db(0x66); db(0xb8);
+ db(0x7c); db(0x00); db(0x20); db(0x74); db(0x6c); db(0x00); db(0x58); db(0x88);
+ db(0x26); db(0x1b); db(0x28); db(0x1b); db(0xe5); db(0x8c); db(0x0c); db(0x83);
+ db(0x00); db(0x00); db(0x03); db(0xe9); db(0x67); db(0x08); db(0x0c); db(0x83);
+ db(0x00); db(0x00); db(0x03); db(0xea); db(0x66); db(0x0c); db(0x20); db(0x04);
+ db(0x4a); db(0x80); db(0x67); db(0x0e); db(0x10); db(0xdb); db(0x53); db(0x80);
+ db(0x60); db(0xf6); db(0x0c); db(0x83); db(0x00); db(0x00); db(0x03); db(0xeb);
+ db(0x66); db(0x44); db(0x26); db(0x1b); db(0x0c); db(0x83); db(0x00); db(0x00);
+ db(0x03); db(0xec); db(0x66); db(0x1e); db(0x20); db(0x74); db(0x6c); db(0x00);
+ db(0x58); db(0x88); db(0x20); db(0x1b); db(0x67); db(0xec); db(0x22); db(0x1b);
+ db(0x26); db(0x34); db(0x1c); db(0x00); db(0x58); db(0x83); db(0x24); db(0x1b);
+ db(0xd7); db(0xb0); db(0x28); db(0x00); db(0x53); db(0x80); db(0x66); db(0xf6);
+ db(0x60); db(0xe8); db(0x0c); db(0x83); db(0x00); db(0x00); db(0x03); db(0xf2);
+ db(0x66); db(0x14); db(0x52); db(0x86); db(0xbe); db(0x86); db(0x66); db(0x00);
+ db(0xff); db(0x9a); db(0x7e); db(0x01); db(0x20); db(0x54); db(0x20); db(0x07);
+ db(0x4c); db(0xdf); db(0x7e); db(0xfe); db(0x4e); db(0x75); db(0x30); db(0x3c);
+ db(0x75); db(0x30); db(0x33); db(0xfc); db(0x0f); db(0x00); db(0x00); db(0xdf);
+ db(0xf1); db(0x80); db(0x33); db(0xfc); db(0x00); db(0x0f); db(0x00); db(0xdf);
+ db(0xf1); db(0x80); db(0x33); db(0xfc); db(0x00); db(0xf0); db(0x00); db(0xdf);
+ db(0xf1); db(0x80); db(0x51); db(0xc8); db(0xff); db(0xe6); db(0x7e); db(0x00);
+ db(0x60); db(0xd4); db(0x48); db(0xe7); db(0x40); db(0xe2); db(0x2c); db(0x78);
+ db(0x00); db(0x04); db(0x41); db(0xee); db(0x01); db(0x50); db(0x4a); db(0x90);
+ db(0x67); db(0x1a); db(0x22); db(0x68); db(0x00); db(0x0a); db(0x45); db(0xfa);
+ db(0x03); db(0x7f); db(0x10); db(0x19); db(0x12); db(0x1a); db(0xb0); db(0x01);
+ db(0x66); db(0x06); db(0x4a); db(0x00); db(0x67); db(0x42); db(0x60); db(0xf2);
+ db(0x20); db(0x50); db(0x60); db(0xe2); db(0x70); db(0x20); db(0x22); db(0x3c);
  db(0x00); db(0x01); db(0x00); db(0x01); db(0x4e); db(0xae); db(0xff); db(0x3a);
- db(0x22); db(0x40); db(0x41); db(0xfa); db(0x02); db(0x30); db(0x23); db(0x48);
- db(0x00); db(0x0a); db(0x41); db(0xfa); db(0xff); db(0x58); db(0x23); db(0x48);
- db(0x00); db(0x0e); db(0x41); db(0xfa); db(0xff); db(0x50); db(0x23); db(0x48);
- db(0x00); db(0x12); db(0x13); db(0x7c); db(0x00); db(0xc8); db(0x00); db(0x09);
- db(0x13); db(0x7c); db(0x00); db(0x02); db(0x00); db(0x08); db(0x70); db(0x0d);
- db(0x4e); db(0xee); db(0xff); db(0x58); db(0x2f); db(0x08); db(0x30); db(0x3c);
- db(0xff); db(0xfc); db(0x61); db(0x00); db(0x01); db(0xf2); db(0x2a); db(0x50);
- db(0x30); db(0x3c); db(0xff); db(0x28); db(0x61); db(0x00); db(0x01); db(0xe8);
- db(0x22); db(0x48); db(0x20); db(0x5f); db(0x4e); db(0x91); db(0x26); db(0x00);
- db(0xc0); db(0x85); db(0x66); db(0x00); db(0xff); db(0x16); db(0x2c); db(0x4c);
- db(0x4e); db(0xae); db(0xff); db(0x70); db(0x26); db(0x40); db(0x30); db(0x3c);
- db(0xff); db(0x20); db(0x61); db(0x00); db(0x01); db(0xca); db(0x4e); db(0x90);
- db(0x70); db(0x00); db(0x27); db(0x40); db(0x00); db(0x08); db(0x27); db(0x40);
- db(0x00); db(0x10); db(0x27); db(0x40); db(0x00); db(0x20); db(0x4a); db(0x83);
- db(0x66); db(0x1c); db(0x27); db(0x7c); db(0x00); db(0x00); db(0x0f); db(0xa0);
- db(0x00); db(0x14); db(0x43); db(0xfa); db(0xfe); db(0x20); db(0x20); db(0x09);
- db(0xe4); db(0x88); db(0x27); db(0x40); db(0x00); db(0x20); db(0x27); db(0x7c);
- db(0xff); db(0xff); db(0xff); db(0xff); db(0x00); db(0x24); db(0x4a); db(0x87);
+ db(0x24); db(0x40); db(0x15); db(0x7c); db(0x00); db(0x08); db(0x00); db(0x08);
+ db(0x41); db(0xfa); db(0x03); db(0x55); db(0x25); db(0x48); db(0x00); db(0x0a);
+ db(0x41); db(0xfa); db(0x03); db(0x20); db(0x25); db(0x48); db(0x00); db(0x0e);
+ db(0x41); db(0xea); db(0x00); db(0x12); db(0x20); db(0x88); db(0x58); db(0x90);
+ db(0x21); db(0x48); db(0x00); db(0x08); db(0x41); db(0xee); db(0x01); db(0x50);
+ db(0x22); db(0x4a); db(0x4e); db(0xae); db(0xff); db(0x0a); db(0x20); db(0x4a);
+ db(0x20); db(0x08); db(0x4c); db(0xdf); db(0x47); db(0x02); db(0x4e); db(0x75);
+ db(0x61); db(0x00); db(0xff); db(0x90); db(0x21); db(0x40); db(0x01); db(0x98);
+ db(0x2f); db(0x08); db(0x30); db(0x3c); db(0xff); db(0xfc); db(0x61); db(0x00);
+ db(0x02); db(0xdc); db(0x2a); db(0x50); db(0x30); db(0x3c); db(0xff); db(0x28);
+ db(0x61); db(0x00); db(0x02); db(0xd2); db(0x22); db(0x48); db(0x20); db(0x5f);
+ db(0x42); db(0xa8); db(0x01); db(0x90); db(0x42); db(0xa8); db(0x01); db(0x94);
+ db(0x4e); db(0x91); db(0x26); db(0x00); db(0x0c); db(0x83); db(0xff); db(0xff);
+ db(0xff); db(0xfe); db(0x67); db(0x00); db(0xfc); db(0xfe); db(0x0c); db(0x83);
+ db(0x00); db(0x00); db(0x00); db(0x02); db(0x67); db(0x0c); db(0xc0); db(0x85);
+ db(0x67); db(0x08); db(0x4a); db(0xa8); db(0x01); db(0x90); db(0x67); db(0x00);
+ db(0xfc); db(0xea); db(0x20); db(0x28); db(0x01); db(0x90); db(0x67); db(0x12);
+ db(0x2f); db(0x08); db(0x72); db(0x01); db(0x2c); db(0x78); db(0x00); db(0x04);
+ db(0x4e); db(0xae); db(0xff); db(0x3a); db(0x20); db(0x5f); db(0x21); db(0x40);
+ db(0x01); db(0x94); db(0x4a); db(0x83); db(0x6a); db(0x10); db(0x22); db(0x48);
+ db(0x30); db(0x3c); db(0xff); db(0x20); db(0x61); db(0x00); db(0x02); db(0x7e);
+ db(0x4e); db(0x90); db(0x60); db(0x00); db(0x00); db(0x28); db(0x2c); db(0x4c);
+ db(0x2f); db(0x08); db(0x4e); db(0xae); db(0xff); db(0x70); db(0x20); db(0x5f);
+ db(0x22); db(0x48); db(0x26); db(0x40); db(0x30); db(0x3c); db(0xff); db(0x20);
+ db(0x61); db(0x00); db(0x02); db(0x62); db(0x4e); db(0x90); db(0x70); db(0x00);
+ db(0x27); db(0x40); db(0x00); db(0x08); db(0x27); db(0x40); db(0x00); db(0x10);
+ db(0x27); db(0x40); db(0x00); db(0x20); db(0x4a); db(0xa9); db(0x01); db(0x94);
+ db(0x67); db(0x28); db(0x20); db(0x69); db(0x01); db(0x94); db(0x61); db(0x00);
+ db(0xfd); db(0xd8); db(0x48); db(0xe7); db(0x80); db(0xc0); db(0x20); db(0x29);
+ db(0x01); db(0x90); db(0x22); db(0x69); db(0x01); db(0x94); db(0x2c); db(0x78);
+ db(0x00); db(0x04); db(0x4e); db(0xae); db(0xff); db(0x2e); db(0x4c); db(0xdf);
+ db(0x03); db(0x01); db(0x4a); db(0x80); db(0x67); db(0x04); db(0x61); db(0x00);
+ db(0xfd); db(0x62); db(0x4a); db(0x83); db(0x6b); db(0x00); db(0xfc); db(0x64);
+ db(0x30); db(0x3c); db(0xff); db(0x18); db(0x61); db(0x00); db(0x02); db(0x16);
+ db(0x4e); db(0x90); db(0x20); db(0x03); db(0x16); db(0x29); db(0x00); db(0x4f);
+ db(0x4a); db(0x80); db(0x66); db(0x1a); db(0x27); db(0x7c); db(0x00); db(0x00);
+ db(0x0f); db(0xa0); db(0x00); db(0x14); db(0x43); db(0xfa); db(0xfb); db(0x76);
+ db(0x20); db(0x09); db(0xe4); db(0x88); db(0x27); db(0x40); db(0x00); db(0x20);
+ db(0x70); db(0xff); db(0x27); db(0x40); db(0x00); db(0x24); db(0x4a); db(0x87);
  db(0x67); db(0x36); db(0x2c); db(0x78); db(0x00); db(0x04); db(0x70); db(0x14);
  db(0x72); db(0x00); db(0x4e); db(0xae); db(0xff); db(0x3a); db(0x22); db(0x40);
  db(0x70); db(0x00); db(0x22); db(0x80); db(0x23); db(0x40); db(0x00); db(0x04);
- db(0x33); db(0x40); db(0x00); db(0x0e); db(0x30); db(0x3c); db(0x10); db(0xff);
- db(0x90); db(0x06); db(0x33); db(0x40); db(0x00); db(0x08); db(0x23); db(0x6d);
+ db(0x33); db(0x40); db(0x00); db(0x0e); db(0x30); db(0x3c); db(0x10); db(0x00);
+ db(0x80); db(0x03); db(0x33); db(0x40); db(0x00); db(0x08); db(0x23); db(0x6d);
  db(0x01); db(0x04); db(0x00); db(0x0a); db(0x23); db(0x4b); db(0x00); db(0x10);
  db(0x41); db(0xec); db(0x00); db(0x4a); db(0x4e); db(0xee); db(0xfe); db(0xf2);
  db(0x20); db(0x4b); db(0x72); db(0x00); db(0x22); db(0x41); db(0x70); db(0xff);
  db(0x2c); db(0x4c); db(0x4e); db(0xee); db(0xff); db(0x6a); db(0x2c); db(0x78);
  db(0x00); db(0x04); db(0x70); db(0x00); db(0x22); db(0x40); db(0x4e); db(0xae);
  db(0xfe); db(0xda); db(0x20); db(0x40); db(0x4b); db(0xe8); db(0x00); db(0x5c);
- db(0x43); db(0xfa); db(0x01); db(0x59); db(0x70); db(0x00); db(0x4e); db(0xae);
+ db(0x43); db(0xfa); db(0x01); db(0xaf); db(0x70); db(0x00); db(0x4e); db(0xae);
  db(0xfd); db(0xd8); db(0x24); db(0x40); db(0x20); db(0x3c); db(0x00); db(0x00);
  db(0x00); db(0x9d); db(0x22); db(0x3c); db(0x00); db(0x01); db(0x00); db(0x01);
  db(0x4e); db(0xae); db(0xff); db(0x3a); db(0x26); db(0x40); db(0x7c); db(0x00);
@@ -3386,45 +4272,60 @@ void filesys_install_code (void)
  db(0x00); db(0x08); db(0x7a); db(0x00); db(0x20); db(0x4d); db(0x4e); db(0xae);
  db(0xfe); db(0x80); db(0x20); db(0x4d); db(0x4e); db(0xae); db(0xfe); db(0x8c);
  db(0x28); db(0x40); db(0x26); db(0x2c); db(0x00); db(0x0a); db(0x30); db(0x3c);
- db(0xff); db(0x40); db(0x61); db(0x00); db(0x00); db(0xfa); db(0x70); db(0x00);
- db(0x4e); db(0x90); db(0x60); db(0x7e); db(0x20); db(0x4d); db(0x4e); db(0xae);
- db(0xfe); db(0x80); db(0x20); db(0x4d); db(0x4e); db(0xae); db(0xfe); db(0x8c);
- db(0x28); db(0x40); db(0x26); db(0x2c); db(0x00); db(0x0a); db(0x66); db(0x3c);
- db(0x30); db(0x3c); db(0xff); db(0x50); db(0x61); db(0x00); db(0x00); db(0xd8);
- db(0x70); db(0x01); db(0x4e); db(0x90); db(0x45); db(0xeb); db(0x00); db(0x04);
- db(0x20); db(0x52); db(0x20); db(0x08); db(0x67); db(0xd6); db(0x22); db(0x50);
- db(0x20); db(0x40); db(0x20); db(0x28); db(0x00); db(0x04); db(0x6a); db(0x16);
- db(0x48); db(0xe7); db(0x00); db(0xc0); db(0x28); db(0x68); db(0x00); db(0x0a);
- db(0x61); db(0x48); db(0x53); db(0x85); db(0x4c); db(0xdf); db(0x03); db(0x00);
- db(0x24); db(0x89); db(0x20); db(0x49); db(0x60); db(0xdc); db(0x24); db(0x48);
- db(0x20); db(0x49); db(0x60); db(0xd6); db(0x0c); db(0x85); db(0x00); db(0x00);
- db(0x00); db(0x14); db(0x65); db(0x00); db(0x00); db(0x0a); db(0x70); db(0x01);
- db(0x29); db(0x40); db(0x00); db(0x04); db(0x60); db(0x12); db(0x61); db(0x30);
- db(0x30); db(0x3c); db(0xff); db(0x30); db(0x61); db(0x00); db(0x00); db(0x88);
- db(0x4e); db(0x90); db(0x4a); db(0x80); db(0x67); db(0x0c); db(0x52); db(0x85);
- db(0x28); db(0xab); db(0x00); db(0x04); db(0x27); db(0x4c); db(0x00); db(0x04);
- db(0x60); db(0x82); db(0x28); db(0x43); db(0x61); db(0x04); db(0x60); db(0x00);
- db(0xff); db(0x7c); db(0x22); db(0x54); db(0x20); db(0x6c); db(0x00); db(0x04);
- db(0x29); db(0x4d); db(0x00); db(0x04); db(0x4e); db(0xee); db(0xfe); db(0x92);
- db(0x2f); db(0x05); db(0x7a); db(0xfc); db(0x24); db(0x53); db(0x2e); db(0x0a);
- db(0x22); db(0x0a); db(0x67); db(0x00); db(0x00); db(0x0c); db(0x52); db(0x85);
- db(0x67); db(0x1e); db(0x22); db(0x4a); db(0x24); db(0x52); db(0x60); db(0xf0);
- db(0x52); db(0x85); db(0x67); db(0x3c); db(0x24); db(0x47); db(0x70); db(0x18);
- db(0x72); db(0x01); db(0x4e); db(0xae); db(0xff); db(0x3a); db(0x52); db(0x46);
- db(0x24); db(0x40); db(0x24); db(0x87); db(0x2e); db(0x0a); db(0x60); db(0xe8);
- db(0x20); db(0x12); db(0x67); db(0x24); db(0x20); db(0x40); db(0x20); db(0x10);
- db(0x67); db(0x1e); db(0x20); db(0x40); db(0x20); db(0x10); db(0x67); db(0x18);
- db(0x70); db(0x00); db(0x22); db(0x80); db(0x22); db(0x4a); db(0x24); db(0x51);
- db(0x70); db(0x18); db(0x4e); db(0xae); db(0xff); db(0x2e); db(0x06); db(0x86);
- db(0x00); db(0x01); db(0x00); db(0x00); db(0x20); db(0x0a); db(0x66); db(0xec);
- db(0x26); db(0x87); db(0x2a); db(0x1f); db(0x4e); db(0x75); db(0x41); db(0xfa);
- db(0xfc); db(0x6c); db(0x02); db(0x80); db(0x00); db(0x00); db(0xff); db(0xff);
- db(0xd1); db(0xc0); db(0x4e); db(0x75); db(0x55); db(0x41); db(0x45); db(0x20);
- db(0x66); db(0x69); db(0x6c); db(0x65); db(0x73); db(0x79); db(0x73); db(0x74);
- db(0x65); db(0x6d); db(0x00); db(0x64); db(0x6f); db(0x73); db(0x2e); db(0x6c);
- db(0x69); db(0x62); db(0x72); db(0x61); db(0x72); db(0x79); db(0x00); db(0x65);
- db(0x78); db(0x70); db(0x61); db(0x6e); db(0x73); db(0x69); db(0x6f); db(0x6e);
- db(0x2e); db(0x6c); db(0x69); db(0x62); db(0x72); db(0x61); db(0x72); db(0x79);
- db(0x00); db(0x00); db(0x00); db(0x00); db(0x00); db(0x00); db(0x03); db(0xf2);
+ db(0xff); db(0x40); db(0x61); db(0x00); db(0x01); db(0x50); db(0x70); db(0x00);
+ db(0x4e); db(0x90); db(0x60); db(0x00); db(0x00); db(0xd4); db(0x20); db(0x4d);
+ db(0x4e); db(0xae); db(0xfe); db(0x80); db(0x20); db(0x4d); db(0x4e); db(0xae);
+ db(0xfe); db(0x8c); db(0x28); db(0x40); db(0x0c); db(0x6c); db(0x00); db(0x26);
+ db(0x00); db(0x12); db(0x66); db(0x4a); db(0x0c); db(0xac); db(0x40); db(0x00);
+ db(0x00); db(0x00); db(0x00); db(0x14); db(0x66); db(0x40); db(0x0c); db(0x6c);
+ db(0x12); db(0x34); db(0x00); db(0x18); db(0x66); db(0x38); db(0x20); db(0x6c);
+ db(0x00); db(0x1a); db(0x20); db(0x28); db(0x00); db(0x0c); db(0x02); db(0x80);
+ db(0x80); db(0x00); db(0x00); db(0x08); db(0x0c); db(0x80); db(0x80); db(0x00);
+ db(0x00); db(0x08); db(0x66); db(0x18); db(0x02); db(0xa8); db(0x7f); db(0xff);
+ db(0xff); db(0xff); db(0x00); db(0x0c); db(0x20); db(0x68); db(0x00); db(0x10);
+ db(0x22); db(0x4c); db(0x12); db(0xbc); db(0x00); db(0x08); db(0x4e); db(0xae);
+ db(0xfe); db(0x92); db(0x60); db(0xaa); db(0x22); db(0x4c); db(0x70); db(0x26);
+ db(0x4e); db(0xae); db(0xff); db(0x2e); db(0x60); db(0xa0); db(0x26); db(0x2c);
+ db(0x00); db(0x0a); db(0x66); db(0x3c); db(0x30); db(0x3c); db(0xff); db(0x50);
+ db(0x61); db(0x00); db(0x00); db(0xda); db(0x70); db(0x01); db(0x4e); db(0x90);
+ db(0x45); db(0xeb); db(0x00); db(0x04); db(0x20); db(0x52); db(0x20); db(0x08);
+ db(0x67); db(0x84); db(0x22); db(0x50); db(0x20); db(0x40); db(0x20); db(0x28);
+ db(0x00); db(0x04); db(0x6a); db(0x16); db(0x48); db(0xe7); db(0x00); db(0xc0);
+ db(0x28); db(0x68); db(0x00); db(0x0a); db(0x61); db(0x4a); db(0x53); db(0x85);
+ db(0x4c); db(0xdf); db(0x03); db(0x00); db(0x24); db(0x89); db(0x20); db(0x49);
+ db(0x60); db(0xdc); db(0x24); db(0x48); db(0x20); db(0x49); db(0x60); db(0xd6);
+ db(0x0c); db(0x85); db(0x00); db(0x00); db(0x00); db(0x14); db(0x65); db(0x00);
+ db(0x00); db(0x0a); db(0x70); db(0x01); db(0x29); db(0x40); db(0x00); db(0x04);
+ db(0x60); db(0x12); db(0x61); db(0x32); db(0x30); db(0x3c); db(0xff); db(0x30);
+ db(0x61); db(0x00); db(0x00); db(0x8a); db(0x4e); db(0x90); db(0x4a); db(0x80);
+ db(0x67); db(0x0e); db(0x52); db(0x85); db(0x28); db(0xab); db(0x00); db(0x04);
+ db(0x27); db(0x4c); db(0x00); db(0x04); db(0x60); db(0x00); db(0xff); db(0x30);
+ db(0x28); db(0x43); db(0x61); db(0x04); db(0x60); db(0x00); db(0xff); db(0x28);
+ db(0x22); db(0x54); db(0x20); db(0x6c); db(0x00); db(0x04); db(0x29); db(0x4d);
+ db(0x00); db(0x04); db(0x4e); db(0xee); db(0xfe); db(0x92); db(0x2f); db(0x05);
+ db(0x7a); db(0xfc); db(0x24); db(0x53); db(0x2e); db(0x0a); db(0x22); db(0x0a);
+ db(0x67); db(0x00); db(0x00); db(0x0c); db(0x52); db(0x85); db(0x67); db(0x1e);
+ db(0x22); db(0x4a); db(0x24); db(0x52); db(0x60); db(0xf0); db(0x52); db(0x85);
+ db(0x67); db(0x3c); db(0x24); db(0x47); db(0x70); db(0x18); db(0x72); db(0x01);
+ db(0x4e); db(0xae); db(0xff); db(0x3a); db(0x52); db(0x46); db(0x24); db(0x40);
+ db(0x24); db(0x87); db(0x2e); db(0x0a); db(0x60); db(0xe8); db(0x20); db(0x12);
+ db(0x67); db(0x24); db(0x20); db(0x40); db(0x20); db(0x10); db(0x67); db(0x1e);
+ db(0x20); db(0x40); db(0x20); db(0x10); db(0x67); db(0x18); db(0x70); db(0x00);
+ db(0x22); db(0x80); db(0x22); db(0x4a); db(0x24); db(0x51); db(0x70); db(0x18);
+ db(0x4e); db(0xae); db(0xff); db(0x2e); db(0x06); db(0x86); db(0x00); db(0x01);
+ db(0x00); db(0x00); db(0x20); db(0x0a); db(0x66); db(0xec); db(0x26); db(0x87);
+ db(0x2a); db(0x1f); db(0x4e); db(0x75); db(0x41); db(0xfa); db(0xf9); db(0x6e);
+ db(0x02); db(0x80); db(0x00); db(0x00); db(0xff); db(0xff); db(0xd1); db(0xc0);
+ db(0x4e); db(0x75); db(0x55); db(0x41); db(0x45); db(0x20); db(0x66); db(0x69);
+ db(0x6c); db(0x65); db(0x73); db(0x79); db(0x73); db(0x74); db(0x65); db(0x6d);
+ db(0x00); db(0x64); db(0x6f); db(0x73); db(0x2e); db(0x6c); db(0x69); db(0x62);
+ db(0x72); db(0x61); db(0x72); db(0x79); db(0x00); db(0x65); db(0x78); db(0x70);
+ db(0x61); db(0x6e); db(0x73); db(0x69); db(0x6f); db(0x6e); db(0x2e); db(0x6c);
+ db(0x69); db(0x62); db(0x72); db(0x61); db(0x72); db(0x79); db(0x00); db(0x46);
+ db(0x69); db(0x6c); db(0x65); db(0x53); db(0x79); db(0x73); db(0x74); db(0x65);
+ db(0x6d); db(0x2e); db(0x72); db(0x65); db(0x73); db(0x6f); db(0x75); db(0x72);
+ db(0x63); db(0x65); db(0x00); db(0x00); db(0x00); db(0x00); db(0x03); db(0xf2);
 
 }
+
+#include "od-win32/win32_filesys.c"

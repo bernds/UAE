@@ -939,3 +939,7 @@ int target_parse_option (struct uae_prefs *p, char *option, char *value)
 {
     return (cfgfile_yesno (option, value, "no_linear", &p->svga_no_linear));
 }
+
+/* Dummy entry to make it compile */
+void DX_SetPalette_vsync(void)
+{}

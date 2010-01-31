@@ -9,7 +9,7 @@
 
 #define UAEMAJOR 0
 #define UAEMINOR 8
-#define UAESUBREV 22
+#define UAESUBREV 23
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -22,16 +22,36 @@ struct strlist {
     char *str;
 };
 
+/* maximum number native input devices supported (single type) */
+#define MAX_INPUT_DEVICES 4
+/* maximum number of native input device's buttons and axles supported */
+#define MAX_INPUT_DEVICE_EVENTS 256
+/* 4 different customization settings */
+#define MAX_INPUT_SETTINGS 4
+#define MAX_INPUT_SUB_EVENT 4
+#define MAX_INPUT_SIMULTANEOUS_KEYS 4
+
+struct uae_input_device {
+    char *name;
+    uae_s16 eventid[MAX_INPUT_DEVICE_EVENTS][MAX_INPUT_SUB_EVENT];
+    uae_u16 flags[MAX_INPUT_DEVICE_EVENTS][MAX_INPUT_SUB_EVENT];
+    uae_s16 extra[MAX_INPUT_DEVICE_EVENTS][MAX_INPUT_SIMULTANEOUS_KEYS];
+    uae_u8 enabled;
+};
+
 struct uae_prefs {
     struct strlist *unknown_lines;
 
     char description[256];
     char info[256];
+    int config_version;
 
     int illegal_mem;
     int no_xhair;
     int use_serial;
     int serial_demand;
+    int serial_hwctsrts;
+    int serial_direct;
     int parallel_demand;
     int use_gfxlib;
     int socket_emu;
@@ -39,27 +59,47 @@ struct uae_prefs {
     int start_debugger;
     int start_gui;
 
-    int jport0;
-    int jport1;
     KbdLang keyboard_lang;
-    int allow_save;
-    int emul_accuracy;
     int test_drawing_speed;
 
     int produce_sound;
-    int sound_stereo;
+    int stereo;
     int mixed_stereo;
     int sound_bits;
     int sound_freq;
-    int sound_minbsiz;
     int sound_maxbsiz;
-    int sound_pri_time;
-    int sound_pri_cutoff;
     int sound_interpol;
+    int sound_adjust;
+    int sound_filter;
+
+    int comptrustbyte;
+    int comptrustword;
+    int comptrustlong;
+    int comptrustnaddr;
+    int compnf;
+    int compforcesettings;
+    int compfpu;
+    int comp_midopt;
+    int comp_lowopt;
+
+    int comp_hardflush;
+    int comp_constjump;
+    int comp_oldsegv;
+
+    int cachesize;
+    int optcount[10];
+
+    int avoid_cmov;
+    int avoid_dga;
+    int avoid_vid;
+    uae_u32 override_dga_address;
 
     int gfx_framerate;
-    int gfx_width;
-    int gfx_height;
+    int gfx_width_win, gfx_height_win;
+    int gfx_width_fs, gfx_height_fs;
+    int gfx_width, gfx_height;
+    int gfx_refreshrate;
+    int gfx_vsync;
     int gfx_lores;
     int gfx_linedbl;
     int gfx_correct_aspect;
@@ -67,19 +107,41 @@ struct uae_prefs {
     int gfx_pfullscreen;
     int gfx_xcenter;
     int gfx_ycenter;
+    int gfx_hue, gfx_saturation, gfx_luminance, gfx_contrast, gfx_gamma;
+
+    int gfx_filter;
+    int gfx_filter_scanlines;
+    int gfx_filter_scanlineratio;
+    int gfx_filter_scanlinelevel;
+    int gfx_filter_horiz_zoom, gfx_filter_vert_zoom;
+    int gfx_filter_horiz_offset, gfx_filter_vert_offset;
+    int gfx_filter_filtermode;
     int color_mode;
 
-    int blits_32bit_enabled;
     int immediate_blits;
     unsigned int chipset_mask;
     int ntscmode;
     int collision_level;
+    int leds_on_screen;
+    int keyboard_leds[3];
+    int keyboard_leds_in_use;
     int fast_copper;
+    int scsi;
+    int catweasel_io;
+    int cpu_idle;
+    int cpu_cycle_exact;
+    int blitter_cycle_exact;
+    int floppy_speed;
+    int tod_hack;
+    uae_u32 maprom;
 
     char df[4][256];
     char romfile[256];
     char romextfile[256];
     char keyfile[256];
+    char flashfile[256];
+    char cartfile[256];
+    char pci_devices[256];
     char prtname[256];
     char sername[256];
 
@@ -100,10 +162,12 @@ struct uae_prefs {
     uae_u32 gfxmem_size;
 
     int kickshifter;
+    int filesys_no_uaefsdb;
 
     struct uaedev_mount_info *mountinfo;
 
     int nr_floppies;
+    int dfxtype[4];
 
     /* Target specific options */
     int x11_use_low_bandwidth;
@@ -113,17 +177,45 @@ struct uae_prefs {
     int svga_no_linear;
     int win32_middle_mouse;
     int win32_logfile;
-    int win32_iconified_nospeed;
+
+    int win32_active_priority;
+    int win32_inactive_priority;
+    int win32_inactive_pause;
+    int win32_inactive_nosound;
+    int win32_iconified_priority;
+    int win32_iconified_pause;
     int win32_iconified_nosound;
+
     int win32_no_overlay; /* If this is set, we won't try and use any RGB overlays */
+    int win32_ctrl_F11_is_quit;
     int win32_automount_drives;
+    int win32_midioutdev;
+    int win32_midiindev;
+    int win32_aspi;
+    int win32_soundcard;
 
     int curses_reverse_video;
+
+    /* input */
+
+    int jport0;
+    int jport1;
+    int input_selected_setting;
+    int input_joymouse_multiplier;
+    int input_joymouse_deadzone;
+    int input_joystick_deadzone;
+    int input_joymouse_speed;
+    int input_autofire_framecnt;
+    int input_mouse_speed;
+    struct uae_input_device joystick_settings[MAX_INPUT_SETTINGS + 1][MAX_INPUT_DEVICES];
+    struct uae_input_device mouse_settings[MAX_INPUT_SETTINGS + 1][MAX_INPUT_DEVICES];
+    struct uae_input_device keyboard_settings[MAX_INPUT_SETTINGS + 1][MAX_INPUT_DEVICES];
 };
 
 /* Contains the filename of .uaerc */
 extern char optionsfile[];
 extern void save_options (FILE *, struct uae_prefs *);
+extern void cfgfile_write (FILE *f, char *format,...);
 
 extern void default_prefs (struct uae_prefs *);
 extern void discard_prefs (struct uae_prefs *);
@@ -138,6 +230,7 @@ extern char *cfgfile_subst_path (const char *path, const char *subst, const char
 
 extern int target_parse_option (struct uae_prefs *, char *option, char *value);
 extern void target_save_options (FILE *, struct uae_prefs *);
+extern void target_default_options (struct uae_prefs *);
 
 extern int cfgfile_load (struct uae_prefs *, const char *filename);
 extern int cfgfile_save (struct uae_prefs *, const char *filename);

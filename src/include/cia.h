@@ -21,3 +21,9 @@ extern unsigned int ciabpra;
 extern unsigned long ciaata,ciaatb,ciabta,ciabtb;
 extern unsigned long ciaatod,ciabtod,ciaatol,ciabtol,ciaaalarm,ciabalarm;
 extern int ciaatlatch,ciabtlatch;
+
+extern int parallel_direct_write_data (uae_u8, uae_u8);
+extern int parallel_direct_read_data (uae_u8*);
+extern int parallel_direct_write_status (uae_u8, uae_u8);
+extern int parallel_direct_read_status (uae_u8*);
+

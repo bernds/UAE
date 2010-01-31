@@ -41,13 +41,13 @@ static uae_u32 emulib_GetVersion (void)
  */
 static uae_u32 emulib_HardReset (void)
 {
-    uae_reset();
+    uae_reset(0);
     return 0;
 }
 
 static uae_u32 emulib_Reset (void)
 {
-    uae_reset();
+    uae_reset(0);
     return 0;
 }
 
@@ -140,7 +140,7 @@ static uae_u32 emulib_ChgCMemSize (uae_u32 memsize)
     m68k_dreg(regs, 0) = 0;
 
     currprefs.chipmem_size = memsize;
-    uae_reset();
+    uae_reset(0);
     return 1;
 }
 
@@ -158,7 +158,7 @@ static uae_u32 emulib_ChgSMemSize (uae_u32 memsize)
 
     m68k_dreg(regs, 0) = 0;
     currprefs.bogomem_size = memsize;
-    uae_reset ();
+    uae_reset (0);
     return 1;
 }
 
@@ -175,7 +175,7 @@ static uae_u32 emulib_ChgFMemSize (uae_u32 memsize)
     }
     m68k_dreg(regs, 0) = 0;
     currprefs.fastmem_size = memsize;
-    uae_reset ();
+    uae_reset (0);
     return 0;
 }
 
@@ -215,7 +215,7 @@ static uae_u32 emulib_ExitEmu (void)
  */
 static uae_u32 emulib_GetUaeConfig (uaecptr place)
 {
-    int i,j;
+    int i;
 
     put_long (place, version);
     put_long (place + 4, allocated_chipmem);
@@ -349,6 +349,11 @@ static uae_u32 emulib_ExecuteNativeCode (void)
     return 0;
 }
 
+static uae_u32 emulib_Minimize (void)
+{
+    return OSDEP_minimize_uae();
+}
+
 static uae_u32 uaelib_demux (void)
 {
 #define ARG0 (get_long (m68k_areg (regs, 7) + 4))
@@ -395,9 +400,18 @@ static uae_u32 uaelib_demux (void)
      case 32: return picasso_BlitPlanar2Direct ();
      case 34: return picasso_WaitVerticalSync ();
      case 35: return allocated_gfxmem ? 1 : 0;
+#ifdef HARDWARE_SPRITE_EMULATION
+     case 36: return picasso_SetSprite ();
+     case 37: return picasso_SetSpritePosition ();
+     case 38: return picasso_SetSpriteImage ();
+     case 39: return picasso_SetSpriteColor ();
 #endif
-
+     case 40: return picasso_DrawLine ();
+#endif
+     case 68: return emulib_Minimize ();
      case 69: return emulib_ExecuteNativeCode ();
+
+     case 80: return currprefs.maprom ? currprefs.maprom : 0xffffffff;
     }
     return 0;
 }

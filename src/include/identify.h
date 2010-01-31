@@ -15,7 +15,6 @@ struct customData
 {
     const char *name;
     uae_u32 adr;
-    uae_u8 rw, dmaadr;
 };
 
 

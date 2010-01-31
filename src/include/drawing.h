@@ -13,13 +13,6 @@
 
 #define MAX_PLANES 8
 
-#define RES_LORES 0
-#define RES_HIRES 1
-#define RES_SUPERHIRES 2
-
-/* calculate shift depending on resolution (replaced "decided_hires ? 4 : 8") (TW) */
-#define RES_SHIFT(res) ((res) == RES_LORES ? 8 : (res) == RES_HIRES ? 4 : 2)
-
 /* According to the HRM, pixel data spends a couple of cycles somewhere in the chips
    before it appears on-screen.  */
 #define DIW_DDF_OFFSET 9
@@ -29,7 +22,7 @@
 #define DISPLAY_LEFT_SHIFT 0x40
 #define PIXEL_XPOS(HPOS) (((HPOS)*2 - DISPLAY_LEFT_SHIFT + DIW_DDF_OFFSET - 1) << lores_shift)
 
-#define max_diwlastword (PIXEL_XPOS(maxhpos) + 16)
+#define max_diwlastword (PIXEL_XPOS(0x1c8 >> 1))
 
 extern int lores_factor, lores_shift, sprite_width;
 
@@ -66,56 +59,73 @@ extern int framecnt;
  */
 struct color_entry {
     uae_u16 color_regs_ecs[32];
+#ifndef AGA
+    xcolnr acolors[32];
+#else
     xcolnr acolors[256];
     uae_u32 color_regs_aga[256];
+#endif
 };
 
+#ifdef AGA
 /* convert 24 bit AGA Amiga RGB to native color */
 /* warning: ugly and works with little-endian cpu's only */
 #define CONVERT_RGB(c) \
     ( xbluecolors[((uae_u8*)(&c))[0]] | xgreencolors[((uae_u8*)(&c))[1]] | xredcolors[((uae_u8*)(&c))[2]] )
+#else
+#define CONVERT_RGB(c) 0
+#endif
 
 STATIC_INLINE xcolnr getxcolor (int c)
 {
+#ifdef AGA
     if (currprefs.chipset_mask & CSMASK_AGA)
 	return CONVERT_RGB(c);
     else
+#endif
 	return xcolors[c];
 }
 
 /* functions for reading, writing, copying and comparing struct color_entry */
 STATIC_INLINE int color_reg_get (struct color_entry *ce, int c)
 {
+#ifdef AGA
     if (currprefs.chipset_mask & CSMASK_AGA)
 	return ce->color_regs_aga[c];
     else
+#endif
 	return ce->color_regs_ecs[c];
 }
 STATIC_INLINE void color_reg_set (struct color_entry *ce, int c, int v)
 {
+#ifdef AGA
     if (currprefs.chipset_mask & CSMASK_AGA)
 	ce->color_regs_aga[c] = v;
     else
+#endif
 	ce->color_regs_ecs[c] = v;
 }
 STATIC_INLINE int color_reg_cmp (struct color_entry *ce1, struct color_entry *ce2)
 {
+#ifdef AGA
     if (currprefs.chipset_mask & CSMASK_AGA)
 	return memcmp (ce1->color_regs_aga, ce2->color_regs_aga, sizeof (uae_u32) * 256);
     else
+#endif
 	return memcmp (ce1->color_regs_ecs, ce2->color_regs_ecs, sizeof (uae_u16) * 32);    
 }
 /* ugly copy hack, is there better solution? */
 STATIC_INLINE void color_reg_cpy (struct color_entry *dst, struct color_entry *src)
 {
-    if (currprefs.chipset_mask & CSMASK_AGA) {
+#ifdef AGA
+    if (currprefs.chipset_mask & CSMASK_AGA)
 	/* copy acolors and color_regs_aga */
 	memcpy (dst->acolors, src->acolors, sizeof(struct color_entry) - sizeof(uae_u16) * 32);
-    } else {
+    else
+#endif
 	/* copy first 32 acolors and color_regs_ecs */
 	memcpy (dst->color_regs_ecs, src->color_regs_ecs,
-		sizeof(struct color_entry) - sizeof(uae_u32) * 256 - sizeof(xcolnr) * (256-32));
-    }
+		sizeof(struct color_entry));
 }
 
 /*
@@ -134,7 +144,13 @@ struct color_change {
 };
 
 /* 440 rather than 880, since sprites are always lores.  */
+#ifdef CUSTOM_SIMPLE
+#define MAX_PIXELS_PER_LINE 880
+#define MAX_VIDHEIGHT 800
+#else
 #define MAX_PIXELS_PER_LINE 1760
+#define MAX_VIDHEIGHT 2048
+#endif
 
 /* No divisors for MAX_PIXELS_PER_LINE; we support AGA and may one day
    want to use SHRES sprites.  */
@@ -181,7 +197,9 @@ struct decision {
     int ctable;
 
     uae_u16 bplcon0, bplcon2;
+#ifdef AGA
     uae_u16 bplcon3, bplcon4;
+#endif
     uae_u8 nr_planes;
     uae_u8 bplres;
     unsigned int any_hires_sprites:1;
@@ -234,6 +252,8 @@ extern void finish_drawing_frame (void);
 extern void reset_drawing (void);
 extern void drawing_init (void);
 extern void notice_interlace_seen (void);
+extern void frame_drawn (void);
+extern void redraw_frame (void);
 
 /* Finally, stuff that shouldn't really be shared.  */
 

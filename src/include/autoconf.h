@@ -44,17 +44,17 @@ extern uaecptr filesys_initcode;
 extern int nr_units (struct uaedev_mount_info *mountinfo);
 extern int is_hardfile (struct uaedev_mount_info *mountinfo, int unit_no);
 extern char *set_filesys_unit (struct uaedev_mount_info *mountinfo, int,
-			       char *volname, char *rootdir, int readonly,
+			       char *devname, char *volname, char *rootdir, int readonly,
 			       int secs, int surfaces, int reserved,
-			       int blocksize);
+			       int blocksize, int bootpri, char *filesysdir);
 extern char *add_filesys_unit (struct uaedev_mount_info *mountinfo,
-			       char *volname, char *rootdir, int readonly,
+			       char *devname, char *volname, char *rootdir, int readonly,
 			       int secs, int surfaces, int reserved,
-			       int blocksize);
+			       int blocksize, int bootpri, char *filesysdir);
 extern char *get_filesys_unit (struct uaedev_mount_info *mountinfo, int nr,
-			       char **volname, char **rootdir, int *readonly,
+			       char **devname, char **volame, char **rootdir, int *readonly,
 			       int *secspertrack, int *surfaces, int *reserved,
-			       int *cylinders, int *size, int *blocksize);
+			       int *cylinders, uae_u64 *size, int *blocksize, int *bootpri, char **filesysdir);
 extern int kill_filesys_unit (struct uaedev_mount_info *mountinfo, int);
 extern int move_filesys_unit (struct uaedev_mount_info *mountinfo, int nr, int to);
 extern int sprintf_filesys_unit (struct uaedev_mount_info *mountinfo, char *buffer, int num);
@@ -68,14 +68,18 @@ extern void free_mountinfo (struct uaedev_mount_info *);
 extern void filesys_reset (void);
 extern void filesys_prepare_reset (void);
 extern void filesys_start_threads (void);
+extern void filesys_flush_cache (void);
 
 extern void filesys_install (void);
 extern void filesys_install_code (void);
 extern void filesys_store_devinfo (uae_u8 *);
 extern void hardfile_install (void);
+extern void hardfile_reset (void);
 extern void emulib_install (void);
 extern void expansion_init (void);
 extern void expansion_cleanup (void);
+
+extern uae_u8* rtarea;
 
 #define TRAPFLAG_NO_REGSAVE 1
 #define TRAPFLAG_NO_RETVAL 2

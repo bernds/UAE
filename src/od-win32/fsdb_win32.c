@@ -17,7 +17,7 @@
 
 /* these are deadly (but I think allowed on the Amiga): */
 #define NUM_EVILCHARS 7
-char evilchars[NUM_EVILCHARS] = { '\\', '*', '?', '\"', '<', '>', '|' };
+static char evilchars[NUM_EVILCHARS] = { '\\', '*', '?', '\"', '<', '>', '|' };
 
 /* Return nonzero for any name we can't create on the native filesystem.  */
 int fsdb_name_invalid (const char *n)
@@ -27,7 +27,7 @@ int fsdb_name_invalid (const char *n)
     char b = (a == '\0' ? a : n[1]);
     char c = (b == '\0' ? b : n[2]);
     char d = (c == '\0' ? c : n[3]);
-    int l = strlen (n);
+    int l = strlen (n), ll;
 
     if (a >= 'a' && a <= 'z')
         a -= 32;
@@ -36,16 +36,20 @@ int fsdb_name_invalid (const char *n)
     if (c >= 'a' && c <= 'z')
         c -= 32;
 
-    if ((a == 'A' && b == 'U' && c == 'X' && l == 3) /* AUX  */
-	|| (a == 'C' && b == 'O' && c == 'N' && l == 3) /* CON  */
-	|| (a == 'P' && b == 'R' && c == 'N' && l == 3) /* PRN  */
-	|| (a == 'N' && b == 'U' && c == 'L' && l == 3) /* NUL  */
-	|| (a == 'L' && b == 'P' && c == 'T'  && (d >= '0' && d <= '9') && l == 4)  /* LPT# */
-	|| (a == 'C' && b == 'O' && c == 'M'  && (d >= '0' && d <= '9') && l == 4)) /* COM# */
+    /* reserved dos devices */
+    ll = 0;
+    if (a == 'A' && b == 'U' && c == 'X') ll = 3; /* AUX  */
+    if (a == 'C' && b == 'O' && c == 'N') ll = 3; /* CON  */
+    if (a == 'P' && b == 'R' && c == 'N') ll = 3; /* PRN  */
+    if (a == 'N' && b == 'U' && c == 'L') ll = 3; /* NUL  */
+    if (a == 'L' && b == 'P' && c == 'T'  && (d >= '0' && d <= '9')) ll = 4;  /* LPT# */
+    if (a == 'C' && b == 'O' && c == 'M'  && (d >= '0' && d <= '9')) ll = 4; /* COM# */
+    /* AUX.anything, CON.anything etc.. are also illegal names */
+    if (ll && (l == ll || (l > ll && n[ll] == '.')))
 	return 1;
-  
+
     /* spaces and periods at the end are a no-no */
-    i = strlen(n) - 1;
+    i = l - 1;
     if (n[i] == '.' || n[i] == ' ')
 	return 1;
 
@@ -66,14 +70,24 @@ uae_u32 filesys_parse_mask(uae_u32 mask)
     return mask ^ 0xf;
 }
 
+int fsdb_exists (char *nname)
+{
+    if (GetFileAttributes(nname) == 0xFFFFFFFF)
+	return 0;
+    return 1;
+}
+
 /* For an a_inode we have newly created based on a filename we found on the
  * native fs, fill in information about this file/directory.  */
-void fsdb_fill_file_attrs (a_inode *aino)
+int fsdb_fill_file_attrs (a_inode *aino)
 {
     int mode;
 
-    if((mode = GetFileAttributes(aino->nname)) == 0xFFFFFFFF) return;
-	
+    if((mode = GetFileAttributes(aino->nname)) == 0xFFFFFFFF) {
+	write_log("GetFileAttributes('%s') failed! error=%d, aino=%p dir=%d\n", aino->nname,GetLastError(),aino,aino->dir);
+	return 0;
+    }
+
     aino->dir = (mode & FILE_ATTRIBUTE_DIRECTORY) ? 1 : 0;
     aino->amigaos_mode = A_FIBF_EXECUTE | A_FIBF_READ;
     if (FILE_ATTRIBUTE_ARCHIVE & mode)
@@ -81,6 +95,7 @@ void fsdb_fill_file_attrs (a_inode *aino)
     if (! (FILE_ATTRIBUTE_READONLY & mode))
 	aino->amigaos_mode |= A_FIBF_WRITE | A_FIBF_DELETE;
     aino->amigaos_mode = filesys_parse_mask(aino->amigaos_mode);
+    return 1;
 }
 
 int fsdb_set_file_attrs (a_inode *aino, int mask)
@@ -124,7 +139,6 @@ int fsdb_mode_representable_p (const a_inode *aino)
     /* P or S set, or E or R clear, means we can't handle it.  */
     if (mask & (A_FIBF_SCRIPT | A_FIBF_PURE | A_FIBF_EXECUTE | A_FIBF_READ))
 	return 0;
-
     m1 = A_FIBF_DELETE | A_FIBF_WRITE;
     /* If it's rwed, we are OK... */
     if ((mask & m1) == 0)

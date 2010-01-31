@@ -23,7 +23,7 @@
 #include "bsdsocket.h"
 #include "osdep/exectasks.h"
 
-#ifdef BSDSOCKET_SUPPORTED
+#ifdef BSDSOCKET
 
 static uae_u32 SockLibBase;
 
@@ -173,8 +173,8 @@ int getsd (SB, int s)
 	if (dt[i] == -1) {
 	    dt[i] = s;
 	    sb->ftable[i] = SF_BLOCKING;
-	    return i + 1;
-	}
+		return i + 1;
+		}
     /* descriptor table full. */
     seterrno (sb, 24);		/* EMFILE */
 
@@ -251,10 +251,16 @@ static uae_u32 bsdsock_int_handler (void)
 
 void waitsig (SB)
 {
+    long sigs;
     m68k_dreg (regs, 0) = (((uae_u32) 1) << sb->signal) | sb->eintrsigs;
-    if (CallLib (get_long (4), -0x13e) & sb->eintrsigs) {
+    if ((sigs = CallLib (get_long (4), -0x13e)) & sb->eintrsigs) {
 	sockabort (sb);
 	seterrno (sb, 4);	/* EINTR */
+
+	// Set signal
+	m68k_dreg (regs, 0) = sigs;
+	m68k_dreg (regs, 1) = sb->eintrsigs;
+	sigs = CallLib (get_long (4), -0x132);	/* SetSignal() */
 
 	sb->eintr = 1;
     } else
@@ -325,7 +331,6 @@ struct socketbase *get_socketbase (void)
 static void free_socketbase (void)
 {
     struct socketbase *sb, *nsb;
-    int i;
 
     if ((sb = get_socketbase ()) != NULL) {
 	m68k_dreg (regs, 0) = sb->signal;
@@ -458,7 +463,7 @@ static uae_u32 bsdsocklib_bind (void)
 {
     return host_bind (SOCKETBASE, m68k_dreg (regs, 0), m68k_areg (regs, 0),
 		      m68k_dreg (regs, 1));
-}
+	}
 
 /* listen(s, backlog)(d0/d1) */
 static uae_u32 bsdsocklib_listen (void)
@@ -633,7 +638,7 @@ static uae_u32 bsdsocklib_ObtainSocket (void)
 
     sockpoolids[i] = UNIQUE_ID;
 
-    return sd;
+    return sd-1;
 }
 
 /* ReleaseSocket(fd, id)(d0/d1) */
@@ -648,7 +653,8 @@ static uae_u32 bsdsocklib_ReleaseSocket (void)
 
     sd = m68k_dreg (regs, 0);
     id = m68k_dreg (regs, 1);
-
+	
+	sd++;
     TRACE (("ReleaseSocket(%d,%d) -> ", sd, id));
 
     s = getsock (sb, sd);
@@ -1014,6 +1020,10 @@ static uae_u32 bsdsocklib_SocketBaseTagList (void)
 		    TRACE (("SBTC_SIGEVENTMASK),0x%lx", currval));
 		    tagcopy (currtag, currval, tagptr, &sb->eventsigs);
 		    break;
+		 case SBTC_SIGIOMASK:
+		    TRACE (("SBTC_SIGEVENTMASK),0x%lx", currval));
+		    tagcopy (currtag, currval, tagptr, &sb->eventsigs);
+		    break;
 		 case SBTC_ERRNO:
 		    TRACE (("SBTC_ERRNO),%d", currval));
 		    tagcopy (currtag, currval, tagptr, &sb->sb_errno);
@@ -1091,12 +1101,11 @@ static uae_u32 bsdsocklib_GetSocketEvents (void)
 
 	if (sb->mtable[sb->eventindex]) {
 	    flags = sb->ftable[sb->eventindex] & SET_ALL;
-
 	    if (flags) {
 		sb->ftable[sb->eventindex] &= ~SET_ALL;
 		put_long (m68k_areg (regs, 0), flags >> 8);
 		TRACE (("%d (0x%x)\n", sb->eventindex + 1, flags >> 8));
-		return sb->eventindex + 1;
+		return sb->eventindex; // xxx
 	    }
 	}
     }
@@ -1224,7 +1233,7 @@ uae_u32 sockfuncvecs[sizeof (sockfuncs) / sizeof (*sockfuncs)];
 void bsdlib_install (void)
 {
     uae_u32 resname, resid;
-    uae_u32 begin, end, inittable;
+    uae_u32 begin, end;
     uae_u32 func_place, data_place, init_place;
     int i;
 
@@ -1232,6 +1241,9 @@ void bsdlib_install (void)
 	return;
 
     memset (sockpoolids, UNIQUE_ID, sizeof (sockpoolids));
+
+    //resname = ds ("bsdsocke2.library");
+    //resid = ds ("UAE bsdsocke2.library 4.1");
 
     resname = ds ("bsdsocket.library");
     resid = ds ("UAE bsdsocket.library 4.1");
@@ -1307,10 +1319,4 @@ void bsdlib_install (void)
     org (end);
 }
 
-#else /* ! BSDSOCKET_SUPPORTED */
-
-void bsdlib_reset (void)
-{
-}
-
-#endif /* ! BSDSOCKET_SUPPORTED */
+#endif /* ! BSDSOCKET */

@@ -13,10 +13,14 @@
 #include <winspool.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#ifdef _MSC_VER
 #include <mmsystem.h>
 #include <ddraw.h>
 #include <commctrl.h>
 #include <commdlg.h>
+#else
+#include "winstuff.h"
+#endif
 #include <stdio.h>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -27,21 +31,28 @@
 #include "gensound.h"
 #include "events.h"
 #include "uae.h"
-#include "memory.h"
+#include "include/memory.h"
 #include "custom.h"
-#include "osdep/win32gui.h"
-#include "osdep/parser.h"
-#include "osdep/midi.h"
+#include "autoconf.h"
+#include "od-win32/win32gui.h"
+#include "od-win32/parser.h"
+#include "od-win32/midi.h"
+#include "od-win32/ahidsound.h"
+#include "win32.h"
+#include "ioport.h"
 
-UINT prttimer;
-char prtbuf[PRTBUFSIZE];
-int prtbufbytes,wantwrite;
-HANDLE hPrt = INVALID_HANDLE_VALUE;
-DWORD  dwJob;
+static UINT prttimer;
+static char prtbuf[PRTBUFSIZE];
+static int prtbufbytes,wantwrite;
+static HANDLE hPrt = INVALID_HANDLE_VALUE;
+static DWORD  dwJob;
 extern HWND hAmigaWnd;
- OVERLAPPED ol = { 0 };
+static int prtopen;
+extern void flushpixels(void);
+void DoSomeWeirdPrintingStuff( char val );
+static int uartbreak;
 
-void flushprtbuf (void)
+static void flushprtbuf (void)
 {
     DWORD written = 0;
 
@@ -68,14 +79,14 @@ void finishjob (void)
 {
     flushprtbuf ();
 }
-
-void DoSomeWeirdPrintingStuff( char val )
+ 
+static void DoSomeWeirdPrintingStuff( char val )
 {
-    if (prttimer)
-	KillTimer (hAmigaWnd, prttimer);
+	//if (prttimer)
+	//KillTimer (hAmigaWnd, prttimer);
     if (prtbufbytes < PRTBUFSIZE) {
 	prtbuf[prtbufbytes++] = val;
-	prttimer = SetTimer (hAmigaWnd, 1, 2000, NULL);
+	//prttimer = SetTimer (hAmigaWnd, 1, 2000, NULL);
     } else {
 	flushprtbuf ();
 	*prtbuf = val;
@@ -84,12 +95,25 @@ void DoSomeWeirdPrintingStuff( char val )
     }
 }
 
-FILE *openprinter( void )
+int isprinter (void)
 {
-    FILE *result = NULL;
+    if (!strcasecmp(currprefs.prtname,"none"))
+	return 0;
+    if (!memcmp(currprefs.prtname,"LPT", 3)) {
+	paraport_open (currprefs.prtname);
+	return -1;
+    }
+    return 1;
+}
+
+static void openprinter( void )
+{
     DOC_INFO_1 DocInfo;
 
-    if( ( hPrt == INVALID_HANDLE_VALUE ) && *currprefs.prtname )
+    closeprinter ();
+    if (!strcasecmp(currprefs.prtname,"none"))
+	return;
+    if( ( hPrt == INVALID_HANDLE_VALUE ) && *currprefs.prtname)
     {
 	if( OpenPrinter(currprefs.prtname, &hPrt, NULL ) )
 	{
@@ -105,7 +129,7 @@ FILE *openprinter( void )
 	    }
 	    else if( StartPagePrinter( hPrt ) )
 	    {
-		result = 1;
+		prtopen = 1;
 	    }
 	}
 	else
@@ -121,8 +145,20 @@ FILE *openprinter( void )
     {
 	write_log( "PRINTER: ERROR - Couldn't open printer \"%s\" for output.\n", currprefs.prtname );
     }
+}
 
-    return result;
+void flushprinter (void)
+{
+    if (hPrt != INVALID_HANDLE_VALUE) {
+        SetJob(
+	    hPrt,  // handle to printer object
+	    dwJob,      // print job identifier
+	    0,      // information level
+	    0,     // job information buffer
+	    5     // job command value
+	);
+	closeprinter();
+    }
 }
 
 void closeprinter( void )
@@ -135,21 +171,37 @@ void closeprinter( void )
 	hPrt = INVALID_HANDLE_VALUE;
 	write_log( "PRINTER: Closing printer.\n" );
     }
-    KillTimer( hAmigaWnd, prttimer );
+    //KillTimer( hAmigaWnd, prttimer );
     prttimer = 0;
+    prtopen = 0;
 }
 
-void putprinter (char val)
+static void putprinter (char val)
 {
     DoSomeWeirdPrintingStuff( val );
 }
 
-static HANDLE hCom = INVALID_HANDLE_VALUE;
-static HANDLE writeevent = NULL;
-static DCB dcb;
+int doprinter (uae_u8 val)
+{
+    if (!prtopen)
+	openprinter ();
+    if (prtopen)
+        putprinter (val);
+    return prtopen;
+}
 
-char inbuf[1024], outbuf[1024];
-int inptr, inlast, outlast;
+static HANDLE hCom = INVALID_HANDLE_VALUE;
+static DCB dcb;
+static HANDLE writeevent;
+#define SERIAL_WRITE_BUFFER 100
+#define SERIAL_READ_BUFFER 100
+static uae_u8 outputbuffer[SERIAL_WRITE_BUFFER];
+static uae_u8 outputbufferout[SERIAL_WRITE_BUFFER];
+static uae_u8 inputbuffer[SERIAL_READ_BUFFER];
+static int datainoutput;
+static int dataininput, dataininputcnt;
+static OVERLAPPED writeol, readol;
+static writepending;
 
 int openser (char *sername)
 {
@@ -158,10 +210,13 @@ int openser (char *sername)
 
     sprintf (buf, "\\.\\\\%s", sername);
 
-    if (!(writeevent = CreateEvent (NULL, TRUE, FALSE, NULL))) {
+   if (!(writeevent = CreateEvent (NULL, TRUE, FALSE, NULL))) {
 	write_log ("SERIAL: Failed to create event!\n");
 	return 0;
     }
+    SetEvent (writeevent);
+    writeol.hEvent = writeevent;
+    uartbreak = 0;
     if ((hCom = CreateFile (buf, GENERIC_READ | GENERIC_WRITE,
 			    0,
 			    NULL,
@@ -181,24 +236,38 @@ int openser (char *sername)
 	GetCommState (hCom, &dcb);
 
 	dcb.BaudRate = 9600;
-	//dcb.ByteSize = 8;
-	//dcb.Parity = 0;
-	//dcb.StopBits = NOPARITY;
+	dcb.ByteSize = 8;
+	dcb.Parity = NOPARITY;
+	dcb.StopBits = ONESTOPBIT;
 
-	//dcb.fOutxCtsFlow = TRUE;
-	//dcb.fOutxDsrFlow = FALSE;
-	//dcb.fDtrControl = DTR_CONTROL_ENABLE;
-	//dcb.fTXContinueOnXoff = FALSE;
-	//dcb.fOutX = FALSE;
-	//dcb.fInX = FALSE;
-	//dcb.fNull = FALSE;
-	//dcb.fRtsControl = RTS_CONTROL_HANDSHAKE;
-	//dcb.fAbortOnError = FALSE;
+        dcb.fDsrSensitivity = FALSE;
+        dcb.fOutxDsrFlow = FALSE;
+        dcb.fDtrControl = DTR_CONTROL_DISABLE;
+   
+	if (currprefs.serial_hwctsrts) {
+	    dcb.fOutxCtsFlow = TRUE;
+	    dcb.fRtsControl = RTS_CONTROL_HANDSHAKE;
+	} else {
+	    dcb.fRtsControl = RTS_CONTROL_DISABLE;
+	    dcb.fOutxCtsFlow = FALSE;
+	}   
+
+	dcb.fTXContinueOnXoff = FALSE;
+	dcb.fOutX = FALSE;
+	dcb.fInX = FALSE;
+
+	dcb.fErrorChar = FALSE;
+	dcb.fNull = FALSE;
+	dcb.fAbortOnError = FALSE;
+	
+	dcb.XoffLim = 512;
+	dcb.XonLim = 2048;
 
 	if (SetCommState (hCom, &dcb)) {
-	    write_log ("SERIAL: Using %s\n", sername);
+	    write_log ("SERIAL: Using %s CTS/RTS=%d\n", sername, currprefs.serial_hwctsrts);
 	    return 1;
 	}
+	write_log ("SERIAL: serial driver didn't accept new parameters\n");
 	CloseHandle (hCom);
 	hCom = INVALID_HANDLE_VALUE;
     }
@@ -207,262 +276,257 @@ int openser (char *sername)
 
 void closeser (void)
 {
-    if (hCom != INVALID_HANDLE_VALUE) 
-    {
-	    CloseHandle (hCom);
-	    hCom = INVALID_HANDLE_VALUE;
+    if (hCom != INVALID_HANDLE_VALUE)  {
+	CloseHandle (hCom);
+	hCom = INVALID_HANDLE_VALUE;
     }
+    if (midi_ready)
+        Midi_Close();
     if( writeevent )
 	CloseHandle( writeevent );
+    writeevent = 0;
+    uartbreak = 0;
 }
 
-void doserout( void )
+static void outser (void)
 {
-    DWORD dwErrorFlags;
-    unsigned long actual;
-
-    if (hCom != INVALID_HANDLE_VALUE) 
-    {
-        if (outlast) 
-        {
-            ResetEvent (ol.hEvent = writeevent);
-            actual = 0;
-			            
-            if (!WriteFile (hCom, outbuf, outlast, &actual, &ol)) 
-            {
-			 //GetOverlappedResult (hCom, &ol, &actual, FALSE);
-
-             /*   while (outlast -= actual) 
-                {
-                    if ((dwErrorFlags = GetLastError ()) == ERROR_IO_INCOMPLETE || dwErrorFlags == ERROR_IO_PENDING) 
-                    {
-			actual = 0;
-			GetOverlappedResult (hCom, &ol, &actual, FALSE);
-
-			if ((dwErrorFlags = GetLastError ()) != ERROR_IO_INCOMPLETE && dwErrorFlags != ERROR_IO_PENDING) 
-                        {
-			    write_log ("writeser: error %d, lost %d chars!\n", GetLastError (), outlast - actual);
-			    outlast = 0;
-			    break;
-			}
-			if (WaitForSingleObject (writeevent, 100) == WAIT_TIMEOUT) 
-                        {
-			    write_log ("writeser: timeout, lost %d chars!\n", outlast - actual);
-			    outlast = 0;
-			    break;
-			}
-    		    }
-                    else
-                    {
-			if (dwErrorFlags) 
-                        {
-			    write_log ("writeser: error %d while writing, lost %d chars!\n", dwErrorFlags, outlast - actual);
-			    ClearCommError (hCom, &dwErrorFlags, NULL);
-			}
-			
-			outlast = 0;
-			break;
-		    }
-			
-		}
-		*/
-        outlast=0;
-	    }
-	}
-    }
-    else 
-    {
-	outlast = 0;
-	inptr = inlast = 0;
+    DWORD actual;
+    if (WaitForSingleObject (writeevent, 0) == WAIT_OBJECT_0 && datainoutput > 0) {
+        memcpy (outputbufferout, outputbuffer, datainoutput);
+        WriteFile (hCom, outputbufferout, datainoutput, &actual, &writeol);
+        datainoutput = 0;
     }
 }
 
-void writeser (char c)
+void writeser (int c)
 {
-	COMSTAT ComStat;
-    DWORD dwErrorFlags;
-	extern 	uae_u16 serdat;
+    if (midi_ready)
     {
-	outbuf[ outlast++ ] = c;
-//serial
-	if (outlast == 100/*sizeof outbuf*/)
-	{
-	    doserout();
-        wantwrite=2000;
-		return;
-	}
+	BYTE outchar = (BYTE)c;
+        Midi_Parse( midi_output, &outchar );
     }
-    serdat|=0x2000; /* Set TBE in the SERDATR ... */
-    intreq|=1;      /* ... and in INTREQ register */
-    INTREQ( 0x8000 | 0x01 );
+    else
+    {
+	if (datainoutput + 1 < sizeof(outputbuffer)) {
+	    outputbuffer[datainoutput++] = c;
+	} else {
+	    write_log ("serial output buffer overflow, data will be lost\n");
+	    datainoutput = 0;
+	}
+	outser ();
+    }
 }
-int state,oldstatelw,oldstaterw;
 
-void hsyncstuff( void )   //only generate Interrupts when 
-//writebuffer is complete flushed
-//check state of lwin rwin
-
+int checkserwrite (void)
 {
-    static int keycheck=0;
-    extern 	uae_u16 serdat;
-    extern int serdev;
-    
-    keycheck++;
-    if(keycheck==1000)
-    {
-	state=GetAsyncKeyState(VK_LWIN);
-	
-	if (state!=oldstatelw){my_kbd_handler(VK_LWIN,0,state);
-	oldstatelw=state;
-	}
-	state=GetAsyncKeyState(VK_RWIN);
-	
-	if (state!=oldstaterw){my_kbd_handler(VK_RWIN,0,state);
-	oldstaterw=state;
-	}
-	keycheck=0;
+    if (hCom == INVALID_HANDLE_VALUE)
+	return 1;
+    if (midi_ready) {
+	return 1;
+    } else {
+        outser ();
+	if (datainoutput >= sizeof (outputbuffer) - 1)
+	    return 0;
     }
-    
-    if (!serdev)           /* || (serdat&0x4000)) */
-	return;
-
-    if(wantwrite)
-    {
-	int actual=0;
-	if(wantwrite==1)
-	{
-	    serdat|=0x2000;
-	    intreq|=0x1;
-	    INTREQ(0x8000 | (0x01));
-	    wantwrite=0;
-	}
-	wantwrite--;
-	GetOverlappedResult (hCom, &ol, &actual, FALSE);           	
-	if (actual==100)
-	{		 serdat|=0x2000;
-	intreq|=0x1;
-	INTREQ(0x8000 | (0x01));
-	wantwrite=0;
-	}
-    }
+    return 1;
 }
 
-int readser (char *buffer)
+int readseravail (void)
 {
     COMSTAT ComStat;
     DWORD dwErrorFlags;
-    DWORD result;
-    unsigned long actual;
-    
-    
-    {
-	
-	
-	//	
-		//if(intreq&&1);
-		//else
-	/*if (WaitForSingleObject (writeevent,0) != WAIT_TIMEOUT) 
-                        {
-			 serdat|=0x2000;
-		intreq|=0x1;
-		INTREQ(0x8000 | (0x01));
-		 ResetEvent (ol.hEvent = writeevent);
+    if (midi_ready) {
+	if (ismidibyte ())
+	    return 1;
+    } else {
+	if (dataininput > dataininputcnt)
+	    return 1;
+	if (hCom != INVALID_HANDLE_VALUE)  {
+	    ClearCommError (hCom, &dwErrorFlags, &ComStat);
+	    if (ComStat.cbInQue > 0)
+		return 1;
+	}
+    }
+    return 0;
+}
 
-			}
-	else {INTREQ(0x1);
-	serdat &=0xdfff;
-	}*/
-	if (inptr < inlast) 
-	{
-	    *buffer = inbuf[inptr++];
+int readser (int *buffer)
+{
+    COMSTAT ComStat;
+    DWORD dwErrorFlags;
+    DWORD actual;
+    
+    
+    if (midi_ready)
+    {
+	*buffer = getmidibyte ();
+	if (*buffer < 0)
+	    return 0;
+	return 1;
+    }
+    else
+    {
+	if (dataininput > dataininputcnt) {
+	    *buffer = inputbuffer[dataininputcnt++];
 	    return 1;
 	}
+        dataininput = 0;
+	dataininputcnt = 0;
 	if (hCom != INVALID_HANDLE_VALUE) 
 	{
-	    inptr = inlast = 0;
-	    
 	    /* only try to read number of bytes in queue */
 	    ClearCommError (hCom, &dwErrorFlags, &ComStat);
 	    if (ComStat.cbInQue) 
 	    {
+		int len = ComStat.cbInQue;
 		
-		if (!ReadFile (hCom, inbuf, min (ComStat.cbInQue, sizeof inbuf), &inlast, &ol)) 
+		if (len > sizeof (inputbuffer))
+		    len = sizeof (inputbuffer);
+		if (ReadFile (hCom, inputbuffer, len, &actual, &readol)) 
 		{
-		    if (GetLastError () == ERROR_IO_PENDING) 
-		    {
-			write_log ("readser: INTERNAL ERROR - intermittent loss of serial data!\n");
-			for (;;) 
-			{
-			    actual = 0;
-			    result = GetOverlappedResult (hCom, &ol, &actual, TRUE);
-			    inlast += actual;
-			    
-			    if (result)
-				break;
-			    
-			    if (GetLastError () != ERROR_IO_INCOMPLETE) 
-			    {
-				ClearCommError (hCom, &dwErrorFlags, &ComStat);
-				break;
-			    }
-			}
-		    }
-		    else
-		    {
-			ClearCommError (hCom, &dwErrorFlags, &ComStat);
-		    }
+		    dataininput = actual;
+		    dataininputcnt = 0;
+		    if (actual == 0)
+			return 0;
+		    return readser (buffer);
 		}
-	    }
-	    if (inptr < inlast) 
-	    {
-		*buffer = inbuf[inptr++];
-		return 1;
 	    }
 	}
     }
     return 0;
 }
 
-void getserstat (int *status)
+void serialuartbreak (int v)
+{
+    if (hCom == INVALID_HANDLE_VALUE)
+	return;
+
+    if (v)
+	EscapeCommFunction (hCom, SETBREAK);
+    else
+	EscapeCommFunction (hCom, CLRBREAK);
+}
+
+void getserstat (int *pstatus)
 {
     DWORD stat;
+    int status = 0;
 
-    *status = 0;
-    if (hCom != INVALID_HANDLE_VALUE) {
-	//GetCommModemStatus (hCom, &stat);
-/* @@@ This "ouch" section was #ifdef 0 before - BDK */
-#if 0
-#define TIOCM_CAR 1
-#define TIOCM_DSR 2
-    /* ouch */
+    *pstatus = 0;
+    if (hCom == INVALID_HANDLE_VALUE)
+	return;
+    
+    GetCommModemStatus (hCom, &stat);
     if (stat & MS_CTS_ON)
-	    *status |= TIOCM_CAR;
-	if (stat & MS_RLSD_ON)
-	    *status |= TIOCM_CAR;
-	if (stat & MS_DSR_ON)
-	    *status |= TIOCM_DSR;
-#endif
+        status |= TIOCM_CTS;
+    if (stat & MS_RLSD_ON)
+        status |= TIOCM_CAR;
+    if (stat & MS_DSR_ON)
+        status |= TIOCM_DSR;
+    if (stat & MS_RING_ON)
+        status |= TIOCM_RI;
+    *pstatus = status;
+}
+
+
+void setserstat (int mask, int onoff)
+{
+    if (hCom == INVALID_HANDLE_VALUE)
+	return;
+
+    if (mask & TIOCM_DTR)
+        EscapeCommFunction (hCom, onoff ? SETDTR : CLRDTR);
+    if (!currprefs.serial_hwctsrts) {
+	if (mask & TIOCM_RTS)
+	    EscapeCommFunction (hCom, onoff ? SETRTS : CLRRTS);
     }
 }
 
 int setbaud (long baud)
 {
-    write_log( "Baud-rate is %d\n", baud );
+    if( baud == 31400 ) /* MIDI baud-rate */
     {
+        if (!midi_ready)
+        {
+            if (Midi_Open())
+		write_log ("Midi enabled\n");
+        }
+        return 1;
+    }
+    else
+    {
+        if (midi_ready)
+        {
+            Midi_Close();
+        }
         if (hCom != INVALID_HANDLE_VALUE) 
         {
-	        if (GetCommState (hCom, &dcb)) 
+	    if (GetCommState (hCom, &dcb)) 
             {
-	            dcb.BaudRate = baud;
-	            if (!SetCommState (hCom, &dcb))
-		        write_log ("SERIAL: Error setting baud rate %d!\n", baud);
-	        } 
+		dcb.BaudRate = baud;
+	        if (!SetCommState (hCom, &dcb)) {
+		    write_log ("SERIAL: Error setting baud rate %d!\n", baud);
+		    return 0;
+		}
+	    } 
             else
             {
-	            write_log ("SERIAL: setbaud internal error!\n");
+		write_log ("SERIAL: setbaud internal error!\n");
             }
         }
     }
-    return 0;
+    return 1;
 }
 
+void hsyncstuff(void)
+//only generate Interrupts when 
+//writebuffer is complete flushed
+//check state of lwin rwin
+{
+    static int keycheck = 0;
+    static int installahi;
+    
+#ifdef AHI
+    { //begin ahi_sound
+	static int count;
+	if (ahi_on) {
+	    count++;
+	    //15625/count freebuffer check
+	    if(count > 20) {
+		ahi_updatesound (1);
+		count = 0;
+	    }
+	}
+	if (!installahi)
+	{ 
+	    uaecptr a = here (); //this install the ahisound
+	    org (RTAREA_BASE + 0xFFC0);
+	    calltrap (deftrap (ahi_demux));
+	    dw (0x4e75);// rts
+	    org (a);
+	    installahi=1;
+	}
+    } //end ahi_sound
+#endif
+#ifdef PARALLEL_PORT
+    keycheck++;
+    if(keycheck==1000)
+    {
+	if (prtbufbytes)
+	{
+	    flushprtbuf ();
+	} 
+	{
+	    extern flashscreen;
+	    int DX_Fill( int , int , int, int, uae_u32 , enum RGBFTYPE  );
+	    //extern int warned_JIT_0xF10000;
+	    //warned_JIT_0xF10000 = 0;
+	    if (flashscreen) {
+		DX_Fill(0,0,300,40,0x000000,9);
+		flashscreen--;
+	    }
+	}
+	keycheck = 0;
+    }
+#endif
+}

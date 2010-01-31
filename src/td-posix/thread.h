@@ -24,8 +24,20 @@ typedef sem_t uae_sem_t;
 typedef pthread_t uae_thread_id;
 #define BAD_THREAD -1
 
-static __inline__ int uae_start_thread (void *(*f) (void *), void *arg, uae_thread_id *foo)
+STATIC_INLINE int uae_start_thread (void *(*f) (void *), void *arg, uae_thread_id *foo)
 {
     return pthread_create (foo, 0, f, arg);
 }
 #define UAE_THREAD_EXIT pthread_exit(0)
+
+#define set_thread_priority(pri) 
+
+STATIC_INLINE void sleep_millis (int ms)
+{
+    usleep (ms*1000);
+}
+
+STATIC_INLINE void sleep_millis_busy (int ms)
+{
+    usleep (ms*1000);
+}

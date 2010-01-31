@@ -31,6 +31,7 @@ typedef struct {
 
 static __inline__ void init_comm_pipe (smp_comm_pipe *p, int size, int chunks)
 {
+    memset (p, 0, sizeof (*p));
     p->data = (uae_pt *)malloc (size*sizeof (uae_pt));
     p->size = size;
     p->chunks = chunks;

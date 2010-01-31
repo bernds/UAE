@@ -1,8 +1,7 @@
  /* 
   * UAE - The Un*x Amiga Emulator
   * 
-  * Joystick emulation for Linux and BSD. They share too much code to
-  * split this file.
+  * SDL Joystick code
   * 
   * Copyright 1997 Bernd Schmidt
   * Copyright 1998 Krister Walfridsson
@@ -15,83 +14,144 @@
 #include "options.h"
 #include "memory.h"
 #include "custom.h"
-#include "joystick.h"
+#include "inputdevice.h"
 #include "SDL.h"
 
-int nr_joysticks;
+static int nr_joysticks;
 
-static SDL_Joystick *joy0, *joy1;
+struct joyinfo {
+    SDL_Joystick *joy;
+    int axles;
+    int buttons;
+};
 
-struct joy_range
+static struct joyinfo joys[MAX_INPUT_DEVICES];
+
+static int isjoy (int pcport, int amigaport)
 {
-    int minx, maxx, miny, maxy;
-} range0, range1;
-
-void read_joystick(int nr, unsigned int *dir, int *button)
-{
-    int x_axis, y_axis;
-    int left = 0, right = 0, top = 0, bot = 0;
-    int len, i, num;
-    SDL_Joystick *joy = nr == 0 ? joy0 : joy1;
-    struct joy_range *r = nr == 0 ? &range0 : &range1;
-
-    *dir = 0;
-    *button = 0;
-    if (nr >= nr_joysticks)
-    	return;
-
-    SDL_JoystickUpdate ();
-
-    x_axis = SDL_JoystickGetAxis (joy, 0);
-    y_axis = SDL_JoystickGetAxis (joy, 1);
-
-    if (x_axis < r->minx) r->minx = x_axis;
-    if (y_axis < r->miny) r->miny = y_axis;
-    if (x_axis > r->maxx) r->maxx = x_axis;
-    if (y_axis > r->maxy) r->maxy = y_axis;
-    
-    if (x_axis < (r->minx + (r->maxx - r->minx)/3))
-    	left = 1;
-    else if (x_axis > (r->minx + 2*(r->maxx - r->minx)/3))
-    	right = 1;
-
-    if (y_axis < (r->miny + (r->maxy - r->miny)/3))
-    	top = 1;
-    else if (y_axis > (r->miny + 2*(r->maxy - r->miny)/3))
-    	bot = 1;
-
-    if (left) top = !top;
-    if (right) bot = !bot;
-    *dir = bot | (right << 1) | (top << 8) | (left << 9);
-    num = SDL_JoystickNumButtons (joy);
-    if (num > 16)
-	num = 16;
-    for (i = 0; i < num; i++)
-	*button |= (SDL_JoystickGetButton (joy, i) & 1) << i;
+    if (pcport == 0)
+	return JSEM_ISJOY0 (amigaport, &currprefs);
+    else
+	return JSEM_ISJOY1 (amigaport, &currprefs);
 }
 
-void init_joystick(void)
+static void read_joy(int nr)
+{
+    int num, i, axes, axis;
+    SDL_Joystick *joy;
+
+    if (currprefs.input_selected_setting == 0) {
+	if (nr >= 2)
+	    return;
+	if (isjoy (nr, 0)) {
+	    if (JSEM_ISNUMPAD (0, &currprefs) || JSEM_ISCURSOR (0, &currprefs) || JSEM_ISSOMEWHEREELSE (0, &currprefs))
+		return;
+	} else if (isjoy (nr, 1)) {
+	    if (JSEM_ISNUMPAD (1, &currprefs) || JSEM_ISCURSOR (1, &currprefs) || JSEM_ISSOMEWHEREELSE (1, &currprefs))
+	        return;
+	} else
+	    return;
+    }
+    joy = joys[nr].joy;
+    axes = SDL_JoystickNumAxes (joy);
+    for (i = 0; i < axes; i++) {
+	axis = SDL_JoystickGetAxis (joy, i);
+	setjoystickstate (nr, i, axis, 32767);
+    }
+
+    num = SDL_JoystickNumButtons (joy);
+    for (i = 0; i < num; i++) {
+	int bs = SDL_JoystickGetButton (joy, i) ? 1 : 0;
+        setjoybuttonstate (nr, i, bs);
+    }
+}
+
+static int get_joystick_num (void)
+{
+    return nr_joysticks;
+}
+
+static int get_joystick_widget_num (int joy)
+{
+    return joys[joy].axles + joys[joy].buttons;
+}
+
+static int get_joystick_widget_type (int joy, int num, char *name)
+{
+    if (num >= joys[joy].axles && num < joys[joy].axles + joys[joy].buttons) {
+	if (name)
+	    sprintf (name, "Button %d", num + 1 - joys[joy].axles);
+	return IDEV_WIDGET_BUTTON;
+    } else if (num < joys[joy].axles) {
+	if (name)
+	    sprintf (name, "Axis %d", num + 1);
+	return IDEV_WIDGET_AXIS;
+    }
+    return IDEV_WIDGET_NONE;
+}
+
+static int get_joystick_widget_first (int joy, int type)
+{
+    switch (type)
+    {
+	case IDEV_WIDGET_BUTTON:
+	return joys[joy].axles;
+	case IDEV_WIDGET_AXIS:
+	return 0;
+    }
+    return -1;
+}
+
+static char *get_joystick_name (int joy)
+{
+    static char name[100];
+    sprintf (name, "%d: %s", joy + 1, SDL_JoystickName (joy));
+    return name;
+}
+
+static void read_joysticks (void)
+{
+    int i;
+    SDL_JoystickUpdate ();
+    for (i = 0; i < get_joystick_num(); i++)
+	read_joy (i);
+}
+
+static int init_joysticks (void)
 {
     int i;
     nr_joysticks = SDL_NumJoysticks ();
-    if (nr_joysticks > 0)
-	joy0 = SDL_JoystickOpen (0);
-    if (nr_joysticks > 1)
-	joy1 = SDL_JoystickOpen (1);
-    range0.minx = INT_MAX;
-    range0.maxx = INT_MIN;
-    range0.miny = INT_MAX;
-    range0.maxy = INT_MIN;
-    range1.minx = INT_MAX;
-    range1.maxx = INT_MIN;
-    range1.miny = INT_MAX;
-    range1.maxy = INT_MIN;
+    if (nr_joysticks > MAX_INPUT_DEVICES)
+	nr_joysticks = MAX_INPUT_DEVICES;
+    for (i = 0; i < get_joystick_num(); i++) {
+	joys[i].joy = SDL_JoystickOpen (i);
+	joys[i].axles = SDL_JoystickNumAxes (joys[i].joy);
+	joys[i].buttons = SDL_JoystickNumButtons (joys[i].joy);
+    }
+    return 1;
 }
 
-void close_joystick(void)
+static void close_joysticks (void)
 {
-    if (nr_joysticks > 0)
-	SDL_JoystickClose (joy0);
-    if (nr_joysticks > 1)
-	SDL_JoystickClose (joy1);
+    int i;
+    for (i = 0; i < get_joystick_num(); i++) {
+	SDL_JoystickClose (joys[i].joy);
+	joys[i].joy = 0;
+    }
 }
+
+static int acquire_joy (int num, int flags)
+{
+    return 1;
+}
+
+static void unacquire_joy (int num)
+{
+}
+
+struct inputdevice_functions inputdevicefunc_joystick = {
+    init_joysticks, close_joysticks, acquire_joy, unacquire_joy,
+    read_joysticks, get_joystick_num, get_joystick_name,
+    get_joystick_widget_num, get_joystick_widget_type,
+    get_joystick_widget_first
+};

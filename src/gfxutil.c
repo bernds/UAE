@@ -8,15 +8,8 @@
 
 #include "sysconfig.h"
 #include "sysdeps.h"
-
-#include "config.h"
-#include "options.h"
-#include "threaddep/thread.h"
-#include "memory.h"
 #include "custom.h"
-#include "keyboard.h"
 #include "xwin.h"
-#include "keybuf.h"
 
 #define	RED 	0
 #define	GRN	1
@@ -33,12 +26,13 @@ static uae_u8 dither[4][4] =
   { 14 /* 15 */, 7, 13, 5 }
 };
 
+
 unsigned long doMask (int p, int bits, int shift)
 {
-    /* p is a value from 0 to 15 (Amiga color value)
-     * scale to 0..255, shift to align msb with mask, and apply mask */
-
-    unsigned long val = p * 0x11111111UL;
+    /* scale to 0..255, shift to align msb with mask, and apply mask */
+    unsigned long val = p << 24;
+    if (!bits)
+	return 0;
     val >>= (32 - bits);
     val <<= shift;
 
@@ -77,28 +71,59 @@ unsigned long doMask256 (int p, int bits, int shift)
     return val;
 }
 
-static unsigned int doColor(int i, int bits, int shift)
+static unsigned int doColor (int i, int bits, int shift)
 {
     int shift2;
     if(bits >= 8) shift2 = 0; else shift2 = 8 - bits;
     return (i >> shift2) << shift;
 }
 
-void alloc_colors64k (int rw, int gw, int bw, int rs, int gs, int bs)
+static unsigned int doAlpha (int alpha, int bits, int shift)
+{
+    return (alpha & ((1 << bits) - 1)) << shift;
+}
+
+#if 0
+static void colormodify (int *r, int *g, int *b)
+{
+    double h, l, s;
+
+    RGBToHLS (*r, *g, *b, &h, &l, &s);
+
+    h = h + currprefs.gfx_hue / 10.0;
+    if (h > 359) h = 359;
+    if (h < 0) h = 0;
+    s = s + currprefs.gfx_saturation / 30.0;
+    if (s > 99) s = 99;
+    if (s < 0) s = 0;
+    l = l + currprefs.gfx_luminance / 30.0;
+    l = (l - currprefs.gfx_contrast / 30.0) / (100 - 2 * currprefs.gfx_contrast / 30.0) * 100;
+    l = pow (l / 100.0, (currprefs.gfx_gamma + 1000) / 1000.0) * 100.0;
+    if (l > 99) l = 99;
+    if (l < 0) l = 0;
+    HLSToRGB (h, l, s, r, g, b);
+}
+#endif
+
+void alloc_colors64k (int rw, int gw, int bw, int rs, int gs, int bs, int aw, int as, int alpha)
 {
     int i;
+
     for (i = 0; i < 4096; i++) {
-	int r = i >> 8;
-	int g = (i >> 4) & 0xF;
-	int b = i & 0xF;
-	xcolors[i] = doMask(r, rw, rs) | doMask(g, gw, gs) | doMask(b, bw, bs);
+	int r = (i >> 8) << 4;
+	int g = ((i >> 4) & 0xF) << 4;
+	int b = (i & 0xF) << 4;
+	//colormodify (&r, &g, &b);
+	xcolors[i] = doMask(r, rw, rs) | doMask(g, gw, gs) | doMask(b, bw, bs) | doAlpha (alpha, aw, as);
     }
+#ifdef AGA
     /* create AGA color tables */
-    for(i=0; i<256; i++) {
-	xredcolors[i] = doColor(i, rw, rs);
-	xgreencolors[i] = doColor(i, gw, gs);
-	xbluecolors[i] = doColor(i, bw, bs);
+    for(i = 0; i < 256; i++) {
+	xredcolors[i] = doColor (i, rw, rs) | doAlpha (alpha, aw, as);
+	xgreencolors[i] = doColor (i, gw, gs) | doAlpha (alpha, aw, as);
+	xbluecolors[i] = doColor (i, bw, bs) | doAlpha (alpha, aw, as);;
     }
+#endif
 }
 
 static int allocated[4096];
@@ -114,7 +139,7 @@ void alloc_colors256 (allocfunc_type allocfunc)
 {
     int nb_cols[3]; /* r,g,b */
     int maxcol = newmaxcol == 0 ? 256 : newmaxcol;
-    int i,j,k,l,t;
+    int i,j,k,l;
 
     xcolnr *map;
 
@@ -290,7 +315,7 @@ void setup_greydither_maxcol (int maxcol, allocfunc_type allocfunc)
 /* sam:                      ^^^^^^^ */
 /*  It seems that produces better output */
 			cidx[i][rgb + (j+4)*4096] =
-			    cidx[i][rgb + j*4096] = map[p];
+			    cidx[i][rgb + j*4096] = (uae_u8)map[p];
 		    }
 		}
 	    }
@@ -438,7 +463,7 @@ void setup_dither (int bits, allocfunc_type allocfunc)
 			    ++cb;
 			if (cb > k) cb = k;
 #endif
-			cidx[i][rgb + (j+4)*4096] = cidx[i][rgb + j*4096] = map[(cr*nb_cols[GRN]+cg)*nb_cols[BLU]+cb];
+			cidx[i][rgb + (j+4)*4096] = cidx[i][rgb + j*4096] = (uae_u8)map[(cr*nb_cols[GRN]+cg)*nb_cols[BLU]+cb];
 		    }
 		}
 	    }

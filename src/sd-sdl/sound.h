@@ -1,8 +1,8 @@
-/* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
-  * Support for Linux/USS sound
-  * 
+  *
+  * Support for SDL sound
+  *
   * Copyright 1997 Bernd Schmidt
   */
 
@@ -11,8 +11,14 @@ extern uae_u16 sndbuffer[];
 extern uae_u16 *sndbufpt;
 extern int sndbufsize;
 extern void finish_sound_buffer (void);
+extern int init_sound (void);
+extern void close_sound (void);
+extern int setup_sound (void);
+extern void resume_sound (void);
+extern void pause_sound (void);
+extern void reset_sound (void);
 
-static __inline__ void check_sound_buffers (void)
+STATIC_INLINE void check_sound_buffers (void)
 {
     if ((char *)sndbufpt - (char *)sndbuffer >= sndbufsize) {
 	finish_sound_buffer ();

@@ -10,9 +10,9 @@ HRESULT CALLBACK modesCallback( LPDDSURFACEDESC2 modeDesc, LPVOID context );
 #endif
 
 int WIN32GFX_IsPicassoScreen( void );
-int WIN32GFX_IsFullScreen( void );
 int WIN32GFX_GetWidth( void );
 int WIN32GFX_GetHeight( void );
+int WIN32GFX_GetDepth (int real);
 void WIN32GFX_DisplayChangeRequested( void );
 void WIN32GFX_ToggleFullScreen( void );
 void WIN32GFX_DisablePicasso( void );
@@ -20,6 +20,9 @@ void WIN32GFX_EnablePicasso( void );
 void WIN32GFX_PaletteChange( void );
 void WIN32GFX_ClearPalette( void );
 void WIN32GFX_SetPalette( void );
+void WIN32GFX_WindowMove ( void );
+
+int DX_Blit( int srcx, int srcy, int dstx, int dsty, int width, int height, BLIT_OPCODE opcode );
 
 #ifndef _WIN32_WCE
 RGBFTYPE WIN32GFX_FigurePixelFormats( RGBFTYPE colortype );
@@ -30,5 +33,10 @@ extern HWND hStatusWnd;
 extern HINSTANCE hDDraw;
 extern char *start_path;
 extern uae_u32 default_freq;
+
+extern HDC gethdc (void);
+extern void releasehdc (HDC hdc);
+extern void close_windows (void);
+extern void updatewinfsmode (struct uae_prefs *p);
 
 #endif

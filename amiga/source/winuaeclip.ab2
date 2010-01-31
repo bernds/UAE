@@ -1,0 +1,133 @@
+WBStartup
+copy$="ctrl shift c"   ;change for keys
+paste$="ctrl shift v"
+cut$="ctrl shift x"
+TST.l $f0ffc0
+BNE rightuae
+Request "Winuaeclip Work only above WINUAE 0.8.21 R4","Install winuae > 0.8.21 R4","I terminate"
+End
+rightuae: a$=ProgPath$
+a$=a$+".info"
+If Exists(a$)
+     i.l=GetIconObject(ProgPath$)          ;read tooltypes
+          If i
+               clipmap=FindToolType("clip_to_ctrl")
+               a$=FindToolValue("COPYKEY"):If a$ Then copy$=a$
+               a$=FindToolValue("PASTEKEY"):If a$ Then paste$=a$
+               a$=FindToolValue("CUTKEY"):If a$ Then cut$=a$
+               i.l=FreeIconObject
+          End If
+End If
+
+#PRIORITY = 0
+#FLAG = 1
+#COPY=1
+#PASTE=2
+#CUT=3
+name$="winuaeclipcommodity"
+title$="Winuaeclip"
+discription$="Allow accsess to windows clipboard"
+
+If NCreateCommodity (8, name$, title$, discription$, #PRIORITY, #FLAG) ;
+    ;err.w=NCommodityCreateObject(0,popupkey$, 0)
+    err=NCommodityCreateObject(#COPY,copy$,0) | err
+    err=NCommodityCreateObject(#PASTE,paste$,0) | err
+    err=NCommodityCreateObject(#CUT,cut$,0) | err
+    If clipmap
+          err=NCommodityCreateObject(4,"ctrl c",0) | err
+          err=NCommodityCreateObject(5,"ctrl x",0) | err
+          err=NCommodityCreateObject(6,"ctrl v",0) | err
+    End If
+    If (err = 0)
+
+      NActivateCommodity 1
+
+      Repeat
+
+        If NWaitCommodityEvent
+
+          If NCommodityObjectSignal
+
+            msgtype.w=NCommodityType
+            msgid.w=NCommodityID
+
+            Select msgtype
+             Case #CXM_IEVENT
+               Select msgid
+                 Case 0
+                   active1=1 - active1
+                 Case #PASTE
+                  MOVEQ #10,d0
+                  JSR $f0ffC0
+                  size.l=PutD0
+                  *ptr=AllocMem_(size,0)
+                  MOVE.l d0,a0
+                  MOVEQ #11,d0
+                  JSR $f0ffC0
+                  r$=Peek$(*ptr)
+                  r$=Replace$(r$,Chr$($d),"")  ;remove $d out of the string
+                  NSetClipText (r$)
+                  Type "v",#IEQUALIFIER_RCOMMAND                ;paste it
+                  FreeMem_ *ptr,size
+                 Case #COPY
+                  Type "c",#IEQUALIFIER_RCOMMAND
+                  Delay_(30);
+                  r$=NGetClipText
+                  r$=Replace$(r$,Chr$($a),Chr$($d)+Chr$($a))
+                  GetD0 &r$
+                  MOVE.l d0,a0
+                  MOVEQ #12,d0
+                  JSR $f0ffc0
+                 Case #CUT
+                  Type "x",#IEQUALIFIER_RCOMMAND
+                  Delay_(30);
+                  r$=NGetClipText
+                  r$=Replace$(r$,Chr$($a),Chr$($d)+Chr$($a))
+                  GetD0 &r$
+                  MOVE.l d0,a0
+                  MOVEQ #12,d0
+                  JSR $f0ffc0
+                 Case 4
+                    Type "c",#IEQUALIFIER_RCOMMAND
+                 Case 5
+                    Type "x",#IEQUALIFIER_RCOMMAND
+                 Case 6
+                    Type "v",#IEQUALIFIER_RCOMMAND
+            End Select
+
+
+             Case #CXM_COMMAND
+
+               Select msgid
+
+                Case #CXCMD_ENABLE
+                     NActivateCommodity(1)
+                Case #CXCMD_DISABLE
+                    NActivateCommodity(0)
+                Case #CXCMD_APPEAR
+
+                Case #CXCMD_DISAPPEAR
+
+                Case #CXCMD_KILL
+                  quit=1
+                Case #CXCMD_UNIQUE
+                  quit=1
+               End Select
+
+            End Select
+
+          EndIf
+
+          If NCommodityCtrlCSignal  Then quit=1  ; <--
+
+        EndIf
+
+      Until (quit)
+
+    Else
+      NPrint "Error When Createing Objects."
+    EndIf
+
+  Else
+   Request "Removing Winuaeclip","Winuaeclip is remove","ok"
+  EndIf

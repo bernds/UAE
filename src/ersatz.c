@@ -16,6 +16,7 @@
 #include "memory.h"
 #include "custom.h"
 #include "newcpu.h"
+#include "cpu_prefetch.h"
 #include "cia.h"
 #include "disk.h"
 #include "ersatz.h"
@@ -32,7 +33,6 @@
 
 void init_ersatz_rom (uae_u8 *data)
 {
-    write_log ("Trying to use Kickstart replacement.\n");
     *data++ = 0x00; *data++ = 0x08; /* initial SP */
     *data++ = 0x00; *data++ = 0x00;
     *data++ = 0x00; *data++ = 0xF8; /* initial PC */
@@ -100,7 +100,7 @@ static void ersatz_init (void)
     uaecptr a;
 
     if (disk_empty (0)) {
-	write_log ("You need to have a diskfile in DF0 to use the Kickstart replacement!\n");
+	gui_message ("You need to have a diskfile in DF0 to use the Kickstart replacement!\n");
 	uae_quit ();
 	m68k_setpc (0xF80010);
 	return;
@@ -165,7 +165,7 @@ static void ersatz_init (void)
 
 	m68k_setpc (0xFC0002);
 	fill_prefetch_slow ();
-	uae_reset ();
+	uae_reset (0);
 	ersatzkickfile = 0;
 	return;
     }

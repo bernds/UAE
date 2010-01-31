@@ -6,8 +6,8 @@
   * Copyright 1997, 2001 Bernd Schmidt
   */
 
-#include "SDL.h"
-#include "SDL_thread.h"
+#include <SDL.h>
+#include <SDL_thread.h>
 
 /* Sempahores. We use POSIX semaphores; if you are porting this to a machine
  * with different ones, make them look like POSIX semaphores. */
@@ -27,7 +27,9 @@ typedef SDL_sem *uae_sem_t;
 typedef SDL_Thread *uae_thread_id;
 #define BAD_THREAD NULL
 
-static __inline__ int uae_start_thread (void *(*f) (void *), void *arg, uae_thread_id *foo)
+#define set_thread_priority(pri)
+
+STATIC_INLINE int uae_start_thread (void *(*f) (void *), void *arg, uae_thread_id *foo)
 {
     *foo = SDL_CreateThread ((int (*)(void *))f, arg);
     return *foo == 0;
@@ -35,3 +37,13 @@ static __inline__ int uae_start_thread (void *(*f) (void *), void *arg, uae_thre
 
 /* Do nothing; thread exits if thread function returns.  */
 #define UAE_THREAD_EXIT do {} while (0)
+
+STATIC_INLINE void sleep_millis (int ms)
+{
+    SDL_Delay( ms );
+}
+
+STATIC_INLINE void sleep_millis_busy (int ms)
+{
+    SDL_Delay( ms );
+}

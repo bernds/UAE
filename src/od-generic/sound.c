@@ -4,6 +4,7 @@
   * Support for the Mute sound system
   * 
   * Copyright 1997 Bernd Schmidt
+  * Copyright 2003 Richard Drummond
   */
 
 #include "sysconfig.h"
@@ -29,6 +30,14 @@ int setup_sound (void)
     return 1;
 }
 
-void close_sound(void)
+void close_sound (void)
+{
+}
+
+void update_sound (int freq)
+{
+}
+
+void reset_sound (void)
 {
 }

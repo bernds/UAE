@@ -20,6 +20,7 @@
 #include "newcpu.h"
 #include "ersatz.h"
 #include "md-fpp.h"
+#include "savestate.h"
 
 #if 1
 
@@ -33,28 +34,65 @@
 
 static __inline__ void native_set_fpucw (uae_u32 m68k_cw)
 {
+#if USE_X86_FPUCW
+  int mprec=(m68k_cw>>6)&3;
+  int mround=(m68k_cw>>4)&3;
+  uae_u16 x;
+
+  int iprec=0;
+  int iround=0;
+
+  switch(mprec) {
+  case 0: /* extend */ iprec=3; break;
+  case 1: /* single */ iprec=0; break;
+  case 2: /* double */ iprec=2; break;
+  case 3: /* undef  */ iprec=3; break;
+  }
+
+  switch(mround) {
+  case 0: /* nearest */ iround=0; break;
+  case 1: /* zero    */ iround=3; break;
+  case 2: /* down    */ iround=1; break;
+  case 3: /* up      */ iround=2; break;
+  }
+   
+  x=0x107f + (iprec<<8) + (iround<<10);
+#ifdef _MSC_VER
+  __asm {
+  fldcw x
+  }
+#else
+  __asm__ ("fldcw %0" : : "m" (*&x));
+#endif
+#endif
 }
 
 #if defined(uae_s64) /* Close enough for government work? */
-static __inline__ uae_s64 toint(fptype src)
+typedef uae_s64 tointtype;
 #else
-static __inline__ uae_s32 toint(fptype src)
+typedef uae_s32 tointtype;
 #endif
+
+static __inline__ tointtype toint(fptype src)
 {
     switch ((regs.fpcr >> 4) & 0x3) {
     case 0:
-	return (int) (src + 0.5);
+#if USE_X86_FPUCW
+	return (tointtype) (src);
+#else
+	return (tointtype) (src + 0.5);
+#endif
     case 1:
-	return (int) src;
+	return (tointtype) src;
     case 2:
-	return floor (src);
+	return (tointtype)floor (src);
     case 3:
-	return ceil (src);
+	return (tointtype)ceil (src);
     }
-    return src; /* Should never be reached */
+    return (tointtype)src; /* Should never be reached */
 }
 
-static uae_u32 get_fpsr (void) 
+uae_u32 get_fpsr (void) 
 {
     uae_u32 answer = regs.fpsr & 0x00ffffff;
 #ifdef HAVE_ISNAN
@@ -339,15 +377,15 @@ STATIC_INLINE int put_fp_value (fptype value, uae_u32 opcode, uae_u16 extra)
     case 0:
 	switch (size) {
 	case 6:
-	    m68k_dreg (regs, reg) = ((toint(value) & 0xff)
-				     | (m68k_dreg (regs, reg) & ~0xff));
+	    m68k_dreg (regs, reg) = (uae_u32)(((toint(value) & 0xff)
+				     | (m68k_dreg (regs, reg) & ~0xff)));
 	    break;
 	case 4:
-	    m68k_dreg (regs, reg) = ((toint(value) & 0xffff)
-				     | (m68k_dreg (regs, reg) & ~0xffff));
+	    m68k_dreg (regs, reg) = (uae_u32)(((toint(value) & 0xffff)
+				     | (m68k_dreg (regs, reg) & ~0xffff)));
 	    break;
 	case 0:
-	    m68k_dreg (regs, reg) = toint(value);
+	    m68k_dreg (regs, reg) = (uae_u32)toint(value);
 	    break;
 	case 1:
 	    m68k_dreg (regs, reg) = from_single (value);
@@ -402,7 +440,7 @@ STATIC_INLINE int put_fp_value (fptype value, uae_u32 opcode, uae_u16 extra)
     }
     switch (size) {
     case 0:
-	put_long (ad,toint(value));
+	put_long (ad, (uae_u32)toint(value));
 	break;
     case 1:
 	put_long (ad, from_single (value));
@@ -796,6 +834,11 @@ void frestore_opp (uae_u32 opcode)
 	m68k_areg (regs, opcode & 7) = ad;
 }
 
+static void fround (int reg)
+{
+    regs.fp[reg] = (float)regs.fp[reg];
+}
+
 void fpp_opp (uae_u32 opcode, uae_u16 extra)
 {
     int reg;
@@ -1129,12 +1172,12 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 	     * See page 3-73 in Motorola 68K programmers reference manual.
 	     * %%%FPU */
 	    if ((extra & 0x44) == 0x40)
-		regs.fp[reg] = (float)regs.fp[reg];
+		fround (reg);
 	    MAKE_FPSR (regs.fp[reg]);
 	    break;
 	case 0x01:		/* FINT */
 	    /* need to take the current rounding mode into account */
- 	    regs.fp[reg] = toint(src);
+ 	    regs.fp[reg] = (fptype)toint(src);
 	    break;
 	case 0x02:		/* FSINH */
 	    regs.fp[reg] = sinh (src);
@@ -1149,7 +1192,7 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 	case 0x45:
 	    regs.fp[reg] = sqrt (src);
 	    if ((extra & 0x44) == 0x40)
-		regs.fp[reg] = (float)regs.fp[reg];
+		fround (reg);
 	    MAKE_FPSR (regs.fp[reg]);
 	    break;
 	case 0x06:		/* FLOGNP1 */
@@ -1217,7 +1260,7 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 	case 0x5c:
 	    regs.fp[reg] = src < 0 ? -src : src;
 	    if ((extra & 0x44) == 0x40)
-		regs.fp[reg] = (float)regs.fp[reg];
+		fround (reg);
 	    MAKE_FPSR (regs.fp[reg]);
 	    break;
 	case 0x19:		/* FCOSH */
@@ -1229,7 +1272,7 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 	case 0x5e:
 	    regs.fp[reg] = -src;
 	    if ((extra & 0x44) == 0x40)
-		regs.fp[reg] = (float)regs.fp[reg];
+		fround (reg);
 	    MAKE_FPSR (regs.fp[reg]);
 	    break;
 	case 0x1c:		/* FACOS */
@@ -1260,7 +1303,7 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 	case 0x64:
 	    regs.fp[reg] /= src;
 	    if ((extra & 0x44) == 0x40)
-		regs.fp[reg] = (float)regs.fp[reg];
+		fround (reg);
 	    MAKE_FPSR (regs.fp[reg]);
 	    break;
 	case 0x21:		/* FMOD */
@@ -1272,7 +1315,7 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 	case 0x66:
 	    regs.fp[reg] += src;
 	    if ((extra & 0x44) == 0x40)
-		regs.fp[reg] = (float)regs.fp[reg];
+		fround (reg);
 	    MAKE_FPSR (regs.fp[reg]);
 	    break;
 	case 0x23:		/* FMUL */
@@ -1280,7 +1323,7 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 	case 0x67:
 	    regs.fp[reg] *= src;
 	    if ((extra & 0x44) == 0x40)
-		regs.fp[reg] = (float)regs.fp[reg];
+		fround (reg);
 	    MAKE_FPSR (regs.fp[reg]);
 	    break;
 	case 0x24:		/* FSGLDIV */
@@ -1304,7 +1347,7 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 	case 0x6c:
 	    regs.fp[reg] -= src;
 	    if ((extra & 0x44) == 0x40)
-		regs.fp[reg] = (float)regs.fp[reg];
+		fround (reg);
 	    MAKE_FPSR (regs.fp[reg]);
 	    break;
 	case 0x30:		/* FSINCOS */
@@ -1342,3 +1385,59 @@ void fpp_opp (uae_u32 opcode, uae_u16 extra)
 }
 
 #endif
+
+uae_u8 *restore_fpu (uae_u8 *src)
+{
+    int model, i;
+
+    model = restore_u32();
+    restore_u32 ();
+    if (currprefs.cpu_level == 2) {
+	currprefs.cpu_level++;
+        init_m68k_full ();
+    }
+    changed_prefs.cpu_level = currprefs.cpu_level;
+    for (i = 0; i < 8; i++) {
+	uae_u32 w1 = restore_u32 ();
+	uae_u32 w2 = restore_u32 ();
+	uae_u32 w3 = restore_u16 ();
+	regs.fp[i] = to_exten (w1, w2, w3);
+    }
+    regs.fpcr = restore_u32 ();
+    regs.fpsr = restore_u32 ();
+    regs.fpiar = restore_u32 ();
+    return src;
+}
+
+uae_u8 *save_fpu (int *len)
+{
+    uae_u8 *dstbak,*dst;
+    int model,i;
+
+    switch (currprefs.cpu_level)
+    {
+	case 3:
+	model = 68881;
+	break;
+	case 4:
+	model = 68040;
+	break;
+	default:
+	return 0;
+    }
+    dstbak = dst = malloc(4+4+8*10+4+4+4);
+    save_u32 (model);
+    save_u32 (0);
+    for (i = 0; i < 8; i++) {
+	uae_u32 w1, w2, w3;
+	from_exten (regs.fp[i], &w1, &w2, &w3);
+	save_u32 (w1);
+	save_u32 (w2);
+	save_u16 (w3);
+    }
+    save_u32 (regs.fpcr);
+    save_u32 (regs.fpsr);
+    save_u32 (regs.fpiar);
+    *len = dst - dstbak;
+    return dstbak;
+}

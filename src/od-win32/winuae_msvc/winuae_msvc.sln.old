@@ -1,0 +1,49 @@
+Microsoft Visual Studio Solution File, Format Version 7.00
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "winuae", "winuae_msvc.vcproj", "{4ADAA943-1AC8-4FB5-82E5-4FB753B6C2DA}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "gencpu", "..\gencpu_msvc\gencpu_msvc.vcproj", "{DEF7ACF7-050E-4069-BB99-5B5D93F60521}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "gencomp", "..\gencomp_msvc\gencomp_msvc.vcproj", "{54197DFF-9CAA-4A9F-B9C2-2881EA04EACB}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "genblitter", "..\genblitter_msvc\genblitter_msvc.vcproj", "{765B0AF0-B8D3-4998-89AF-D6F939E1CD18}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "build68k", "..\build68k_msvc\build68k_msvc.vcproj", "{AF3DBBDE-E006-4DC3-9A26-CB0D7D82AE3C}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "winuae_mini", "..\miniuae\miniuae.vcproj", "{AA96D0A2-4F40-4C51-9DBD-3C3CAFC7AAA7}"
+EndProject
+Global
+	GlobalSection(SolutionConfiguration) = preSolution
+		ConfigName.0 = Debug
+		ConfigName.1 = FullOptimization
+		ConfigName.2 = Release
+	EndGlobalSection
+	GlobalSection(ProjectDependencies) = postSolution
+	EndGlobalSection
+	GlobalSection(ProjectConfiguration) = postSolution
+		{4ADAA943-1AC8-4FB5-82E5-4FB753B6C2DA}.Debug.ActiveCfg = Debug|Win32
+		{4ADAA943-1AC8-4FB5-82E5-4FB753B6C2DA}.Debug.Build.0 = Debug|Win32
+		{4ADAA943-1AC8-4FB5-82E5-4FB753B6C2DA}.FullOptimization.ActiveCfg = FullOptimization|Win32
+		{4ADAA943-1AC8-4FB5-82E5-4FB753B6C2DA}.FullOptimization.Build.0 = FullOptimization|Win32
+		{4ADAA943-1AC8-4FB5-82E5-4FB753B6C2DA}.Release.ActiveCfg = FullOptimization|Win32
+		{4ADAA943-1AC8-4FB5-82E5-4FB753B6C2DA}.Release.Build.0 = FullOptimization|Win32
+		{DEF7ACF7-050E-4069-BB99-5B5D93F60521}.Debug.ActiveCfg = Debug|Win32
+		{DEF7ACF7-050E-4069-BB99-5B5D93F60521}.FullOptimization.ActiveCfg = FullOptimization|Win32
+		{DEF7ACF7-050E-4069-BB99-5B5D93F60521}.Release.ActiveCfg = Release|Win32
+		{54197DFF-9CAA-4A9F-B9C2-2881EA04EACB}.Debug.ActiveCfg = Debug|Win32
+		{54197DFF-9CAA-4A9F-B9C2-2881EA04EACB}.FullOptimization.ActiveCfg = FullOptimization|Win32
+		{54197DFF-9CAA-4A9F-B9C2-2881EA04EACB}.Release.ActiveCfg = Release|Win32
+		{765B0AF0-B8D3-4998-89AF-D6F939E1CD18}.Debug.ActiveCfg = Debug|Win32
+		{765B0AF0-B8D3-4998-89AF-D6F939E1CD18}.FullOptimization.ActiveCfg = FullOptimization|Win32
+		{765B0AF0-B8D3-4998-89AF-D6F939E1CD18}.Release.ActiveCfg = Release|Win32
+		{AF3DBBDE-E006-4DC3-9A26-CB0D7D82AE3C}.Debug.ActiveCfg = Debug|Win32
+		{AF3DBBDE-E006-4DC3-9A26-CB0D7D82AE3C}.FullOptimization.ActiveCfg = FullOptimization|Win32
+		{AF3DBBDE-E006-4DC3-9A26-CB0D7D82AE3C}.Release.ActiveCfg = Release|Win32
+		{AA96D0A2-4F40-4C51-9DBD-3C3CAFC7AAA7}.Debug.ActiveCfg = Debug|Win32
+		{AA96D0A2-4F40-4C51-9DBD-3C3CAFC7AAA7}.FullOptimization.ActiveCfg = Release|Win32
+		{AA96D0A2-4F40-4C51-9DBD-3C3CAFC7AAA7}.Release.ActiveCfg = Release|Win32
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+	EndGlobalSection
+	GlobalSection(ExtensibilityAddIns) = postSolution
+	EndGlobalSection
+EndGlobal

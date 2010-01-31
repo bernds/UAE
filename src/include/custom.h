@@ -25,11 +25,11 @@ extern void do_copper (void);
 extern void notice_new_xcolors (void);
 extern void notice_screen_contents_lost (void);
 extern void init_row_map (void);
-
-extern void custom_prepare_savestate (void);
+extern void init_hz (void);
 
 extern int picasso_requested_on;
 extern int picasso_on;
+extern int turbo_emulation;
 
 /* Set to 1 to leave out the current frame in average frame time calculation.
  * Useful if the debugger was active.  */
@@ -60,7 +60,9 @@ STATIC_INLINE int dmaen (unsigned int dmamask)
 #define SPCFLAG_DOINT 256
 #define SPCFLAG_BLTNASTY 512
 #define SPCFLAG_EXEC 1024
+#define SPCFLAG_ACTION_REPLAY 2048
 #define SPCFLAG_MODE_CHANGE 8192
+#define SPCFLAG_END_COMPILE 16384
 
 extern uae_u16 adkcon;
 
@@ -73,27 +75,24 @@ extern uae_u16 INTREQR (void);
 
 /* maximums for statically allocated tables */
 
-#define MAXHPOS 227
-#define MAXVPOS 312
+#define MAXHPOS 256
+#define MAXVPOS 576
 
 /* PAL/NTSC values */
-
-/* The HRM says: The vertical blanking area (PAL) ranges from line 0 to line 29,
- * and no data can be displayed there. Nevertheless, we lose some overscan data
- * if minfirstline is set to 29. */
 
 #define MAXHPOS_PAL 227
 #define MAXHPOS_NTSC 227
 #define MAXVPOS_PAL 312
 #define MAXVPOS_NTSC 262
-#define MINFIRSTLINE_PAL 21
-#define MINFIRSTLINE_NTSC 18
-#define VBLANK_ENDLINE_PAL 29
-#define VBLANK_ENDLINE_NTSC 24
+#define VBLANK_ENDLINE_PAL 27
+#define VBLANK_ENDLINE_NTSC 28
+#define VBLANK_SPRITE_PAL 25
+#define VBLANK_SPRITE_NTSC 20
 #define VBLANK_HZ_PAL 50
 #define VBLANK_HZ_NTSC 60
 
-extern int maxhpos, maxvpos, minfirstline, vblank_endline, numscrlines, vblank_hz;
+extern int maxhpos, maxvpos, minfirstline, vblank_endline, numscrlines;
+extern int vblank_hz, fake_vblank_hz, vblank_skip;
 extern unsigned long syncbase;
 #define NUMSCRLINES (maxvpos+1-minfirstline+1)
 
@@ -109,12 +108,27 @@ extern unsigned long syncbase;
 #define DMA_MASTER    0x0200
 #define DMA_BLITPRI   0x0400
 
+#define CYCLE_REFRESH 1
+#define CYCLE_DISK 2
+#define CYCLE_AUDIO 4
+#define CYCLE_SPRITE 8
+#define CYCLE_BITPLANE 16
+#define CYCLE_COPPER 32
+#define CYCLE_BLITTER 64
+#define CYCLE_CPU 128
+
 extern unsigned long frametime, timeframes;
+extern int plfstrt, plfstop, plffirstline, plflastline;
+extern uae_u16 htotal, vtotal;
 
 /* 100 words give you 1600 horizontal pixels. Should be more than enough for
  * superhires. Don't forget to update the definition in genp2c.c as well.
  * needs to be larger for superhires support */
+#ifdef CUSTOM_SIMPLE
+#define MAX_WORDS_PER_LINE 50
+#else
 #define MAX_WORDS_PER_LINE 100
+#endif
 
 extern uae_u32 hirestab_h[256][2];
 extern uae_u32 lorestab_h[256][4];
@@ -122,15 +136,30 @@ extern uae_u32 lorestab_h[256][4];
 extern uae_u32 hirestab_l[256][1];
 extern uae_u32 lorestab_l[256][2];
 
+#ifdef AGA
 /* AGA mode color lookup tables */
 extern unsigned int xredcolors[256], xgreencolors[256], xbluecolors[256];
+#endif
 
 extern int bpl_off[8];
 
+#define RES_LORES 0
+#define RES_HIRES 1
+#define RES_SUPERHIRES 2
+
+/* calculate shift depending on resolution (replaced "decided_hires ? 4 : 8") */
+#define RES_SHIFT(res) ((res) == RES_LORES ? 8 : (res) == RES_HIRES ? 4 : 2)
+
 /* get resolution from bplcon0 */
-#define GET_RES(CON0) (((CON0) & 0x8000) ? RES_HIRES : ((CON0) & 0x40) ? RES_SUPERHIRES : RES_LORES)
+STATIC_INLINE int GET_RES (uae_u16 con0)
+{
+    int res = ((con0) & 0x8000) ? RES_HIRES : ((con0) & 0x40) ? RES_SUPERHIRES : RES_LORES;
+    return res;
+}
 /* get sprite width from FMODE */
 #define GET_SPRITEWIDTH(FMODE) ((((FMODE) >> 2) & 3) == 3 ? 64 : (((FMODE) >> 2) & 3) == 0 ? 16 : 32)
 /* Compute the number of bitplanes from a value written to BPLCON0  */
 #define GET_PLANES(x) ((((x) >> 12) & 7) | (((x) & 0x10) >> 1))
 
+extern void fpscounter_reset (void);
+extern unsigned long idletime;

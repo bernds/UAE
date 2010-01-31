@@ -27,16 +27,17 @@ int fsdb_name_invalid (const char *n)
 
 /* For an a_inode we have newly created based on a filename we found on the
  * native fs, fill in information about this file/directory.  */
-void fsdb_fill_file_attrs (a_inode *aino)
+int fsdb_fill_file_attrs (a_inode *aino)
 {
     struct stat statbuf;
     /* This really shouldn't happen...  */
     if (stat (aino->nname, &statbuf) == -1)
-	return;
+	return 0;
     aino->dir = S_ISDIR (statbuf.st_mode) ? 1 : 0;
     aino->amigaos_mode = ((S_IXUSR & statbuf.st_mode ? 0 : A_FIBF_EXECUTE)
 			  | (S_IWUSR & statbuf.st_mode ? 0 : A_FIBF_WRITE)
 			  | (S_IRUSR & statbuf.st_mode ? 0 : A_FIBF_READ));
+    return 1;
 }
 
 int fsdb_set_file_attrs (a_inode *aino, int mask)

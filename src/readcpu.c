@@ -229,7 +229,6 @@ static void build_insn (int insn)
 	case fu_used: flaglive |= 1 << i; break;
 	}
     }
-  out2:
 
     opcstr = id.opcstr;
     for (variants = 0; variants < (1 << id.n_variable); variants++) {
@@ -737,6 +736,7 @@ void read_table68k (void)
 {
     int i;
 
+    free (table68k);
     table68k = (struct instr *)xmalloc (65536 * sizeof (struct instr));
     for (i = 0; i < 65536; i++) {
 	table68k[i].mnemo = i_ILLG;
@@ -789,7 +789,7 @@ static void handle_merges (long int opcode)
     }
     for (srcreg=0; srcreg < sbitdst; srcreg++) {
 	for (dstreg=0; dstreg < dstend; dstreg++) {
-	    uae_u16 code = opcode;
+	    uae_u16 code = (uae_u16)opcode;
 
 	    code = (code & ~smsk) | (srcreg << table68k[opcode].spos);
 	    code = (code & ~dmsk) | (dstreg << table68k[opcode].dpos);

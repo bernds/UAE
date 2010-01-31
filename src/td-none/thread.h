@@ -26,3 +26,13 @@ typedef int smp_comm_pipe;
 #define comm_pipe_has_data(a) 0
 
 typedef int uae_thread_id;
+
+STATIC_INLINE void sleep_millis (int ms)
+{
+    usleep (ms*1000);
+}
+
+STATIC_INLINE void sleep_millis_busy (int ms)
+{
+   usleep (ms*1000);
+}

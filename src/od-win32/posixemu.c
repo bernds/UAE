@@ -22,9 +22,11 @@
 #include <io.h>
 #include <sys/types.h>
 #include <sys/timeb.h>
+#include <sys/utime.h>
 #include <process.h>
 #include "options.h"
 #include "posixemu.h"
+#include "threaddep/thread.h"
 #include "filesys.h"
 
 /* Our Win32 implementation of this function */
@@ -155,6 +157,8 @@ void fname_atow (const char *src, char *dst, int size)
         sprintf( temp, "~%02x%s", ' ', strt+1 );
         strcpy( strt, temp );
     }
+
+    free (temp);
 }
 
 static int hextol (char a)
@@ -248,8 +252,6 @@ int truncate (const char *name, long int len)
 }
 #endif
 
-#if 0
-
 DIR {
     WIN32_FIND_DATA finddata;
     HANDLE hDir;
@@ -304,9 +306,8 @@ void posixemu_closedir(DIR *dir)
     FindClose(dir->hDir);
     GlobalFree(dir);
 }
-#endif
 
-int w32fopendel(char *name, char *mode, int delflag)
+static int w32fopendel(char *name, char *mode, int delflag)
 {
 	HANDLE hFile;
 
@@ -347,7 +348,22 @@ DWORD getattr(const char *name, LPFILETIME lpft, size_t *size)
 	return fd.dwFileAttributes;
 }
 
-#if 0
+int isspecialdrive(const char *name)
+{
+    int v, err;
+    DWORD last = SetErrorMode (SEM_FAILCRITICALERRORS);
+    v = GetFileAttributes(name);
+    err = GetLastError ();
+    SetErrorMode (last);
+    if (v != INVALID_FILE_ATTRIBUTES)
+	return 0;
+    if (err == ERROR_NOT_READY)
+	return 1;
+    if (err)
+	return -1;
+    return 0;
+}
+
 int posixemu_stat(const char *name, struct stat *statbuf)
 {
     DWORD attr;
@@ -360,11 +376,11 @@ int posixemu_stat(const char *name, struct stat *statbuf)
     }
     else
     {
-	statbuf->st_mode = (attr & FILE_ATTRIBUTE_READONLY) ? FILEFLAG_READ: FILEFLAG_READ | FILEFLAG_WRITE;
+	statbuf->st_mode = (attr & FILE_ATTRIBUTE_READONLY) ? FILEFLAG_READ : FILEFLAG_READ | FILEFLAG_WRITE;
 	if (attr & FILE_ATTRIBUTE_ARCHIVE) statbuf->st_mode |= FILEFLAG_ARCHIVE;
 	if (attr & FILE_ATTRIBUTE_DIRECTORY) statbuf->st_mode |= FILEFLAG_DIR;
 	FileTimeToLocalFileTime(&ft,&lft);
-	statbuf->st_mtime = (*(__int64 *)&lft-((__int64)(369*365+89)*(__int64)(24*60*60)*(__int64)10000000))/(__int64)10000000;
+	statbuf->st_mtime = (long)((*(__int64 *)&lft-((__int64)(369*365+89)*(__int64)(24*60*60)*(__int64)10000000))/(__int64)10000000);
     }
     return 0;
 }
@@ -372,15 +388,12 @@ int posixemu_stat(const char *name, struct stat *statbuf)
 int posixemu_chmod(const char *name, int mode)
 {
     DWORD attr = FILE_ATTRIBUTE_NORMAL;
-    if (mode & 0x05) attr |= FILE_ATTRIBUTE_READONLY; /* Delete (0x01) or Write (0x04) bits */
-    if (mode & 0x10) attr |= FILE_ATTRIBUTE_ARCHIVE;
-
+    if (!(mode & FILEFLAG_WRITE)) attr |= FILE_ATTRIBUTE_READONLY;
+    if (mode & FILEFLAG_ARCHIVE) attr |= FILE_ATTRIBUTE_ARCHIVE;
     if (SetFileAttributes(name,attr)) return 1;
     lasterror = GetLastError();
-
     return -1;
 }
-#endif
 
 void tmToSystemTime( struct tm *tmtime, LPSYSTEMTIME systime )
 {
@@ -401,7 +414,7 @@ void tmToSystemTime( struct tm *tmtime, LPSYSTEMTIME systime )
     }
 }
 
-static int setfiletime(const char *name, unsigned int days, int minute, int tick)
+static int setfiletime(const char *name, unsigned int days, int minute, int tick, int tolocal)
 {
     FILETIME LocalFileTime, FileTime;
     HANDLE hFile;
@@ -414,7 +427,11 @@ static int setfiletime(const char *name, unsigned int days, int minute, int tick
 
     *(__int64 *)&LocalFileTime = (((__int64)(377*365+91+days)*(__int64)1440+(__int64)minute)*(__int64)(60*50)+(__int64)tick)*(__int64)200000;
     
-    if (!LocalFileTimeToFileTime(&LocalFileTime,&FileTime)) FileTime = LocalFileTime;
+    if (tolocal) {
+	if (!LocalFileTimeToFileTime(&LocalFileTime,&FileTime)) FileTime = LocalFileTime;
+    } else {
+	FileTime = LocalFileTime;
+    }
     
     if (!(success = SetFileTime(hFile,&FileTime,&FileTime,&FileTime))) lasterror = GetLastError();
     CloseHandle(hFile);
@@ -422,15 +439,89 @@ static int setfiletime(const char *name, unsigned int days, int minute, int tick
     return success;
 }
 
-int posixemu_utime( const char *name, struct utimbuf *time )
+int posixemu_utime( const char *name, struct utimbuf *ttime )
 {
-    int result = -1;
-    long days, mins, ticks;
+    int result = -1, tolocal;
+    long days, mins, ticks, actime;
 
-    get_time( time->actime, &days, &mins, &ticks );
+    if (!ttime) {
+	actime = time (NULL);
+	tolocal = 0;
+    } else {
+	tolocal = 1;
+	actime = ttime->actime;
+    }
+    get_time(actime, &days, &mins, &ticks);
 
-    if( setfiletime( name, days, mins, ticks ) )
+    if( setfiletime( name, days, mins, ticks, tolocal ) )
         result = 0;
 
 	return result;
 }
+
+#if 1
+/* pthread Win32 emulation */
+void sem_init (HANDLE * event, int manual_reset, int initial_state)
+{
+    if( *event )
+    {
+	if( initial_state )
+	{
+	    SetEvent( *event );
+	}
+	else
+	{
+	    ResetEvent( *event );
+	}
+    }
+    else
+    {
+        *event = CreateEvent (NULL, manual_reset, initial_state, NULL);
+    }
+}
+
+void sem_wait (HANDLE * event)
+{
+    WaitForSingleObject (*event, INFINITE);
+}
+
+void sem_post (HANDLE * event)
+{
+    SetEvent (*event);
+}
+
+int sem_trywait (HANDLE * event)
+{
+    return WaitForSingleObject (*event, 0) == WAIT_OBJECT_0 ? 0 : -1;
+}
+
+void sem_close (HANDLE * event)
+{
+    if( *event )
+    {
+	CloseHandle( *event );
+	*event = NULL;
+    }
+}
+
+typedef unsigned (__stdcall *BEGINTHREADEX_FUNCPTR)(void *);
+
+int start_penguin (void *(*f)(void *), void *arg, DWORD * foo)
+{
+    HANDLE hThread;
+    int result = 1;
+
+    hThread = (HANDLE)_beginthreadex( NULL, 0, (BEGINTHREADEX_FUNCPTR)f, arg, 0, foo );
+    if( hThread )
+        SetThreadPriority (hThread, THREAD_PRIORITY_HIGHEST);
+    else
+        result = 0;
+    return result;
+}
+
+#endif
+
+void set_thread_priority (int pri)
+{
+}
+

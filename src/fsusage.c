@@ -50,6 +50,7 @@ adjust_blocks (blocks, fromsize, tosize)
 
 #ifdef _WIN32
 #include "sysdeps.h"
+#include "od-win32/posixemu.h"
 #include <windows.h>
 int
 get_fs_usage (path, disk, fsp)

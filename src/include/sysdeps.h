@@ -19,7 +19,9 @@
 #include <limits.h>
 
 #ifndef __STDC__
+#ifndef _MSC_VER
 #error "Your compiler is not ANSI. Get a real one."
+#endif
 #endif
 
 #include <stdarg.h>
@@ -103,7 +105,7 @@ struct utimbuf
 };
 #endif
 
-#if defined(__GNUC__)
+#if defined(__GNUC__) && defined(AMIGA)
 /* gcc on the amiga need that __attribute((regparm)) must */
 /* be defined in function prototypes as well as in        */
 /* function definitions !                                 */
@@ -275,6 +277,78 @@ extern void *xcalloc(size_t, size_t);
 #define O_NDELAY 0
 #define mkdir(a,b) mkdir(a)
 
+#elif defined _MSC_VER
+
+#ifdef HAVE_GETTIMEOFDAY
+#include <winsock.h> // for 'struct timeval' definition
+extern void gettimeofday( struct timeval *tv, void *blah );
+#endif
+
+#define O_NDELAY 0
+
+#define FILEFLAG_DIR     0x1
+#define FILEFLAG_ARCHIVE 0x2
+#define FILEFLAG_WRITE   0x4
+#define FILEFLAG_READ    0x8
+#define FILEFLAG_EXECUTE 0x10
+#define FILEFLAG_SCRIPT  0x20
+#define FILEFLAG_PURE    0x40
+
+#define REGPARAM 
+
+#include <io.h>
+#define O_BINARY _O_BINARY
+#define O_WRONLY _O_WRONLY
+#define O_RDONLY _O_RDONLY
+#define O_RDWR   _O_RDWR
+#define O_CREAT  _O_CREAT
+#define O_TRUNC  _O_TRUNC
+#define strcasecmp _stricmp
+#define strncasecmp _strnicmp
+#define W_OK 0x2
+#define R_OK 0x4
+#define STAT struct stat
+#define DIR struct DIR
+struct direct
+{
+    char d_name[1];
+};
+#include <sys/utime.h>
+#define utimbuf _utimbuf
+#define USE_ZFILE
+
+#undef S_ISDIR
+#undef S_IWUSR
+#undef S_IRUSR
+#undef S_IXUSR
+#define S_ISDIR(a) (a&FILEFLAG_DIR)
+#define S_ISARC(a) (a&FILEFLAG_ARCHIVE)
+#define S_IWUSR FILEFLAG_WRITE
+#define S_IRUSR FILEFLAG_READ
+#define S_IXUSR FILEFLAG_EXECUTE
+
+/* These are prototypes for functions from the Win32 posixemu file */
+extern void get_time(time_t t, long* days, long* mins, long* ticks);
+extern time_t put_time (long days, long mins, long ticks);
+extern DWORD getattr(const char *name, LPFILETIME lpft, size_t *size);
+
+/* #define DONT_HAVE_POSIX - don't need all of Mathias' posixemu_functions, just a subset (below) */
+#define chmod(a,b) posixemu_chmod ((a), (b))
+extern int posixemu_chmod (const char *, int);
+#define stat(a,b) posixemu_stat ((a), (b))
+extern int posixemu_stat (const char *, struct stat *);
+#define mkdir(x,y) mkdir(x)
+#define truncate posixemu_truncate
+extern int posixemu_truncate (const char *, long int);
+#define utime posixemu_utime
+extern int posixemu_utime (const char *, struct utimbuf *);
+#define opendir posixemu_opendir
+extern DIR * posixemu_opendir (const char *);
+#define readdir posixemu_readdir
+extern struct dirent* posixemu_readdir (DIR *);
+#define closedir posixemu_closedir
+extern void posixemu_closedir (DIR *);
+
 #endif
 
 #endif /* _WIN32 */ 
@@ -377,21 +451,21 @@ extern void write_log (const char *, ...) __attribute__ ((format (printf, 1, 2))
 #else
 extern void write_log (const char *, ...);
 #endif
+extern void write_dlog (const char *, ...);
 
 extern void console_out (const char *, ...);
 extern void console_flush (void);
 extern int console_get (char *, int);
+extern void f_out (void *, const char *, ...);
+extern void gui_message (const char *,...);
+#define write_log_err write_log
 
 #ifndef O_BINARY
 #define O_BINARY 0
 #endif
 
 #ifndef STATIC_INLINE
-#if __GNUC__ - 1 > 1 && __GNUC_MINOR__ - 1 >= 0
-#define STATIC_INLINE static __inline__ __attribute__ ((always_inline))
-#else
 #define STATIC_INLINE static __inline__
-#endif
 #endif
 
 /* Every Amiga hardware clock cycle takes this many "virtual" cycles.  This

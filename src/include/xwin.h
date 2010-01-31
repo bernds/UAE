@@ -22,10 +22,12 @@ extern int graphics_init (void);
 extern void graphics_leave (void);
 extern void handle_events (void);
 extern void setup_brkhandler (void);
+extern int isfullscreen (void);
 
 extern void flush_line (int);
 extern void flush_block (int, int);
 extern void flush_screen (int, int);
+extern void flush_clear_screen (void);
 
 extern int lockscr (void);
 extern void unlockscr (void);
@@ -41,7 +43,7 @@ extern unsigned long doMask (int p, int bits, int shift);
 extern unsigned long doMask256 (int p, int bits, int shift);
 extern void setup_maxcol (int);
 extern void alloc_colors256 (int (*)(int, int, int, xcolnr *));
-extern void alloc_colors64k (int, int, int, int, int, int);
+extern void alloc_colors64k (int, int, int, int, int, int, int, int, int);
 extern void setup_greydither (int bits, allocfunc_type allocfunc);
 extern void setup_greydither_maxcol (int maxcol, allocfunc_type allocfunc);
 extern void setup_dither (int bits, allocfunc_type allocfunc);
@@ -63,9 +65,10 @@ struct vidbuf_description
      *   - set linemem to point at your buffer
      *   - implement flush_line to copy a single line to the screen
      */
-    char *bufmem;
-    char *linemem;
-    char *emergmem;
+    uae_u8 *bufmem;
+    uae_u8 *realbufmem;
+    uae_u8 *linemem;
+    uae_u8 *emergmem;
     int rowbytes; /* Bytes per row in the memory pointed at by bufmem. */
     int pixbytes; /* Bytes per pixel. */
     int width;

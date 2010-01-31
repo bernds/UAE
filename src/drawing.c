@@ -44,6 +44,7 @@
 #include "gui.h"
 #include "picasso96.h"
 #include "drawing.h"
+#include "compemu.h"
 #include "savestate.h"
 
 int lores_factor, lores_shift;
@@ -55,6 +56,8 @@ int lores_factor, lores_shift;
 static int res_shift;
 
 static int interlace_seen = 0;
+#define AUTO_LORES_FRAMES 10
+static int can_use_lores = 0;
 
 /* Lookup tables for dual playfields.  The dblpf_*1 versions are for the case
    that playfield 1 has the priority, dbplpf_*2 are used if playfield 2 has
@@ -68,7 +71,6 @@ static int dblpf_ms1[256], dblpf_ms2[256], dblpf_ms[256];
 static int dblpf_ind1[256], dblpf_ind2[256];
 
 static int dblpf_2nd1[256], dblpf_2nd2[256];
-static int dblpf_ind1_aga[256], dblpf_ind2_aga[256];
 
 static int dblpfofs[] = { 0, 2, 4, 8, 16, 32, 64, 128 };
 
@@ -83,8 +85,16 @@ struct vidbuf_description gfxvidinfo;
 
 /* OCS/ECS color lookup table. */
 xcolnr xcolors[4096];
+
+#ifdef AGA
+static uae_u8 spriteagadpfpixels[MAX_PIXELS_PER_LINE * 2]; /* AGA dualplayfield sprite */
 /* AGA mode color lookup tables */
 unsigned int xredcolors[256], xgreencolors[256], xbluecolors[256];
+static int dblpf_ind1_aga[256], dblpf_ind2_aga[256];
+#else
+static uae_u8 spriteagadpfpixels[1];
+static int dblpf_ind1_aga[1], dblpf_ind2_aga[1];
+#endif
 
 struct color_entry colors_for_drawing;
 
@@ -105,12 +115,11 @@ uae_u16 spixels[2 * MAX_SPR_PIXELS];
 union sps_union spixstate;
 
 static uae_u32 ham_linebuf[MAX_PIXELS_PER_LINE * 2];
-static uae_u8 spriteagadpfpixels[MAX_PIXELS_PER_LINE * 2]; /* AGA dualplayfield sprite */
 
 char *xlinebuffer;
 
 static int *amiga2aspect_line_map, *native2amiga_line_map;
-static char *row_map[2049];
+static char *row_map[MAX_VIDHEIGHT];
 static int max_drawn_amiga_line;
 
 /* line_draw_funcs: pfield_do_linetoscr, pfield_do_fill_line, decode_ham */
@@ -153,8 +162,10 @@ static int first_block_line, last_block_line;
    each line that needs to be drawn.  These are basically extracted out of
    bit fields in the hardware registers.  */
 static int bplehb, bplham, bpldualpf, bpldualpfpri, bpldualpf2of, bplplanecnt, bplres;
+static int plf1pri, plf2pri;
 static uae_u32 plf_sprite_mask;
-static int sbasecol[2];
+static int sbasecol[2] = { 16, 16 };
+static int brdsprt, brdblank;
 
 int picasso_requested_on;
 int picasso_on;
@@ -226,6 +237,7 @@ void record_diw_line (int first, int last)
    All of these are forced into the visible window (VISIBLE_LEFT_BORDER .. VISIBLE_RIGHT_BORDER).
    PLAYFIELD_START and PLAYFIELD_END are in window coordinates.  */
 static int playfield_start, playfield_end;
+static int real_playfield_start, real_playfield_end;
 
 static int pixels_offset;
 static int src_pixel;
@@ -260,7 +272,7 @@ static void pfield_init_linetoscr (void)
 
     playfield_start = linetoscr_diw_start;
     playfield_end = linetoscr_diw_end;
-
+    
     if (playfield_start < visible_left_border)
 	playfield_start = visible_left_border;
     if (playfield_start > visible_right_border)
@@ -270,6 +282,30 @@ static void pfield_init_linetoscr (void)
     if (playfield_end > visible_right_border)
 	playfield_end = visible_right_border;
 
+    real_playfield_end = playfield_end;
+    real_playfield_start = playfield_start;
+#ifdef AGA
+    if (brdsprt && dip_for_drawing->nr_sprites) {
+        int min = visible_right_border, max = visible_left_border, i;
+        for (i = 0; i < dip_for_drawing->nr_sprites; i++) {
+	    int x;
+	    x = curr_sprite_entries[dip_for_drawing->first_sprite_entry + i].pos;
+	    if (x < min) min = x;
+	    x = curr_sprite_entries[dip_for_drawing->first_sprite_entry + i].max;
+	    if (x > max) max = x;
+	}
+	min += (DIW_DDF_OFFSET - DISPLAY_LEFT_SHIFT) << (2 - lores_shift);
+	max += (DIW_DDF_OFFSET - DISPLAY_LEFT_SHIFT) << (2 - lores_shift);
+	if (min < playfield_start)
+	    playfield_start = min;
+        if (playfield_start < visible_left_border)
+	    playfield_start = visible_left_border;
+	if (max > playfield_end)
+	    playfield_end = max;
+        if (playfield_end > visible_right_border)
+	    playfield_end = visible_right_border;
+    }    
+#endif
     /* Now, compute some offsets.  */
 
     res_shift = lores_shift - bplres;
@@ -302,34 +338,36 @@ static void pfield_init_linetoscr (void)
 #define LNAME linetoscr_8
 #define SRC_INC 1
 #define HDOUBLE 0
-#define AGA 0
+#define AGAC 0
 #include "linetoscr.c"
 #define LNAME linetoscr_8_stretch1
 #define SRC_INC 1
 #define HDOUBLE 1
-#define AGA 0
+#define AGAC 0
 #include "linetoscr.c"
 #define LNAME linetoscr_8_shrink1
 #define SRC_INC 2
 #define HDOUBLE 0
-#define AGA 0
+#define AGAC 0
 #include "linetoscr.c"
 
+#ifdef AGA
 #define LNAME linetoscr_8_aga
 #define SRC_INC 1
 #define HDOUBLE 0
-#define AGA 1
+#define AGAC 1
 #include "linetoscr.c"
 #define LNAME linetoscr_8_stretch1_aga
 #define SRC_INC 1
 #define HDOUBLE 1
-#define AGA 1
+#define AGAC 1
 #include "linetoscr.c"
 #define LNAME linetoscr_8_shrink1_aga
 #define SRC_INC 2
 #define HDOUBLE 0
-#define AGA 1
+#define AGAC 1
 #include "linetoscr.c"
+#endif
 
 #undef TYPE
 
@@ -337,34 +375,36 @@ static void pfield_init_linetoscr (void)
 #define LNAME linetoscr_16
 #define SRC_INC 1
 #define HDOUBLE 0
-#define AGA 0
+#define AGAC 0
 #include "linetoscr.c"
 #define LNAME linetoscr_16_stretch1
 #define SRC_INC 1
 #define HDOUBLE 1
-#define AGA 0
+#define AGAC 0
 #include "linetoscr.c"
 #define LNAME linetoscr_16_shrink1
 #define SRC_INC 2
 #define HDOUBLE 0
-#define AGA 0
+#define AGAC 0
 #include "linetoscr.c"
 
+#ifdef AGA
 #define LNAME linetoscr_16_aga
 #define SRC_INC 1
 #define HDOUBLE 0
-#define AGA 1
+#define AGAC 1
 #include "linetoscr.c"
 #define LNAME linetoscr_16_stretch1_aga
 #define SRC_INC 1
 #define HDOUBLE 1
-#define AGA 1
+#define AGAC 1
 #include "linetoscr.c"
 #define LNAME linetoscr_16_shrink1_aga
 #define SRC_INC 2
 #define HDOUBLE 0
-#define AGA 1
+#define AGAC 1
 #include "linetoscr.c"
+#endif
 
 #undef TYPE
 
@@ -372,34 +412,36 @@ static void pfield_init_linetoscr (void)
 #define LNAME linetoscr_32
 #define SRC_INC 1
 #define HDOUBLE 0
-#define AGA 0
+#define AGAC 0
 #include "linetoscr.c"
 #define LNAME linetoscr_32_stretch1
 #define SRC_INC 1
 #define HDOUBLE 1
-#define AGA 0
+#define AGAC 0
 #include "linetoscr.c"
 #define LNAME linetoscr_32_shrink1
 #define SRC_INC 2
 #define HDOUBLE 0
-#define AGA 0
+#define AGAC 0
 #include "linetoscr.c"
 
+#ifdef AGA
 #define LNAME linetoscr_32_aga
 #define SRC_INC 1
 #define HDOUBLE 0
-#define AGA 1
+#define AGAC 1
 #include "linetoscr.c"
 #define LNAME linetoscr_32_stretch1_aga
 #define SRC_INC 1
 #define HDOUBLE 1
-#define AGA 1
+#define AGAC 1
 #include "linetoscr.c"
 #define LNAME linetoscr_32_shrink1_aga
 #define SRC_INC 2
 #define HDOUBLE 0
-#define AGA 1
+#define AGAC 1
 #include "linetoscr.c"
+#endif
 
 #undef TYPE
 
@@ -407,23 +449,23 @@ static void fill_line_8 (char *buf, int start, int stop)
 {
     uae_u8 *b = (uae_u8 *)buf;
     int i;
-    xcolnr col = colors_for_drawing.acolors[0];
+    xcolnr col = brdblank ? 0 : colors_for_drawing.acolors[0];
     for (i = start; i < stop; i++)
-	b[i] = col;
+	b[i] = (uae_u8)col;
 }
 static void fill_line_16 (char *buf, int start, int stop)
 {
     uae_u16 *b = (uae_u16 *)buf;
     int i;
-    xcolnr col = colors_for_drawing.acolors[0];
+    xcolnr col = brdblank ? 0 : colors_for_drawing.acolors[0];
     for (i = start; i < stop; i++)
-	b[i] = col;
+	b[i] = (uae_u16)col;
 }
 static void fill_line_32 (char *buf, int start, int stop)
 {
     uae_u32 *b = (uae_u32 *)buf;
     int i;
-    xcolnr col = colors_for_drawing.acolors[0];
+    xcolnr col = brdblank ? 0 : colors_for_drawing.acolors[0];
     for (i = start; i < stop; i++)
 	b[i] = col;
 }
@@ -445,7 +487,11 @@ STATIC_INLINE void fill_line (void)
     nrem = nints & 7;
     nints &= ~7;
     start = (int *)(((char *)xlinebuffer) + (visible_left_border << shift));
+#ifdef AGA
+    val = brdblank ? 0 : colors_for_drawing.acolors[0];
+#else
     val = colors_for_drawing.acolors[0];
+#endif
     if (gfxvidinfo.pixbytes == 2)
         val |= val << 16;
     for (; nints > 0; nints -= 8, start += 8) {
@@ -481,49 +527,49 @@ static int linetoscr_double_offset;
 
 static void pfield_do_linetoscr (int start, int stop)
 {
+#ifdef AGA
     if (currprefs.chipset_mask & CSMASK_AGA) {
-	if (res_shift == 0)
+        if (res_shift == 0)
 	    switch (gfxvidinfo.pixbytes) {
 	    case 1: src_pixel = linetoscr_8_aga (src_pixel, start, stop); break;
 	    case 2: src_pixel = linetoscr_16_aga (src_pixel, start, stop); break;
 	    case 4: src_pixel = linetoscr_32_aga (src_pixel, start, stop); break;
 	    }
-	else if (res_shift == 1)
+	else if (res_shift > 0)
 	    switch (gfxvidinfo.pixbytes) {
 	    case 1: src_pixel = linetoscr_8_stretch1_aga (src_pixel, start, stop); break;
 	    case 2: src_pixel = linetoscr_16_stretch1_aga (src_pixel, start, stop); break;
 	    case 4: src_pixel = linetoscr_32_stretch1_aga (src_pixel, start, stop); break;
 	    }
-	else if (res_shift == -1)
+	else if (res_shift < 0)
 	    switch (gfxvidinfo.pixbytes) {
 	    case 1: src_pixel = linetoscr_8_shrink1_aga (src_pixel, start, stop); break;
 	    case 2: src_pixel = linetoscr_16_shrink1_aga (src_pixel, start, stop); break;
 	    case 4: src_pixel = linetoscr_32_shrink1_aga (src_pixel, start, stop); break;
 	    }
-        else
-	    abort ();
     } else {
+#endif
         if (res_shift == 0)
 	    switch (gfxvidinfo.pixbytes) {
 	    case 1: src_pixel = linetoscr_8 (src_pixel, start, stop); break;
 	    case 2: src_pixel = linetoscr_16 (src_pixel, start, stop); break;
 	    case 4: src_pixel = linetoscr_32 (src_pixel, start, stop); break;
 	    }
-	else if (res_shift == 1)
+	else if (res_shift > 0)
 	    switch (gfxvidinfo.pixbytes) {
 	    case 1: src_pixel = linetoscr_8_stretch1 (src_pixel, start, stop); break;
 	    case 2: src_pixel = linetoscr_16_stretch1 (src_pixel, start, stop); break;
 	    case 4: src_pixel = linetoscr_32_stretch1 (src_pixel, start, stop); break;
 	    }
-	else if (res_shift == -1)
+	else if (res_shift < 0)
 	    switch (gfxvidinfo.pixbytes) {
 	    case 1: src_pixel = linetoscr_8_shrink1 (src_pixel, start, stop); break;
 	    case 2: src_pixel = linetoscr_16_shrink1 (src_pixel, start, stop); break;
 	    case 4: src_pixel = linetoscr_32_shrink1 (src_pixel, start, stop); break;
 	    }
-	else
-	    abort ();
+#ifdef AGA
     }
+#endif
 }
 
 static void pfield_do_fill_line (int start, int stop)
@@ -566,11 +612,14 @@ static void init_ham_decoding (void)
     if (! bplham || (bplplanecnt != 6 && ((currprefs.chipset_mask & CSMASK_AGA) == 0 || bplplanecnt != 8))) {
 	if (unpainted_amiga > 0) {
 	    int pv = pixdata.apixels[ham_decode_pixel + unpainted_amiga - 1];
+#ifdef AGA
 	    if (currprefs.chipset_mask & CSMASK_AGA)
 		ham_lastcolor = colors_for_drawing.color_regs_aga[pv];
 	    else
+#endif
 		ham_lastcolor = colors_for_drawing.color_regs_ecs[pv];
 	}
+#ifdef AGA
     } else if (currprefs.chipset_mask & CSMASK_AGA) {
 	if (bplplanecnt == 8) { /* AGA mode HAM8 */
 	    while (unpainted_amiga-- > 0) {
@@ -593,6 +642,7 @@ static void init_ham_decoding (void)
 		}
 	    }
 	}
+#endif
     } else {
         if (bplplanecnt == 6) { /* OCS/ECS mode HAM6 */
 	    while (unpainted_amiga-- > 0) {
@@ -615,13 +665,16 @@ static void decode_ham (int pix, int stoppos)
     if (! bplham || (bplplanecnt != 6 && ((currprefs.chipset_mask & CSMASK_AGA) == 0 || bplplanecnt != 8))) {
 	while (todraw_amiga-- > 0) {
 	    int pv = pixdata.apixels[ham_decode_pixel];
+#ifdef AGA
 	    if (currprefs.chipset_mask & CSMASK_AGA)
 		ham_lastcolor = colors_for_drawing.color_regs_aga[pv];
 	    else
+#endif
 		ham_lastcolor = colors_for_drawing.color_regs_ecs[pv];
 
 	    ham_linebuf[ham_decode_pixel++] = ham_lastcolor;
 	}
+#ifdef AGA
     } else if (currprefs.chipset_mask & CSMASK_AGA) {
 	if (bplplanecnt == 8) { /* AGA mode HAM8 */
 	    while (todraw_amiga-- > 0) {
@@ -646,6 +699,7 @@ static void decode_ham (int pix, int stoppos)
 		ham_linebuf[ham_decode_pixel++] = ham_lastcolor;
 	    }
 	}
+#endif
     } else {
         if (bplplanecnt == 6) { /* OCS/ECS mode HAM6 */
 	    while (todraw_amiga-- > 0) {
@@ -677,8 +731,11 @@ static void gen_pfield_tables (void)
 
 	dblpf_2nd1[i] = plane1 == 0 ? (plane2 == 0 ? 0 : 2) : 1;
 	dblpf_2nd2[i] = plane2 == 0 ? (plane1 == 0 ? 0 : 1) : 2;
+
+#ifdef AGA
 	dblpf_ind1_aga[i] = plane1 == 0 ? plane2 : plane1;
 	dblpf_ind2_aga[i] = plane2 == 0 ? plane1 : plane2;
+#endif
 
 	dblpf_ms1[i] = plane1 == 0 ? (plane2 == 0 ? 16 : 8) : 0;
 	dblpf_ms2[i] = plane2 == 0 ? (plane1 == 0 ? 16 : 0) : 8;
@@ -696,8 +753,11 @@ static void gen_pfield_tables (void)
 		     | (((i & 12) && (i & 48)) << 12)
 		     | (((i & 12) && (i & 192)) << 13)
 		     | (((i & 48) && (i & 192)) << 14));
+
     }
 }
+
+#define SPRITE_DEBUG 0
 
 /* When looking at this function and the ones that inline it, bear in mind
    what an optimizing compiler will do with this code.  All callers of this
@@ -710,7 +770,9 @@ STATIC_INLINE void draw_sprites_1 (struct sprite_entry *e, int ham, int dualpf,
     uae_u16 *buf = spixels + e->first_pixel;
     uae_u8 *stbuf = spixstate.bytes + e->first_pixel;
     int pos, window_pos;
+#ifdef AGA
     uae_u8 xor_val = (uae_u8)(dp_for_drawing->bplcon4 >> 8);
+#endif
 
     buf -= e->pos;
     stbuf -= e->pos;
@@ -731,7 +793,7 @@ STATIC_INLINE void draw_sprites_1 (struct sprite_entry *e, int ham, int dualpf,
 	maskshift = shift_lookup[pixdata.apixels[window_pos]];
 	plfmask = (plf_sprite_mask >> maskshift) >> maskshift;
 	v &= ~plfmask;
-	if (v != 0) {
+	if (v != 0 || SPRITE_DEBUG) {
 	    unsigned int vlo, vhi, col;
 	    unsigned int v1 = v & 255;
 	    /* OFFS determines the sprite pair with the highest priority that has
@@ -749,8 +811,11 @@ STATIC_INLINE void draw_sprites_1 (struct sprite_entry *e, int ham, int dualpf,
 	    /* Shift highest priority sprite pair down to bit zero.  */
 	    v >>= offs * 2;
 	    v &= 15;
+#if SPRITE_DEBUG > 0
+	    v |= 1 | 4;
+#endif
  
-	    if (has_attach && (stbuf[pos] & (1 << offs))) {
+	    if (has_attach && (stbuf[pos] & (3 << offs))) {
 		col = v;
 		if (aga)
 		    col += sbasecol[1];
@@ -780,27 +845,35 @@ STATIC_INLINE void draw_sprites_1 (struct sprite_entry *e, int ham, int dualpf,
 		col += (offs * 2);
 	    }
 	    if (dualpf) {
+#ifdef AGA
 		if (aga) {
 		    spriteagadpfpixels[window_pos] = col;
 		    if (doubling)
 			spriteagadpfpixels[window_pos + 1] = col;
 		} else {
+#endif
 		    col += 128;
 		    if (doubling)
 			pixdata.apixels_w[window_pos >> 1] = col | (col << 8);
 		    else
 			pixdata.apixels[window_pos] = col;
+#ifdef AGA
 		}
+#endif
 	    } else if (ham) {
 		col = color_reg_get (&colors_for_drawing, col);
+#ifdef AGA
 		if (aga)
 		    col ^= xor_val;
+#endif
 		ham_linebuf[window_pos] = col;
 		if (doubling)
 		    ham_linebuf[window_pos + 1] = col;
 	    } else {
+#ifdef AGA
 		if (aga)
 		    col ^= xor_val;
+#endif
 		if (doubling)
 		    pixdata.apixels_w[window_pos >> 1] = col | (col << 8);
 		else
@@ -828,6 +901,7 @@ static void draw_sprites_normal_sp_hi_at (struct sprite_entry *e) { draw_sprites
 static void draw_sprites_normal_dp_hi_at (struct sprite_entry *e) { draw_sprites_1	(e, 0, 1, 1, 0, 1, 0); }
 static void draw_sprites_ham_sp_hi_at (struct sprite_entry *e) { draw_sprites_1		(e, 1, 0, 1, 0, 1, 0); }
 
+#ifdef AGA
 /* not very optimized */
 STATIC_INLINE void draw_sprites_aga (struct sprite_entry *e)
 {
@@ -837,7 +911,7 @@ STATIC_INLINE void draw_sprites_aga (struct sprite_entry *e)
     else
 	draw_sprites_1 (e, dp_for_drawing->ham_seen, bpldualpf, -diff, 0, e->has_attached, 1);
 }
-
+#endif
 
 STATIC_INLINE void draw_sprites_ecs (struct sprite_entry *e)
 {
@@ -877,6 +951,45 @@ STATIC_INLINE void draw_sprites_ecs (struct sprite_entry *e)
 		    draw_sprites_normal_sp_lo_nat (e);
 }
 
+#ifdef AGA
+/* clear possible bitplane data outside DIW area */
+static void clear_bitplane_border_aga (void)
+{
+    int len, shift = lores_shift - bplres;
+    uae_u8 v = 0;
+    if (shift < 0) {
+	shift = -shift;
+	len = (real_playfield_start - playfield_start) << shift;
+	memset (pixdata.apixels + pixels_offset + (playfield_start << shift), v, len);
+	len = (playfield_end - real_playfield_end) << shift;
+	memset (pixdata.apixels + pixels_offset + (real_playfield_end << shift), v, len);
+    } else {
+	len = (real_playfield_start - playfield_start) >> shift;
+	memset (pixdata.apixels + pixels_offset + (playfield_start >> shift), v, len);
+	len = (playfield_end - real_playfield_end) >> shift;
+	memset (pixdata.apixels + pixels_offset + (real_playfield_end >> shift), v, len);
+    }
+}
+#endif
+
+/* emulate OCS/ECS only undocumented "SWIV" hardware feature */
+static void weird_bitplane_fix (void)
+{
+    int i, shift = lores_shift - bplres;
+    
+    if (shift < 0) {
+	shift = -shift;
+	for (i = playfield_start << lores_shift; i < playfield_end << lores_shift; i++) {
+	    if (pixdata.apixels[pixels_offset + i] > 16)
+		pixdata.apixels[pixels_offset + i] = 16;
+	}
+    } else {
+	for (i = playfield_start >> lores_shift; i < playfield_end >> lores_shift; i++) {
+	    if (pixdata.apixels[pixels_offset + i] > 16)
+		pixdata.apixels[pixels_offset + i] = 16;
+	}
+    }
+}
 
 #define MERGE(a,b,mask,shift) do {\
     uae_u32 tmp = mask & (a ^ (b >> shift)); \
@@ -950,8 +1063,10 @@ static void pfield_doline_n3 (uae_u32 *data, int count) { pfield_doline_1 (data,
 static void pfield_doline_n4 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 4); }
 static void pfield_doline_n5 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 5); }
 static void pfield_doline_n6 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 6); }
+#ifdef AGA
 static void pfield_doline_n7 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 7); }
 static void pfield_doline_n8 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 8); }
+#endif
 
 static void pfield_doline (int lineno)
 {
@@ -966,8 +1081,10 @@ static void pfield_doline (int lineno)
     real_bplpt[3] = DATA_POINTER (3);
     real_bplpt[4] = DATA_POINTER (4);
     real_bplpt[5] = DATA_POINTER (5);
+#ifdef AGA
     real_bplpt[6] = DATA_POINTER (6);
     real_bplpt[7] = DATA_POINTER (7);
+#endif
 #endif
 
     switch (bplplanecnt) {
@@ -979,15 +1096,17 @@ static void pfield_doline (int lineno)
     case 4: pfield_doline_n4 (data, wordcount); break;
     case 5: pfield_doline_n5 (data, wordcount); break;
     case 6: pfield_doline_n6 (data, wordcount); break;
+#ifdef AGA
     case 7: pfield_doline_n7 (data, wordcount); break;
     case 8: pfield_doline_n8 (data, wordcount); break;
+#endif
     }
 }
 
 void init_row_map (void)
 {
     int i;
-    if (gfxvidinfo.height > 2048) {
+    if (gfxvidinfo.height > MAX_VIDHEIGHT) {
 	write_log ("Resolution too high, aborting\n");
 	abort ();
     }
@@ -1006,7 +1125,7 @@ static void init_aspect_maps (void)
 	free (amiga2aspect_line_map);
 
     /* At least for this array the +1 is necessary. */
-    amiga2aspect_line_map = (int *)malloc (sizeof (int) * (MAXVPOS + 1)*2 + 1);
+    amiga2aspect_line_map = (int *)malloc (sizeof (int) * (MAXVPOS + 1) * 2 + 1);
     native2amiga_line_map = (int *)malloc (sizeof (int) * gfxvidinfo.height);
 
     if (currprefs.gfx_correct_aspect)
@@ -1116,6 +1235,8 @@ STATIC_INLINE void do_flush_screen (int start, int stop)
     unlockscr ();
     if (start <= stop)
 	flush_screen (start, stop);
+    else if (currprefs.gfx_afullscreen && currprefs.gfx_vsync)
+	flush_screen (0, 0); /* vsync mode */
 }
 
 static int drawing_color_matches;
@@ -1196,15 +1317,16 @@ STATIC_INLINE void do_color_changes (line_draw_func worker_border, line_draw_fun
  * form. */
 static void pfield_expand_dp_bplcon (void)
 {
-    int plf1pri, plf2pri;
     bplres = dp_for_drawing->bplres;
     bplplanecnt = dp_for_drawing->nr_planes;
     bplham = dp_for_drawing->ham_at_start;
 
+    if (bplres > 0)
+	can_use_lores = 0;
     if (currprefs.chipset_mask & CSMASK_AGA) {
 	/* The KILLEHB bit exists in ECS, but is apparently meant for Genlock
 	 * stuff, and it's set by some demos (e.g. Andromeda Seven Seas) */
-	bplehb = ((dp_for_drawing->bplcon0 & 0xFCC0) == 0x6000 && !(dp_for_drawing->bplcon2 & 0x200));
+	bplehb = ((dp_for_drawing->bplcon0 & 0x7010) == 0x6000 && !(dp_for_drawing->bplcon2 & 0x200));
     } else {
 	bplehb = (dp_for_drawing->bplcon0 & 0xFC00) == 0x6000;
     }
@@ -1214,9 +1336,17 @@ static void pfield_expand_dp_bplcon (void)
     plf_sprite_mask |= (0xFFFF << (4 * plf1pri)) & 0xFFFF;
     bpldualpf = (dp_for_drawing->bplcon0 & 0x400) == 0x400;
     bpldualpfpri = (dp_for_drawing->bplcon2 & 0x40) == 0x40;
+#ifdef AGA
     bpldualpf2of = (dp_for_drawing->bplcon3 >> 10) & 7;
     sbasecol[0] = ((dp_for_drawing->bplcon4 >> 4) & 15) << 4;
     sbasecol[1] = ((dp_for_drawing->bplcon4 >> 0) & 15) << 4;
+
+    brdsprt = (currprefs.chipset_mask & CSMASK_AGA) && (dp_for_drawing->bplcon0 & 1) && (dp_for_drawing->bplcon3 & 0x02);
+    /* FIXME: we must update top and bottom borders when BRDBLANK changes */
+    brdblank = (currprefs.chipset_mask & CSMASK_AGA) && (dp_for_drawing->bplcon0 & 1) && (dp_for_drawing->bplcon3 & 0x20);
+    if (brdblank)
+	brdsprt = 0;
+#endif
 }
 
 enum double_how {
@@ -1312,13 +1442,23 @@ STATIC_INLINE void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 	}
 
 	{
-	    int i;
-	    for (i = 0; i < dip_for_drawing->nr_sprites; i++) {
-		if (currprefs.chipset_mask & CSMASK_AGA)
-		    draw_sprites_aga (curr_sprite_entries + dip_for_drawing->first_sprite_entry + i);
-		else
-		    draw_sprites_ecs (curr_sprite_entries + dip_for_drawing->first_sprite_entry + i);
+	    if (dip_for_drawing->nr_sprites) {
+	        int i;
+#ifdef AGA
+		if (brdsprt)
+		    clear_bitplane_border_aga ();
+#endif
+		for (i = 0; i < dip_for_drawing->nr_sprites; i++) {
+#ifdef AGA
+		    if (currprefs.chipset_mask & CSMASK_AGA)
+			draw_sprites_aga (curr_sprite_entries + dip_for_drawing->first_sprite_entry + i);
+		    else
+#endif
+			draw_sprites_ecs (curr_sprite_entries + dip_for_drawing->first_sprite_entry + i);
+		}
 	    }
+ 	    if (plf2pri > 5 && bplplanecnt > 4 && !(currprefs.chipset_mask & CSMASK_AGA))
+ 		weird_bitplane_fix ();
 	}
 
 	do_color_changes (pfield_do_fill_line, pfield_do_linetoscr);
@@ -1390,6 +1530,10 @@ static void center_image (void)
     prev_y_adjust = thisframe_y_adjust;
 
     if (currprefs.gfx_xcenter) {
+#if 0
+	if (min_diwstart && (max_diwstop - min_diwstart < gfxvidinfo.width) && (currprefs.gfx_xcenter == 2))
+	    visible_left_border = ((max_diwstop - min_diwstart - gfxvidinfo.width) / 2 + min_diwstart) & ~1;
+#endif
 	if (max_diwstop - min_diwstart < gfxvidinfo.width && currprefs.gfx_xcenter == 2)
 	    /* Try to center. */
 	    visible_left_border = ((max_diwstop - min_diwstart - gfxvidinfo.width) / 2 + min_diwstart) & ~1;
@@ -1404,6 +1548,8 @@ static void center_image (void)
 	}
     } else
 	visible_left_border = max_diwlastword - gfxvidinfo.width;
+    if (visible_left_border > max_diwlastword - 32)
+	visible_left_border = max_diwlastword - 32;
     if (visible_left_border < 0)
 	visible_left_border = 0;
 
@@ -1415,10 +1561,16 @@ static void center_image (void)
 
     thisframe_y_adjust = minfirstline;
     if (currprefs.gfx_ycenter && thisframe_first_drawn_line != -1) {
+#if 0
+	if (thisframe_first_drawn_line && (thisframe_last_drawn_line - thisframe_first_drawn_line < max_drawn_amiga_line) && currprefs.gfx_ycenter == 2)
+	    thisframe_y_adjust = (thisframe_last_drawn_line - thisframe_first_drawn_line - max_drawn_amiga_line) / 2 + thisframe_first_drawn_line;
+#endif
+
 	if (thisframe_last_drawn_line - thisframe_first_drawn_line < max_drawn_amiga_line && currprefs.gfx_ycenter == 2)
 	    thisframe_y_adjust = (thisframe_last_drawn_line - thisframe_first_drawn_line - max_drawn_amiga_line) / 2 + thisframe_first_drawn_line;
 	else
 	    thisframe_y_adjust = thisframe_first_drawn_line;
+
 	/* Would the old value be good enough? If so, leave it as it is if we want to
 	 * be clever. */
 	if (currprefs.gfx_ycenter == 2) {
@@ -1445,9 +1597,23 @@ static void center_image (void)
     min_diwstart = 10000;
 }
 
+static void lores_reset (void)
+{
+    lores_factor = currprefs.gfx_lores ? 1 : 2;
+    lores_shift = currprefs.gfx_lores ? 0 : 1;
+}
+
 static void init_drawing_frame (void)
 {
     int i, maxline;
+
+    if (can_use_lores > AUTO_LORES_FRAMES && 0) {
+        lores_factor = 1;
+	lores_shift = 0;
+    } else {
+	can_use_lores++;
+	lores_reset ();
+    }
 
     init_hardware_for_drawing_frame ();
 
@@ -1456,7 +1622,7 @@ static void init_drawing_frame (void)
     if (thisframe_first_drawn_line > thisframe_last_drawn_line)
 	thisframe_last_drawn_line = thisframe_first_drawn_line;
 
-    maxline = currprefs.gfx_linedbl ? (maxvpos+1) * 2 + 1 : (maxvpos+1) + 1;
+    maxline = currprefs.gfx_linedbl ? (maxvpos + 1) * 2 + 1 : (maxvpos + 1) + 1;
 #ifdef SMART_UPDATE
     for (i = 0; i < maxline; i++) {
 	switch (linestate[i]) {
@@ -1510,14 +1676,16 @@ static int td_pos = (TD_RIGHT|TD_BOTTOM);
 
 #define TD_TOTAL_HEIGHT (TD_PADY * 2 + TD_NUM_HEIGHT)
 
+#define NUMBERS_NUM 14
+
 static char *numbers = { /* ugly */
-"------ ------ ------ ------ ------ ------ ------ ------ ------ ------ "
-"-xxxxx ---xx- -xxxxx -xxxxx -x---x -xxxxx -xxxxx -xxxxx -xxxxx -xxxxx "
-"-x---x ----x- -----x -----x -x---x -x---- -x---- -----x -x---x -x---x "
-"-x---x ----x- -xxxxx -xxxxx -xxxxx -xxxxx -xxxxx ----x- -xxxxx -xxxxx "
-"-x---x ----x- -x---- -----x -----x -----x -x---x ---x-- -x---x -----x "
-"-xxxxx ----x- -xxxxx -xxxxx -----x -xxxxx -xxxxx ---x-- -xxxxx -xxxxx "
-"------ ------ ------ ------ ------ ------ ------ ------ ------ ------ "
+"+++++++--++++-+++++++++++++++++-++++++++++++++++++++++++++++++++++++++++++++-++++++-++++----++---+"
+"+xxxxx+--+xx+-+xxxxx++xxxxx++x+-+x++xxxxx++xxxxx++xxxxx++xxxxx++xxxxx++xxxx+-+x++x+-+xxx++-+xx+-+x"
+"+x+++x+--++x+-+++++x++++++x++x+++x++x++++++x++++++++++x++x+++x++x+++x++x++++-+x++x+-+x++x+--+x++x+"
+"+x+-+x+---+x+-+xxxxx++xxxxx++xxxxx++xxxxx++xxxxx+--++x+-+xxxxx++xxxxx++x+----+xxxx+-+x++x+----+x+-"
+"+x+++x+---+x+-+x++++++++++x++++++x++++++x++x+++x+--+x+--+x+++x++++++x++x++++-+x++x+-+x++x+---+x+x+"
+"+xxxxx+---+x+-+xxxxx++xxxxx+----+x++xxxxx++xxxxx+--+x+--+xxxxx++xxxxx++xxxx+-+x++x+-+xxx+---+x++xx"
+"+++++++---+++-++++++++++++++----+++++++++++++++++--+++--++++++++++++++++++++-++++++-++++----------"
 };
 
 STATIC_INLINE void putpixel (int x, xcolnr c8)
@@ -1530,7 +1698,7 @@ STATIC_INLINE void putpixel (int x, xcolnr c8)
     case 2:
     {
 	uae_u16 *p = (uae_u16 *)xlinebuffer + x;
-	*p = c8;
+	*p = (uae_u16)c8;
 	break;
     }
     case 3:
@@ -1550,23 +1718,24 @@ static void write_tdnumber (int x, int y, int num)
     int j;
     uae_u8 *numptr;
     
-    numptr = numbers + num * TD_NUM_WIDTH + 10 * TD_NUM_WIDTH * y;
+    numptr = numbers + num * TD_NUM_WIDTH + NUMBERS_NUM * TD_NUM_WIDTH * y;
     for (j = 0; j < TD_NUM_WIDTH; j++) {
-	putpixel (x + j, *numptr == 'x' ? xcolors[0xfff] : xcolors[0x000]);
+	if (*numptr == 'x')
+	    putpixel (x + j, xcolors[0xfff]);
+	else if (*numptr == '+')
+	    putpixel (x + j, xcolors[0x000]);
 	numptr++;
     }
 }
 
 static void draw_status_line (int line)
 {
-    int x, y, i, j, led, on;
-    int on_rgb, off_rgb, c;
-    uae_u8 *buf;
+    int x_start, y, j, led;
     
     if (td_pos & TD_RIGHT)
-        x = gfxvidinfo.width - TD_PADX - 5*TD_WIDTH;
+        x_start = gfxvidinfo.width - TD_PADX - NUM_LEDS * TD_WIDTH;
     else
-        x = TD_PADX;
+        x_start = TD_PADX;
 
     y = line - (gfxvidinfo.height - TD_TOTAL_HEIGHT);
     xlinebuffer = gfxvidinfo.linemem;
@@ -1575,32 +1744,80 @@ static void draw_status_line (int line)
 
     memset (xlinebuffer, 0, gfxvidinfo.width * gfxvidinfo.pixbytes);
 
-    for (led = 0; led < 5; led++) {
-	int track;
-	if (led > 0) {
-	    track = gui_data.drive_track[led-1];
-	    on = gui_data.drive_motor[led-1];
-	    on_rgb = 0x0f0;
-	    off_rgb = 0x040;
-	} else {
-	    track = -1;
+    for (led = 0; led < NUM_LEDS; led++) {
+	int side, pos, num1 = -1, num2 = -1, num3 = -1, num4 = -1, x, off_rgb, on_rgb, c, on = 0;
+	if (led >= 1 && led <= 4) {
+	    int track = gui_data.drive_track[led-1];
+	    pos = 5 + (led - 1);
+	    if (!gui_data.drive_disabled[led - 1]) {
+		num1 = -1;
+		num2 = track / 10;
+		num3 = track % 10;
+	        on = gui_data.drive_motor[led-1];
+	    }
+	    side = gui_data.drive_side;
+	    on_rgb = 0x0c0;
+	    off_rgb = 0x030;
+	} else if (led == 0) {
+	    pos = 2;
 	    on = gui_data.powerled;
-	    on_rgb = 0xf00;
-	    off_rgb = 0x400;
+	    on_rgb = 0xc00;
+	    off_rgb = 0x300;
+	} else if (led == 5) {
+	    pos = 4;
+	    on = gui_data.cd;
+	    on_rgb = 0x00c;
+	    off_rgb = 0x003;
+	    num1 = -1;
+	    num2 = 10;
+	    num3 = 12;
+	} else if (led == 6) {
+	    pos = 3;
+	    on = gui_data.hd;
+	    on_rgb = 0x00c;
+	    off_rgb = 0x003;
+	    num1 = -1;
+	    num2 = 11;
+	    num3 = 12;
+	} else if (led == 7) {
+	    int fps = (gui_data.fps + 5) / 10;
+	    pos = 1;
+	    on_rgb = 0x000;
+	    off_rgb = 0x000;
+	    num1 = fps / 100;
+	    num2 = (fps - num1 * 100) / 10;
+	    num3 = fps % 10;
+	} else if (led == 8) {
+	    int idle = (gui_data.idle + 5) / 10;
+	    pos = 0;
+	    on_rgb = 0x000;
+	    off_rgb = 0x000;
+	    num1 = idle / 100;
+	    num2 = (idle - num1 * 100) / 10;
+	    num3 = idle % 10;
+	    num4 = 13;
 	}
+
 	c = xcolors[on ? on_rgb : off_rgb];
 
+	x = x_start + pos * TD_WIDTH;
 	for (j = 0; j < TD_LED_WIDTH; j++) 
 	    putpixel (x + j, c);
 
 	if (y >= TD_PADY && y - TD_PADY < TD_NUM_HEIGHT) {
-	    if (track >= 0) {
-		int offs = (TD_WIDTH - 2 * TD_NUM_WIDTH) / 2;
-		write_tdnumber (x + offs, y - TD_PADY, track / 10);
-		write_tdnumber (x + offs + TD_NUM_WIDTH, y - TD_PADY, track % 10);
+	    if (num3 >= 0) {
+		int tn = num1 > 0 ? 3 : 2;
+		int offs = (TD_LED_WIDTH - tn * TD_NUM_WIDTH) / 2;
+		if (num1 > 0) {
+		    write_tdnumber (x + offs, y - TD_PADY, num1);
+		    offs += TD_NUM_WIDTH;
+		}
+	        write_tdnumber (x + offs, y - TD_PADY, num2);
+		write_tdnumber (x + offs + TD_NUM_WIDTH, y - TD_PADY, num3);
+		if (num4 > 0)
+		    write_tdnumber (x + offs + 2 * TD_NUM_WIDTH, y - TD_PADY, num4);
 	    }
 	}
-	x += TD_WIDTH;
     }
 }
 
@@ -1630,17 +1847,19 @@ void finish_drawing_frame (void)
 	    break;
 
 	where = amiga2aspect_line_map[i1];
-	if (where >= gfxvidinfo.height - TD_TOTAL_HEIGHT)
+	if (where >= gfxvidinfo.height - (currprefs.leds_on_screen ? TD_TOTAL_HEIGHT : 0))
 	    break;
 	if (where == -1)
 	    continue;
 
 	pfield_draw_line (line, where, amiga2aspect_line_map[i1 + 1]);
     }
-    for (i = 0; i < TD_TOTAL_HEIGHT; i++) {
-	int line = gfxvidinfo.height - TD_TOTAL_HEIGHT + i;
-	draw_status_line (line);
-	do_flush_line (line);
+    if (currprefs.leds_on_screen) {
+	for (i = 0; i < TD_TOTAL_HEIGHT; i++) {
+	    int line = gfxvidinfo.height - TD_TOTAL_HEIGHT + i;
+	    draw_status_line (line);
+	    do_flush_line (line);
+	}
     }
 
     do_flush_screen (first_drawn_line, last_drawn_line);
@@ -1666,7 +1885,7 @@ STATIC_INLINE void check_picasso (void)
 {
 #ifdef PICASSO96
     if (picasso_on && picasso_redraw_necessary)
-	picasso_refresh ();
+	picasso_refresh (1);
     picasso_redraw_necessary = 0;
 
     if (picasso_requested_on == picasso_on)
@@ -1687,6 +1906,14 @@ STATIC_INLINE void check_picasso (void)
 #endif
 }
 
+void redraw_frame (void)
+{
+    last_drawn_line = 0;
+    first_drawn_line = 32767;
+    finish_drawing_frame ();
+    flush_screen (0, 0);
+}
+
 void vsync_handle_redraw (int long_frame, int lof_changed)
 {
     last_redraw_point++;
@@ -1703,43 +1930,53 @@ void vsync_handle_redraw (int long_frame, int lof_changed)
 	 * done at other times.
 	 */
 
-	if (savestate_state == STATE_DOSAVE) {
-	    custom_prepare_savestate ();
-	    savestate_state = STATE_SAVE;
-	    save_state (savestate_filename, "Description!");
-	    savestate_state = 0;
-	} else if (savestate_state == STATE_DORESTORE) {
+#ifdef AVIOUTPUT
+	frame_drawn ();
+#endif
+
+	if (savestate_state == STATE_DORESTORE) {
 	    savestate_state = STATE_RESTORE;
-	    uae_reset ();
+	    reset_drawing ();
+	    uae_reset (0);
 	}
 
 	if (quit_program < 0) {
 	    quit_program = -quit_program;
 	    set_inhibit_frame (IHF_QUIT_PROGRAM);
 	    set_special (SPCFLAG_BRK);
+#ifdef FILESYS
 	    filesys_prepare_reset ();
+#endif
 	    return;
 	}
 
 	count_frame ();
 	check_picasso ();
 
-	check_prefs_changed_audio ();
-	check_prefs_changed_custom ();
-	check_prefs_changed_cpu ();
 	if (check_prefs_changed_gfx ()) {
+	    reset_drawing ();
 	    init_row_map ();
 	    init_aspect_maps ();
 	    notice_screen_contents_lost ();
 	    notice_new_xcolors ();
 	}
 
+	check_prefs_changed_audio ();
+	check_prefs_changed_comp ();
+	check_prefs_changed_custom ();
+	check_prefs_changed_cpu ();
+
 	if (inhibit_frame != 0)
 	    framecnt = 1;
 
 	if (framecnt == 0)
 	    init_drawing_frame ();
+    } else {
+	if (currprefs.gfx_afullscreen && currprefs.gfx_vsync)
+	    flush_screen (0, 0); /* vsync mode */
     }
+    gui_hd_led (0);
+    gui_cd_led (0);
 }
 
 void hsync_record_line_state (int lineno, enum nln_how how, int changed)
@@ -1789,25 +2026,12 @@ void reset_drawing (void)
 {
     int i;
 
-    inhibit_frame = 0;
-    uae_sem_init (&gui_sem, 0, 1);
-
-#ifdef PICASSO96
-    InitPicasso96 ();
-    picasso_on = 0;
-    picasso_requested_on = 0;
-    gfx_set_picasso_state (0);
-#endif
     max_diwstop = 0;
 
-    lores_factor = currprefs.gfx_lores ? 1 : 2;
-    lores_shift = currprefs.gfx_lores ? 0 : 1;
+    lores_reset ();
 
-    /*memset(blitcount, 0, sizeof(blitcount));  blitter debug */
     for (i = 0; i < sizeof linestate / sizeof *linestate; i++)
 	linestate[i] = LINE_UNDECIDED;
-
-    xlinebuffer = gfxvidinfo.bufmem;
 
     init_aspect_maps ();
 
@@ -1822,14 +2046,25 @@ void reset_drawing (void)
     memset (&spixstate, 0, sizeof spixstate);
 
     init_drawing_frame ();
+
+    flush_clear_screen ();
+    notice_screen_contents_lost ();
 }
 
-void drawing_init ()
+void drawing_init (void)
 {
-    native2amiga_line_map = 0;
-    amiga2aspect_line_map = 0;
-    line_drawn = 0;
-
     gen_pfield_tables();
+
+    uae_sem_init (&gui_sem, 0, 1);
+#ifdef PICASSO96
+    InitPicasso96 ();
+    picasso_on = 0;
+    picasso_requested_on = 0;
+    gfx_set_picasso_state (0);
+#endif
+    xlinebuffer = gfxvidinfo.bufmem;
+    inhibit_frame = 0;
+
+    reset_drawing ();
 }
 

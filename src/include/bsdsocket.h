@@ -7,10 +7,10 @@
   *
   */
 
-/*#define TRACING_ENABLED */
+//#define TRACING_ENABLED
 
 #ifdef TRACING_ENABLED
-#define TRACE(x)	printf x;
+#define TRACE(x) do { write_log x; } while(0)
 #else
 #define TRACE(x)
 #endif
@@ -147,10 +147,8 @@ extern uae_u32 host_getpeername (SB, uae_u32, uae_u32, uae_u32);
 extern uae_u32 host_IoctlSocket (SB, uae_u32, uae_u32, uae_u32);
 extern uae_u32 host_shutdown (SB, uae_u32, uae_u32);
 extern int host_CloseSocket (SB, int);
-#if 0 /* __stdcall ???? */
-extern void __stdcall host_connect (SB, uae_u32, uae_u32, uae_u32);
-extern void __stdcall host_WaitSelect (SB, uae_u32, uae_u32, uae_u32, uae_u32, uae_u32, uae_u32);
-#endif
+extern void host_connect (SB, uae_u32, uae_u32, uae_u32);
+extern void host_WaitSelect (SB, uae_u32, uae_u32, uae_u32, uae_u32, uae_u32, uae_u32);
 extern uae_u32 host_SetSocketSignals (void);
 extern uae_u32 host_getdtablesize (void);
 extern uae_u32 host_ObtainSocket (void);

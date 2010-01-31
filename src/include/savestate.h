@@ -44,11 +44,11 @@ extern uae_u8 *restore_disk (int, uae_u8 *);
 extern uae_u8 *save_disk (int, int *);
 extern uae_u8 *restore_floppy (uae_u8 *src);
 extern uae_u8 *save_floppy (int *len);
-extern void DISK_save_custom  (uae_u32 *pdskpt, uae_u16 *pdsklen, uae_u16 *pdsksync, uae_u16 *pdskdatr, uae_u16 *pdskbytr);
-extern void DISK_restore_custom  (uae_u32 pdskpt, uae_u16 pdsklength, uae_u16 pdskdatr, uae_u16 pdskbytr);
+extern void DISK_save_custom  (uae_u32 *pdskpt, uae_u16 *pdsklen, uae_u16 *pdsksync, uae_u16 *pdskbytr);
+extern void DISK_restore_custom  (uae_u32 pdskpt, uae_u16 pdsklength, uae_u16 pdskbytr);
 
 extern uae_u8 *restore_custom (uae_u8 *);
-extern uae_u8 *save_custom (int *, uae_u8 *, int);
+extern uae_u8 *save_custom (int *);
 
 extern uae_u8 *restore_custom_sprite (uae_u8 *src, int num);
 extern uae_u8 *save_custom_sprite (int *len, int num);
@@ -56,8 +56,8 @@ extern uae_u8 *save_custom_sprite (int *len, int num);
 extern uae_u8 *restore_custom_agacolors (uae_u8 *src);
 extern uae_u8 *save_custom_agacolors (int *len);
 
-extern uae_u8 *restore_custom_blitter (uae_u8 *src);
-extern uae_u8 *save_custom_blitter (int *len);
+extern uae_u8 *restore_blitter (uae_u8 *src);
+extern uae_u8 *save_blitter (int *len);
 
 extern uae_u8 *restore_audio (uae_u8 *, int);
 extern uae_u8 *save_audio (int *, int);
@@ -68,22 +68,35 @@ extern uae_u8 *save_cia (int, int *);
 extern uae_u8 *restore_expansion (uae_u8 *);
 extern uae_u8 *save_expansion (int *);
 
+extern uae_u8 *restore_p96 (uae_u8 *);
+extern uae_u8 *save_p96 (int *);
+
 extern void restore_cram (int, long);
 extern void restore_bram (int, long);
 extern void restore_fram (int, long);
 extern void restore_zram (int, long);
+extern void restore_pram (int, long);
+extern void restore_ram (long, uae_u8*);
+
 extern uae_u8 *save_cram (int *);
 extern uae_u8 *save_bram (int *);
 extern uae_u8 *save_fram (int *);
 extern uae_u8 *save_zram (int *);
+extern uae_u8 *save_pram (int *);
 
 extern uae_u8 *restore_rom (uae_u8 *);
 extern uae_u8 *save_rom (int, int *);
 
+extern uae_u8 *restore_action_replay (uae_u8 *);
+extern uae_u8 *save_action_replay (int *);
+
+extern void savestate_initsave (char *filename, int docompress);
 extern void save_state (char *filename, char *description);
 extern void restore_state (char *filename);
+extern void savestate_restore_finish (void);
 
 extern void custom_save_state (void);
+extern void custom_prepare_savestate (void);
 
 #define STATE_SAVE 1
 #define STATE_RESTORE 2
@@ -91,5 +104,9 @@ extern void custom_save_state (void);
 #define STATE_DORESTORE 8
 
 extern int savestate_state;
-extern char *savestate_filename;
-extern FILE *savestate_file;
+extern char savestate_fname[MAX_PATH];
+extern struct zfile *savestate_file;
+
+extern uae_u32 CRC32(uae_u32 crc, const uae_u8 *buf, int len);
+
+extern void savestate_quick (int slot, int save);

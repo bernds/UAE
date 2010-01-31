@@ -18,7 +18,11 @@
 #include "memory.h"
 #include "autoconf.h"
 #include "picasso96.h"
+#include "custom.h"
+#include "newcpu.h"
 #include "savestate.h"
+#include "zfile.h"
+#include "catweasel.h"
 
 #define MAX_EXPANSION_BOARDS	8
 
@@ -117,17 +121,17 @@
 #define rom_install	(0x01<<12) /* run code at install time */
 #define rom_binddrv	(0x02<<12) /* run code with binddrivers */
 
-uaecptr ROM_filesys_resname = 0, ROM_filesys_resid = 0;
-uaecptr ROM_filesys_diagentry = 0;
-uaecptr ROM_hardfile_resname = 0, ROM_hardfile_resid = 0;
-uaecptr ROM_hardfile_init = 0;
+uaecptr ROM_filesys_resname, ROM_filesys_resid;
+uaecptr ROM_filesys_diagentry;
+uaecptr ROM_hardfile_resname, ROM_hardfile_resid;
+uaecptr ROM_hardfile_init;
 
 /* ********************************************************** */
 
 static void (*card_init[MAX_EXPANSION_BOARDS]) (void);
 static void (*card_map[MAX_EXPANSION_BOARDS]) (void);
 
-static int ecard = 0;
+static int ecard;
 
 /* ********************************************************** */
 
@@ -190,28 +194,36 @@ addrbank expamem_bank = {
 
 static uae_u32 REGPARAM2 expamem_lget (uaecptr addr)
 {
+#ifdef JIT
     special_mem |= S_READ;
+#endif
     write_log ("warning: READ.L from address $%lx \n", addr);
     return 0xfffffffful;
 }
 
 static uae_u32 REGPARAM2 expamem_wget (uaecptr addr)
 {
+#ifdef JIT
     special_mem |= S_READ;
+#endif
     write_log ("warning: READ.W from address $%lx \n", addr);
     return 0xffff;
 }
 
 static uae_u32 REGPARAM2 expamem_bget (uaecptr addr)
 {
+#ifdef JIT
     special_mem |= S_READ;
+#endif
     addr &= 0xFFFF;
     return expamem[addr];
 }
 
 static void REGPARAM2 expamem_write (uaecptr addr, uae_u32 value)
 {
+#ifdef JIT
     special_mem |= S_WRITE;
+#endif
     addr &= 0xffff;
     if (addr == 00 || addr == 02 || addr == 0x40 || addr == 0x42) {
 	expamem[addr] = (value & 0xf0);
@@ -229,19 +241,28 @@ static int REGPARAM2 expamem_type (void)
 
 static void REGPARAM2 expamem_lput (uaecptr addr, uae_u32 value)
 {
+#ifdef JIT
     special_mem |= S_WRITE;
+#endif
     write_log ("warning: WRITE.L to address $%lx : value $%lx\n", addr, value);
 }
 
 static void REGPARAM2 expamem_wput (uaecptr addr, uae_u32 value)
 {
+#ifdef JIT
     special_mem |= S_WRITE;
+#endif
     if (expamem_type() != zorroIII)
 	write_log ("warning: WRITE.W to address $%lx : value $%x\n", addr, value);
     else {
 	switch (addr & 0xff) {
 	 case 0x44:
 	    if (expamem_type() == zorroIII) {
+		// +Bernd Roesch
+		value = value - 0x3000;  // maps to 0x10000000     
+		chipmem_wput (regs.regs[11] + 0x20, value);
+		chipmem_wput (regs.regs[11] + 0x28, value);
+		// -Bernd Roesch
 		expamem_hi = value;
 		(*card_map[ecard]) ();
 		write_log ("   Card %d (Zorro%s) done.\n", ecard + 1, expamem_type() == 0xc0 ? "II" : "III");
@@ -258,7 +279,9 @@ static void REGPARAM2 expamem_wput (uaecptr addr, uae_u32 value)
 
 static void REGPARAM2 expamem_bput (uaecptr addr, uae_u32 value)
 {
+#ifdef JIT
     special_mem |= S_WRITE;
+#endif
     switch (addr & 0xff) {
      case 0x30:
      case 0x32:
@@ -315,7 +338,7 @@ static int fastmem_check (uaecptr addr, uae_u32 size) REGPARAM;
 static uae_u8 *fastmem_xlate (uaecptr addr) REGPARAM;
 
 static uae_u32 fastmem_start; /* Determined by the OS */
-static uae_u8 *fastmemory = NULL;
+static uae_u8 *fastmemory;
 
 uae_u32 REGPARAM2 fastmem_lget (uaecptr addr)
 {
@@ -388,6 +411,211 @@ addrbank fastmem_bank = {
 };
 
 
+#ifdef CATWEASEL
+
+/*
+ * Catweasel ZorroII
+ */
+
+static uae_u32 catweasel_lget (uaecptr) REGPARAM;
+static uae_u32 catweasel_wget (uaecptr) REGPARAM;
+static uae_u32 catweasel_bget (uaecptr) REGPARAM;
+static void catweasel_lput (uaecptr, uae_u32) REGPARAM;
+static void catweasel_wput (uaecptr, uae_u32) REGPARAM;
+static void catweasel_bput (uaecptr, uae_u32) REGPARAM;
+static int catweasel_check (uaecptr addr, uae_u32 size) REGPARAM;
+static uae_u8 *catweasel_xlate (uaecptr addr) REGPARAM;
+
+static uae_u32 catweasel_mask;
+static uae_u32 catweasel_start;
+
+static uae_u32 REGPARAM2 catweasel_lget (uaecptr addr)
+{
+#ifdef JIT
+    special_mem |= S_READ;
+#endif
+    write_log("catweasel_lget @%08.8X!\n",addr);
+    return 0;
+}
+
+static uae_u32 REGPARAM2 catweasel_wget (uaecptr addr)
+{
+#ifdef JIT
+    special_mem |= S_READ;
+#endif
+    write_log("catweasel_wget @%08.8X!\n",addr);
+    return 0;
+}
+
+static uae_u32 REGPARAM2 catweasel_bget (uaecptr addr)
+{
+#ifdef JIT
+    special_mem |= S_READ;
+#endif
+    addr -= catweasel_start & catweasel_mask;
+    addr &= catweasel_mask;
+    return catweasel_do_bget (addr);
+}
+
+static void REGPARAM2 catweasel_lput (uaecptr addr, uae_u32 l)
+{
+#ifdef JIT
+    special_mem |= S_WRITE;
+#endif
+    write_log("catweasel_lput @%08.8X=%08.8X!\n",addr,l);
+}
+
+static void REGPARAM2 catweasel_wput (uaecptr addr, uae_u32 w)
+{
+#ifdef JIT
+    special_mem |= S_WRITE;
+#endif
+    write_log("catweasel_wput @%08.8X=%04.4X!\n",addr,w);
+}
+
+static void REGPARAM2 catweasel_bput (uaecptr addr, uae_u32 b)
+{
+#ifdef JIT
+    special_mem |= S_WRITE;
+#endif
+    addr -= catweasel_start & catweasel_mask;
+    addr &= catweasel_mask;
+    catweasel_do_bput (addr, b);
+}
+
+static int REGPARAM2 catweasel_check (uaecptr addr, uae_u32 size)
+{
+    write_log ("catweasel_check @%08.8X size %08.8X\n", addr, size);
+    return 0;
+}
+
+static uae_u8 REGPARAM2 *catweasel_xlate (uaecptr addr)
+{
+    write_log ("catweasel_xlate @%08.8X size %08.8X\n", addr);
+    return 0;
+}
+
+static addrbank catweasel_bank = {
+    catweasel_lget, catweasel_wget, catweasel_bget,
+    catweasel_lput, catweasel_wput, catweasel_bput,
+    catweasel_xlate, catweasel_check, NULL
+};
+
+static void expamem_map_catweasel (void)
+{
+    catweasel_start = ((expamem_hi | (expamem_lo >> 4)) << 16);
+    map_banks (&catweasel_bank, catweasel_start >> 16, 1, 0);  
+    write_log ("Catweasel MK%d: mapped @$%lx\n", cwc.type, catweasel_start);
+}
+
+static void expamem_init_catweasel (void)
+{
+    uae_u8 productid = cwc.type == CATWEASEL_TYPE_MK3 ? 66 : 200;
+    uae_u16 vendorid = cwc.type == CATWEASEL_TYPE_MK3 ? 4626 : 5001;
+
+    catweasel_mask = (cwc.type == CATWEASEL_TYPE_MK3) ? 0xffff : 0x1ffff;
+
+    expamem_init_clear();
+
+    expamem_write (0x00, (cwc.type == CATWEASEL_TYPE_MK3 ? Z2_MEM_64KB : Z2_MEM_128KB) | zorroII);
+
+    expamem_write (0x04, productid);
+
+    expamem_write (0x08, no_shutup);
+
+    expamem_write (0x10, vendorid >> 8);
+    expamem_write (0x14, vendorid & 0xff);
+
+    expamem_write (0x18, 0x00); /* ser.no. Byte 0 */
+    expamem_write (0x1c, 0x00); /* ser.no. Byte 1 */
+    expamem_write (0x20, 0x00); /* ser.no. Byte 2 */
+    expamem_write (0x24, 0x00); /* ser.no. Byte 3 */
+
+    expamem_write (0x28, 0x00); /* Rom-Offset hi */
+    expamem_write (0x2c, 0x00); /* ROM-Offset lo */
+
+    expamem_write (0x40, 0x00); /* Ctrl/Statusreg.*/
+}
+
+#endif
+
+/*
+ * CDTV DMAC
+ */
+
+static uae_u32 dmac_lget (uaecptr) REGPARAM;
+static uae_u32 dmac_wget (uaecptr) REGPARAM;
+static uae_u32 dmac_bget (uaecptr) REGPARAM;
+static void dmac_lput (uaecptr, uae_u32) REGPARAM;
+static void dmac_wput (uaecptr, uae_u32) REGPARAM;
+static void dmac_bput (uaecptr, uae_u32) REGPARAM;
+
+static uae_u32 dmac_start = 0xe90000;
+static uae_u8 dmacmemory[0x100];
+
+uae_u32 REGPARAM2 dmac_lget (uaecptr addr)
+{
+#ifdef JIT
+    special_mem |= S_READ;
+#endif
+//    write_log ("dmac_lget %08.8X\n", addr);
+    return 0;
+}
+
+uae_u32 REGPARAM2 dmac_wget (uaecptr addr)
+{
+#ifdef JIT
+    special_mem |= S_READ;
+#endif
+//    write_log ("dmac_wget %08.8X\n", addr);
+    return 0;
+}
+
+uae_u32 REGPARAM2 dmac_bget (uaecptr addr)
+{
+#ifdef JIT
+    special_mem |= S_READ;
+#endif
+//    write_log ("dmac_bget %08.8X\n", addr);
+    addr -= dmac_start;
+    addr &= 65535;
+    return 0;//dmacmemory[addr];
+}
+
+static void REGPARAM2 dmac_lput (uaecptr addr, uae_u32 l)
+{
+#ifdef JIT
+    special_mem |= S_WRITE;
+#endif
+//    write_log ("dmac_lput %08.8X = %08.8X\n", addr, l);
+}
+
+static void REGPARAM2 dmac_wput (uaecptr addr, uae_u32 w)
+{
+#ifdef JIT
+    special_mem |= S_WRITE;
+#endif
+//    write_log ("dmac_wput %04.4X = %04.4X\n", addr, w & 65535);
+}
+
+static void REGPARAM2 dmac_bput (uaecptr addr, uae_u32 b)
+{
+#ifdef JIT
+    special_mem |= S_WRITE;
+#endif
+//    write_log ("dmac_bput %08.8X = %02.2X\n", addr, b & 255);
+    addr -= dmac_start;
+    addr &= 65535;
+    dmacmemory[addr] = b;
+    //activate_debugger();
+}
+
+addrbank dmac_bank = {
+    dmac_lget, dmac_wget, dmac_bget,
+    dmac_lput, dmac_wput, dmac_bput,
+    default_xlate, default_check, NULL
+};
+
 /*
  * Filesystem device ROM
  * This is very simple, the Amiga shouldn't be doing things with it.
@@ -406,7 +634,9 @@ uae_u8 *filesysory;
 uae_u32 REGPARAM2 filesys_lget (uaecptr addr)
 {
     uae_u8 *m;
+#ifdef JIT
     special_mem |= S_READ;
+#endif
     addr -= filesys_start & 65535;
     addr &= 65535;
     m = filesysory + addr;
@@ -416,7 +646,9 @@ uae_u32 REGPARAM2 filesys_lget (uaecptr addr)
 uae_u32 REGPARAM2 filesys_wget (uaecptr addr)
 {
     uae_u8 *m;
+#ifdef JIT
     special_mem |= S_READ;
+#endif
     addr -= filesys_start & 65535;
     addr &= 65535;
     m = filesysory + addr;
@@ -425,7 +657,9 @@ uae_u32 REGPARAM2 filesys_wget (uaecptr addr)
 
 uae_u32 REGPARAM2 filesys_bget (uaecptr addr)
 {
+#ifdef JIT
     special_mem |= S_READ;
+#endif
     addr -= filesys_start & 65535;
     addr &= 65535;
     return filesysory[addr];
@@ -433,19 +667,25 @@ uae_u32 REGPARAM2 filesys_bget (uaecptr addr)
 
 static void REGPARAM2 filesys_lput (uaecptr addr, uae_u32 l)
 {
+#ifdef JIT
     special_mem |= S_WRITE;
-    write_log ("filesys_lput called\n");
+#endif
+    write_log ("filesys_lput called PC=%p\n", m68k_getpc());
 }
 
 static void REGPARAM2 filesys_wput (uaecptr addr, uae_u32 w)
 {
+#ifdef JIT
     special_mem |= S_WRITE;
-    write_log ("filesys_wput called\n");
+#endif
+    write_log ("filesys_wput called PC=%p\n", m68k_getpc());
 }
 
 static void REGPARAM2 filesys_bput (uaecptr addr, uae_u32 b)
 {
+#ifdef JIT
     special_mem |= S_WRITE;
+#endif
     write_log ("filesys_bput called. This usually means that you are using\n");
     write_log ("Kickstart 1.2. Please give UAE the \"-a\" option next time\n");
     write_log ("you start it. If you are _not_ using Kickstart 1.2, then\n");
@@ -454,7 +694,7 @@ static void REGPARAM2 filesys_bput (uaecptr addr, uae_u32 b)
     uae_quit ();
 }
 
-addrbank filesys_bank = {
+static addrbank filesys_bank = {
     filesys_lget, filesys_wget, filesys_bget,
     filesys_lput, filesys_wput, filesys_bput,
     default_xlate, default_check, NULL
@@ -463,7 +703,6 @@ addrbank filesys_bank = {
 /*
  *  Z3fastmem Memory
  */
-
 
 static uae_u32 z3fastmem_mask;
 
@@ -477,7 +716,7 @@ static int z3fastmem_check (uaecptr addr, uae_u32 size) REGPARAM;
 static uae_u8 *z3fastmem_xlate (uaecptr addr) REGPARAM;
 
 static uae_u32 z3fastmem_start; /* Determined by the OS */
-static uae_u8 *z3fastmem = NULL;
+static uae_u8 *z3fastmem;
 
 uae_u32 REGPARAM2 z3fastmem_lget (uaecptr addr)
 {
@@ -666,10 +905,16 @@ static void expamem_init_filesys (void)
 
 static void expamem_map_z3fastmem (void)
 {
-    z3fastmem_start = ((expamem_hi | (expamem_lo >> 4)) << 16);
-    map_banks (&z3fastmem_bank, z3fastmem_start >> 16, currprefs.z3fastmem_size >> 16,
-	       allocated_z3fastmem);
+	int z3fs = ((expamem_hi | (expamem_lo >> 4)) << 16);
 
+	if (z3fastmem_start != z3fs) {
+		write_log("WARNING: Z3FAST mapping changed from $%lx to $%lx\n", z3fastmem_start, z3fs);
+		map_banks(&dummy_bank, z3fastmem_start >> 16, currprefs.z3fastmem_size >> 16,
+			allocated_z3fastmem);
+		z3fastmem_start = z3fs;
+	    map_banks (&z3fastmem_bank, z3fastmem_start >> 16, currprefs.z3fastmem_size >> 16,
+	       allocated_z3fastmem);
+	}
     write_log ("Fastmem (32bit): mapped @$%lx: %d MB Zorro III fast memory \n",
 	       z3fastmem_start, allocated_z3fastmem / 0x100000);
 }
@@ -706,6 +951,12 @@ static void expamem_init_z3fastmem (void)
     expamem_write (0x2c, 0x00); /* ROM-Offset lo */
 
     expamem_write (0x40, 0x00); /* Ctrl/Statusreg.*/
+
+    z3fastmem_start = 0x10000000;
+
+    map_banks (&z3fastmem_bank, z3fastmem_start >> 16, currprefs.z3fastmem_size >> 16,
+	       allocated_z3fastmem);
+
 }
 
 #ifdef PICASSO96
@@ -757,7 +1008,7 @@ static void expamem_init_gfxcard (void)
 }
 #endif
 
-static long fast_filepos, z3_filepos;
+static long fast_filepos, z3_filepos, p96_filepos;
 
 static void allocate_expamem (void)
 {
@@ -779,6 +1030,7 @@ static void allocate_expamem (void)
 		allocated_fastmem = 0;
 	    }
 	}
+	clearexec ();
     }
     if (allocated_z3fastmem != currprefs.z3fastmem_size) {
 	if (z3fastmem)
@@ -795,6 +1047,7 @@ static void allocate_expamem (void)
 		allocated_z3fastmem = 0;
 	    }
 	}
+	clearexec ();
     }
     if (allocated_gfxmem != currprefs.gfxmem_size) {
 	if (gfxmemory)
@@ -811,6 +1064,7 @@ static void allocate_expamem (void)
 		allocated_gfxmem = 0;
 	    }
 	}
+	clearexec ();
     }
 
     z3fastmem_bank.baseaddr = z3fastmem;
@@ -818,19 +1072,24 @@ static void allocate_expamem (void)
 
     if (savestate_state == STATE_RESTORE) {
 	if (allocated_fastmem > 0) {
-	    fseek (savestate_file, fast_filepos, SEEK_SET);
-	    fread (fastmemory, 1, allocated_fastmem, savestate_file);
+	    restore_ram (fast_filepos, fastmemory);
 	    map_banks (&fastmem_bank, fastmem_start >> 16, currprefs.fastmem_size >> 16,
 		       allocated_fastmem);
 	}
 	if (allocated_z3fastmem > 0) {
-	    fseek (savestate_file, z3_filepos, SEEK_SET);
-	    fread (z3fastmem, 1, allocated_z3fastmem, savestate_file);
+	    restore_ram (z3_filepos, z3fastmem);
 	    map_banks (&z3fastmem_bank, z3fastmem_start >> 16, currprefs.z3fastmem_size >> 16,
 		       allocated_z3fastmem);
 	}
+	if (allocated_gfxmem > 0) {
+	    restore_ram (p96_filepos, gfxmemory);
+	    map_banks (&gfxmem_bank, gfxmem_start >> 16, currprefs.gfxmem_size >> 16,
+		       allocated_gfxmem);
+	}
     }
 }
+
+extern int cdtv_enabled;
 
 void expamem_reset (void)
 {
@@ -840,12 +1099,15 @@ void expamem_reset (void)
 
     allocate_expamem ();
 
+    if (cdtv_enabled)
+        map_banks (&dmac_bank, dmac_start >> 16, 0x10000 >> 16, 0x10000);
+
     /* check if Kickstart version is below 1.3 */
-    if (! ersatzkickfile
+    if (! ersatzkickfile && kickstart_version
 	&& (/* Kickstart 1.0 & 1.1! */
-	    get_word (0xF8000C) == 0xFFFF
+	    kickstart_version == 0xFFFF
 	    /* Kickstart < 1.3 */
-	    || get_word (0xF8000C) < 34))
+	    || kickstart_version < 34))
     {
 	/* warn user */
 	write_log ("Kickstart version is below 1.3!  Disabling autoconfig devices.\n");
@@ -873,6 +1135,12 @@ void expamem_reset (void)
 	card_init[cardno] = expamem_init_filesys;
 	card_map[cardno++] = expamem_map_filesys;
     }
+#ifdef CATWEASEL
+    if (catweasel_init ()) {
+        card_init[cardno] = expamem_init_catweasel;
+        card_map[cardno++] = expamem_map_catweasel;
+    }
+#endif
     while (cardno < MAX_EXPANSION_BOARDS) {
 	card_init[cardno] = expamem_init_clear;
 	card_map[cardno++] = expamem_map_clear;
@@ -889,6 +1157,15 @@ void expansion_init (void)
     allocated_z3fastmem = 0;
     allocated_gfxmem = 0;
     allocated_fastmem = 0;
+    fastmem_mask = fastmem_start = 0;
+    fastmemory = 0;
+    gfxmem_mask = gfxmem_start = 0;
+    gfxmemory = 0;
+    catweasel_mask = catweasel_start = 0;
+    filesys_start = 0;
+    filesysory = 0;
+    z3fastmem_mask = z3fastmem_start = 0;
+    z3fastmem = 0;
 
     allocate_expamem ();
 
@@ -915,6 +1192,9 @@ void expansion_cleanup (void)
     z3fastmem = 0;
     gfxmemory = 0;
     filesysory = 0;
+#ifdef CATWEASEL
+    catweasel_free ();
+#endif
 }
 
 /* State save/restore code.  */
@@ -931,6 +1211,12 @@ uae_u8 *save_zram (int *len)
     return z3fastmem;
 }
 
+uae_u8 *save_pram (int *len)
+{
+    *len = allocated_gfxmem;
+    return gfxmemory;
+}
+
 void restore_fram (int len, long filepos)
 {
     fast_filepos = filepos;
@@ -943,13 +1229,19 @@ void restore_zram (int len, long filepos)
     changed_prefs.z3fastmem_size = len;
 }
 
+void restore_pram (int len, long filepos)
+{
+    p96_filepos = filepos;
+    changed_prefs.gfxmem_size = len;
+}
+
 uae_u8 *save_expansion (int *len)
 {
     static uae_u8 t[20], *dst = t;
     save_u32 (fastmem_start);
     save_u32 (z3fastmem_start);
     *len = 8;
-    return dst;
+    return t;
 }
 
 uae_u8 *restore_expansion (uae_u8 *src)

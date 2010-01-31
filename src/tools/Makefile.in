@@ -23,14 +23,14 @@ VPATH = @top_srcdir@
 
 INCLUDES=-I. -I@top_srcdir@/../include/ -I@top_srcdir@
 
-all: gencpu build68k genblitter cpuopti
+all: gencpu gencomp build68k genblitter cpuopti
 
 install:
 
 
 clean:
 	-rm -f *.o
-	-rm -f gencpu genblitter cpuopti build68k
+	-rm -f gencpu gencomp genblitter cpuopti build68k
 
 
 streifenfrei: clean
@@ -43,6 +43,8 @@ cpuopti: cpuopti.o writelog.o
 	$(CC) $(LDFLAGS) -o cpuopti cpuopti.o writelog.o
 gencpu: gencpu.o readcpu.o cpudefs.o missing.o writelog.o
 	$(CC) $(LDFLAGS) -o gencpu gencpu.o readcpu.o cpudefs.o missing.o writelog.o
+gencomp: gencomp.o readcpu.o cpudefs.o missing.o
+	$(CC) $(LDFLAGS) -o gencomp gencomp.o readcpu.o missing.o cpudefs.o
 
 custom.o: blit.h
 drawing.o: linetoscr.c
@@ -62,6 +64,8 @@ genblitter.o: @top_srcdir@/../genblitter.c
 	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(DEBUGFLAGS) @top_srcdir@/../genblitter.c -o $@
 gencpu.o: @top_srcdir@/../gencpu.c
 	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(DEBUGFLAGS) @top_srcdir@/../gencpu.c -o $@
+gencomp.o: @top_srcdir@/../gencomp.c
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(DEBUGFLAGS) @top_srcdir@/../gencomp.c -o $@
 build68k.o: @top_srcdir@/../build68k.c
 	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(DEBUGFLAGS) @top_srcdir@/../build68k.c -o $@
 blitops.o: @top_srcdir@/../blitops.c

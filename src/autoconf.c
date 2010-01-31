@@ -15,7 +15,9 @@
 #include "uae.h"
 #include "memory.h"
 #include "custom.h"
+#include "events.h"
 #include "newcpu.h"
+#include "compiler.h"
 #include "autoconf.h"
 #include "osdep/exectasks.h"
 
@@ -26,7 +28,7 @@ static int trapmode[MAX_TRAPS];
 static const char *trapstr[MAX_TRAPS];
 static uaecptr trapoldfunc[MAX_TRAPS];
 
-static int max_trap = 0;
+static int max_trap;
 int lasttrap;
 
 /* Stack management */
@@ -62,7 +64,7 @@ int lasttrap;
 /* This _shouldn't_ crash with a stack size of 4096, but it does...
  * might be a bug */
 #ifndef EXTRA_STACK_SIZE
-#define EXTRA_STACK_SIZE 65536
+#define EXTRA_STACK_SIZE 32768
 #endif
 
 static void *extra_stack_list = NULL;
@@ -70,17 +72,42 @@ static void *extra_stack_list = NULL;
 static void *get_extra_stack (void)
 {
     void *s = extra_stack_list;
-    if (s)
-	extra_stack_list = *(void **)s;
-    if (!s)
+    //if (s)
+    //extra_stack_list = *(void **)s;
+    if (!s) {
+#ifndef _MSC_VER 
 	s = xmalloc (EXTRA_STACK_SIZE);
+#else
+	{
+	    static long opencount=0;
+	    extern unsigned long *win32_stackbase;
+	    int i;
+	    extern unsigned long *win32_freestack[42];
+	    for (i=0;i<41;i++) {//0 to MAX_SELECT_THREADS
+		if(!win32_freestack[i])
+		    break; //get a free block
+	    }
+	    s=win32_stackbase+(i*EXTRA_STACK_SIZE);
+	    win32_freestack[i]=s;   
+	}
+#endif
+    }
     return s;
 }
 
 static void free_extra_stack (void *s)
 {
-    *(void **)s = extra_stack_list;
-    extra_stack_list = s;
+    //*(void **)s = extra_stack_list;
+    //extra_stack_list = s;
+    {
+	int i;
+	extern unsigned long *win32_freestack[42];
+	for (i=0;i<41;i++) {//0 to MAX_SELECT_THREADS
+	    if(win32_freestack[i]==s)
+		break; //get a free block
+	}
+	win32_freestack[i]=0;
+    }
 }
 
 static void stack_stub (void *s, TrapFunction f, uae_u32 *retval)
@@ -276,7 +303,7 @@ void REGPARAM2 rtarea_bput (uaecptr addr, uae_u32 value)
     special_mem |= S_WRITE;
 }
 
-static int trace_traps = 1;
+static const int trace_traps = 1;
 
 void REGPARAM2 call_calltrap(int func)
 {
@@ -284,7 +311,7 @@ void REGPARAM2 call_calltrap(int func)
     int has_retval = (trapmode[func] & TRAPFLAG_NO_RETVAL) == 0;
     int implicit_rts = (trapmode[func] & TRAPFLAG_DORET) != 0;
 
-    if (*trapstr[func] != 0 && trace_traps)
+    if (trapstr[func] && *trapstr[func] != 0 && trace_traps)
 	write_log ("TRAP: %s\n", trapstr[func]);
 
     /* For monitoring only? */
@@ -352,8 +379,8 @@ uaecptr libemu_InstallFunctionFlags (TrapFunction f, uaecptr libbase, int offset
  * scratch paper
  */
 
-static int rt_addr = 0;
-static int rt_straddr = 0xFF00 - 2;
+static int rt_addr;
+static int rt_straddr;
 
 uae_u32 addr (int ptr)
 {
@@ -367,8 +394,8 @@ void db (uae_u8 data)
 
 void dw (uae_u16 data)
 {
-    rtarea[rt_addr++] = data >> 8;
-    rtarea[rt_addr++] = data;
+    rtarea[rt_addr++] = (uae_u8)(data >> 8);
+    rtarea[rt_addr++] = (uae_u8)data;
 }
 
 void dl (uae_u32 data)
@@ -458,6 +485,10 @@ void rtarea_init (void)
 {
     uae_u32 a;
     char uaever[100];
+
+    rt_straddr = 0xFF00 - 2;
+    rt_addr = 0;
+    max_trap = 0;
 
     rtarea_init_mem ();
 
