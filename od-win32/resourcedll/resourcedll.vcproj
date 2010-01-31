@@ -86,7 +86,8 @@
 				EnableCOMDATFolding="2"
 				ResourceOnlyDLL="TRUE"
 				ImportLibrary="$(OutDir)/resourcedll.lib"
-				TargetMachine="1"/>
+				TargetMachine="1"
+				FixedBaseAddress="1"/>
 			<Tool
 				Name="VCMIDLTool"/>
 			<Tool
