@@ -495,6 +495,20 @@ static uae_u8 ReadCIAA (unsigned int addr)
 	    write_log ("BFE101 R %02.2X %s\n", tmp, debuginfo(0));
 #endif
 #endif
+	if (ciaacrb & 2) {
+	    int pb7 = 0;
+	    if (ciaacrb & 4)
+		pb7 = ciaacrb & 1;
+	    tmp &= ~0x80;
+	    tmp |= pb7 ? 0x80 : 00;
+	}
+	if (ciaacra & 2) {
+	    int pb6 = 0;
+	    if (ciaacra & 4)
+		pb6 = ciaacra & 1;
+	    tmp &= ~0x40;
+	    tmp |= pb6 ? 0x40 : 00;
+	}
 	return tmp;
     case 2:
 #ifdef DONGLE_DEBUG
@@ -584,7 +598,22 @@ static uae_u8 ReadCIAB (unsigned int addr)
 	if (notinrom ())
 	    write_log ("BFD100 R %02.2X %s\n", ciabprb, debuginfo(0));
 #endif
-	return ciabprb;
+	tmp = ciabprb;
+	if (ciabcrb & 2) {
+	    int pb7 = 0;
+	    if (ciabcrb & 4)
+		pb7 = ciabcrb & 1;
+	    tmp &= ~0x80;
+	    tmp |= pb7 ? 0x80 : 00;
+	}
+	if (ciabcra & 2) {
+	    int pb6 = 0;
+	    if (ciabcra & 4)
+		pb6 = ciabcra & 1;
+	    tmp &= ~0x40;
+	    tmp |= pb6 ? 0x40 : 00;
+	}
+	return tmp;
     case 2:
 	return ciabdra;
     case 3:
@@ -649,11 +678,10 @@ static void WriteCIAA (uae_u16 addr,uae_u8 val)
 #ifdef PARALLEL_PORT
 	if (isprinter() > 0) {
 	    doprinter (val);
-	    ciaaicr |= 0x10;
 	} else if (isprinter() < 0) {
 	    parallel_direct_write_data (val, ciaadrb);
-	    ciaaicr |= 0x10;
 	}
+	cia_parallelack ();
 #endif
 	break;
     case 2:
@@ -924,7 +952,7 @@ void CIA_reset (void)
 	ciaaicr = ciabicr = ciaaimask = ciabimask = 0;
 	ciaacra = ciaacrb = ciabcra = ciabcrb = 0x4; /* outmode = toggle; */
 	ciaala = ciaalb = ciabla = ciablb = ciaata = ciaatb = ciabta = ciabtb = 0xFFFF;
-	ciaaalarm = ciabalarm = 0xffffff;
+	ciaaalarm = ciabalarm = currprefs.cpu_cycle_exact ? 0 : 0xffffff;
 	ciabpra = 0x8C; ciabdra = 0;
 	div10 = 0;
 	ciaasdr_cnt = 0; ciaasdr = 0;

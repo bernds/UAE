@@ -66,8 +66,8 @@
 #include "moduleripper.h"
 #endif
 
-#define DISK_FORMAT_STRING "(*.adf;*.adz;*.gz;*.dms;*.fdi;*.ipf;*.zip;*.exe)\0*.adf;*.adz;*.gz;*.dms;*.fdi;*.ipf;*.zip;*.exe\0"
-#define ROM_FORMAT_STRING "(*.rom;*.zip;*.roz)\0*.rom;*.zip;*.roz\0"
+#define DISK_FORMAT_STRING "(*.adf;*.adz;*.gz;*.dms;*.fdi;*.ipf;*.zip;*.rar;*.7z;*.exe)\0*.adf;*.adz;*.gz;*.dms;*.fdi;*.ipf;*.zip;*.rar;*.7z;*.exe\0"
+#define ROM_FORMAT_STRING "(*.rom;*.zip;*.rar;*.7z;*.roz)\0*.rom;*.zip;*.rar;*.7z;*.roz\0"
 #define USS_FORMAT_STRING_RESTORE "(*.uss;*.gz;*.zip)\0*.uss;*.gz;*.zip\0"
 #define USS_FORMAT_STRING_SAVE "(*.uss)\0*.uss\0"
 #define CONFIG_HOST "Host"
@@ -114,7 +114,15 @@ static int LOADSAVE_ID = -1, MEMORY_ID = -1, KICKSTART_ID = -1, CPU_ID = -1,
     HARDDISK_ID = -1, PORTS_ID = -1, INPUT_ID = -1, MISC1_ID = -1, MISC2_ID = -1, AVIOUTPUT_ID = -1,
     PATHS_ID = -1, QUICKSTART_ID = -1, ABOUT_ID = -1;
 static HWND pages[MAX_C_PAGES];
+#define MAX_IMAGETOOLTIPS 10
 static HWND guiDlg, panelDlg, ToolTipHWND;
+static HACCEL hAccelTable;
+struct ToolTipHWNDS {
+    WNDPROC proc;
+    HWND hwnd;
+    int imageid;
+};
+static struct ToolTipHWNDS ToolTipHWNDS2[MAX_IMAGETOOLTIPS + 1];
 
 void exit_gui (int ok)
 {
@@ -139,7 +147,132 @@ static int getcbn (HWND hDlg, int v, char *out, int len)
     }
 }
 
-static HICON hMoveUp = NULL, hMoveDown = NULL;
+/* base Drag'n'Drop code borrowed from http://www.codeproject.com/listctrl/jianghong.asp */
+
+static int bDragging = 0;
+static HIMAGELIST hDragImageList;
+static int drag_start (HWND hWnd, HWND hListView, LPARAM lParam)
+{
+    POINT p, pt;
+    int bFirst, iPos, iHeight;
+    HIMAGELIST hOneImageList, hTempImageList;
+    IMAGEINFO imf;
+
+    // You can set your customized cursor here
+    p.x = 8;
+    p.y = 8;
+    // Ok, now we create a drag-image for all selected items
+    bFirst = TRUE;
+    iPos = ListView_GetNextItem(hListView, -1, LVNI_SELECTED);
+    while (iPos != -1) {
+        if (bFirst) {
+            // For the first selected item,
+            // we simply create a single-line drag image
+            hDragImageList = ListView_CreateDragImage(hListView, iPos, &p);
+            ImageList_GetImageInfo(hDragImageList, 0, &imf);
+            iHeight = imf.rcImage.bottom;
+            bFirst = FALSE;
+        } else {
+            // For the rest selected items,
+            // we create a single-line drag image, then
+            // append it to the bottom of the complete drag image
+            hOneImageList = ListView_CreateDragImage(hListView, iPos, &p);
+            hTempImageList = ImageList_Merge(hDragImageList, 
+                             0, hOneImageList, 0, 0, iHeight);
+            ImageList_Destroy(hDragImageList);
+            ImageList_Destroy(hOneImageList);
+            hDragImageList = hTempImageList;
+            ImageList_GetImageInfo(hDragImageList, 0, &imf);
+            iHeight = imf.rcImage.bottom;
+        }
+        iPos = ListView_GetNextItem(hListView, iPos, LVNI_SELECTED);
+    }
+
+    // Now we can initialize then start the drag action
+    ImageList_BeginDrag(hDragImageList, 0, 0, 0);
+
+    pt = ((NM_LISTVIEW*) ((LPNMHDR)lParam))->ptAction;
+    ClientToScreen(hListView, &pt);
+
+    ImageList_DragEnter(GetDesktopWindow(), pt.x, pt.y);
+
+    bDragging = TRUE;
+
+    // Don't forget to capture the mouse
+    SetCapture (hWnd);
+
+    return 1;
+}
+
+static int drag_end (HWND hWnd, HWND hListView, LPARAM lParam, int **draggeditems)
+{
+    int iPos, cnt;
+    LVHITTESTINFO lvhti;
+    LVITEM  lvi;
+
+    *draggeditems = NULL;
+    if (!bDragging)
+	return -1;
+    // End the drag-and-drop process
+    bDragging = FALSE;
+    ImageList_DragLeave(hListView);
+    ImageList_EndDrag();
+    ImageList_Destroy(hDragImageList);
+    ReleaseCapture();
+
+    // Determine the dropped item
+    lvhti.pt.x = LOWORD(lParam);
+    lvhti.pt.y = HIWORD(lParam);
+    ClientToScreen(hWnd, &lvhti.pt);
+    ScreenToClient(hListView, &lvhti.pt);
+    ListView_HitTest(hListView, &lvhti);
+
+    // Out of the ListView?
+    if (lvhti.iItem == -1)
+	return -1;
+    // Not in an item?
+    if ((lvhti.flags & LVHT_ONITEMLABEL) == 0 &&  (lvhti.flags & LVHT_ONITEMSTATEICON) == 0)
+	return -1;
+    // Dropped item is selected?
+    lvi.iItem = lvhti.iItem;
+    lvi.iSubItem = 0;
+    lvi.mask = LVIF_STATE;
+    lvi.stateMask = LVIS_SELECTED;
+    ListView_GetItem(hListView, &lvi);
+    if (lvi.state & LVIS_SELECTED)
+	return -1;
+    // Rearrange the items
+    iPos = ListView_GetNextItem(hListView, -1, LVNI_SELECTED);
+    cnt = 0;
+    while (iPos != -1) {
+	iPos = ListView_GetNextItem(hListView, iPos, LVNI_SELECTED);
+	cnt++;
+    }
+    if (cnt == 0)
+	return -1;
+    *draggeditems = xmalloc (sizeof (int) * (cnt + 1));
+    iPos = ListView_GetNextItem(hListView, -1, LVNI_SELECTED);
+    cnt = 0;
+    while (iPos != -1) {
+	(*draggeditems)[cnt++] = iPos;
+	iPos = ListView_GetNextItem(hListView, iPos, LVNI_SELECTED);
+    }
+    (*draggeditems)[cnt] = -1;    
+    return lvhti.iItem;
+}
+static int drag_move (HWND hWnd, LPARAM lParam)
+{
+    POINT p;
+
+    if (!bDragging)
+	return 0;
+    p.x = LOWORD(lParam);
+    p.y = HIWORD(lParam);
+    ClientToScreen(hWnd, &p);
+    ImageList_DragMove(p.x, p.y);
+    return 1;
+}
+
 static HWND cachedlist = NULL;
 
 #define MIN_CHIP_MEM 0
@@ -440,9 +573,20 @@ int target_cfgfile_load (struct uae_prefs *p, char *filename, int type, int isde
     int v, i, type2;
     DWORD ct, ct2, size;
     char tmp1[MAX_DPATH], tmp2[MAX_DPATH];
+    char fname[MAX_DPATH];
+    
+    strcpy (fname, filename);
+    if (!zfile_exists (fname)) {
+	fetch_configurationpath (fname, sizeof (fname));
+	strcat (fname, filename);
+    }
 
     if (isdefault)
 	qs_override = 1;
+    if (type < 0) {
+	type = 0;
+	cfgfile_get_description (fname, NULL, NULL, NULL, &type);
+    }
     if (type == 0 || type == 1) {
 	if (p->mountinfo == currprefs.mountinfo)
 	    currprefs.mountinfo = 0;
@@ -456,7 +600,7 @@ int target_cfgfile_load (struct uae_prefs *p, char *filename, int type, int isde
     if (type == 0)
 	default_prefs (p, type);
     RegQueryValueEx (hWinUAEKey, "ConfigFile_NoAuto", 0, NULL, (LPBYTE)&ct2, &size);
-    v = cfgfile_load (p, filename, &type2, ct2);
+    v = cfgfile_load (p, fname, &type2, ct2);
     if (!v)
 	return v;
     if (type > 0)
@@ -530,12 +674,12 @@ void gui_display( int shortcut )
 	    savestate_state = 0;
 	}
     } else if (shortcut >= 0 && shortcut < 4) {
-        DiskSelection( hAmigaWnd, IDC_DF0+shortcut, 0, &changed_prefs, 0 );
+        DiskSelection (hAmigaWnd, IDC_DF0+shortcut, 0, &changed_prefs, 0);
     } else if (shortcut == 5) {
-        if (DiskSelection( hAmigaWnd, IDC_DOSAVESTATE, 9, &changed_prefs, 0 ))
+        if (DiskSelection (hAmigaWnd, IDC_DOSAVESTATE, 9, &changed_prefs, 0))
 	    save_state (savestate_fname, "Description!");
     } else if (shortcut == 4) {
-        if (DiskSelection( hAmigaWnd, IDC_DOLOADSTATE, 10, &changed_prefs, 0 ))
+        if (DiskSelection (hAmigaWnd, IDC_DOLOADSTATE, 10, &changed_prefs, 0))
 	    savestate_state = STATE_DORESTORE;
     }
     manual_painting_needed--; /* So that WM_PAINT doesn't need to use custom refreshing */
@@ -628,26 +772,29 @@ int DirectorySelection(HWND hDlg, int flag, char *path)
 // flag = 11 for selecting flash files
 // flag = 12 for loading anything
 // flag = 13 for selecting path
-int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, char *path_out)
+// flag = 14 for loading filesystem
+int DiskSelection_2 (HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, char *path_out, int *multi)
 {
     OPENFILENAME openFileName;
     char full_path[MAX_DPATH] = "";
+    char full_path2[MAX_DPATH];
     char file_name[MAX_DPATH] = "";
     char init_path[MAX_DPATH] = "";
     BOOL result = FALSE;
     char *amiga_path = NULL;
-    char description[ CFG_DESCRIPTION_LENGTH ] = "";
-    char *p;
+    char description[CFG_DESCRIPTION_LENGTH] = "";
+    char *p, *nextp;
     int all = 1;
+    int next;
 
-    char szTitle[ MAX_DPATH ];
-    char szFormat[ MAX_DPATH ];
-    char szFilter[ MAX_DPATH ] = { 0 };
+    char szTitle[MAX_DPATH];
+    char szFormat[MAX_DPATH];
+    char szFilter[MAX_DPATH] = { 0 };
     
     memset (&openFileName, 0, sizeof (OPENFILENAME));
     
-    strncpy( init_path, start_path, MAX_DPATH );
-    switch( flag )
+    strncpy (init_path, start_path, MAX_DPATH);
+    switch (flag)
     {
 	case 0:
 	case 1:
@@ -787,6 +934,14 @@ int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, 
 	openFileName.lpstrFilter = NULL;
 	openFileName.lpstrDefExt = NULL;
 	break;
+    case 12:
+ 	WIN32GUI_LoadUIString( IDS_SELECTFS, szTitle, MAX_DPATH );
+
+	openFileName.lpstrTitle = szTitle;
+	openFileName.lpstrFilter = NULL;
+	openFileName.lpstrDefExt = NULL;
+	openFileName.lpstrInitialDir = path_out;
+	break;
     case 13:
  	WIN32GUI_LoadUIString( IDS_SELECTINFO, szTitle, MAX_DPATH );
 
@@ -806,7 +961,8 @@ int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, 
 	p += strlen(p) + 1;
 	*p = 0;
     }
-    openFileName.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_LONGNAMES | OFN_HIDEREADONLY | OFN_NOCHANGEDIR;
+    openFileName.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST |
+	OFN_LONGNAMES | OFN_HIDEREADONLY | OFN_NOCHANGEDIR;
     openFileName.lpstrCustomFilter = NULL;
     openFileName.nMaxCustFilter = 0;
     openFileName.nFilterIndex = 0;
@@ -818,28 +974,47 @@ int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, 
     openFileName.lpfnHook = NULL;
     openFileName.lpTemplateName = NULL;
     openFileName.lCustData = 0;
-    if (flag == 1 || flag == 3 || flag == 5 || flag == 9 || flag == 11)
-    {
-	if( !(result = GetSaveFileName (&openFileName)) )
+    if (multi)
+	openFileName.Flags |= OFN_ALLOWMULTISELECT;
+    if (flag == 1 || flag == 3 || flag == 5 || flag == 9 || flag == 11) {
+	if (!(result = GetSaveFileName (&openFileName)))
 	    write_log ("GetSaveFileName() failed.\n");
-    }
-    else
-    {
-	if( !(result = GetOpenFileName (&openFileName)) )
+    } else {
+	if (!(result = GetOpenFileName (&openFileName)))
 	    write_log ("GetOpenFileName() failed.\n");
     }
-    if (result)
+    memcpy (full_path2, full_path, sizeof (full_path));
+    next = 0;
+    nextp = full_path2 + openFileName.nFileOffset;
+    if (path_out) {
+	if (multi) {
+	    while (nextp[0])
+		nextp += strlen (nextp) + 1;
+	    memcpy (path_out, full_path2, nextp - full_path2 + 1);
+	} else {
+	    strcpy (path_out, full_path2);
+	}
+    }
+    nextp = full_path2 + openFileName.nFileOffset;
+    if (nextp[strlen(nextp) + 1] == 0)
+	multi = 0;
+    while (result && next >= 0)
     {
+	next = -1;
+	if (multi) {
+	    if (nextp[0] == 0)
+		break;
+	    sprintf (full_path, "%s\\%s", full_path2, nextp);
+	    nextp += strlen (nextp) + 1;
+	}
 	switch (wParam) 
         {
 	case IDC_PATH_NAME:
 	case IDC_PATH_FILESYS:
-	    if( flag == 8 )
-	    {
-		if( strstr( full_path, "Configurations\\" ) )
-		{
-		    strcpy( full_path, init_path );
-		    strcat( full_path, file_name );
+	    if (flag == 8) {
+		if(strstr(full_path, "Configurations\\")) {
+		    strcpy(full_path, init_path);
+		    strcat(full_path, file_name);
 		}
 	    }
 	    SetDlgItemText (hDlg, wParam, full_path);
@@ -847,23 +1022,26 @@ int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, 
 	case IDC_DF0:
 	case IDC_DF0QQ:
 	    SetDlgItemText (hDlg, IDC_DF0TEXT, full_path);
-	    strcpy( prefs->df[0], full_path );
+	    strcpy(prefs->df[0], full_path);
 	    DISK_history_add (full_path, -1);
+	    next = IDC_DF1;
             break;
 	case IDC_DF1:
 	case IDC_DF1QQ:
 	    SetDlgItemText (hDlg, IDC_DF1TEXT, full_path);
-	    strcpy( prefs->df[1], full_path );
+	    strcpy(prefs->df[1], full_path);
 	    DISK_history_add (full_path, -1);
+	    next = IDC_DF2;
             break;
 	case IDC_DF2:
 	    SetDlgItemText (hDlg, IDC_DF2TEXT, full_path);
-	    strcpy( prefs->df[2], full_path );
+	    strcpy(prefs->df[2], full_path);
 	    DISK_history_add (full_path, -1);
+	    next = IDC_DF3;
             break;
 	case IDC_DF3:
 	    SetDlgItemText (hDlg, IDC_DF3TEXT, full_path);
-	    strcpy( prefs->df[3], full_path );
+	    strcpy(prefs->df[3], full_path);
 	    DISK_history_add (full_path, -1);
             break;
 	case IDC_DOSAVESTATE:
@@ -877,21 +1055,18 @@ int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, 
 	    disk_creatediskfile( full_path, 1, SendDlgItemMessage( hDlg, IDC_FLOPPYTYPE, CB_GETCURSEL, 0, 0L ));
 	    break;
 	case IDC_LOAD:
-	    if (target_cfgfile_load(&workprefs, full_path, 0, 0) == 0)
-	    {
+	    if (target_cfgfile_load(&workprefs, full_path, 0, 0) == 0) {
 		char szMessage[MAX_DPATH];
 		WIN32GUI_LoadUIString (IDS_COULDNOTLOADCONFIG, szMessage, MAX_DPATH);
 		pre_gui_message (szMessage);
-	    }
-	    else
-	    {
+	    } else {
 		SetDlgItemText (hDlg, IDC_EDITDESCRIPTION, workprefs.description);
 		SetDlgItemText (hDlg, IDC_EDITNAME, full_path);
 	        SetDlgItemText (hDlg, IDC_CONFIGLINK, workprefs.config_host_path);
 	    }
             break;
 	case IDC_SAVE:
-	    SetDlgItemText( hDlg, IDC_EDITNAME, full_path );
+	    SetDlgItemText (hDlg, IDC_EDITNAME, full_path);
             cfgfile_save (&workprefs, full_path, 0);
             break;
 	case IDC_ROMFILE:
@@ -907,41 +1082,71 @@ int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, 
 	    strcpy (workprefs.cartfile, full_path);
 	    break;
         }
-        if (path_out)
-	    strcpy (path_out, full_path);
-        if( flag == 0 || flag == 1 )
-        {
-            amiga_path = strstr( openFileName.lpstrFile, openFileName.lpstrFileTitle );
-            if( amiga_path && amiga_path != openFileName.lpstrFile )
-            {
+        if (flag == 0 || flag == 1) {
+            amiga_path = strstr (openFileName.lpstrFile, openFileName.lpstrFileTitle);
+            if (amiga_path && amiga_path != openFileName.lpstrFile) {
+                *amiga_path = 0;
+                if (hWinUAEKey)
+                    RegSetValueEx (hWinUAEKey, "FloppyPath", 0, REG_SZ, (CONST BYTE *)openFileName.lpstrFile, strlen(openFileName.lpstrFile) + 1);
+            }
+        } else if (flag == 2 || flag == 3) {
+            amiga_path = strstr (openFileName.lpstrFile, openFileName.lpstrFileTitle);
+            if (amiga_path && amiga_path != openFileName.lpstrFile) {
                 *amiga_path = 0;
                 if( hWinUAEKey )
-                    RegSetValueEx( hWinUAEKey, "FloppyPath", 0, REG_SZ, (CONST BYTE *)openFileName.lpstrFile, strlen( openFileName.lpstrFile ) + 1 );
+                    RegSetValueEx(hWinUAEKey, "hdfPath", 0, REG_SZ, (CONST BYTE *)openFileName.lpstrFile, strlen(openFileName.lpstrFile) + 1);
             }
         }
-        else if( flag == 2 || flag == 3 )
-        {
-            amiga_path = strstr( openFileName.lpstrFile, openFileName.lpstrFileTitle );
-            if( amiga_path && amiga_path != openFileName.lpstrFile )
-            {
-                *amiga_path = 0;
-                if( hWinUAEKey )
-                    RegSetValueEx( hWinUAEKey, "hdfPath", 0, REG_SZ, (CONST BYTE *)openFileName.lpstrFile, strlen( openFileName.lpstrFile ) + 1 );
-            }
-        }
+        if (!multi)
+	    next = -1;
+        if (next >= 0)
+	    wParam = next;
     }
     return result;
 }
+int DiskSelection (HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, char *path_out)
+{
+    return DiskSelection_2 (hDlg, wParam, flag, prefs, path_out, NULL);
+}
+int MultiDiskSelection (HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, char *path_out)
+{
+    int multi = 0;
+    return DiskSelection_2 (hDlg, wParam, flag, prefs, path_out, &multi);
+}
+static int loopmulti (char *s, char *out)
+{
+    static int index;
 
-static BOOL CreateHardFile (HWND hDlg, UINT hfsizem)
+    if (!out) {
+	index = strlen (s) + 1;
+	return 1;
+    }
+    if (index < 0)
+	return 0;
+    if (!s[index]) {
+	if (s[strlen (s) + 1] == 0) {
+	    strcpy (out, s);
+	    index = -1;
+	    return 1;
+	}
+	return 0;
+    }
+    sprintf (out, "%s\\%s", s, s + index);
+    index += strlen (s + index) + 1;
+    return 1;
+}
+
+static BOOL CreateHardFile (HWND hDlg, UINT hfsizem, char *dostype)
 {
     HANDLE hf;
     int i = 0;
     BOOL result = FALSE;
     LONG highword = 0;
-    DWORD ret;
+    DWORD ret, written;
     char init_path[MAX_DPATH] = "";
     uae_u64 hfsize;
+    uae_u32 dt;
+    uae_u8 b;
 
     hfsize = (uae_u64)hfsizem * 1024 * 1024;
     DiskSelection (hDlg, IDC_PATH_NAME, 3, &workprefs, 0);
@@ -959,6 +1164,23 @@ static BOOL CreateHardFile (HWND hDlg, UINT hfsizem)
                 write_log ("SetFilePointer() failure for %s to posn %ud\n", init_path, hfsize);
 	    else
                 result = SetEndOfFile (hf);
+	    SetFilePointer (hf, 0, NULL, FILE_BEGIN);
+	    b = 0;
+	    WriteFile (hf, &b, 1, &written, NULL);
+	    WriteFile (hf, &b, 1, &written, NULL);
+	    WriteFile (hf, &b, 1, &written, NULL);
+	    WriteFile (hf, &b, 1, &written, NULL);
+            if (sscanf (dostype, "%x", &dt) > 0) {
+		SetFilePointer (hf, 0, NULL, FILE_BEGIN);
+		b = dt >> 24;
+		WriteFile (hf, &b, 1, &written, NULL);
+		b = dt >> 16;
+		WriteFile (hf, &b, 1, &written, NULL);
+		b = dt >> 8;
+		WriteFile (hf, &b, 1, &written, NULL);
+		b = dt >> 0;
+		WriteFile (hf, &b, 1, &written, NULL);
+	    }
             CloseHandle (hf);
         } else {
             write_log ("CreateFile() failed to create %s\n", init_path);
@@ -1017,7 +1239,7 @@ static int CalculateHardfileSize (HWND hDlg)
     BOOL Translated = FALSE;
     UINT mbytes = 0;
 
-    mbytes = GetDlgItemInt( hDlg, IDC_HFSIZE, &Translated, FALSE );
+    mbytes = GetDlgItemInt( hDlg, IDC_HF_SIZE, &Translated, FALSE );
     if (mbytes <= 0)
 	mbytes = 0;
     if( !Translated )
@@ -1278,7 +1500,7 @@ static int disk_in_drive (int entry)
     return -1;
 }
 
-static int disk_swap (int entry, int col)
+static int disk_swap (int entry, int mode)
 {
     int drv, i, drvs[4] = { -1, -1, -1, -1 };
 
@@ -1325,20 +1547,22 @@ static void set_lventry_input (HWND list, int index)
 {
     int flags, i, sub;
     char name[256];
+    char custom[MAX_DPATH];
     char af[10];
 
-    inputdevice_get_mapped_name (input_selected_device, index, &flags, name, input_selected_sub_num);
+    inputdevice_get_mapped_name (input_selected_device, index, &flags, name, custom, input_selected_sub_num);
     if (flags & IDEV_MAPPED_AUTOFIRE_SET)
         WIN32GUI_LoadUIString (IDS_YES, af, sizeof (af));
     else if (flags & IDEV_MAPPED_AUTOFIRE_POSSIBLE)
-        WIN32GUI_LoadUIString (IDS_YES, af, sizeof (af));
+        WIN32GUI_LoadUIString (IDS_NO, af, sizeof (af));
     else
 	strcpy (af,"-");
-    ListView_SetItemText(list, index, 1, name);
+    ListView_SetItemText(list, index, 1, custom[0] ? custom : name);
     ListView_SetItemText(list, index, 2, af);
     sub = 0;
     for (i = 0; i < MAX_INPUT_SUB_EVENT; i++) {
-	if (inputdevice_get_mapped_name (input_selected_device, index, &flags, name, i)) sub++;
+	if (inputdevice_get_mapped_name (input_selected_device, index, &flags, name, custom, i) || custom[0])
+	    sub++;
     }
     sprintf (name, "%d", sub);
     ListView_SetItemText(list, index, 3, name);
@@ -1369,7 +1593,7 @@ static int clicked_entry = -1;
 static int listview_num_columns;
 static int listview_column_width[HARDDISK_COLUMNS];
 
-void InitializeListView( HWND hDlg )
+void InitializeListView (HWND hDlg)
 {
     int lv_type;
     HWND list;
@@ -1414,6 +1638,7 @@ void InitializeListView( HWND hDlg )
 	WIN32GUI_LoadUIString( IDS_DISK_DRIVENAME, column_heading[2], MAX_COLUMN_HEADING_WIDTH );
 	list = GetDlgItem (hDlg, IDC_DISK);
     }
+    cachedlist = list;
 
     ListView_DeleteAllItems( list );
 
@@ -1487,7 +1712,7 @@ void InitializeListView( HWND hDlg )
 	    entry++;
 	}
 	listview_column_width[0] = 30;
-	listview_column_width[1] = 308;
+	listview_column_width[1] = 354;
 	listview_column_width[2] = 50;
 
     }
@@ -2498,12 +2723,12 @@ static void init_quickstartdlg (HWND hDlg)
  	    RegQueryValueEx (hWinUAEKey, "QuickStartCompatibility", 0, &dwType, (LPBYTE)&quickstart_compa, &qssize);
 	}
  	if (quickstart) {
-	    quickstarthost (hDlg, hostconf);
 	    workprefs.df[0][0] = 0;
 	    workprefs.df[1][0] = 0;
 	    workprefs.df[2][0] = 0;
 	    workprefs.df[3][0] = 0;
 	    load_quickstart (hDlg, 1);
+	    quickstarthost (hDlg, hostconf);
 	}
        firsttime = 1;
     }
@@ -2739,6 +2964,8 @@ static BOOL CALLBACK QuickstartDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPAR
 		    if (hWinUAEKey)
 			RegSetValueEx (hWinUAEKey, "QuickStartHostConfig", 0, REG_SZ, (CONST BYTE *)&tmp, strlen (tmp) + 1);
 		    quickstarthost (hDlg, tmp);
+		    if (val == 0 && quickstart)
+			load_quickstart (hDlg, 0);
 		}
 		break;
 	    }
@@ -2778,12 +3005,14 @@ static BOOL CALLBACK QuickstartDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPAR
 	if (recursive > 0)
 	    break;
 	recursive++;
-	val = SendMessage (GetDlgItem (hDlg, IDC_QUICKSTART_COMPATIBILITY), TBM_GETPOS, 0, 0);
-	if (val >= 0 && val != quickstart_compa) {
-	    quickstart_compa = val;
-	    init_quickstartdlg (hDlg);
-	    if (quickstart)
-		load_quickstart (hDlg, 0);
+	if ((HWND)lParam == GetDlgItem (hDlg, IDC_QUICKSTART_COMPATIBILITY)) {
+	    val = SendMessage ((HWND)lParam, TBM_GETPOS, 0, 0);
+	    if (val >= 0 && val != quickstart_compa) {
+		quickstart_compa = val;
+		init_quickstartdlg (hDlg);
+		if (quickstart)
+		    load_quickstart (hDlg, 0);
+	    }
 	}
 	recursive--;
 	break;
@@ -2871,19 +3100,18 @@ static void enable_for_displaydlg (HWND hDlg)
 #ifndef PICASSO96
     rtg = FALSE;
 #endif
-    EnableWindow( GetDlgItem( hDlg, IDC_PFULLSCREEN ), rtg);
-    if (! full_property_sheet) 
-    {
+    EnableWindow (GetDlgItem (hDlg, IDC_PFULLSCREEN), rtg);
+    if (! full_property_sheet)  {
 	/* Disable certain controls which are only to be set once at start-up... */
         EnableWindow (GetDlgItem (hDlg, IDC_TEST16BIT), FALSE);
-    }
-    else
-    {
+    } else {
         CheckDlgButton( hDlg, IDC_VSYNC, workprefs.gfx_vsync);
         EnableWindow (GetDlgItem (hDlg, IDC_XCENTER), TRUE);
         EnableWindow (GetDlgItem (hDlg, IDC_YCENTER), TRUE);
         EnableWindow (GetDlgItem (hDlg, IDC_LM_SCANLINES), TRUE);
     }
+    EnableWindow (GetDlgItem (hDlg, IDC_FRAMERATE2), !workprefs.gfx_vsync);
+    EnableWindow (GetDlgItem (hDlg, IDC_FRAMERATE), !workprefs.cpu_cycle_exact);
 }
 
 static void enable_for_chipsetdlg (HWND hDlg)
@@ -2984,7 +3212,7 @@ static void init_frequency_combo (HWND hDlg, int dmode)
     hz[0] = hz2[0] = 0;
     SendDlgItemMessage(hDlg, IDC_REFRESHRATE, CB_RESETCONTENT, 0, 0);
     WIN32GUI_LoadUIString (IDS_VSYNC_DEFAULT, txt, sizeof (txt));
-    SendDlgItemMessage( hDlg, IDC_REFRESHRATE, CB_ADDSTRING, 0, (LPARAM)txt);
+    SendDlgItemMessage(hDlg, IDC_REFRESHRATE, CB_ADDSTRING, 0, (LPARAM)txt);
     for (i = 0; i < index; i++) {
 	freq = storedrefreshrates[i];
 	if (freq < 0) {
@@ -2999,14 +3227,14 @@ static void init_frequency_combo (HWND hDlg, int dmode)
 	    strcat (hz, " NTSC");
 	if (abs(workprefs.gfx_refreshrate) == freq)
 	    strcpy (hz2, hz);
-	SendDlgItemMessage( hDlg, IDC_REFRESHRATE, CB_ADDSTRING, 0, (LPARAM)hz);
+	SendDlgItemMessage (hDlg, IDC_REFRESHRATE, CB_ADDSTRING, 0, (LPARAM)hz);
     }
     index = CB_ERR;
     if (hz2[0] >= 0)
-    	index = SendDlgItemMessage( hDlg, IDC_REFRESHRATE, CB_SELECTSTRING, 0, (LPARAM)hz2 );
+    	index = SendDlgItemMessage (hDlg, IDC_REFRESHRATE, CB_SELECTSTRING, 0, (LPARAM)hz2);
     if (index == CB_ERR) {
         WIN32GUI_LoadUIString (IDS_VSYNC_DEFAULT, txt, sizeof (txt));
-	SendDlgItemMessage( hDlg, IDC_REFRESHRATE, CB_SELECTSTRING, i, (LPARAM)txt);
+	SendDlgItemMessage(hDlg, IDC_REFRESHRATE, CB_SELECTSTRING, i, (LPARAM)txt);
 	workprefs.gfx_refreshrate = 0;
     }
 }
@@ -3160,21 +3388,29 @@ static void values_to_displaydlg (HWND hDlg)
     char Nth[ MAX_NTH_LENGTH ];
     LPSTR blah[1] = { Nth };
     LPTSTR string = NULL;
+    int v;
 
     init_display_mode (hDlg);
 
-    SetDlgItemInt( hDlg, IDC_XSIZE, workprefs.gfx_width_win, FALSE );
-    SetDlgItemInt( hDlg, IDC_YSIZE, workprefs.gfx_height_win, FALSE );
+    SetDlgItemInt (hDlg, IDC_XSIZE, workprefs.gfx_width_win, FALSE);
+    SetDlgItemInt (hDlg, IDC_YSIZE, workprefs.gfx_height_win, FALSE);
 
-    SendDlgItemMessage (hDlg, IDC_FRAMERATE, TBM_SETPOS, TRUE, workprefs.gfx_framerate);
+    v = workprefs.chipset_refreshrate;
+    if (v == 0)
+	v = currprefs.ntscmode ? 60 : 50;
+    SendDlgItemMessage (hDlg, IDC_FRAMERATE2, TBM_SETPOS, TRUE, v);
+    sprintf (buffer, "%d", v);
+    SetDlgItemText (hDlg, IDC_RATE2TEXT, buffer);
 
+    v = workprefs.cpu_cycle_exact ? 1 : workprefs.gfx_framerate;
+    SendDlgItemMessage (hDlg, IDC_FRAMERATE, TBM_SETPOS, TRUE, v);
     WIN32GUI_LoadUIString( IDS_FRAMERATE, buffer, MAX_FRAMERATE_LENGTH );
-    LoadNthString( workprefs.gfx_framerate - 1, Nth, MAX_NTH_LENGTH );
+    LoadNthString (v - 1, Nth, MAX_NTH_LENGTH);
     if( FormatMessage( FORMAT_MESSAGE_FROM_STRING | FORMAT_MESSAGE_ARGUMENT_ARRAY | FORMAT_MESSAGE_ALLOCATE_BUFFER,
 	               buffer, 0, 0, (LPTSTR)&string, MAX_FRAMERATE_LENGTH + MAX_NTH_LENGTH, (va_list *)blah ) == 0 )
     {
 	DWORD dwLastError = GetLastError();
-        sprintf (buffer, "Every %s Frame", nth[workprefs.gfx_framerate - 1]);
+        sprintf (buffer, "Every %s Frame", nth[v - 1]);
 	SetDlgItemText( hDlg, IDC_RATETEXT, buffer );
     }
     else
@@ -3190,7 +3426,7 @@ static void values_to_displaydlg (HWND hDlg)
     CheckDlgButton (hDlg, IDC_LORES, workprefs.gfx_linedbl ? FALSE : TRUE);
     CheckDlgButton (hDlg, IDC_LORES, workprefs.gfx_lores);
     CheckDlgButton (hDlg, IDC_VSYNC, workprefs.gfx_vsync);
-    
+
     CheckDlgButton (hDlg, IDC_XCENTER, workprefs.gfx_xcenter);
     CheckDlgButton (hDlg, IDC_YCENTER, workprefs.gfx_ycenter);
 
@@ -3236,6 +3472,7 @@ static void values_from_displaydlg (HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
                               IsDlgButtonChecked( hDlg, IDC_LM_DOUBLED ) ? 1 : 0 );
 
     workprefs.gfx_framerate = SendDlgItemMessage (hDlg, IDC_FRAMERATE, TBM_GETPOS, 0, 0);
+    workprefs.chipset_refreshrate = SendDlgItemMessage (hDlg, IDC_FRAMERATE2, TBM_GETPOS, 0, 0);
     workprefs.gfx_vsync = IsDlgButtonChecked (hDlg, IDC_VSYNC);
 
     {
@@ -3258,6 +3495,8 @@ static void values_from_displaydlg (HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 	    SetDlgItemText( hDlg, IDC_RATETEXT, string );
 	    LocalFree( string );
 	}
+        sprintf (buffer, "%d", workprefs.chipset_refreshrate);
+	SetDlgItemText (hDlg, IDC_RATE2TEXT, buffer);
 	workprefs.gfx_width_win  = GetDlgItemInt( hDlg, IDC_XSIZE, &success, FALSE );
         if( !success )
             workprefs.gfx_width_win = 800;
@@ -3265,6 +3504,8 @@ static void values_from_displaydlg (HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
         if( !success )
             workprefs.gfx_height_win = 600;
     }
+    if (workprefs.chipset_refreshrate == (currprefs.ntscmode ? 60 : 50))
+	workprefs.chipset_refreshrate = 0;
     workprefs.gfx_xcenter = (IsDlgButtonChecked (hDlg, IDC_XCENTER) ? 2 : 0 ); /* Smart centering */
     workprefs.gfx_ycenter = (IsDlgButtonChecked (hDlg, IDC_YCENTER) ? 2 : 0 ); /* Smart centering */
 
@@ -3302,8 +3543,8 @@ static void values_from_displaydlg (HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 		break;
 	    }
 	    /* Set the Int boxes */
-	    SetDlgItemInt( hDlg, IDC_XSIZE, workprefs.gfx_width_win, FALSE );
-	    SetDlgItemInt( hDlg, IDC_YSIZE, workprefs.gfx_height_win, FALSE );
+	    SetDlgItemInt (hDlg, IDC_XSIZE, workprefs.gfx_width_win, FALSE);
+	    SetDlgItemInt (hDlg, IDC_YSIZE, workprefs.gfx_height_win, FALSE);
 	    init_frequency_combo (hDlg, posn);
 	} else if (LOWORD (wParam) == IDC_REFRESHRATE) {
 	    LONG posn1, posn2;
@@ -3319,6 +3560,7 @@ static void values_from_displaydlg (HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 		posn1--;
 	        workprefs.gfx_refreshrate = storedrefreshrates[posn1];
 	    }
+	    values_to_displaydlg (hDlg);
 #if 0
 	} else if (LOWORD (wParam) == IDC_DA_MODE) {
 	    da_mode_selected = SendDlgItemMessage (hDlg, IDC_DA_MODE, CB_GETCURSEL, 0, 0);
@@ -3348,6 +3590,8 @@ static BOOL CALLBACK DisplayDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM 
 	currentpage = DISPLAY_ID;
 	SendDlgItemMessage (hDlg, IDC_FRAMERATE, TBM_SETPAGESIZE, 0, 1);
 	SendDlgItemMessage (hDlg, IDC_FRAMERATE, TBM_SETRANGE, TRUE, MAKELONG (MIN_REFRESH_RATE, MAX_REFRESH_RATE));
+	SendDlgItemMessage (hDlg, IDC_FRAMERATE2, TBM_SETPAGESIZE, 0, 1);
+	SendDlgItemMessage (hDlg, IDC_FRAMERATE2, TBM_SETRANGE, TRUE, MAKELONG (5, 99));
 	init_displays_combo( hDlg );
 	init_resolution_combo( hDlg );
 #if 0
@@ -3465,6 +3709,7 @@ static void values_from_chipsetdlg (HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 	    }
 	    workprefs.immediate_blits = 0;
 	    workprefs.fast_copper = 0;
+	    workprefs.gfx_framerate = 1;
 	}
     }
     workprefs.collision_level = IsDlgButtonChecked (hDlg, IDC_COLLISION0) ? 0
@@ -3970,14 +4215,15 @@ static void values_to_miscdlg (HWND hDlg)
     CheckDlgButton (hDlg, IDC_JULIAN, workprefs.win32_middle_mouse);
     CheckDlgButton (hDlg, IDC_CREATELOGFILE, workprefs.win32_logfile);
     CheckDlgButton (hDlg, IDC_INACTIVE_PAUSE, workprefs.win32_inactive_pause);
-    CheckDlgButton (hDlg, IDC_INACTIVE_NOSOUND, workprefs.win32_inactive_nosound);
+    CheckDlgButton (hDlg, IDC_INACTIVE_NOSOUND, workprefs.win32_inactive_nosound || workprefs.win32_inactive_pause);
     CheckDlgButton (hDlg, IDC_MINIMIZED_PAUSE, workprefs.win32_iconified_pause);
-    CheckDlgButton (hDlg, IDC_MINIMIZED_NOSOUND, workprefs.win32_iconified_nosound);
+    CheckDlgButton (hDlg, IDC_MINIMIZED_NOSOUND, workprefs.win32_iconified_nosound || workprefs.win32_iconified_pause);
     CheckDlgButton (hDlg, IDC_CTRLF11, workprefs.win32_ctrl_F11_is_quit);
     CheckDlgButton (hDlg, IDC_NOOVERLAY, workprefs.win32_no_overlay);
     CheckDlgButton (hDlg, IDC_SHOWLEDS, workprefs.leds_on_screen);
     CheckDlgButton (hDlg, IDC_SCSIDEVICE, workprefs.scsi);
     CheckDlgButton (hDlg, IDC_NOTASKBARBUTTON, workprefs.win32_notaskbarbutton);
+    CheckDlgButton (hDlg, IDC_ALWAYSONTOP, workprefs.win32_alwaysontop);
     CheckDlgButton (hDlg, IDC_ASPI, workprefs.win32_aspi);
     CheckDlgButton (hDlg, IDC_CLOCKSYNC, workprefs.tod_hack);
     CheckDlgButton (hDlg, IDC_STATE_CAPTURE, workprefs.statecapture);
@@ -4093,16 +4339,22 @@ static BOOL MiscDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 	    workprefs.win32_logfile = IsDlgButtonChecked (hDlg, IDC_CREATELOGFILE);
 	    enable_for_miscdlg( hDlg );
 	    break;
+	case IDC_INACTIVE_NOSOUND:
+	    if (!IsDlgButtonChecked (hDlg, IDC_INACTIVE_NOSOUND))
+		CheckDlgButton (hDlg, IDC_INACTIVE_PAUSE, BST_UNCHECKED);
 	case IDC_INACTIVE_PAUSE:
 	    workprefs.win32_inactive_pause = IsDlgButtonChecked (hDlg, IDC_INACTIVE_PAUSE);
-	    break;
-	case IDC_INACTIVE_NOSOUND:
+	    if (workprefs.win32_inactive_pause)
+		CheckDlgButton (hDlg, IDC_INACTIVE_NOSOUND, BST_CHECKED);
 	    workprefs.win32_inactive_nosound = IsDlgButtonChecked (hDlg, IDC_INACTIVE_NOSOUND);
 	    break;
+	case IDC_MINIMIZED_NOSOUND:
+	    if (!IsDlgButtonChecked (hDlg, IDC_MINIMIZED_NOSOUND))
+		CheckDlgButton (hDlg, IDC_MINIMIZED_PAUSE, BST_UNCHECKED);
 	case IDC_MINIMIZED_PAUSE:
 	    workprefs.win32_iconified_pause = IsDlgButtonChecked (hDlg, IDC_MINIMIZED_PAUSE);
-	    break;
-	case IDC_MINIMIZED_NOSOUND:
+	    if (workprefs.win32_iconified_pause)
+		CheckDlgButton (hDlg, IDC_MINIMIZED_NOSOUND, BST_CHECKED);
 	    workprefs.win32_iconified_nosound = IsDlgButtonChecked (hDlg, IDC_MINIMIZED_NOSOUND);
 	    break;
 	case IDC_CTRLF11:
@@ -4119,6 +4371,9 @@ static BOOL MiscDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 	    break;
 	case IDC_NOTASKBARBUTTON:
 	    workprefs.win32_notaskbarbutton = IsDlgButtonChecked (hDlg, IDC_NOTASKBARBUTTON);
+	    break;
+	case IDC_ALWAYSONTOP:
+	    workprefs.win32_alwaysontop = IsDlgButtonChecked (hDlg, IDC_ALWAYSONTOP);
 	    break;
 	}
 	return TRUE;
@@ -4465,11 +4720,14 @@ static void sound_loaddrivesamples (void)
 		    char *oldp = p;
 		    len += 2000;
 		    drivesounds = p = realloc (drivesounds, len);
-		    if (oldp)
-			p = p + strlen (p) + 1;
+		    if (oldp) {
+			do {
+			    p = p + strlen (p) + 1;
+			} while (p[0]);
+		    }
 		}
 		strcpy (p, name + strlen (DS_NAME_CLICK));
-		p[strlen(name) - 4] = 0;
+		p[strlen(name + strlen (DS_NAME_CLICK)) - 4] = 0;
 		p += strlen (p);
 		*p++ = 0;
 		*p = 0;
@@ -4609,6 +4867,7 @@ static void values_to_sounddlg (HWND hDlg)
     SendDlgItemMessage(hDlg, IDC_SOUNDDRIVESELECT, CB_ADDSTRING, 0, (LPARAM)txt);
     WIN32GUI_LoadUIString (IDS_DRIVESOUND_DEFAULT_A500, txt, sizeof (txt));
     SendDlgItemMessage(hDlg, IDC_SOUNDDRIVESELECT, CB_ADDSTRING, 0, (LPARAM)txt);
+    SendDlgItemMessage (hDlg, IDC_SOUNDDRIVESELECT, CB_SETCURSEL, 0, 0);
     p = drivesounds;
     if (p) {
 	while (p[0]) {
@@ -4616,7 +4875,7 @@ static void values_to_sounddlg (HWND hDlg)
 	    p += strlen (p) + 1;
 	}
     }
-    if (workprefs.dfxclick[idx] && workprefs.dfxclickexternal[idx][0]) {
+    if (workprefs.dfxclick[idx] < 0) {
 	p = drivesounds;
 	i = DS_BUILD_IN_SOUNDS + 1;
 	while (p && p[0]) {
@@ -4627,6 +4886,7 @@ static void values_to_sounddlg (HWND hDlg)
 	    i++;
 	    p += strlen (p) + 1;
 	}
+	
     } else {
 	SendDlgItemMessage (hDlg, IDC_SOUNDDRIVESELECT, CB_SETCURSEL, workprefs.dfxclick[idx], 0);
     }
@@ -4739,14 +4999,12 @@ static BOOL CALLBACK SoundDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lP
 	if (recursive > 0)
 	    break;
 	recursive++;
-	if ((wParam & 0xffff) == IDC_SOUNDCALIBRATE) {
+	if (LOWORD (wParam) == IDC_SOUNDCALIBRATE) {
 	    int pct = sound_calibrate (hDlg, &workprefs);
 	    workprefs.sound_adjust = (pct - 1000);
 	    update_soundgui (hDlg);
-	} else if((wParam & 0xffff) == IDC_SOUNDDRIVE) {
-	    int idx = SendDlgItemMessage (hDlg, IDC_SOUNDDRIVE, CB_GETCURSEL, 0, 0);;
-	    if (idx >= 0)
-		SendDlgItemMessage (hDlg, IDC_SOUNDDRIVESELECT, CB_SETCURSEL, workprefs.dfxclick[idx], 0);
+	} else if(LOWORD (wParam) == IDC_SOUNDDRIVE) {
+	    values_to_sounddlg (hDlg);
 	}
 	values_from_sounddlg (hDlg);
 	enable_for_sounddlg (hDlg);
@@ -4896,6 +5154,28 @@ static void sethardfile (HWND hDlg)
 	!(current_hfdlg.sectors == 0 && current_hfdlg.surfaces == 0 && current_hfdlg.reserved == 0));
 }
 
+static void inithardfile (HWND hDlg)
+{
+    char tmp[MAX_DPATH];
+
+    EnableWindow (GetDlgItem (hDlg, IDC_HF_DOSTYPE), FALSE);
+    EnableWindow (GetDlgItem (hDlg, IDC_HF_CREATE), FALSE);
+    SendDlgItemMessage(hDlg, IDC_HF_TYPE, CB_RESETCONTENT, 0, 0);
+    WIN32GUI_LoadUIString (IDS_HF_FS_CUSTOM, tmp, sizeof (tmp));
+    SendDlgItemMessage (hDlg, IDC_HF_TYPE, CB_ADDSTRING, 0, (LPARAM)"OFS/FFS/RDB");
+    SendDlgItemMessage (hDlg, IDC_HF_TYPE, CB_ADDSTRING, 0, (LPARAM)"SFS");
+    SendDlgItemMessage (hDlg, IDC_HF_TYPE, CB_ADDSTRING, 0, (LPARAM)tmp);
+    SendDlgItemMessage (hDlg, IDC_HF_TYPE, CB_SETCURSEL, 0, 0);
+}
+
+static void sethfdostype (HWND hDlg, int idx)
+{
+    if (idx == 1)
+        SetDlgItemText (hDlg, IDC_HF_DOSTYPE, "0x53465300");
+    else
+        SetDlgItemText (hDlg, IDC_HF_DOSTYPE, "");
+}
+
 static void hardfile_testrdb (HWND hDlg)
 {
     void *f = zfile_fopen (current_hfdlg.filename, "rb");
@@ -4918,12 +5198,14 @@ static void hardfile_testrdb (HWND hDlg)
 static int CALLBACK HardfileSettingsProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     static int recursive = 0;
-    UINT setting;
+    int i;
 
     switch (msg) {
     case WM_INITDIALOG:
 	recursive++;
+	inithardfile (hDlg);
 	sethardfile (hDlg);
+	sethfdostype (hDlg, 0);
 	recursive--;
 	return TRUE;
 
@@ -4932,21 +5214,33 @@ static int CALLBACK HardfileSettingsProc (HWND hDlg, UINT msg, WPARAM wParam, LP
 	    break;
 	recursive++;
 
-	if (HIWORD (wParam) == BN_CLICKED) {
-	    switch (LOWORD (wParam)) {
-	    case IDC_CREATEHF:
-		setting = CalculateHardfileSize (hDlg);
-		if( !CreateHardFile(hDlg, setting) )
-		{
-		    char szMessage[ MAX_DPATH ];
-		    char szTitle[ MAX_DPATH ];
-		    WIN32GUI_LoadUIString( IDS_FAILEDHARDFILECREATION, szMessage, MAX_DPATH );
-		    WIN32GUI_LoadUIString( IDS_CREATIONERROR, szTitle, MAX_DPATH );
-
+        switch (LOWORD (wParam)) {
+	    case IDC_HF_SIZE:
+	        EnableWindow (GetDlgItem (hDlg, IDC_HF_CREATE), CalculateHardfileSize (hDlg) > 0);
+	    break;
+	    case IDC_HF_TYPE:
+		i = SendDlgItemMessage (hDlg, IDC_HF_TYPE, CB_GETCURSEL, 0, 0);
+	        sethfdostype (hDlg, i);
+	        EnableWindow (GetDlgItem (hDlg, IDC_HF_DOSTYPE), i >= 2);
+	    break;
+	    case IDC_HF_CREATE:
+	    {
+		UINT setting = CalculateHardfileSize (hDlg);
+		char dostype[16];
+		GetDlgItemText (hDlg, IDC_HF_DOSTYPE, dostype, sizeof (dostype));
+		i = SendDlgItemMessage (hDlg, IDC_HF_TYPE, CB_GETCURSEL, 0, 0);
+		if (i == 0)
+		    dostype[0] = 0;
+		if (!CreateHardFile(hDlg, setting, dostype)) {
+		    char szMessage[MAX_DPATH];
+		    char szTitle[MAX_DPATH];
+		    WIN32GUI_LoadUIString (IDS_FAILEDHARDFILECREATION, szMessage, MAX_DPATH);
+		    WIN32GUI_LoadUIString (IDS_CREATIONERROR, szTitle, MAX_DPATH);
 		    MessageBox( hDlg, szMessage, szTitle,
 				MB_OK | MB_ICONERROR | MB_APPLMODAL | MB_SETFOREGROUND);
 		}
-		break;
+	    }
+	    break;
 	    case IDC_SELECTOR:
 		DiskSelection (hDlg, IDC_PATH_NAME, 2, &workprefs, 0);
 		GetDlgItemText (hDlg, IDC_PATH_NAME, current_hfdlg.filename, sizeof current_hfdlg.filename);
@@ -4984,7 +5278,6 @@ static int CALLBACK HardfileSettingsProc (HWND hDlg, UINT msg, WPARAM wParam, LP
 		current_hfdlg.sectors = current_hfdlg.reserved = current_hfdlg.surfaces = 0;
 		sethardfile (hDlg);
 		break;
-	    }
 	}
 
 	GetDlgItemText (hDlg, IDC_PATH_NAME, current_hfdlg.filename, sizeof current_hfdlg.filename);
@@ -5191,6 +5484,13 @@ static void harddisk_edit (HWND hDlg)
     }
 }
 
+static ACCEL HarddiskAccel[] = {
+    { FVIRTKEY, VK_UP, 10001 }, { FVIRTKEY, VK_DOWN, 10002 },
+    { FVIRTKEY|FSHIFT, VK_UP, IDC_UP }, { FVIRTKEY|FSHIFT, VK_DOWN, IDC_DOWN },
+    { FVIRTKEY, VK_RETURN, IDC_EDIT }, { FVIRTKEY, VK_DELETE, IDC_REMOVE },
+    { 0, 0, 0 }
+};
+
 static void harddiskdlg_button (HWND hDlg, int button)
 {
     switch (button) {
@@ -5253,6 +5553,9 @@ static void harddiskdlg_volume_notify (HWND hDlg, NM_LISTVIEW *nmlistview)
     int entry = 0;
 
     switch (nmlistview->hdr.code) {
+     case LVN_BEGINDRAG:
+	drag_start (hDlg, cachedlist, (LPARAM)nmlistview);
+	break;
      case NM_DBLCLK:
 	dblclick = 1;
 	/* fall through */
@@ -5262,14 +5565,25 @@ static void harddiskdlg_volume_notify (HWND hDlg, NM_LISTVIEW *nmlistview)
 	{
 	    if(dblclick)
 		harddisk_edit (hDlg);
-	    InitializeListView( hDlg );
+	    InitializeListView (hDlg);
 	    clicked_entry = entry;
-	    cachedlist = list;
 	    // Hilite the current selected item
-	    ListView_SetItemState( cachedlist, clicked_entry, LVIS_SELECTED, LVIS_SELECTED );
+	    ListView_SetItemState (cachedlist, clicked_entry, LVIS_SELECTED, LVIS_SELECTED);
 	}
 	break;
     }
+}
+
+static void hilitehd (void)
+{
+    int total = ListView_GetItemCount (cachedlist);
+    if (total <= 0)
+	return;
+    if (clicked_entry < 0)
+	clicked_entry = 0;
+    if (clicked_entry >= total)
+	clicked_entry = total;
+    ListView_SetItemState( cachedlist, clicked_entry, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED );
 }
 
 static BOOL CALLBACK HarddiskDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -5280,34 +5594,50 @@ static BOOL CALLBACK HarddiskDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 	clicked_entry = 0;
 	pages[HARDDISK_ID] = hDlg;
 	currentpage = HARDDISK_ID;
-	SendMessage( GetDlgItem( hDlg, IDC_UP ), BM_SETIMAGE, (WPARAM)IMAGE_ICON, (LPARAM)hMoveUp );
-	SendMessage( GetDlgItem( hDlg, IDC_DOWN ), BM_SETIMAGE, (WPARAM)IMAGE_ICON, (LPARAM)hMoveDown );
 	EnableWindow (GetDlgItem(hDlg, IDC_NEW_HD), os_winnt && os_winnt_admin ? TRUE : FALSE);
 	
     case WM_USER:
-        CheckDlgButton( hDlg, IDC_MAPDRIVES, workprefs.win32_automount_drives );
-        CheckDlgButton( hDlg, IDC_NOUAEFSDB, workprefs.filesys_no_uaefsdb );
-        InitializeListView( hDlg );
+        CheckDlgButton (hDlg, IDC_MAPDRIVES, workprefs.win32_automount_drives);
+        CheckDlgButton (hDlg, IDC_NOUAEFSDB, workprefs.filesys_no_uaefsdb);
+        InitializeListView (hDlg);
+        hilitehd ();
 	break;
-	
-    case WM_COMMAND:
-	if (HIWORD (wParam) == BN_CLICKED)
-	{
-	    harddiskdlg_button (hDlg, LOWORD (wParam));
-	    InitializeListView( hDlg );
 
-	    if( clicked_entry < 0 )
-		clicked_entry = 0;
-	    if( clicked_entry >= ListView_GetItemCount( cachedlist ) )
-		clicked_entry = ListView_GetItemCount( cachedlist ) - 1;
-
-	    if( cachedlist && clicked_entry >= 0 )
-	    {
-    		// Hilite the current selected item
-		ListView_SetItemState( cachedlist, clicked_entry, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED );
-	    }
+    case WM_MOUSEMOVE:
+	if (drag_move (hDlg, lParam))
+	    return TRUE;
+	break;
+    case WM_LBUTTONUP:
+    {
+	int *draggeditems, item;
+	if ((item = drag_end (hDlg, cachedlist, lParam, &draggeditems)) >= 0) {
+	    move_filesys_unit (currprefs.mountinfo, draggeditems[0], item);
+            InitializeListView (hDlg);
+            clicked_entry = item;
+            hilitehd ();
 	}
+	xfree (draggeditems);
 	break;
+    }
+
+    case WM_COMMAND:
+	switch (LOWORD(wParam))
+	{
+	    case 10001:
+	    clicked_entry--;
+	    hilitehd ();
+	    break;
+	    case 10002:
+	    clicked_entry++;
+	    hilitehd ();
+	    break;
+	    default:
+	    harddiskdlg_button (hDlg, LOWORD (wParam));
+	    InitializeListView (hDlg);
+	    hilitehd ();
+	    break;
+	}
+    break;
 	
     case WM_NOTIFY:
 	if (((LPNMHDR) lParam)->idFrom == IDC_VOLUMELIST)
@@ -5546,6 +5876,16 @@ static void deletesaveimage (HWND hDlg, int num)
     }
 }
 
+static void diskselect (HWND hDlg, WPARAM wParam, struct uae_prefs *p, int drv)
+{
+    MultiDiskSelection (hDlg, wParam, 0, &workprefs, NULL);
+    disk_insert (0, p->df[0]);
+    disk_insert (1, p->df[1]);
+    disk_insert (2, p->df[2]);
+    disk_insert (3, p->df[3]);
+    addfloppytype (hDlg, drv);
+}
+
 static BOOL CALLBACK FloppyDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     static int recursive = 0;
@@ -5654,25 +5994,17 @@ static BOOL CALLBACK FloppyDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 	    break;
 	case IDC_DF0:
 	case IDC_DF0QQ:
-	    DiskSelection (hDlg, wParam, 0, &workprefs, 0);
-	    disk_insert (0, workprefs.df[0]);
-	    addfloppytype (hDlg, 0);
+	    diskselect (hDlg, wParam, &workprefs, 0);
 	    break;
 	case IDC_DF1:
 	case IDC_DF1QQ:
-	    DiskSelection (hDlg, wParam, 0, &workprefs, 0);
-	    disk_insert (1, workprefs.df[1]);
-	    addfloppytype (hDlg, 1);
+	    diskselect (hDlg, wParam, &workprefs, 1);
 	    break;
 	case IDC_DF2:
-	    DiskSelection (hDlg, wParam, 0, &workprefs, 0);
-	    disk_insert (2, workprefs.df[2]);
-	    addfloppytype (hDlg, 2);
+	    diskselect (hDlg, wParam, &workprefs, 2);
 	    break;
 	case IDC_DF3:
-	    DiskSelection (hDlg, wParam, 0, &workprefs, 0);
-	    disk_insert (3, workprefs.df[3]);
-	    addfloppytype (hDlg, 3);
+	    diskselect (hDlg, wParam, &workprefs, 3);
 	    break;
 	case IDC_EJECT0:
 	case IDC_EJECT0Q:
@@ -5742,7 +6074,41 @@ static BOOL CALLBACK FloppyDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
     return FALSE;
 }
 
-static BOOL CALLBACK DiskDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
+static ACCEL SwapperAccel[] = {
+    { FALT|FVIRTKEY, '1', 10001 }, { FALT|FVIRTKEY, '2', 10002 }, { FALT|FVIRTKEY, '3', 10003 }, { FALT|FVIRTKEY, '4', 10004 }, { FALT|FVIRTKEY, '5', 10005 },
+    { FALT|FVIRTKEY, '6', 10006 }, { FALT|FVIRTKEY, '7', 10007 }, { FALT|FVIRTKEY, '8', 10008 }, { FALT|FVIRTKEY, '9', 10009 }, { FALT|FVIRTKEY, '0', 10010 },
+    { FALT|FSHIFT|FVIRTKEY, '1', 10011 }, { FALT|FSHIFT|FVIRTKEY, '2', 10012 }, { FALT|FSHIFT|FVIRTKEY, '3', 10013 }, { FALT|FSHIFT|FVIRTKEY, '4', 10014 }, { FALT|FSHIFT|FVIRTKEY, '5', 10015 },
+    { FALT|FSHIFT|FVIRTKEY, '6', 10016 }, { FALT|FSHIFT|FVIRTKEY, '7', 10017 }, { FALT|FSHIFT|FVIRTKEY, '8', 10018 }, { FALT|FSHIFT|FVIRTKEY, '9', 10019 }, { FALT|FSHIFT|FVIRTKEY, '0', 10020 },
+    { FVIRTKEY, VK_UP, 10101 }, { FVIRTKEY, VK_DOWN, 10102 }, { FVIRTKEY, VK_RIGHT, 10104 }, 
+    { FVIRTKEY|FSHIFT, VK_UP, IDC_UP }, { FVIRTKEY|FSHIFT, VK_DOWN, IDC_DOWN },
+    { FVIRTKEY|FCONTROL, '1', 10201 }, { FVIRTKEY|FCONTROL, '2', 10202 }, { FVIRTKEY|FCONTROL, '3', 10203 }, { FVIRTKEY|FCONTROL, '4', 10204 },
+    { FVIRTKEY|FCONTROL|FSHIFT, '1', 10205 }, { FVIRTKEY|FCONTROL|FSHIFT, '2', 10206 }, { FVIRTKEY|FCONTROL|FSHIFT, '3', 10207 }, { FVIRTKEY|FCONTROL|FSHIFT, '4', 10208 },
+    { FVIRTKEY, VK_RETURN, 10209 }, { FVIRTKEY, VK_DELETE, IDC_DISKLISTREMOVE },
+    { 0, 0, 0 }
+};
+
+static void swapperhili (int entry)
+{
+    ListView_SetItemState (cachedlist, entry,
+        LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+}
+
+static void addswapperfile (HWND hDlg, int entry)
+{
+    char path[MAX_DPATH];
+    if (MultiDiskSelection (hDlg, -1, 0, &changed_prefs, path)) {
+        char dpath[MAX_DPATH];
+        loopmulti (path, NULL);
+        while (loopmulti(path, dpath) && entry < MAX_SPARE_DRIVES) {
+            strcpy (workprefs.dfxlist[entry], dpath);
+            entry++;
+        }
+        InitializeListView (hDlg);
+        swapperhili (entry);
+    }
+}
+
+static BOOL CALLBACK SwapperDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     static int recursive = 0;
     static int entry;
@@ -5754,18 +6120,123 @@ static BOOL CALLBACK DiskDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lPa
 	pages[DISK_ID] = hDlg;
 	currentpage = DISK_ID;
 	InitializeListView(hDlg);
-	SendMessage( GetDlgItem( hDlg, IDC_UP ), BM_SETIMAGE, (WPARAM)IMAGE_ICON, (LPARAM)hMoveUp );
-	SendMessage( GetDlgItem( hDlg, IDC_DOWN ), BM_SETIMAGE, (WPARAM)IMAGE_ICON, (LPARAM)hMoveDown );
-	entry = -1;
+	entry = 0;
+	swapperhili (entry);
+    break;
+    case WM_LBUTTONUP:
+    {
+	int *draggeditems;
+	int item = drag_end (hDlg, cachedlist, lParam, &draggeditems);
+	if (item >= 0) {
+	    int i, item2;
+	    entry = item;
+	    for (i = 0; (item2 = draggeditems[i]) >= 0 && item2 < MAX_SPARE_DRIVES; i++, item++) {
+		if (item != item2) {
+		    char tmp[1000];
+		    strcpy (tmp, workprefs.dfxlist[item]);
+		    strcpy (workprefs.dfxlist[item], workprefs.dfxlist[item2]);
+		    strcpy (workprefs.dfxlist[item2], tmp);
+		}
+	    }
+	    InitializeListView(hDlg);
+	    swapperhili (entry);
+	    return TRUE;
+	}
+	xfree (draggeditems);
+    }
+    break;
+    case WM_MOUSEMOVE:
+    if (drag_move (hDlg, lParam))
+	return TRUE;
     break;
     case WM_COMMAND:
     {
-	switch (wParam)
+	switch (LOWORD(wParam))
 	{
+	    case 10001:
+	    case 10002:
+	    case 10003:
+	    case 10004:
+	    case 10005:
+	    case 10006:
+	    case 10007:
+	    case 10008:
+	    case 10009:
+	    case 10010:
+	    case 10011:
+	    case 10012:
+	    case 10013:
+	    case 10014:
+	    case 10015:
+	    case 10016:
+	    case 10017:
+	    case 10018:
+	    case 10019:
+	    case 10020:
+	    entry = LOWORD (wParam) - 10001;
+	    swapperhili (entry);
+	    break;
+	    case 10101:
+	    if (entry > 0) {
+		entry--;
+	        swapperhili (entry);
+	    }
+	    break;
+	    case 10102:
+	    if (entry >= 0 && entry < MAX_SPARE_DRIVES - 1) {
+		entry++;
+	        swapperhili (entry);
+	    }
+	    break;
+	    case 10103:
+	    case 10104:
+	    disk_swap (entry, 1);
+	    InitializeListView (hDlg);
+	    swapperhili (entry);
+	    break;
+	    case 10201:
+	    case 10202:
+	    case 10203:
+	    case 10204:
+	    {
+		int drv = LOWORD (wParam) - 10201;
+		int i;
+		if (workprefs.dfxtype[drv] >= 0 && entry >= 0) {
+		    for (i = 0; i < 4; i++) {
+			if (!strcmp (workprefs.df[i], workprefs.dfxlist[entry])) {
+			    workprefs.df[i][0] = 0;
+			    disk_eject (i);
+			}
+		    }
+		    strcpy (workprefs.df[drv], workprefs.dfxlist[entry]);
+		    disk_insert (drv, workprefs.df[drv]);
+		    InitializeListView (hDlg);
+		    swapperhili (entry);
+		}
+	    }
+	    break;
+	    case 10205:
+	    case 10206:
+	    case 10207:
+	    case 10208:
+	    {
+		int drv = LOWORD (wParam) - 10201;
+		disk_eject (drv);
+		InitializeListView (hDlg);
+		swapperhili (entry);
+	    }
+	    break;
+	    case 10209:
+	    {
+		addswapperfile (hDlg, entry);
+	    }
+	    break;
+	
 	    case IDC_DISKLISTREMOVE:
 		if (entry >= 0) {
 		    workprefs.dfxlist[entry][0] = 0;
 		    InitializeListView (hDlg);
+		    swapperhili (entry);
 		}
 		break;
 	    case IDC_UP:
@@ -5775,8 +6246,7 @@ static BOOL CALLBACK DiskDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lPa
 		    strcpy (workprefs.dfxlist[entry], tmp);
 		    InitializeListView (hDlg);
 		    entry--;
-		    ListView_SetItemState (cachedlist, entry,
-			LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+		    swapperhili (entry);
 		}
 		break;
 	    case IDC_DOWN:
@@ -5786,8 +6256,7 @@ static BOOL CALLBACK DiskDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lPa
 		    strcpy (workprefs.dfxlist[entry], tmp);
 		    InitializeListView (hDlg);
 		    entry++;
-		    ListView_SetItemState (cachedlist, entry,
-			LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+	            swapperhili (entry);
 		}
 	        break;
 	}
@@ -5803,6 +6272,9 @@ static BOOL CALLBACK DiskDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lPa
 	    cachedlist = list = nmlistview->hdr.hwndFrom;
 	    switch (nmlistview->hdr.code) 
 	    {
+		case LVN_BEGINDRAG:
+		drag_start (hDlg, cachedlist, lParam);
+		break;
 		case NM_DBLCLK:
 		dblclick = 1;
 		/* fall-through */
@@ -5810,14 +6282,12 @@ static BOOL CALLBACK DiskDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lPa
 		entry = listview_entry_from_click (list, &col);
 		if (entry >= 0) {
 		    if (col == 2) {
-			if (disk_swap (entry, col))
+			if (disk_swap (entry, 0))
 			    InitializeListView (hDlg);
+		        swapperhili (entry);
 		    } else if (col == 1) {
-			char path[MAX_DPATH];
-			if (dblclick && DiskSelection (hDlg, -1, 0, &changed_prefs, path)) {
-			    strcpy (workprefs.dfxlist[entry], path);
-			    InitializeListView (hDlg);
-			}
+			if (dblclick)
+			    addswapperfile (hDlg, entry);
 		    }
 		}
 		break;
@@ -5832,14 +6302,17 @@ static DWORD dwEnumeratedPrinters = 0;
 #define MAX_PRINTERS 10
 #define MAX_SERIALS 8
 static char comports[MAX_SERIALS][8];
+static int ghostscript_available;
+
+#define NUM_JOYKBD 5
 
 static int joy0idc[] = {
-    IDC_PORT0_JOYSC, IDC_PORT0_KBDA, IDC_PORT0_KBDB, IDC_PORT0_KBDC,
+    IDC_PORT0_JOYSC, IDC_PORT0_KBDA, IDC_PORT0_KBDB, IDC_PORT0_KBDC, IDC_PORT0_KBDD, IDC_PORT0_KBDE,
     IDC_PORT0_JOYS, -1
 };
 
 static int joy1idc[] = {
-    IDC_PORT1_JOYSC, IDC_PORT1_KBDA, IDC_PORT1_KBDB, IDC_PORT1_KBDC,
+    IDC_PORT1_JOYSC, IDC_PORT1_KBDA, IDC_PORT1_KBDB, IDC_PORT1_KBDC, IDC_PORT1_KBDD, IDC_PORT1_KBDE,
     IDC_PORT1_JOYS, -1
 };
 static int joy0previous, joy1previous;
@@ -5872,8 +6345,14 @@ static void enable_for_portsdlg( HWND hDlg )
 #if !defined (PARALLEL_PORT)
     EnableWindow( GetDlgItem( hDlg, IDC_PRINTERLIST), FALSE );
     EnableWindow( GetDlgItem( hDlg, IDC_FLUSHPRINTER), FALSE );
+    EnableWindow( GetDlgItem( hDlg, IDC_PSPRINTER), FALSE );
+    EnableWindow( GetDlgItem( hDlg, IDC_PS_PARAMS), FALSE );
+    EnableWindow( GetDlgItem( hDlg, IDC_PRINTER_AUTOFLUSH), FALSE );
 #else
     EnableWindow( GetDlgItem( hDlg, IDC_FLUSHPRINTER), isprinteropen () ? TRUE : FALSE );
+    EnableWindow( GetDlgItem( hDlg, IDC_PSPRINTER), full_property_sheet && ghostscript_available ? TRUE : FALSE );
+    EnableWindow( GetDlgItem( hDlg, IDC_PSPRINTERDETECT), full_property_sheet ? TRUE : FALSE );
+    EnableWindow( GetDlgItem( hDlg, IDC_PS_PARAMS), full_property_sheet && ghostscript_available );
 #endif
 }
 
@@ -5890,11 +6369,11 @@ static void updatejoyport (HWND hDlg)
 	    v = 0;
 	else
 	    v++;
-	CheckRadioButton (hDlg, idcs1[0], idcs1[3], idcs1[v]);
-	for (j = 1; j < 4; j++)
+	CheckRadioButton (hDlg, idcs1[0], idcs1[NUM_JOYKBD], idcs1[v]);
+	for (j = 1; j < NUM_JOYKBD + 2; j++)
 	    EnableWindow (GetDlgItem (hDlg, idcs2[j]), workprefs.input_selected_setting == 0 && j != v);
     }
-    
+
     if (joy0previous < 0)
 	joy0previous = inputdevice_get_device_total (IDTYPE_JOYSTICK) + 1;
     if (joy1previous < 0)
@@ -5917,7 +6396,7 @@ static void updatejoyport (HWND hDlg)
 		idx = 0;
 	    else
 		idx += inputdevice_get_device_total (IDTYPE_JOYSTICK);
-	}else if (v >= JSEM_JOYS) {
+	} else if (v >= JSEM_JOYS) {
 	    idx = v - JSEM_JOYS + 1;
 	    if (idx > inputdevice_get_device_total (IDTYPE_JOYSTICK))
 		idx = 0;
@@ -5952,18 +6431,19 @@ static void fixjport (int *port, int v)
 
 static void values_from_portsdlg (HWND hDlg)
 {
-    int item, i, j, lastside = 0, changed = 0;
+    int item, i, j, lastside = 0, changed = 0, v;
     char tmp[256];
+    BOOL success;
     
     for (i = 0; i < 2; i++) {
 	int *idcs = i == 0 ? joy0idc : joy1idc;
 	int *port = i == 0 ? &workprefs.jport0 : &workprefs.jport1;
 	int prevport = *port;
 	int *joyprev = i == 0 ? &joy0previous : &joy1previous;
-        int v = SendDlgItemMessage (hDlg, idcs[4], CB_GETCURSEL, 0, 0L);
+        int v = SendDlgItemMessage (hDlg, idcs[NUM_JOYKBD + 1], CB_GETCURSEL, 0, 0L);
 	if (v != CB_ERR)
 	    *joyprev = v;
-	for (j = 0; j < 4; j++) {
+	for (j = 0; j < NUM_JOYKBD + 1; j++) {
 	    if (IsDlgButtonChecked (hDlg, idcs[j])) {
 		if (j > 0) {
 		    *port = JSEM_KBDLAYOUT + j - 1;
@@ -6056,14 +6536,19 @@ static void values_from_portsdlg (HWND hDlg)
 	break;
     }
     workprefs.serial_demand = 0;
-    if( IsDlgButtonChecked( hDlg, IDC_SHARED ) )
+    if (IsDlgButtonChecked (hDlg, IDC_SHARED))
         workprefs.serial_demand = 1;
     workprefs.serial_hwctsrts = 0;
-    if( IsDlgButtonChecked( hDlg, IDC_SER_CTSRTS ) )
+    if (IsDlgButtonChecked (hDlg, IDC_SER_CTSRTS))
         workprefs.serial_hwctsrts = 1;
     workprefs.serial_direct = 0;
-    if( IsDlgButtonChecked( hDlg, IDC_SERIAL_DIRECT ) )
+    if (IsDlgButtonChecked (hDlg, IDC_SERIAL_DIRECT))
         workprefs.serial_direct = 1;
+    GetDlgItemText (hDlg, IDC_PS_PARAMS, workprefs.ghostscript_parameters, 256);
+    v  = GetDlgItemInt (hDlg, IDC_PRINTERAUTOFLUSH, &success, FALSE);
+    if (success)
+	workprefs.parallel_autoflush_time = v;
+
 }
 
 static void values_to_portsdlg (HWND hDlg)
@@ -6097,6 +6582,11 @@ static void values_to_portsdlg (HWND hDlg)
 	    result = 0;
 	}
     }
+    SetDlgItemInt( hDlg, IDC_PRINTERAUTOFLUSH, workprefs.parallel_autoflush_time, FALSE );
+    CheckDlgButton( hDlg, IDC_PSPRINTER, workprefs.parallel_postscript_emulation );
+    CheckDlgButton( hDlg, IDC_PSPRINTERDETECT, workprefs.parallel_postscript_detection );
+    SetDlgItemText (hDlg, IDC_PS_PARAMS, workprefs.ghostscript_parameters);
+    
     SendDlgItemMessage( hDlg, IDC_PRINTERLIST, CB_SETCURSEL, result, 0 );
     SendDlgItemMessage( hDlg, IDC_MIDIOUTLIST, CB_SETCURSEL, workprefs.win32_midioutdev + 2, 0 );
     if (!bNoMidiIn && workprefs.win32_midiindev >= 0)
@@ -6148,11 +6638,23 @@ static void values_to_portsdlg (HWND hDlg)
 
 static void init_portsdlg( HWND hDlg )
 {
+    static int first;
     int port, portcnt, numdevs;
     COMMCONFIG cc;
     DWORD size = sizeof(COMMCONFIG);
     MIDIOUTCAPS midiOutCaps;
     MIDIINCAPS midiInCaps;
+
+    if (!first) {
+	first = 1;
+	if (load_ghostscript () > 0) {
+	    unload_ghostscript ();
+	    ghostscript_available = 1;
+	}
+    }
+    if (!ghostscript_available) {
+	workprefs.parallel_postscript_emulation = 0;
+    }
 
     joy0previous = joy1previous = -1;
     SendDlgItemMessage (hDlg, IDC_SERIAL, CB_RESETCONTENT, 0, 0L);
@@ -6253,12 +6755,14 @@ static BOOL CALLBACK PortsDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lP
     switch (msg) 
     {
     case WM_INITDIALOG:
+	recursive++;
 	pages[PORTS_ID] = hDlg;
 	currentpage = PORTS_ID;
 	init_portsdlg( hDlg );
 	enable_for_portsdlg (hDlg);
 	values_to_portsdlg (hDlg);
 	updatejoyport (hDlg);
+	recursive--;
 	break;	    
     case WM_USER:
 	recursive++;
@@ -6281,9 +6785,16 @@ static BOOL CALLBACK PortsDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lP
 	    updatejoyport (hDlg);
 	} else if (wParam == IDC_FLUSHPRINTER) {
 	    if (isprinter ()) {
-		flushprinter ();
-		openprinter ();
+		closeprinter ();
 	    }
+	} else if (wParam == IDC_PSPRINTER) {
+	    workprefs.parallel_postscript_emulation = IsDlgButtonChecked (hDlg, IDC_PSPRINTER) ? 1 : 0;
+	    if (workprefs.parallel_postscript_emulation)
+		CheckDlgButton (hDlg, IDC_PSPRINTERDETECT, 1);
+	} else if (wParam == IDC_PSPRINTERDETECT) {
+	    workprefs.parallel_postscript_detection = IsDlgButtonChecked (hDlg, IDC_PSPRINTERDETECT) ? 1 : 0;
+	    if (!workprefs.parallel_postscript_detection)
+		CheckDlgButton (hDlg, IDC_PSPRINTER, 0);
 	} else {
 	    values_from_portsdlg (hDlg);
 	    updatejoyport (hDlg);
@@ -6313,6 +6824,7 @@ static void values_to_inputdlg (HWND hDlg)
 static void init_inputdlg_2( HWND hDlg )
 {
     char name1[256], name2[256];
+    char custom1[MAX_DPATH];
     int cnt, index, af, aftmp;
 
     if (input_selected_widget < 0) {
@@ -6324,7 +6836,7 @@ static void init_inputdlg_2( HWND hDlg )
     SendDlgItemMessage (hDlg, IDC_INPUTAMIGA, CB_ADDSTRING, 0, (LPARAM)szNone);
     index = -1; af = 0;
     if (input_selected_widget >= 0) {
-	inputdevice_get_mapped_name (input_selected_device, input_selected_widget, 0, name1, input_selected_sub_num);
+	inputdevice_get_mapped_name (input_selected_device, input_selected_widget, 0, name1, custom1, input_selected_sub_num);
 	cnt = 1;
 	while(inputdevice_iterate (input_selected_device, input_selected_widget, name2, &aftmp)) {
 	    free (eventnames[cnt]);
@@ -6478,9 +6990,9 @@ static void values_from_inputdlg (HWND hDlg)
     if (doselect && input_selected_device >= 0 && input_selected_event >= 0) {
 	int flags;
 	inputdevice_get_mapped_name (input_selected_device, input_selected_widget,
-	    &flags, 0, input_selected_sub_num);
+	    &flags, 0, NULL, input_selected_sub_num);
 	inputdevice_set_mapping (input_selected_device, input_selected_widget,
-	    eventnames[input_selected_event], (flags & IDEV_MAPPED_AUTOFIRE_SET) ? 1 : 0,
+	    eventnames[input_selected_event], NULL, (flags & IDEV_MAPPED_AUTOFIRE_SET) ? 1 : 0,
 	    input_selected_sub_num);
 	update_listview_input (hDlg);
         inputdevice_updateconfig (&workprefs);
@@ -6507,15 +7019,16 @@ static void input_toggleautofire (void)
 {
     int af, flags, event;
     char name[256];
+    char custom[MAX_DPATH];
     if (input_selected_device < 0 || input_selected_widget < 0)
 	return;
     event = inputdevice_get_mapped_name (input_selected_device, input_selected_widget,
-	&flags, name, input_selected_sub_num);
+	&flags, name, custom, input_selected_sub_num);
     if (event <= 0)
 	return;
     af = (flags & IDEV_MAPPED_AUTOFIRE_SET) ? 0 : 1;
     inputdevice_set_mapping (input_selected_device, input_selected_widget,
-	name, af, input_selected_sub_num);
+	name, custom, af, input_selected_sub_num);
 }
 
 static BOOL CALLBACK InputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -7274,6 +7787,7 @@ struct GUIPAGE {
     int himg;
     int idx;
     const char *help;
+    HACCEL accel;
 };
 
 static int GetPanelRect (HWND hDlg, RECT *r)
@@ -7290,6 +7804,57 @@ static int GetPanelRect (HWND hDlg, RECT *r)
     return 1;
 }
 
+static int ToolTipImageIDs[] = { 1, IDB_XARCADE, -1 };
+
+static WNDPROC ToolTipWndProcOld;
+static long FAR PASCAL ToolTipWndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    RECT r1;
+    POINT p1;
+    PAINTSTRUCT ps;
+    HBITMAP bm;
+    BITMAP binfo;
+    HDC hdc, memdc;
+    int w, h, i;
+
+    for (i = 0; ToolTipHWNDS2[i].hwnd; i++) {
+	if (hwnd == ToolTipHWNDS2[i].hwnd)
+	    break;
+    }
+    if (!ToolTipHWNDS2[i].hwnd)
+        return CallWindowProc (ToolTipHWNDS2[i].proc, hwnd, message, wParam, lParam);
+
+    switch (message)
+    {
+	case WM_PAINT:
+	bm = LoadBitmap (hInst, MAKEINTRESOURCE (ToolTipHWNDS2[i].imageid));
+	GetObject (bm, sizeof (binfo), &binfo);
+	w = binfo.bmWidth;
+	h = binfo.bmHeight;
+	GetWindowRect (hwnd, &r1);
+	GetCursorPos (&p1);
+	r1.right = r1.left + w;
+	r1.bottom = r1.top + h;
+	ShowWindow (hwnd, SW_SHOWNA);
+	MoveWindow (hwnd, r1.left, r1.top, r1.right - r1.left, r1.bottom - r1.top, TRUE);
+	hdc = GetDC (hwnd);
+	memdc = CreateCompatibleDC (hdc);
+	SelectObject (memdc, bm);
+	BeginPaint (hwnd, &ps);
+	SetBkMode (ps.hdc, TRANSPARENT);
+	BitBlt (hdc, 0, 0, w, h, memdc, 0, 0, SRCCOPY);
+	DeleteObject (bm);
+	EndPaint (hwnd, &ps);
+	DeleteDC (memdc);
+	ReleaseDC (hwnd, hdc);
+	return FALSE;
+	case WM_PRINT:
+	PostMessage (hwnd, WM_PAINT, 0, 0);
+	return TRUE;
+    }
+    return CallWindowProc (ToolTipHWNDS2[i].proc, hwnd, message, wParam, lParam);
+}
+
 static BOOL CALLBACK childenumproc (HWND hwnd, LPARAM lParam)
 {
     TOOLINFO ti;
@@ -7300,19 +7865,52 @@ static BOOL CALLBACK childenumproc (HWND hwnd, LPARAM lParam)
     SendMessage (hwnd, WM_GETTEXT, (WPARAM)sizeof (tmp), (LPARAM)tmp);
     p = strchr (tmp, '[');
     if (strlen (tmp) > 0 && p && strlen(p) > 2 && p[1] == ']') {
+	int imageid = 0;
         *p++ = 0;
         *p++ = 0;
         if (p[0] == ' ')
 	    *p++;
+	if (p[0] == '#')
+	    imageid = atol (p + 1);
         tmp[strlen(tmp) - 1] = 0;
-        SendMessage(hwnd, WM_SETTEXT, 0, (LPARAM)tmp);
         ti.cbSize = sizeof (TOOLINFO);
         ti.uFlags = TTF_SUBCLASS | TTF_IDISHWND;
         ti.hwnd = GetParent (hwnd);
         ti.hinst = hInst;
         ti.uId = (UINT)hwnd;
         ti.lpszText = p;
-        SendMessage(ToolTipHWND, TTM_ADDTOOL, 0, (LPARAM) (LPTOOLINFO) &ti);
+	if (imageid > 0) {
+	    int idx, i;
+
+	    idx = 0;
+	    while (ToolTipHWNDS2[idx].hwnd)
+	        idx++;
+	    for (i = 0; ToolTipImageIDs[i] >= 0; i += 2) {
+		if (ToolTipImageIDs[i] == imageid)
+		    break;
+	    }
+	    if (ToolTipImageIDs[i] >= 0 && idx < MAX_IMAGETOOLTIPS) {
+		HWND ToolTipHWND2 = CreateWindowEx (WS_EX_TOPMOST,
+		    TOOLTIPS_CLASS, NULL,
+		    WS_POPUP | TTS_NOPREFIX,
+		    CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+		    panelDlg, NULL, hInst, NULL);
+		ToolTipHWNDS2[idx].hwnd = ToolTipHWND2;
+		ToolTipHWNDS2[idx+1].hwnd = NULL;
+		ToolTipHWNDS2[idx].proc = (WNDPROC)GetWindowLongPtr (ToolTipHWND2, GWL_WNDPROC);
+		ToolTipHWNDS2[idx].imageid = ToolTipImageIDs[i + 1];
+		SetWindowLongPtr (ToolTipHWND2, GWL_WNDPROC, (LONG_PTR)ToolTipWndProc);
+		SetWindowPos (ToolTipHWND2, HWND_TOPMOST, 0, 0, 0, 0,
+		    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+		SendMessage(ToolTipHWND2, TTM_SETDELAYTIME, (WPARAM)TTDT_AUTOPOP, (LPARAM)MAKELONG(20000, 0));
+		SendMessage(ToolTipHWND2, TTM_SETMAXTIPWIDTH, 0, 400);
+	        SendMessage(hwnd, WM_SETTEXT, 0, (LPARAM)tmp);
+		SendMessage(ToolTipHWND2, TTM_ADDTOOL, 0, (LPARAM) (LPTOOLINFO) &ti);
+	    }
+	} else {
+	    SendMessage(hwnd, WM_SETTEXT, 0, (LPARAM)tmp);
+	    SendMessage(ToolTipHWND, TTM_ADDTOOL, 0, (LPARAM) (LPTOOLINFO) &ti);
+	}
         return 1;
     }
     p = strchr (tmp, ']');
@@ -7351,7 +7949,7 @@ static HWND updatePanel (HWND hDlg, int id)
 {
     static HWND hwndTT;
     RECT r1c, r1w, r2c, r2w, r3c, r3w;
-    int w, h, pw, ph, x , y;
+    int w, h, pw, ph, x , y, i;
 
     EnableWindow (GetDlgItem (guiDlg, IDC_RESETAMIGA), full_property_sheet ? FALSE : TRUE);
     EnableWindow (GetDlgItem (guiDlg, IDOK), TRUE);
@@ -7364,6 +7962,11 @@ static HWND updatePanel (HWND hDlg, int id)
 	DestroyWindow (ToolTipHWND);
 	ToolTipHWND = NULL;
     }
+    for (i = 0; ToolTipHWNDS2[i].hwnd; i++) {
+	DestroyWindow (ToolTipHWNDS2[i].hwnd);
+	ToolTipHWNDS2[i].hwnd = NULL;
+    }
+    hAccelTable = NULL;
     if (id < 0) {
 	if (!isfullscreen ()) {
 	    RECT r;
@@ -7413,14 +8016,18 @@ static HWND updatePanel (HWND hDlg, int id)
         panelDlg, NULL, hInst, NULL);
     SetWindowPos (ToolTipHWND, HWND_TOPMOST, 0, 0, 0, 0,
 	SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+
 #if 0
     SendMessage(ToolTipHWND, TTM_SETDELAYTIME, (WPARAM)TTDT_INITIAL, (LPARAM)MAKELONG(100, 0));
     SendMessage(ToolTipHWND, TTM_SETDELAYTIME, (WPARAM)TTDT_RESHOW, (LPARAM)MAKELONG(0, 0));
 #endif
     SendMessage(ToolTipHWND, TTM_SETDELAYTIME, (WPARAM)TTDT_AUTOPOP, (LPARAM)MAKELONG(20000, 0));
     SendMessage(ToolTipHWND, TTM_SETMAXTIPWIDTH, 0, 400);
+
     EnumChildWindows (panelDlg, &childenumproc, (LPARAM)NULL);
     SendMessage (panelDlg, WM_NULL, 0, 0);
+
+    hAccelTable = ppage[currentpage].accel;
 
     return panelDlg;
 }
@@ -7517,6 +8124,7 @@ static void centerWindow (HWND hDlg)
     RECT rc, rcDlg, rcOwner;
     HWND owner = GetParent(hDlg);
     LONG x = 0, y = 0;
+    POINT pt1, pt2;
 
     if (owner == NULL)
 	owner = GetDesktopWindow();
@@ -7542,6 +8150,14 @@ static void centerWindow (HWND hDlg)
 	y = rcOwner.top + (rc.bottom / 2);
     }
     SetForegroundWindow (hDlg);
+    pt1.x = x;
+    pt1.y = y;
+    pt2.x = x + 16;
+    pt2.y = y + GetSystemMetrics (SM_CYMENU) + GetSystemMetrics (SM_CYBORDER);
+    if (MonitorFromPoint (pt1, MONITOR_DEFAULTTONULL) == NULL || MonitorFromPoint (pt2, MONITOR_DEFAULTTONULL) == NULL) {
+	x = 16;
+	y = 16;
+    }
     SetWindowPos (hDlg,  HWND_TOP, x, y, 0, 0, SWP_NOSIZE);
 }
 
@@ -7653,12 +8269,26 @@ int dragdrop (HWND hDlg, HDROP hd, struct uae_prefs *prefs, int currentpage)
     return ret;
 }
 
+static int dialogreturn;
 static BOOL CALLBACK DialogProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     static int recursive = 0;
 
     switch(msg)
     {
+	case WM_DESTROY:
+	PostQuitMessage (0);
+        return TRUE;
+	case WM_CLOSE:
+        DestroyWindow(hDlg);
+        if (dialogreturn < 0) {
+	    dialogreturn = 0;
+	    if (allow_quit) {
+		quit_program = 1;
+		regs.spcflags |= SPCFLAG_BRK;
+	    }
+	}	    
+        return TRUE;
 	case WM_INITDIALOG:
 	    guiDlg = hDlg;
 	    SendMessage(hDlg, WM_SETICON, ICON_SMALL, (LPARAM)LoadIcon (GetModuleHandle (NULL), MAKEINTRESOURCE(IDI_APPICON)));
@@ -7693,7 +8323,7 @@ static BOOL CALLBACK DialogProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lPara
 	    }
 	    break;
 	case WM_COMMAND:
-	    switch (wParam) 
+	    switch (LOWORD(wParam))
 	    {
 		case IDC_RESETAMIGA:
 		    uae_reset (0);
@@ -7709,13 +8339,15 @@ static BOOL CALLBACK DialogProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lPara
 		    return TRUE;
 		case IDOK:
 		    updatePanel (hDlg, -1);
-		    EndDialog (hDlg, 1);
+		    dialogreturn = 1;
+		    DestroyWindow (hDlg);
 		    gui_to_prefs ();
 		    guiDlg = NULL;
 		    return TRUE;
 		case IDCANCEL:
 		    updatePanel (hDlg, -1);
-		    EndDialog (hDlg, 0);
+		    dialogreturn = 0;
+		    DestroyWindow (hDlg);
 		    if (allow_quit) {
 			quit_program = 1;
 			regs.spcflags |= SPCFLAG_BRK;
@@ -7728,11 +8360,17 @@ static BOOL CALLBACK DialogProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lPara
     return FALSE;
 }
 
+static ACCEL EmptyAccel[] = {
+    { FVIRTKEY, VK_UP, 20001 }, { FVIRTKEY, VK_DOWN, 20002 },
+    { 0, 0, 0 }
+};
 
 static int init_page (int tmpl, int icon, int title,
-               BOOL (CALLBACK FAR *func) (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam), char *help)
+               BOOL (CALLBACK FAR *func) (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam), ACCEL *accels, char *help)
 {
     static id = 0;
+    int i = -1;
+
     LPTSTR lpstrTitle;
     ppage[id].pp.pszTemplate = MAKEINTRESOURCE (tmpl);
     ppage[id].pp.pszIcon = MAKEINTRESOURCE (icon);
@@ -7742,6 +8380,11 @@ static int init_page (int tmpl, int icon, int title,
     ppage[id].pp.pfnDlgProc = func;
     ppage[id].help = help;
     ppage[id].idx = id;
+    ppage[id].accel = NULL;
+    if (!accels)
+	accels = EmptyAccel;
+    while (accels[++i].key);
+    ppage[id].accel = CreateAcceleratorTable (accels, i);
     id++;
     return id - 1;
 }
@@ -7750,6 +8393,7 @@ static int GetSettings (int all_options, HWND hwnd)
 {
     static int init_called = 0;
     int psresult;
+    HWND dhwnd;
 
     gui_active = 1;
 
@@ -7758,50 +8402,73 @@ static int GetSettings (int all_options, HWND hwnd)
     pguiprefs = &currprefs;
     default_prefs (&workprefs, 0);
 
-    WIN32GUI_LoadUIString( IDS_NONE, szNone, MAX_DPATH );
+    WIN32GUI_LoadUIString (IDS_NONE, szNone, MAX_DPATH);
 
     prefs_to_gui (&changed_prefs);
 
-    if (!init_called)
-    {
-	LOADSAVE_ID = init_page (IDD_LOADSAVE, IDI_CONFIGFILE, IDS_LOADSAVE, LoadSaveDlgProc, "gui/configurations.htm");
-	MEMORY_ID = init_page (IDD_MEMORY, IDI_MEMORY, IDS_MEMORY, MemoryDlgProc, "gui/ram.htm");
-	KICKSTART_ID = init_page (IDD_KICKSTART, IDI_MEMORY, IDS_KICKSTART, KickstartDlgProc, "gui/rom.htm");
-	CPU_ID = init_page (IDD_CPU, IDI_CPU, IDS_CPU, CPUDlgProc, "gui/cpu.htm");
-	DISPLAY_ID = init_page (IDD_DISPLAY, IDI_DISPLAY, IDS_DISPLAY, DisplayDlgProc, "gui/display.htm");
+    if (!init_called) {
+	LOADSAVE_ID = init_page (IDD_LOADSAVE, IDI_CONFIGFILE, IDS_LOADSAVE, LoadSaveDlgProc, NULL, "gui/configurations.htm");
+	MEMORY_ID = init_page (IDD_MEMORY, IDI_MEMORY, IDS_MEMORY, MemoryDlgProc, NULL, "gui/ram.htm");
+	KICKSTART_ID = init_page (IDD_KICKSTART, IDI_MEMORY, IDS_KICKSTART, KickstartDlgProc, NULL, "gui/rom.htm");
+	CPU_ID = init_page (IDD_CPU, IDI_CPU, IDS_CPU, CPUDlgProc, NULL, "gui/cpu.htm");
+	DISPLAY_ID = init_page (IDD_DISPLAY, IDI_DISPLAY, IDS_DISPLAY, DisplayDlgProc, NULL, "gui/display.htm");
 #if defined (GFXFILTER)
-	HW3D_ID = init_page (IDD_FILTER, IDI_DISPLAY, IDS_FILTER, hw3dDlgProc, "gui/filter.htm");
+	HW3D_ID = init_page (IDD_FILTER, IDI_DISPLAY, IDS_FILTER, hw3dDlgProc, NULL, "gui/filter.htm");
 #endif
-	CHIPSET_ID = init_page (IDD_CHIPSET, IDI_CPU, IDS_CHIPSET, ChipsetDlgProc, "gui/chipset.htm");
-	SOUND_ID = init_page (IDD_SOUND, IDI_SOUND, IDS_SOUND, SoundDlgProc, "gui/sound.htm");
-	FLOPPY_ID = init_page (IDD_FLOPPY, IDI_FLOPPY, IDS_FLOPPY, FloppyDlgProc, "gui/floppies.htm");
-	DISK_ID = init_page (IDD_DISK, IDI_FLOPPY, IDS_DISK, DiskDlgProc, "gui/disk.htm");
+	CHIPSET_ID = init_page (IDD_CHIPSET, IDI_CPU, IDS_CHIPSET, ChipsetDlgProc, NULL, "gui/chipset.htm");
+	SOUND_ID = init_page (IDD_SOUND, IDI_SOUND, IDS_SOUND, SoundDlgProc, NULL, "gui/sound.htm");
+	FLOPPY_ID = init_page (IDD_FLOPPY, IDI_FLOPPY, IDS_FLOPPY, FloppyDlgProc, NULL, "gui/floppies.htm");
+	DISK_ID = init_page (IDD_DISK, IDI_FLOPPY, IDS_DISK, SwapperDlgProc, SwapperAccel, "gui/disk.htm");
 #ifdef FILESYS
-	HARDDISK_ID = init_page (IDD_HARDDISK, IDI_HARDDISK, IDS_HARDDISK, HarddiskDlgProc, "gui/hard-drives.htm");
+	HARDDISK_ID = init_page (IDD_HARDDISK, IDI_HARDDISK, IDS_HARDDISK, HarddiskDlgProc, HarddiskAccel, "gui/hard-drives.htm");
 #endif
-	PORTS_ID = init_page (IDD_PORTS, IDI_PORTS, IDS_PORTS, PortsDlgProc, "gui/ports.htm");
-	INPUT_ID = init_page (IDD_INPUT, IDI_INPUT, IDS_INPUT, InputDlgProc, "gui/input.htm");
-	MISC1_ID = init_page (IDD_MISC1, IDI_MISC1, IDS_MISC1, MiscDlgProc1, "gui/misc.htm");
-	MISC2_ID = init_page (IDD_MISC2, IDI_MISC2, IDS_MISC2, MiscDlgProc2, "gui/misc.htm");
+	PORTS_ID = init_page (IDD_PORTS, IDI_PORTS, IDS_PORTS, PortsDlgProc, NULL, "gui/ports.htm");
+	INPUT_ID = init_page (IDD_INPUT, IDI_INPUT, IDS_INPUT, InputDlgProc, NULL, "gui/input.htm");
+	MISC1_ID = init_page (IDD_MISC1, IDI_MISC1, IDS_MISC1, MiscDlgProc1, NULL, "gui/misc.htm");
+	MISC2_ID = init_page (IDD_MISC2, IDI_MISC2, IDS_MISC2, MiscDlgProc2, NULL, "gui/misc2.htm");
 #ifdef AVIOUTPUT
-	AVIOUTPUT_ID = init_page (IDD_AVIOUTPUT, IDI_AVIOUTPUT, IDS_AVIOUTPUT, AVIOutputDlgProc, "gui/output.htm");
+	AVIOUTPUT_ID = init_page (IDD_AVIOUTPUT, IDI_AVIOUTPUT, IDS_AVIOUTPUT, AVIOutputDlgProc, NULL, "gui/output.htm");
 #endif
-	PATHS_ID = init_page (IDD_PATHS, IDI_PATHS, IDS_PATHS, PathsDlgProc, "gui/paths.htm");
-	QUICKSTART_ID = init_page (IDD_QUICKSTART, IDI_QUICKSTART, IDS_QUICKSTART, QuickstartDlgProc, "gui/quickstart.htm");
-	ABOUT_ID = init_page (IDD_ABOUT, IDI_ABOUT, IDS_ABOUT, AboutDlgProc, NULL);
+	PATHS_ID = init_page (IDD_PATHS, IDI_PATHS, IDS_PATHS, PathsDlgProc, NULL, "gui/paths.htm");
+	QUICKSTART_ID = init_page (IDD_QUICKSTART, IDI_QUICKSTART, IDS_QUICKSTART, QuickstartDlgProc, NULL, "gui/quickstart.htm");
+	ABOUT_ID = init_page (IDD_ABOUT, IDI_ABOUT, IDS_ABOUT, AboutDlgProc, NULL, NULL);
 	C_PAGES = ABOUT_ID + 1;
 	init_called = 1;
 	if (quickstart && !qs_override)
 	    currentpage = QUICKSTART_ID;
 	else
 	    currentpage = LOADSAVE_ID;
-	hMoveUp = (HICON)LoadImage (hInst, MAKEINTRESOURCE( IDI_MOVE_UP ), IMAGE_ICON, 16, 16, LR_LOADMAP3DCOLORS);
-	hMoveDown = (HICON)LoadImage (hInst, MAKEINTRESOURCE( IDI_MOVE_DOWN ), IMAGE_ICON, 16, 16, LR_LOADMAP3DCOLORS);
     }
 
     if (all_options || !configstore)
 	CreateConfigStore (NULL);
-    psresult = DialogBox (hUIDLL ? hUIDLL : hInst, MAKEINTRESOURCE (IDD_PANEL), hwnd, DialogProc);
+
+    dialogreturn = -1;
+    hAccelTable = NULL;
+    dhwnd = CreateDialog (hUIDLL ? hUIDLL : hInst, MAKEINTRESOURCE (IDD_PANEL), hwnd, DialogProc);
+    psresult = 0;
+    if (dhwnd != NULL) {
+	MSG msg;
+	DWORD v;
+	ShowWindow (dhwnd, SW_SHOW);
+	while ((v = GetMessage (&msg, NULL, 0, 0))) {
+	    if (dialogreturn >= 0)
+		break;
+	    if (v == -1)
+		continue;
+	    if (!IsWindow (dhwnd))
+		continue;
+	    if (hAccelTable && panelDlg) {
+		if (TranslateAccelerator (panelDlg, hAccelTable, &msg))
+		    continue;
+	    }
+	    if (IsDialogMessage (dhwnd, &msg))
+		continue;
+	    TranslateMessage (&msg);
+	    DispatchMessage (&msg);
+	}
+	psresult = dialogreturn;
+    }
 
     if (quit_program)
         psresult = -2;
@@ -7834,6 +8501,13 @@ int gui_update (void)
 
 void gui_exit (void)
 {
+    int i;
+    
+    for (i = 0; i < C_PAGES; i++) {
+	if (ppage[i].accel)
+	    DestroyAcceleratorTable (ppage[i].accel);
+	ppage[i].accel = NULL;
+    }
     FreeConfigStore ();
 #ifdef PARALLEL_PORT
     closeprinter(); // Bernd Roesch
@@ -7935,7 +8609,7 @@ void gui_led (int led, int on)
     } else if (led == 7) {
 	pos = 1;
 	ptr = drive_text + pos * 16;
-	sprintf(ptr, "FPS: %.1f", (double)((gui_data.fps + 5) / 10.0));
+	sprintf(ptr, "FPS: %.1f", (double)(gui_data.fps  / 10.0));
     } else if (led == 8) {
         pos = 0;
         ptr = drive_text + pos * 16;

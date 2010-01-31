@@ -9,7 +9,7 @@
 
 #define UAEMAJOR 0
 #define UAEMINOR 9
-#define UAESUBREV 91
+#define UAESUBREV 92
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -35,6 +35,7 @@ struct strlist {
 struct uae_input_device {
     char *name;
     uae_s16 eventid[MAX_INPUT_DEVICE_EVENTS][MAX_INPUT_SUB_EVENT];
+    char *custom[MAX_INPUT_DEVICE_EVENTS][MAX_INPUT_SUB_EVENT];
     uae_u16 flags[MAX_INPUT_DEVICE_EVENTS][MAX_INPUT_SUB_EVENT];
     uae_s16 extra[MAX_INPUT_DEVICE_EVENTS][MAX_INPUT_SIMULTANEOUS_KEYS];
     uae_u8 enabled;
@@ -62,6 +63,10 @@ struct uae_prefs {
     int serial_hwctsrts;
     int serial_direct;
     int parallel_demand;
+    int parallel_postscript_emulation;
+    int parallel_postscript_detection;
+    int parallel_autoflush_time;
+    char ghostscript_parameters[256];
     int use_gfxlib;
     int socket_emu;
 
@@ -133,6 +138,7 @@ struct uae_prefs {
     int immediate_blits;
     unsigned int chipset_mask;
     int ntscmode;
+    int chipset_refreshrate;
     int collision_level;
     int leds_on_screen;
     int keyboard_leds[3];
@@ -176,6 +182,7 @@ struct uae_prefs {
 
     int kickshifter;
     int filesys_no_uaefsdb;
+    int filesys_custom_uaefsdb;
 
     struct uaedev_mount_info *mountinfo;
 
@@ -195,6 +202,7 @@ struct uae_prefs {
     int win32_middle_mouse;
     int win32_logfile;
     int win32_notaskbarbutton;
+    int win32_alwaysontop;
 
     int win32_active_priority;
     int win32_inactive_priority;
@@ -264,8 +272,11 @@ extern uae_u32 cfgfile_uaelib (int mode, uae_u32 name, uae_u32 dst, uae_u32 maxl
 extern uae_u32 cfgfile_uaelib_modify (uae_u32 mode, uae_u32 parms, uae_u32 size, uae_u32 out, uae_u32 outsize);
 extern void cfgfile_addcfgparam (char *);
 extern int build_in_prefs (struct uae_prefs *p, int model, int config, int compa, int romcheck);
+extern int cmdlineparser (char *s, char *outp[], int max);
+extern int cfgfile_handle_custom_event (char *custom, int mode);
 
 extern void fixup_prefs_dimensions (struct uae_prefs *prefs);
+extern void fixup_prefs (struct uae_prefs *prefs);
 
 extern void check_prefs_changed_custom (void);
 extern void check_prefs_changed_cpu (void);

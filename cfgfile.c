@@ -310,6 +310,10 @@ static void save_options (struct zfile *f, struct uae_prefs *p, int type)
 
     cfgfile_write (f, "synchronize_clock=%s\n", p->tod_hack ? "yes" : "no");
     cfgfile_write (f, "maprom=0x%x\n", p->maprom);
+    cfgfile_write (f, "parallel_postscript_emulation=%s\n", p->parallel_postscript_emulation ? "yes" : "no");
+    cfgfile_write (f, "parallel_postscript_detection=%s\n", p->parallel_postscript_detection ? "yes" : "no");
+    cfgfile_write (f, "ghostscript_parameters=%s\n", p->ghostscript_parameters);
+    cfgfile_write (f, "parallel_autoflush=%d\n", p->parallel_autoflush_time);
 
     cfgfile_write (f, "gfx_display=%d\n", p->gfx_display);
     cfgfile_write (f, "gfx_framerate=%d\n", p->gfx_framerate);
@@ -382,6 +386,7 @@ static void save_options (struct zfile *f, struct uae_prefs *p, int type)
 	cfgfile_write (f, "chipset=ecs_denise\n");
     else
 	cfgfile_write (f, "chipset=ocs\n");
+    cfgfile_write (f, "chipset_refreshrate=%d\n", p->chipset_refreshrate);
     cfgfile_write (f, "collision_level=%s\n", collmode[p->collision_level]);
 
     cfgfile_write (f, "fastmem_size=%d\n", p->fastmem_size / 0x100000);
@@ -845,6 +850,8 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	|| cfgfile_yesno (option, value, "blitter_cycle_exact", &p->blitter_cycle_exact)
 	|| cfgfile_yesno (option, value, "cpu_24bit_addressing", &p->address_space_24)
 	|| cfgfile_yesno (option, value, "parallel_on_demand", &p->parallel_demand)
+	|| cfgfile_yesno (option, value, "parallel_postscript_emulation", &p->parallel_postscript_emulation)
+	|| cfgfile_yesno (option, value, "parallel_postscript_detection", &p->parallel_postscript_detection)
 	|| cfgfile_yesno (option, value, "serial_on_demand", &p->serial_demand)
 	|| cfgfile_yesno (option, value, "serial_hardware_ctsrts", &p->serial_hwctsrts)
 	|| cfgfile_yesno (option, value, "serial_direct", &p->serial_direct)
@@ -858,6 +865,7 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	|| cfgfile_yesno (option, value, "scsi", &p->scsi))
 	return 1;
     if (cfgfile_intval (option, value, "cachesize", &p->cachesize, 1)
+	|| cfgfile_intval (option, value, "chipset_refreshrate", &p->chipset_refreshrate, 1)
 	|| cfgfile_intval (option, value, "fastmem_size", &p->fastmem_size, 0x100000)
 	|| cfgfile_intval (option, value, "a3000mem_size", &p->a3000mem_size, 0x100000)
 	|| cfgfile_intval (option, value, "z3mem_size", &p->z3fastmem_size, 0x100000)
@@ -870,6 +878,7 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	|| cfgfile_intval (option, value, "floppy2type", &p->dfxtype[2], 1)
 	|| cfgfile_intval (option, value, "floppy3type", &p->dfxtype[3], 1)
 	|| cfgfile_intval (option, value, "maprom", &p->maprom, 1)
+	|| cfgfile_intval (option, value, "parallel_autoflush", &p->parallel_autoflush_time, 1)
 	|| cfgfile_intval (option, value, "catweasel_io", &p->catweasel_io, 1))
 	return 1;
     if (cfgfile_strval (option, value, "comp_trustbyte", &p->comptrustbyte, compmode, 0)
@@ -883,7 +892,8 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	|| cfgfile_string (option, value, "kickstart_ext_rom_file", p->romextfile, 256)
 	|| cfgfile_string (option, value, "flash_file", p->flashfile, 256)
 	|| cfgfile_string (option, value, "cart_file", p->cartfile, 256)
-	|| cfgfile_string (option, value, "pci_devices", p->pci_devices, 256))
+	|| cfgfile_string (option, value, "pci_devices", p->pci_devices, 256)
+	|| cfgfile_string (option, value, "ghostscript_parameters", p->ghostscript_parameters, 256))
 	return 1;
 
     for (i = 0; i < 4; i++) {
@@ -1342,6 +1352,7 @@ int cfgfile_load (struct uae_prefs *p, const char *filename, int *type, int igno
     }
 end:
     recursive--;
+    fixup_prefs (p);
     return v;
 }
 
@@ -1368,7 +1379,8 @@ int cfgfile_get_description (const char *filename, char *description, char *host
     p->config_hardware_path[0] = 0;
     if (cfgfile_load_2 (p, filename, 0, type)) {
 	result = 1;
-	strcpy (description, p->description);
+	if (description)
+	    strcpy (description, p->description);
 	if (hostlink)
 	    strcpy (hostlink, p->config_host_path);
 	if (hardwarelink)
@@ -1762,7 +1774,83 @@ void cfgfile_addcfgparam (char *line)
     temp_lines = u;
 }
 
-static int cmdlineparser (char *s, char *outp[], int max)
+static int getconfigstoreline (struct zfile *z, char *option, char *value)
+{
+    char tmp[CONFIG_BLEN * 2];
+    int idx = 0;
+
+    for (;;) {
+	uae_u8 b = 0;
+	if (zfile_fread (&b, 1, 1, z) != 1)
+	    return 0;
+	tmp[idx++] = b;
+	tmp[idx] = 0;
+	if (b == '\n')
+	    break;
+    }
+    return separate_line (tmp, option, value);
+}
+	
+
+int cfgfile_handle_custom_event (char *custom, int mode)
+{
+    char option[CONFIG_BLEN], value[CONFIG_BLEN];
+    char option2[CONFIG_BLEN], value2[CONFIG_BLEN];
+    char *tmp, *p, *nextp;
+    struct zfile *configstore = NULL;
+    int cnt = 0, cnt_ok = 0;
+
+    if (!mode) {
+	uae_u8 zero = 0;
+    	configstore = zfile_fopen_empty ("configstore", 50000);
+	save_options (configstore, &currprefs, 0);
+	zfile_fwrite (&zero, 1, 1, configstore);
+    }
+
+    nextp = NULL;
+    tmp = p = xcalloc (strlen (custom) + 2, 1);
+    strcpy (tmp, custom);
+    while (p && *p) {
+	if (*p == '\"') {
+	    char *p2;
+	    p++;
+	    p2 = p;
+	    while (*p2 != '\"' && *p2 != 0)
+		p2++;
+	    if (*p2 == '\"') {
+		*p2++ = 0;
+		nextp = p2 + 1;
+		if (*nextp == ' ')
+		    nextp++;
+	    }
+	}
+	if (separate_line (p, option, value)) {
+	    cnt++;
+	    if (mode) {
+		cfgfile_parse_option (&changed_prefs, option, value, 0);
+	    } else {
+		zfile_fseek (configstore, 0, SEEK_SET);
+		for (;;) {
+		    if (!getconfigstoreline (configstore, option2, value2))
+			break;
+		    if (!strcmpi (option, option2) && !strcmpi (value, value2)) {
+			cnt_ok++;
+			break;
+		    }
+		}   
+	    }
+	}	
+	p = nextp;
+    }
+    xfree (tmp);
+    zfile_fclose (configstore);
+    if (cnt > 0 && cnt == cnt_ok)
+	return 1;
+    return 0;
+}
+
+
+int cmdlineparser (char *s, char *outp[], int max)
 {
     int j, cnt = 0;
     int slash = 0;
@@ -2082,6 +2170,10 @@ void default_prefs (struct uae_prefs *p, int type)
     p->serial_demand = 0;
     p->serial_hwctsrts = 1;
     p->parallel_demand = 0;
+    p->parallel_postscript_emulation = 0;
+    p->parallel_postscript_detection = 0;
+    p->parallel_autoflush_time = 5;
+    p->ghostscript_parameters[0] = 0;
 
     p->jport0 = JSEM_MICE;
     p->jport1 = JSEM_KBDLAYOUT;
@@ -2161,6 +2253,8 @@ void default_prefs (struct uae_prefs *p, int type)
     p->catweasel_io = 0;
     p->tod_hack = 0;
     p->maprom = 0;
+    p->filesys_no_uaefsdb = 0;
+    p->filesys_custom_uaefsdb = 1;
 
     p->gfx_filter = 0;
     p->gfx_filter_filtermode = 1;
@@ -2231,8 +2325,21 @@ static void buildin_default_prefs_68020 (struct uae_prefs *p)
     p->m68k_speed = -1;
 }
 
+static void buildin_default_host_prefs (struct uae_prefs *p)
+{
+    p->sound_filter = 1;
+    p->sound_stereo = 1;
+    p->sound_stereo_separation = 7;
+    p->sound_mixed_stereo = 0;
+}
+
 static void buildin_default_prefs (struct uae_prefs *p)
 {
+    free_mountinfo (currprefs.mountinfo);
+    currprefs.mountinfo = p->mountinfo = alloc_mountinfo ();
+
+    buildin_default_host_prefs (p);
+
     p->nr_floppies = 2;
     p->dfxtype[0] = 0;
     p->dfxtype[1] = 0;
@@ -2256,10 +2363,6 @@ static void buildin_default_prefs (struct uae_prefs *p)
     p->catweasel_io = 0;
     p->tod_hack = 0;
     p->maprom = 0;
-    p->sound_filter = 1;
-    p->sound_stereo = 1;
-    p->sound_stereo_separation = 7;
-    p->sound_mixed_stereo = 0;
     p->cachesize = 0;
 
     p->chipmem_size = 0x00080000;

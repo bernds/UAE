@@ -1,3 +1,5 @@
+//#define XLINECHECK
+
  /*
   * UAE - The Un*x Amiga Emulator
   *
@@ -117,9 +119,24 @@ union sps_union spixstate;
 static uae_u32 ham_linebuf[MAX_PIXELS_PER_LINE * 2];
 
 char *xlinebuffer;
+#ifdef XLINECHECK
+char *xlinebuffer_start, *xlinebuffer_end;
+static void xlinecheck (int start, int end)
+{
+    char *xstart = xlinebuffer + start * gfxvidinfo.pixbytes;
+    char *xend = xlinebuffer + end * gfxvidinfo.pixbytes;
+    if (xstart < xlinebuffer_start || xstart > xlinebuffer_end ||
+	xend < xlinebuffer_start || xend > xlinebuffer_end)
+	    write_log ("*** %dx%d (%dx%dx%d) %p %p %p\n",
+		start, end, gfxvidinfo.width, gfxvidinfo.height, gfxvidinfo.pixbytes,
+		xlinebuffer, xlinebuffer_start, xlinebuffer_end);
+}
+#else
+#define xlinecheck
+#endif
 
 static int *amiga2aspect_line_map, *native2amiga_line_map;
-static char *row_map[MAX_VIDHEIGHT];
+static char *row_map[MAX_VIDHEIGHT + 1];
 static int max_drawn_amiga_line;
 
 /* line_draw_funcs: pfield_do_linetoscr, pfield_do_fill_line, decode_ham */
@@ -135,7 +152,6 @@ typedef void (*line_draw_func)(int, int);
 #define LINE_DONE_AS_PREVIOUS 8
 #define LINE_REMEMBERED_AS_PREVIOUS 9
 
-static char *line_drawn;
 static char linestate[(MAXVPOS + 1)*2 + 1];
 
 uae_u8 line_data[(MAXVPOS + 1) * 2][MAX_PLANES * MAX_WORDS_PER_LINE * 2];
@@ -220,12 +236,17 @@ static struct decision *dp_for_drawing;
 static struct draw_info *dip_for_drawing;
 
 /* Record DIW of the current line for use by centering code.  */
-void record_diw_line (int first, int last)
+void record_diw_line (int plfstrt, int first, int last)
 {
     if (last > max_diwstop)
 	max_diwstop = last;
-    if (first < min_diwstart)
+    if (first < min_diwstart) {
 	min_diwstart = first;
+/*
+	if (plfstrt * 2 > min_diwstart)
+	    min_diwstart = plfstrt * 2;
+*/
+    }
 }
 
 /*
@@ -574,6 +595,7 @@ static void pfield_do_linetoscr (int start, int stop)
 
 static void pfield_do_fill_line (int start, int stop)
 {
+    xlinecheck(start, stop);
     switch (gfxvidinfo.pixbytes) {
     case 1: fill_line_8 (xlinebuffer, start, stop); break;
     case 2: fill_line_16 (xlinebuffer, start, stop); break;
@@ -586,6 +608,7 @@ static void pfield_do_linetoscr_full (int double_line)
     char *oldxlb = (char *)xlinebuffer;
     int old_src_pixel = src_pixel;
 
+    xlinecheck(playfield_start, playfield_end);
     pfield_do_linetoscr (playfield_start, playfield_end);
     xlinebuffer = oldxlb + linetoscr_double_offset;
     src_pixel = old_src_pixel;
@@ -1107,13 +1130,14 @@ static void pfield_doline (int lineno)
 
 void init_row_map (void)
 {
-    int i;
+    int i, j;
     if (gfxvidinfo.height > MAX_VIDHEIGHT) {
 	write_log ("Resolution too high, aborting\n");
 	abort ();
     }
-    for (i = 0; i < gfxvidinfo.height + 1; i++)
-	row_map[i] = gfxvidinfo.bufmem + gfxvidinfo.rowbytes * i;
+    j = 0;
+    for (i = 0; i < gfxvidinfo.height + 1; i++, j += gfxvidinfo.rowbytes)
+	row_map[i] = gfxvidinfo.bufmem + j;
 }
 
 static void init_aspect_maps (void)
@@ -1416,7 +1440,12 @@ STATIC_INLINE void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 	xlinebuffer = gfxvidinfo.emergmem, dh = dh_emerg;
     if (xlinebuffer == 0)
 	xlinebuffer = row_map[gfx_ypos], dh = dh_buf;
+#ifdef XLINECHECK
+    xlinebuffer_start =  xlinebuffer;
+    xlinebuffer_end = xlinebuffer + gfxvidinfo.width * gfxvidinfo.pixbytes;
+#endif
     xlinebuffer -= linetoscr_x_adjust_bytes;
+
 
     if (border == 0) {
 	pfield_expand_dp_bplcon ();
@@ -1443,6 +1472,8 @@ STATIC_INLINE void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 	    }
 	    bplham = dp_for_drawing->ham_at_start;
 	}
+        if (plf2pri > 5 && bplplanecnt == 5 && !(currprefs.chipset_mask & CSMASK_AGA))
+	    weird_bitplane_fix ();
 
 	{
 	    if (dip_for_drawing->nr_sprites) {
@@ -1460,8 +1491,6 @@ STATIC_INLINE void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 			draw_sprites_ecs (curr_sprite_entries + dip_for_drawing->first_sprite_entry + i);
 		}
 	    }
- 	    if (plf2pri > 5 && bplplanecnt > 4 && !(currprefs.chipset_mask & CSMASK_AGA))
- 		weird_bitplane_fix ();
 	}
 
 	do_color_changes (pfield_do_fill_line, pfield_do_linetoscr);
@@ -1745,17 +1774,20 @@ static void draw_status_line (int line)
     for (led = 0; led < NUM_LEDS; led++) {
 	int side, pos, num1 = -1, num2 = -1, num3 = -1, num4 = -1, x, off_rgb, on_rgb, c, on = 0;
 	if (led >= 1 && led <= 4) {
-	    int track = gui_data.drive_track[led-1];
-	    pos = 5 + (led - 1);
-	    if (!gui_data.drive_disabled[led - 1]) {
+	    int pled = led - 1;
+	    int track = gui_data.drive_track[pled];
+	    pos = 5 + pled;
+	    on_rgb = 0x0c0;
+	    off_rgb = 0x030;
+	    if (!gui_data.drive_disabled[pled]) {
 		num1 = -1;
 		num2 = track / 10;
 		num3 = track % 10;
-	        on = gui_data.drive_motor[led-1];
+	        on = gui_data.drive_motor[pled];
+	        if (gui_data.drive_writing[pled])
+		    on_rgb = 0xc00;
 	    }
 	    side = gui_data.drive_side;
-	    on_rgb = 0x0c0;
-	    off_rgb = 0x030;
 	} else if (led == 0) {
 	    pos = 2;
 	    on = gui_data.powerled;
@@ -1772,7 +1804,7 @@ static void draw_status_line (int line)
 	} else if (led == 6) {
 	    pos = 3;
 	    on = gui_data.hd;
-	    on_rgb = 0x00c;
+	    on_rgb = on == 2 ? 0xc00 : 0x00c;
 	    off_rgb = 0x003;
 	    num1 = -1;
 	    num2 = 11;
@@ -1919,14 +1951,8 @@ void vsync_handle_redraw (int long_frame, int lof_changed)
 	last_redraw_point = 0;
 	interlace_seen = 0;
 
-	if (framecnt == 0) {
+	if (framecnt == 0)
 	    finish_drawing_frame ();
-#ifdef AVIOUTPUT
-	    frame_drawn ();
-	} else if (picasso_on) {
-	    frame_drawn ();
-#endif
-	}
 
 	/* At this point, we have finished both the hardware and the
 	 * drawing frame. Essentially, we are outside of all loops and
@@ -1982,6 +2008,9 @@ void vsync_handle_redraw (int long_frame, int lof_changed)
     }
     gui_hd_led (0);
     gui_cd_led (0);
+#ifdef AVIOUTPUT
+    frame_drawn ();
+#endif
 }
 
 void hsync_record_line_state (int lineno, enum nln_how how, int changed)
@@ -2039,9 +2068,6 @@ void reset_drawing (void)
 	linestate[i] = LINE_UNDECIDED;
 
     init_aspect_maps ();
-
-    if (line_drawn == 0)
-	line_drawn = (char *)malloc (gfxvidinfo.height);
 
     init_row_map();
 

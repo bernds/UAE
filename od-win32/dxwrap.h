@@ -13,7 +13,6 @@ struct ScreenResolution
 #define MAX_REFRESH_RATES 100
 struct PicassoResolution
 {
-    struct Resolutions *next;
     struct ScreenResolution res;
     int depth;   /* depth in bytes-per-pixel */
     int refresh[MAX_REFRESH_RATES]; /* refresh-rates in Hz */
@@ -199,7 +198,7 @@ struct DirectDrawSurfaceMapper
     LPDIRECTDRAWPALETTE lpOverlayDDP;
     surface_type_e surface_type;
 };
-HRESULT DirectDraw_CreateOverlaySurface( int width, int height, int bits );
+HRESULT DirectDraw_CreateOverlaySurface(int width, int height, int bits, int type);
 int DirectDraw_Start( GUID *);
 void DirectDraw_Release( void );
 HRESULT DirectDraw_SetCooperativeLevel( HWND window, int want_fullscreen );

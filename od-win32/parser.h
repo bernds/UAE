@@ -7,7 +7,7 @@
  * Copyright 1998-1999 Brian King
  */
 
-#define PRTBUFSIZE 4096
+#define PRTBUFSIZE 65536
 
 int setbaud (long baud );
 void getserstat(int *status);
@@ -29,3 +29,6 @@ void serialuartbreak (int);
 #define TIOCM_DTR 8
 #define TIOCM_RTS 16
 #define TIOCM_CTS 32
+
+extern void unload_ghostscript (void);
+extern int load_ghostscript (void);

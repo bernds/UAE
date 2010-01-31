@@ -535,7 +535,7 @@ static void sortobjects (struct didata *did, int *mappings, int *sort, char **na
     if (num > 0) {
 	write_log ("%s (GUID=%s):\n", did->name, outGUID (&did->guid));
 	for (i = 0; i < num; i++)
-	    write_log ("%d '%s' (%d,%d)\n", mappings[i], names[i], sort[i], types ? types[i] : -1);
+	    write_log ("%02.2X %0.03d '%s' (%d,%d)\n", mappings[i], mappings[i], names[i], sort[i], types ? types[i] : -1);
     }
 #endif
 }
@@ -999,7 +999,7 @@ static int get_kb_widget_first (int kb, int type)
 static int get_kb_widget_type (int kb, int num, char *name, uae_u32 *code)
 {
     if (name)
-	strcpy (name, di_keyboard[kb].buttonname[num]);
+	sprintf (name, "[%02.2X] %s", di_keyboard[kb].buttonmappings[num], di_keyboard[kb].buttonname[num]);
     if (code)
 	*code = di_keyboard[kb].buttonmappings[num];
     return IDEV_WIDGET_KEY;
@@ -1122,8 +1122,6 @@ static int init_kb (void)
     LPDIRECTINPUTDEVICE8 lpdi;
     DIPROPDWORD dipdw;
     HRESULT hr;
-    HKL keyboardlayoutid;
-    WORD keyboardlangid;
 
     if (keyboard_inited)
 	return 1;
@@ -1155,14 +1153,9 @@ static int init_kb (void)
 		write_log ("keyboard CreateDevice failed, %s\n", DXError (hr));
 	}
     }
-    keyboardlayoutid = GetKeyboardLayout(0);      
-    keyboardlangid = LOWORD(keyboardlayoutid);
     keyboard_german = 0;
-    if (keyboardlangid == 0x0407) keyboard_german = 1; //German Standard
-    if (keyboardlangid == 0x0807) keyboard_german = 1; //German Switzerland
-    if (keyboardlangid == 0x0c07) keyboard_german = 1; //German Austria
-    if (keyboardlangid == 0x1007) keyboard_german = 1; //German Louxembourg
-    if (keyboardlangid == 0x1407) keyboard_german = 1; //German Lichtenstein
+    if ((LOWORD(GetKeyboardLayout(0)) & 0x3ff) == 7)
+	keyboard_german = 1;
     return 1;
 }
 
@@ -1426,7 +1419,6 @@ static int acquire_kb (int num, int flags)
     LPDIRECTINPUTDEVICE8 lpdi = di_keyboard[num].lpdi;
 
     unacquire (lpdi, "keyboard");
-
     if (currprefs.keyboard_leds_in_use) {
 #ifdef WINDDK
 	if (os_winnt && !usbledmode) {

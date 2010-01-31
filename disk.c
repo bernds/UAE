@@ -75,7 +75,7 @@
  * L	track length in bits
  */
 
-static int side, direction, writing;
+static int side, direction;
 static uae_u8 selected = 15, disabled;
 
 static uae_u8 writebuffer[544 * 11 * DDHDMULT];
@@ -572,22 +572,20 @@ static void reset_drive(int i)
 static void update_drive_gui (int num)
 {
     drive *drv = floppy + num;
+    int writ = dskdmaen == 3 && drv->state ? 1 : 0;
 
     if (drv->state == gui_data.drive_motor[num]
 	&& drv->cyl == gui_data.drive_track[num]
 	&& side == gui_data.drive_side
 	&& drv->crc32 == gui_data.crc32[num]
-	&& ((writing && gui_data.drive_writing[num])
-	    || (!writing && !gui_data.drive_writing[num]))) {
+	&& writ == gui_data.drive_writing[num])
 	return;
-    }
     strcpy (gui_data.df[num], currprefs.df[num]);
     gui_data.crc32[num] = drv->crc32;
     gui_data.drive_motor[num] = drv->state;
     gui_data.drive_track[num] = drv->cyl;
     gui_data.drive_side = side;
-    if (!gui_data.drive_writing[num])
-	gui_data.drive_writing[num] = writing;
+    gui_data.drive_writing[num] = writ;
     gui_ledstate &= ~(2 << num);
     if (drv->state)
 	gui_ledstate |= 2 << num;
@@ -1330,7 +1328,7 @@ static uae_u32 getmfmlong (uae_u16 *mbuf, int shift)
     return ((getmfmword (mbuf, shift) << 16) | getmfmword (mbuf + 1, shift)) & MFMMASK;
 }
 
-static int decode_buffer (uae_u16 *mbuf, int cyl, int drvsec, int ddhd, int filetype, int *drvsecp)
+static int decode_buffer (uae_u16 *mbuf, int cyl, int drvsec, int ddhd, int filetype, int *drvsecp, int checkmode)
 {
     int i, secwritten = 0;
     int fwlen = FLOPPY_WRITE_LEN * ddhd;
@@ -1370,7 +1368,7 @@ static int decode_buffer (uae_u16 *mbuf, int cyl, int drvsec, int ddhd, int file
 
 	trackoffs = (id & 0xff00) >> 8;
 	if (trackoffs + 1 > drvsec) {
-	    write_log ("Disk write: weird sector number %d\n", trackoffs);
+	    write_log ("Disk decode: weird sector number %d\n", trackoffs);
 	    if (filetype == ADF_EXT2)
 		return 2;
 	    continue;
@@ -1382,19 +1380,19 @@ static int decode_buffer (uae_u16 *mbuf, int cyl, int drvsec, int ddhd, int file
 	    mbuf += 2;
 
 	    dlong = (odd << 1) | even;
-	    if (dlong) {
+	    if (dlong && !checkmode) {
 		if (filetype == ADF_EXT2)
 		    return 6;
 		secwritten = -200;
 	    }
 	    chksum ^= odd ^ even;
-	}			/* could check here if the label is nonstandard */
+	}   /* could check here if the label is nonstandard */
 	mbuf += 8;
 	odd = getmfmlong (mbuf, shift);
 	even = getmfmlong (mbuf + 2, shift);
 	mbuf += 4;
 	if (((odd << 1) | even) != chksum || ((id & 0x00ff0000) >> 16) != cyl * 2 + side) {
-	    write_log ("Disk write: checksum error on sector %d header\n", trackoffs);
+	    write_log ("Disk decode: checksum error on sector %d header\n", trackoffs);
 	    if (filetype == ADF_EXT2)
 		return 3;
 	    continue;
@@ -1415,13 +1413,13 @@ static int decode_buffer (uae_u16 *mbuf, int cyl, int drvsec, int ddhd, int file
 	    *secdata++ = dlong;
 	    chksum ^= odd ^ even;
 	}
-	mbuf += 256;
 	if (chksum) {
-	    write_log ("Disk write: sector %d, data checksum error\n", trackoffs);
+	    write_log ("Disk decode: sector %d, data checksum error\n", trackoffs);
 	    if (filetype == ADF_EXT2)
 		return 4;
 	    continue;
 	}
+	mbuf += 256;
 	sectable[trackoffs] = 1;
 	secwritten++;
 	memcpy (writebuffer + trackoffs * 512, secbuf + 32, 512);
@@ -1429,9 +1427,9 @@ static int decode_buffer (uae_u16 *mbuf, int cyl, int drvsec, int ddhd, int file
     if (filetype == ADF_EXT2 && (secwritten == 0 || secwritten < 0))
 	return 5;
     if (secwritten == 0)
-	write_log ("Disk write in unsupported format\n");
+	write_log ("Disk decode: unsupported format\n");
     if (secwritten < 0)
-	write_log ("Disk write: sector labels ignored\n");
+	write_log ("Disk decode: sector labels ignored\n");
     *drvsecp = drvsec;
     return 0;
 }
@@ -1440,7 +1438,7 @@ static int drive_write_adf_amigados (drive * drv)
 {
     int drvsec, i;
 
-    if (decode_buffer (drv->bigmfmbuf, drv->cyl, drv->num_secs, drv->ddhd, drv->filetype, &drvsec))
+    if (decode_buffer (drv->bigmfmbuf, drv->cyl, drv->num_secs, drv->ddhd, drv->filetype, &drvsec, 0))
 	return 2;
     if (!drvsec)
 	return 2;
@@ -1745,6 +1743,7 @@ char *DISK_history_get (int idx)
 void disk_insert (int num, const char *name)
 {
     drive *drv = floppy + num;
+
     if (!strcmp (currprefs.df[num], name))
 	return;
     strcpy (drv->newname, name);
@@ -2009,7 +2008,13 @@ static void disk_dmafinished (void)
     INTREQ (0x8002);
     dskdmaen = 0;
 #ifdef DISK_DEBUG
-    write_dlog("disk dma finished %08.8X\n", dskpt);
+    {
+	int dr, mfmpos = -1;
+        write_dlog("disk dma finished %08.8X MFMpos=", dskpt);
+	for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++)
+	    write_log ("%d%s", floppy[dr].mfmpos, dr < MAX_FLOPPY_DRIVES - 1 ? "," : "");
+	write_log ("\n");
+    }
 #endif
 }    
 
@@ -2160,7 +2165,7 @@ static void disk_doupdate_predict (drive * drv, int startcycle)
 	if (mfmpos == drv->indexoffset) {
 	    diskevent_flag |= DISK_INDEXSYNC;
 	    indexhack = 0;
-	}   
+	}
 	if (dskdmaen != 3 && mfmpos == drv->skipoffset) {
             int skipcnt = disk_jitter;
 	    while (skipcnt-- > 0) {
@@ -2240,8 +2245,8 @@ static void disk_doupdate_read (drive * drv, int floppybits)
 	        put_word (dskpt, word);
 	        dskpt += 2;
 #ifdef CPUEMU_6
-	        cycle_line[7] |= CYCLE_DISK;
-	        cycle_line[9] |= CYCLE_DISK;
+	        cycle_line[7] |= CYCLE_MISC;
+	        cycle_line[9] |= CYCLE_MISC;
 #endif
 	    }
 #if 0
@@ -2331,6 +2336,7 @@ static void DISK_start (void)
 	    if (dskdmaen == 3) {
 		drv->tracklen = FLOPPY_WRITE_LEN * drv->ddhd * 8 * 2;
 		drv->trackspeed = get_floppy_speed ();
+		drv->skipoffset = -1;
 		updatemfmpos (drv);
 	    }
 	    /* Ugh.  A nasty hack.  Assume ADF_EXT1 tracks are always read
@@ -2453,16 +2459,21 @@ void DSKLEN (uae_u16 v, int hpos)
 	if ((selected & (1 << dr)) == 0)
 	    break;
     }
-    if (dr == 4)
+    if (dr == 4) {
         write_log ("disk %s DMA started but no drive selected!\n",
     	       dskdmaen == 3 ? "write" : "read");
-    else
+    } else {
         write_log ("disk %s DMA started, drv=%x track %d mfmpos %d\n",
 	    dskdmaen == 3 ? "write" : "read", selected ^ 15,
 	    floppy[dr].cyl * 2 + side, floppy[dr].mfmpos);
+	update_drive_gui (dr);
+    }
     write_dlog ("LEN=%04.4X (%d) SYNC=%04.4X PT=%08.8X ADKCON=%04.4X PC=%08.8X\n", 
 	dsklength, dsklength, (adkcon & 0x400) ? dsksync : 0xffff, dskpt, adkcon, m68k_getpc());
 #endif
+
+    for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++)
+	update_drive_gui (dr);
 
     /* Try to make floppy access from Kickstart faster.  */
     if (dskdmaen != 2 && dskdmaen != 3)
@@ -2624,7 +2635,7 @@ int DISK_examine_image (struct uae_prefs *p, int num, uae_u32 *crc32)
     if (!drv->diskfile)
 	return 1;
     *crc32 = zfile_crc32 (drv->diskfile);
-    if (decode_buffer (drv->bigmfmbuf, drv->cyl, 11, drv->ddhd, drv->filetype, &drvsec)) {
+    if (decode_buffer (drv->bigmfmbuf, drv->cyl, 11, drv->ddhd, drv->filetype, &drvsec, 1)) {
 	ret = 2;
 	goto end;
     }

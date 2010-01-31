@@ -20,6 +20,7 @@ extern int in_sizemove;
 extern int manual_painting_needed;
 extern int manual_palette_refresh_needed;
 extern int mouseactive, focus;
+extern int ignore_messages_all;
 #define WINUAEBETA 0
 #define WINUAEBETASTR ""
 
@@ -90,5 +91,8 @@ void exit_gui (int);
 void fetch_path (char *name, char *out, int size);
 void set_path (char *name, char *path);
 void read_rom_list (int);
+
+#define WIN32_PLUGINDIR "plugins\\"
+HMODULE WIN32_LoadLibrary (const char *);
 
 #endif

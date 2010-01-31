@@ -116,7 +116,7 @@ static uae_u8 blit_cycle_diagram_fill[][10] =
 
 static uae_u8 blit_cycle_diagram_line[] =
 {
-    0, 4, 0,0,3,4 /* total guess.. */
+    0, 4, 0,0,0,4 /* total guess.. */
 };
 
 void build_blitfilltable(void)
@@ -524,9 +524,19 @@ void blitter_handler(void)
 
 STATIC_INLINE int channel_state (int cycles)
 {
+    if (cycles < 0)
+	return 0;
     if (cycles < blit_diag[0])
         return blit_diag[blit_diag[1] + 2 + cycles];
     return blit_diag[((cycles - blit_diag[0]) % blit_diag[1]) + 2];
+}
+
+int is_bitplane_dma (int hpos);
+STATIC_INLINE int canblit (int hpos)
+{
+    if ((cycle_line[hpos] == 0 || cycle_line[hpos] == CYCLE_NOCPU) && !is_bitplane_dma (hpos))
+	return 1;
+    return 0;
 }
 
 #ifdef CPUEMU_6
@@ -574,8 +584,6 @@ STATIC_INLINE uae_u16 blitter_doblit (void)
     return ddat;
 }
 
-
-int is_bitplane_dma (int hpos);
 
 STATIC_INLINE int blitter_doddma (void)
 {
@@ -667,7 +675,7 @@ static void decide_blitter_line (int hpos)
 	while (blit_last_hpos < hpos) {
 	    int c = channel_state (blit_cyclecounter);
 	    for (;;) {
-	        if (c && (cycle_line[blit_last_hpos] || is_bitplane_dma (blit_last_hpos)))
+	        if (c && !canblit (blit_last_hpos))
 		    break;
 		if (c)
 		    cycle_line[blit_last_hpos] |= CYCLE_BLITTER;
@@ -699,10 +707,8 @@ void decide_blitter (int hpos)
 {
     if (bltstate == BLT_done)
 	return;
-    if (!currprefs.blitter_cycle_exact) {
-        blitter_handler ();
+    if (!currprefs.blitter_cycle_exact)
 	return;
-    }
     if (blitline) {
 	decide_blitter_line (hpos);
 	return;
@@ -719,7 +725,7 @@ void decide_blitter (int hpos)
 	    }
 #endif
 	    for (;;) {
-	        if (c && (cycle_line[blit_last_hpos] || is_bitplane_dma (blit_last_hpos))) {
+	        if (c && !canblit (blit_last_hpos)) {
 		    blit_misscyclecounter++;
 		    break;
 		}
@@ -779,10 +785,14 @@ static void blitter_force_finish (void)
 	dmacon |= DMA_MASTER | DMA_BLITTER;
 	write_log ("forcing blitter finish\n");
 	if (currprefs.blitter_cycle_exact) {
-	    while (bltstate != BLT_done) {
+	    int rounds = 10000;
+	    while (bltstate != BLT_done && rounds > 0) {
 	        memset (cycle_line, 0, maxhpos);
 		decide_blitter (maxhpos);
+		rounds--;
 	    }
+	    if (rounds == 0)
+		write_log ("blitter froze!?\n");
 	} else {
 	    actually_do_blit ();
 	}
@@ -833,6 +843,7 @@ static void blit_bltset (int con)
     if ((bltcon1 & 0x80) && (currprefs.chipset_mask & CSMASK_ECS_AGNUS))
 	write_log("warning: BLTCON1 DOFF-bit set\n");
 
+    ddat1use = ddat2use = 0;
     blit_dmacount = blit_dmacount2 = 0;
     for (i = 0; i < blit_diag[1]; i++) {
 	int v = blit_diag[2 + i];
@@ -872,14 +883,17 @@ void reset_blit (int bltcon)
 void do_blitter (int hpos)
 {
     int cycles;
-
+#ifdef BLITTER_DEBUG
+    int oldstate = bltstate;
+#endif
     blt_info.blitzero = 1;
     bltstate = BLT_init;
     preva = 0;
     prevb = 0;
 
     blit_firstline_cycles = blit_first_cycle = get_cycles ();
-    blit_cyclecounter = blit_misscyclecounter = 0;
+    blit_cyclecounter = -1;
+    blit_misscyclecounter = 0;
     blit_last_cycle = 0;
     blit_maxcyclecounter = 0;
     blit_last_hpos = hpos;
@@ -901,6 +915,8 @@ void do_blitter (int hpos)
 #ifdef BLITTER_DEBUG
     blitter_dontdo = 0;
     if (1) {
+	if (oldstate != BLT_done)
+	    write_log ("blitter was already active!\n");
 	write_log("blitstart: v=%03.3d h=%03.3d %dx%d %d (%d) d=%d f=%02.2X n=%d pc=%p l=%d dma=%d\n",
 	    vpos, hpos, blt_info.hblitsize, blt_info.vblitsize, cycles, blit_ch,
 	    blitdesc ? 1 : 0, blitfill,
@@ -958,7 +974,8 @@ void maybe_blit (int hpos, int hack)
 #ifndef BLITTER_DEBUG
 	warned = 1;
 #endif
-	write_log ("warning: Program does not wait for blitter %p\n", m68k_getpc());
+	write_log ("warning: Program does not wait for blitter %p vpos=%d tc=%d\n",
+	    m68k_getpc(), vpos, blit_cyclecounter);
     }
 
     if (currprefs.blitter_cycle_exact) {

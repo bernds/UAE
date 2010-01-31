@@ -211,6 +211,9 @@
 #define IDS_NOHARDDRIVES                240
 #define IDS_DEFAULT_HOST                241
 #define IDS_SOUND_4CHANNEL              242
+#define IDS_HF_FS_CUSTOM                243
+#define IDS_SELECTFS                    244
+#define IDB_XARCADE                     246
 #define IDS_NUMSG_NEEDEXT2              300
 #define IDS_NUMSG_NOROMKEY              301
 #define IDS_NUMSG_KSROMCRCERROR         302
@@ -311,6 +314,8 @@
 #define IDC_PFULLSCREEN                 1192
 #define IDC_P96MEM                      1193
 #define IDC_DA_SLIDER                   1193
+#define IDC_FRAMERATE2                  1194
+#define IDC_RATE2TEXT                   1195
 #define IDC_CPU0                        1200
 #define IDC_CPU1                        1201
 #define IDC_CPU2                        1202
@@ -386,14 +391,17 @@
 #define IDC_PORT0_KBDA                  1303
 #define IDC_PORT0_KBDB                  1304
 #define IDC_PORT0_KBDC                  1305
+#define IDC_PORT0_KBDD                  1306
+#define IDC_PORT0_KBDE                  1307
 #define IDC_PORT1_JOYSC                 1308
 #define IDC_PORT1_KBDA                  1309
 #define IDC_PORT1_KBDB                  1310
 #define IDC_PORT1_KBDC                  1311
-#define IDC_PORT0                       1312
-#define IDC_PORT1                       1313
+#define IDC_PORT1_KBDD                  1312
+#define IDC_PORT1_KBDE                  1313
 #define IDC_MIDIFRAME                   1314
 #define IDC_SERPARFRAME                 1315
+#define IDC_SERIALFRAME                 1316
 #define IDC_EDIT                        1334
 #define IDC_REMOVE                      1335
 #define IDC_VOLUMELIST                  1336
@@ -402,6 +410,8 @@
 #define IDC_NEW_FS                      1339
 #define IDC_NEW_HF                      1340
 #define IDC_NEW_HD                      1341
+#define IDC_PORT0                       1342
+#define IDC_PORT1                       1343
 #define IDC_PATH_NAME                   1362
 #define IDC_SELECTOR                    1363
 #define IDC_VOLUME_NAME                 1364
@@ -450,9 +460,12 @@
 #define IDC_EDITPATH                    1410
 #define IDC_HDF_RDB                     1500
 #define IDC_HFSIZE                      1501
+#define IDC_HF_SIZE                     1501
 #define IDC_LINEMODE                    1502
 #define IDC_CREATEHF                    1502
+#define IDC_HF_CREATE                   1502
 #define IDC_SOCKETS                     1503
+#define IDC_HF_DOSTYPE                  1503
 #define IDC_RESETAMIGA                  1504
 #define IDC_QUITEMU                     1505
 #define IDC_TEST16BIT                   1506
@@ -472,6 +485,7 @@
 #define IDC_DISABLE1                    1516
 #define IDC_DF1WP                       1516
 #define IDC_QUICKSTART_COMPA            1516
+#define IDC_REFRESH2TEXT                1516
 #define IDC_DISABLE2                    1517
 #define IDC_DF2WP                       1517
 #define IDC_QUICKSTART_DF               1517
@@ -530,7 +544,9 @@
 #define IDC_T5                          1555
 #define IDC_SERIAL_DIRECT               1555
 #define IDC_T6                          1556
+#define IDC_PSPRINTER                   1556
 #define IDC_T7                          1557
+#define IDC_PSPRINTERDETECT             1557
 #define IDC_T8                          1558
 #define IDC_T9                          1559
 #define IDC_T10                         1560
@@ -607,6 +623,8 @@
 #define IDC_MAPROM                      1609
 #define IDC_AVIOUTPUT_FILETEXT          1610
 #define IDC_INPUTDEVICETEXT             1610
+#define IDC_NOTASKBARBUTTON2            1610
+#define IDC_ALWAYSONTOP                 1610
 #define IDC_AVIOUTPUT_FILE              1611
 #define IDC_INPUTLIST                   1611
 #define IDC_AVIOUTPUT_FPS_STATIC        1612
@@ -777,7 +795,11 @@
 #define IDC_FILTERHOV                   1694
 #define IDC_CONFIGLINK                  1694
 #define IDC_FILTERVZV                   1695
+#define IDC_PS_PARAMS                   1695
 #define IDC_FILTERHZV                   1696
+#define IDC_HF_TYPE                     1696
+#define IDC_PRINTERAUTOFLUSH            1697
+#define IDC_PRINTERAUTOFLUSHTXT         1698
 #define ID__FLOPPYDRIVES                40004
 #define ID_FLOPPYDRIVES_DF0             40005
 #define ID_ST_CONFIGURATION             40010
@@ -796,9 +818,9 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
 #define _APS_3D_CONTROLS                     1
-#define _APS_NEXT_RESOURCE_VALUE        245
+#define _APS_NEXT_RESOURCE_VALUE        247
 #define _APS_NEXT_COMMAND_VALUE         40021
-#define _APS_NEXT_CONTROL_VALUE         1695
+#define _APS_NEXT_CONTROL_VALUE         1699
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

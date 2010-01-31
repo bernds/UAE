@@ -23,6 +23,8 @@
 #include "ar.h"
 #include "crc32.h"
 #include "gui.h"
+#include "cdtv.h"
+#include "enforcer.h"
 
 #ifdef JIT
 int canbang;
@@ -35,9 +37,6 @@ int ersatzkickfile;
 
 #ifdef CD32
 extern int cd32_enabled;
-#endif
-#ifdef CDTV
-extern int cdtv_enabled;
 #endif
 
 uae_u32 allocated_chipmem;
@@ -1131,6 +1130,7 @@ uae_u8 REGPARAM2 *default_xlate (uaecptr a)
     if (quit_program == 0) {
 	/* do this only in 68010+ mode, there are some tricky A500 programs.. */
 	if (currprefs.cpu_level > 0 || !currprefs.cpu_compatible) {
+	    enforcer_disable ();
 	    if (be_cnt < 3) {
 		int i, j;
 		uaecptr a2 = a - 32;
@@ -1801,6 +1801,12 @@ void memory_reset (void)
     map_banks (&kickmem_bank, 0xF8, 8, 0);
     if (currprefs.maprom)
 	map_banks (&kickram_bank, currprefs.maprom >> 16, 8, 0);
+    /* map beta Kickstarts to 0x200000 */
+    if (kickmemory[2] == 0x4e && kickmemory[3] == 0xf9 && kickmemory[4] == 0x00) {
+	uae_u32 addr = kickmemory[5];
+        if (addr == 0x20 && currprefs.chipmem_size <= 0x200000 && currprefs.fastmem_size == 0)
+	    map_banks (&kickmem_bank, addr, 8, 0);
+    }
 
     if (a1000_bootrom)
         a1000_handle_kickstart (1);
@@ -1823,6 +1829,10 @@ void memory_reset (void)
 #ifdef CDTV
     case EXTENDED_ROM_CDTV:
 	map_banks (&extendedkickmem_bank, 0xF0, 4, 0);
+	//extendedkickmemory[0x61a2] = 0x60;
+	//extendedkickmemory[0x61a3] = 0x00;
+	//extendedkickmemory[0x61a4] = 0x01;
+	//extendedkickmemory[0x61a5] = 0x1a;
 	cdtv_enabled = 1;
 	break;
 #endif

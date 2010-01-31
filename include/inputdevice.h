@@ -49,8 +49,8 @@ struct uae_input_device_kbr_default {
 #define ID_AXIS_TOTAL 32
 
 extern int inputdevice_iterate (int devnum, int num, char *name, int *af);
-extern int inputdevice_set_mapping (int devnum, int num, char *name, int af, int sub);
-extern int inputdevice_get_mapped_name (int devnum, int num, int *pflags, char *name, int sub);
+extern int inputdevice_set_mapping (int devnum, int num, char *name, char *custom, int af, int sub);
+extern int inputdevice_get_mapped_name (int devnum, int num, int *pflags, char *name, char *custom, int sub);
 extern void inputdevice_copyconfig (struct uae_prefs *src, struct uae_prefs *dst);
 extern void inputdevice_copy_single_config (struct uae_prefs *p, int src, int dst, int devnum);
 extern void inputdevice_swap_ports (struct uae_prefs *p, int devnum);
@@ -145,6 +145,10 @@ extern void inputdevice_handle_inputcode (void);
 #define JSEM_ISNUMPAD(port,p) (jsem_iskbdjoy(port,p) == JSEM_KBDLAYOUT)
 #define JSEM_ISCURSOR(port,p) (jsem_iskbdjoy(port,p) == JSEM_KBDLAYOUT + 1)
 #define JSEM_ISSOMEWHEREELSE(port,p) (jsem_iskbdjoy(port,p) == JSEM_KBDLAYOUT + 2)
+#define JSEM_ISXARCADE1(port,p) (jsem_iskbdjoy(port,p) == JSEM_KBDLAYOUT + 3)
+#define JSEM_ISXARCADE2(port,p) (jsem_iskbdjoy(port,p) == JSEM_KBDLAYOUT + 4)
+#define JSEM_LASTKBD 5
+#define JSEM_ISANYKBD(port,p) (jsem_iskbdjoy(port,p) >= JSEM_KBDLAYOUT && jsem_iskbdjoy(port,p) < JSEM_KBDLAYOUT + JSEM_LASTKBD)
 extern int compatibility_device[2];
 
 extern int jsem_isjoy (int port, struct uae_prefs *p);
