@@ -1,17 +1,302 @@
 #
-# Top-level Makefile for UAE
+# Makefile.in for UAE
 #
 
-all:
-	cd src && $(MAKE)
-	cp src/uae .
-	cp src/readdisk .
+@SET_MAKE@
+CC        = @CC@
+WRC       = @WRCPRG@
+CPP       = @CPP@
+LDFLAGS   = @LDFLAGS@
+CFLAGS    = @CFLAGS@ -D__inline__=@ac_cv_c_inline@
+X_CFLAGS  = @X_CFLAGS@ @GTK_CFLAGS@ -DSHM_SUPPORT_LINKS=@SHM_SUPPORT_LINKS@
+TARGET    = @TARGET@
+LIBRARIES = @LIBRARIES@ @LIBS@ @GTK_LIBS@
+MATHLIB   = @MATHLIB@
+RESOBJS   = @RESOBJS@
+
+NO_SCHED_CFLAGS = @NO_SCHED_CFLAGS@
+
+INSTALL         = @INSTALL@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_DATA    = @INSTALL_DATA@
+prefix          = @prefix@
+exec_prefix     = @exec_prefix@
+bindir          = @bindir@
+libdir          = @libdir@
+sysconfdir      = @sysconfdir@
+
+VPATH = @top_srcdir@/src
+
+.SUFFIXES: .o .c .h .m .i .S .rc .res
+
+#.SECONDARY: cpuemu.c cpustbl.c cputbl.h
+
+INCLUDES=-I. -I@top_srcdir@/src/include/
+
+OBJS = main.o newcpu.o memory.o @CPUOBJS@ custom.o cia.o serial.o blitter.o \
+       autoconf.o ersatz.o filesys.o hardfile.o keybuf.o expansion.o zfile.o \
+       fpp.o readcpu.o cpudefs.o gfxutil.o gfxlib.o blitfunc.o blittable.o \
+       disk.o audio.o compiler.o uaelib.o drawing.o picasso96.o cpustbl.o \
+       uaeexe.o bsdsocket.o missing.o sd-sound.o od-joy.o md-support.o \
+       fsusage.o cfgfile.o native2amiga.o @FSDBOBJS@ fsdb.o identify.o \
+       savestate.o writelog.o @ASMOBJS@ @GFXOBJS@ @DEBUGOBJS@ @SCSIOBJS@ \
+       @JITOBJS@
+
+all: $(TARGET)
+
+x11: progs
+
+svgalib: progs
+
+win32: progs $(RESOBJS)
+	$(WRC) $(RESOBJS) uae.exe
+
+ggilib: progs
+
+asciiart: progs
+
+amigaos: progs
+
+p_os: progs
+
+beos: progs
+
+next: progs
+	cp uae ../Uae.app/Uae
+
+progs: uae readdisk
+
+install:
+
+readdisk: readdisk.o missing.o
+	$(CC) readdisk.o missing.o -o readdisk $(LDFLAGS) $(DEBUGFLAGS)
+
+uae: $(OBJS)
+	$(CC) $(OBJS) -o uae $(GFXLDFLAGS) $(LDFLAGS) $(DEBUGFLAGS) $(LIBRARIES) $(MATHLIB)
 
 clean:
-	cd src && $(MAKE) clean
-	rm -f uae readdisk 
-	
-streifenfrei:
-	cd src && $(MAKE) streifenfrei
-	rm -f uae readdisk
-	rm -f config.cache config.log config.status Makefile
+	$(MAKE) -C tools clean
+	-rm -f $(OBJS) *.o uae readdisk
+	-rm -f blit.h cpudefs.c
+	-rm -f cpuemu.c build68k cputmp.s cpufast*.s cpustbl.c cputbl.h
+	-rm -f blitfunc.c blitfunc.h blittable.c
+	-rm -f compemu.c compstbl.c comptbl.h gencomp
+
+halfclean:
+	-rm -f $(OBJS)
+
+streifenfrei: clean
+	-rm -f Makefile sysconfig.h
+	-rm -f od-joy.c md-X86.S sd-sound.c md-support.c
+	-rm -f machdep osdep threaddep sounddep target.h config.h
+
+blit.h: tools/genblitter
+	./tools/genblitter i >blit.h
+blitfunc.c: tools/genblitter blitfunc.h
+	./tools/genblitter f >blitfunc.c
+blitfunc.h: tools/genblitter
+	./tools/genblitter h >blitfunc.h
+blittable.c: tools/genblitter blitfunc.h
+	./tools/genblitter t >blittable.c
+
+tools/genblitter:
+	$(MAKE) -C tools genblitter
+tools/build68k:
+	$(MAKE) -C tools build68kc
+tools/cpuopti:
+	$(MAKE) -C tools cpuopti
+tools/gencpu: 
+	$(MAKE) -C tools gencpu
+tools/gencomp:
+	$(MAKE) -C tools gencomp
+
+custom.o: blit.h
+drawing.o: linetoscr.c
+
+cpudefs.c: tools/build68k @top_srcdir@/src/table68k
+	./tools/build68k <@top_srcdir@/src/table68k >cpudefs.c
+
+cpuemu.c: tools/gencpu
+	./tools/gencpu
+
+compemu.c: tools/gencomp
+	./tools/gencomp
+
+# gencpu also creates cpustbl.c and cputbl.h
+cpustbl.c: cpuemu.c
+cputbl.h: cpuemu.c
+compstbl.c: compemu.c
+comptbl.h: compemu.c
+compemu_support.o: compemu_optimizer.c
+
+cpufast.s: cpuemu.c tools/cpuopti
+	$(CC) $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp.s
+	./tools/cpuopti <cputmp.s >$@
+	rm cputmp.s
+
+cpufast_nf.s: cpuemu.c tools/cpuopti
+	$(CC) $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) -DNOFLAGS $< -o cputmp_nf.s
+	./tools/cpuopti <cputmp_nf.s >$@
+	rm cputmp_nf.s
+
+cpuemu_nf.o: cpuemu.c ./tools/cpuopti
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) -DNOFLAGS $< -o $@
+
+cpustbl_nf.o: cpustbl.c
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) -DNOFLAGS cpustbl.c -o $@
+
+comptest: compemu_support.o compemu.o comptest.o readcpu.o missing.o cpudefs.o compstbl.o 
+	$(CC) -o compemu_support.o comptest compemu.o comptest.o readcpu.o \
+		missing.o cpudefs.o compstbl.o \
+		$(GFXLDFLAGS) $(LDFLAGS) $(DEBUGFLAGS) $(LIBRARIES) $(MATHLIB)
+
+
+console_missing.o: missing.c
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(CFLAGS_$@) $< -o $@
+
+osdep/beos.o: osdep/beos.cpp
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) osdep/beos.cpp -o osdep/beos.o
+
+.rc.res:
+	$(WRC) $(INCLUDES) $<
+.m.o:
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $<
+.c.o:
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(CFLAGS_$@) $< -o $@
+.c.s:
+	$(CC) $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $< -o $@
+.c.i:
+	$(CC) $(INCLUDES) -E $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $< > $@
+.S.o:
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $< -o $@
+.s.o:
+	$(CC) $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $< -o $@
+
+# Saves recompiling...
+touch:
+	touch *.o; touch build68k; touch cpudefs.c; touch cpudefs.o; touch gencpu; touch cpuemu.c; touch cpuopti.o cpuopti cpuemu.o cpufast.s cpufast.o
+
+build68k.o: include/readcpu.h
+readcpu.o: include/readcpu.h
+
+main.o: config.h
+cia.o: config.h include/events.h
+custom.o: config.h include/events.h blit.h
+newcpu.o: config.h include/events.h
+autoconf.o: config.h
+expansion.o: config.h
+xwin.o: config.h
+svga.o: config.h
+audio.o: config.h include/events.h
+memory.o: config.h
+debug.o: config.h
+identify.o: config.h
+fpp.o: config.h
+ersatz.o: config.h
+filesys.o: config.h
+execlib.o: config.h
+disk.o: config.h include/events.h
+blitter.o: config.h include/events.h blit.h
+
+# sam: this is for people with low memory. (is there a way do do this with a single rule ?)
+cpufast1.s: cpuemu.c cpuopti
+	$(CC) -DPART_1 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp1.s
+	./tools/cpuopti <cputmp1.s >$@
+	rm cputmp1.s
+cpufast2.s: cpuemu.c cpuopti
+	$(CC) -DPART_2 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp2.s
+	./tools/cpuopti <cputmp2.s >$@
+	rm cputmp2.s
+cpufast3.s: cpuemu.c cpuopti
+	$(CC) -DPART_3 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp3.s
+	./tools/cpuopti <cputmp3.s >$@
+	rm cputmp3.s
+cpufast4.s: cpuemu.c cpuopti
+	$(CC) -DPART_4 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp4.s
+	./tools/cpuopti <cputmp4.s >$@
+	rm cputmp4.s
+cpufast5.s: cpuemu.c cpuopti
+	$(CC) -DPART_5 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp5.s
+	./tools/cpuopti <cputmp5.s >$@
+	rm cputmp5.s
+cpufast6.s: cpuemu.c cpuopti
+	$(CC) -DPART_6 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp6.s
+	./tools/cpuopti <cputmp6.s >$@
+	rm cputmp6.s
+cpufast7.s: cpuemu.c cpuopti
+	$(CC) -DPART_7 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp7.s
+	./tools/cpuopti <cputmp7.s >$@
+	rm cputmp7.s
+cpufast8.s: cpuemu.c cpuopti
+	$(CC) -DPART_8 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) $< -o cputmp8.s
+	./tools/cpuopti <cputmp8.s >$@
+	rm cputmp8.s
+
+cpufast1_nf.s: cpuemu.c cpuopti
+	$(CC) -DPART_1 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) -DNOFLAGS -g0 $< -o cputmp_nf1.s
+	./tools/cpuopti <cputmp_nf1.s >$@
+	rm cputmp_nf1.s
+cpufast2_nf.s: cpuemu.c cpuopti
+	$(CC) -DPART_2 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) -DNOFLAGS -g0 $< -o cputmp_nf2.s
+	./tools/cpuopti <cputmp_nf2.s >$@
+	rm cputmp_nf2.s
+cpufast3_nf.s: cpuemu.c cpuopti
+	$(CC) -DPART_3 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) -DNOFLAGS -g0 $< -o cputmp_nf3.s
+	./tools/cpuopti <cputmp_nf3.s >$@
+	rm cputmp_nf3.s
+cpufast4_nf.s: cpuemu.c cpuopti
+	$(CC) -DPART_4 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) -DNOFLAGS -g0 $< -o cputmp_nf4.s
+	./tools/cpuopti <cputmp_nf4.s >$@
+	rm cputmp_nf4.s
+cpufast5_nf.s: cpuemu.c cpuopti
+	$(CC) -DPART_5 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) -DNOFLAGS -g0 $< -o cputmp_nf5.s
+	./tools/cpuopti <cputmp_nf5.s >$@
+	rm cputmp_nf5.s
+cpufast6_nf.s: cpuemu.c cpuopti
+	$(CC) -DPART_6 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) -DNOFLAGS -g0 $< -o cputmp_nf6.s
+	./tools/cpuopti <cputmp_nf6.s >$@
+	rm cputmp_nf6.s
+cpufast7_nf.s: cpuemu.c cpuopti
+	$(CC) -DPART_7 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) -DNOFLAGS -g0 $< -o cputmp_nf7.s
+	./tools/cpuopti <cputmp_nf7.s >$@
+	rm cputmp_nf7.s
+cpufast8_nf.s: cpuemu.c cpuopti
+	$(CC) -DPART_8 $(INCLUDES) -S $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $(NO_SCHED_CFLAGS) -DNOFLAGS -g0 $< -o cputmp_nf8.s
+	./tools/cpuopti <cputmp_nf8.s >$@
+	rm cputmp_nf8.s
+
+cpuemu1.o: cpuemu.c
+	$(CC) -DPART_1 $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $< -o $@
+cpuemu2.o: cpuemu.c
+	$(CC) -DPART_2 $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $< -o $@
+cpuemu3.o: cpuemu.c
+	$(CC) -DPART_3 $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $< -o $@
+cpuemu4.o: cpuemu.c
+	$(CC) -DPART_4 $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $< -o $@
+cpuemu5.o: cpuemu.c
+	$(CC) -DPART_5 $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $< -o $@
+cpuemu6.o: cpuemu.c
+	$(CC) -DPART_6 $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $< -o $@
+cpuemu7.o: cpuemu.c
+	$(CC) -DPART_7 $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $< -o $@
+cpuemu8.o: cpuemu.c
+	$(CC) -DPART_8 $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) $< -o $@
+
+
+cpuemu1_nf.o: cpuemu.c
+	$(CC) -DPART_1 $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) -DNOFLAGS $< -o $@
+cpuemu2_nf.o: cpuemu.c
+	$(CC) -DPART_2 $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) -DNOFLAGS $< -o $@
+cpuemu3_nf.o: cpuemu.c
+	$(CC) -DPART_3 $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) -DNOFLAGS $< -o $@
+cpuemu4_nf.o: cpuemu.c
+	$(CC) -DPART_4 $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) -DNOFLAGS $< -o $@
+cpuemu5_nf.o: cpuemu.c
+	$(CC) -DPART_5 $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) -DNOFLAGS $< -o $@
+cpuemu6_nf.o: cpuemu.c
+	$(CC) -DPART_6 $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) -DNOFLAGS $< -o $@
+cpuemu7_nf.o: cpuemu.c
+	$(CC) -DPART_7 $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) -DNOFLAGS $< -o $@
+cpuemu8_nf.o: cpuemu.c
+	$(CC) -DPART_8 $(INCLUDES) -c $(INCDIRS) $(CFLAGS) $(X_CFLAGS) $(DEBUGFLAGS) -DNOFLAGS $< -o $@
+
