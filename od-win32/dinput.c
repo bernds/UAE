@@ -998,7 +998,7 @@ static void handle_rawinput_2 (RAWINPUT *raw)
 	if (num == num_mouse)
 	    return;
 
-	if (isfocus ()) {
+	if (isfocus () > 0) {
 	    for (i = 0; i < (5 > did->buttons ? did->buttons : 5); i++) {
 	        if (rm->usButtonFlags & (3 << (i * 2)))
 		    setmousebuttonstate (num, i, (rm->usButtonFlags & (1 << (i * 2))) ? 1 : 0);
@@ -1612,8 +1612,8 @@ static int acquire_mouse (int num, int flags)
     unacquire (lpdi, L"mouse");
     if (did->connection == DIDC_DX && lpdi) {
 	setcoop (&di_mouse[num], flags ? (DISCL_FOREGROUND | DISCL_EXCLUSIVE) : (DISCL_BACKGROUND | DISCL_NONEXCLUSIVE), L"mouse");
-	dipdw.diph.dwSize = sizeof(DIPROPDWORD);
-	dipdw.diph.dwHeaderSize = sizeof(DIPROPHEADER);
+	dipdw.diph.dwSize = sizeof (DIPROPDWORD);
+	dipdw.diph.dwHeaderSize = sizeof (DIPROPHEADER);
 	dipdw.diph.dwObj = 0;
 	dipdw.diph.dwHow = DIPH_DEVICE;
 	dipdw.dwData = DI_BUFFER;
@@ -1662,7 +1662,7 @@ static void read_mouse (void)
     DWORD elements;
     HRESULT hr;
     int i, j, k;
-    int fs = isfullscreen() > 0 ? 1 : 0;
+    int fs = isfullscreen () > 0 ? 1 : 0;
     int istest = inputdevice_istest ();
    
     if (IGNOREEVERYTHING)
@@ -1702,7 +1702,7 @@ static void read_mouse (void)
 #ifdef DI_DEBUG2
 		write_log (L"MOUSE: %d OFF=%d DATA=%d STATE=%d\n", i, dimofs, data, state);
 #endif
-		if (istest || isfocus ()) {
+		if (istest || isfocus () > 0) {
 		    for (k = 0; k < did->axles; k++) {
 		        if (did->axismappings[k] == dimofs)
 			    setmousestate (i, k, data, 0);

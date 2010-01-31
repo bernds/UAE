@@ -418,7 +418,7 @@ void reset_disk_history (void)
     int i;
 
     for (i = 0; i < MAX_PREVIOUS_FLOPPIES; i++)
-	DISK_history_add (NULL, i);
+	DISK_history_add (NULL, i, 0);
     write_disk_history ();
 }
 
@@ -445,7 +445,7 @@ UAEREG *read_disk_history (void)
 	if (_tcslen (tmp) == 7) {
 	    idx2 = _tstol (tmp + 5) - 1;
 	    if (idx2 >= 0)
-		DISK_history_add (tmp2, idx2);
+		DISK_history_add (tmp2, idx2, 0);
 	}
 	idx++;
     }
@@ -1205,7 +1205,7 @@ int scan_roms (int show)
 	keys = get_keyring ();
 	fetch_path (L"KickstartPath", path, sizeof path / sizeof (TCHAR));
 	cnt += scan_roms_3 (fkey, paths, path);
-	if (TRUE) {
+	if (1) {
 	    for(i = 0; i < MAX_ROM_PATHS; i++) {
 		ret = get_rom_path (path, i);
 		if (ret < 0)
@@ -1771,26 +1771,26 @@ int DiskSelection_2 (HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs
 	case IDC_DF0QQ:
 	    SetDlgItemText (hDlg, IDC_DF0TEXT, full_path);
 	    _tcscpy(prefs->df[0], full_path);
-	    DISK_history_add (full_path, -1);
+	    DISK_history_add (full_path, -1, 0);
 	    next = IDC_DF1;
 	    break;
 	case IDC_DF1:
 	case IDC_DF1QQ:
 	    SetDlgItemText (hDlg, IDC_DF1TEXT, full_path);
 	    _tcscpy(prefs->df[1], full_path);
-	    DISK_history_add (full_path, -1);
+	    DISK_history_add (full_path, -1, 0);
 	    next = IDC_DF2;
 	    break;
 	case IDC_DF2:
 	    SetDlgItemText (hDlg, IDC_DF2TEXT, full_path);
 	    _tcscpy(prefs->df[2], full_path);
-	    DISK_history_add (full_path, -1);
+	    DISK_history_add (full_path, -1, 0);
 	    next = IDC_DF3;
 	    break;
 	case IDC_DF3:
 	    SetDlgItemText (hDlg, IDC_DF3TEXT, full_path);
 	    _tcscpy (prefs->df[3], full_path);
-	    DISK_history_add (full_path, -1);
+	    DISK_history_add (full_path, -1, 0);
 	    break;
 	case IDC_DOSAVESTATE:
 	case IDC_DOLOADSTATE:
@@ -2734,7 +2734,7 @@ static void set_lventry_input (HWND list, int index)
     int flags, i, sub;
     TCHAR name[256];
     TCHAR custom[MAX_DPATH];
-    TCHAR af[10];
+    TCHAR af[32], toggle[32];
 
     inputdevice_get_mapped_name (input_selected_device, index, &flags, name, custom, input_selected_sub_num);
     if (flags & IDEV_MAPPED_AUTOFIRE_SET)
@@ -2743,15 +2743,22 @@ static void set_lventry_input (HWND list, int index)
 	WIN32GUI_LoadUIString (IDS_NO, af, sizeof (af) / sizeof (TCHAR));
     else
 	_tcscpy (af, L"-");
-    ListView_SetItemText(list, index, 1, custom[0] ? custom : name);
-    ListView_SetItemText(list, index, 2, af);
+    if (flags & IDEV_MAPPED_TOGGLE)
+	WIN32GUI_LoadUIString (IDS_YES, toggle, sizeof (toggle) / sizeof (TCHAR));
+    else if (flags & IDEV_MAPPED_AUTOFIRE_POSSIBLE)
+	WIN32GUI_LoadUIString (IDS_NO, toggle, sizeof (toggle) / sizeof (TCHAR));
+    else
+	_tcscpy (toggle, L"-");
+    ListView_SetItemText (list, index, 1, custom[0] ? custom : name);
+    ListView_SetItemText (list, index, 2, af);
+    ListView_SetItemText (list, index, 3, toggle);
     sub = 0;
     for (i = 0; i < MAX_INPUT_SUB_EVENT; i++) {
 	if (inputdevice_get_mapped_name (input_selected_device, index, &flags, name, custom, i) || custom[0])
 	    sub++;
     }
     _stprintf (name, L"%d", sub);
-    ListView_SetItemText(list, index, 3, name);
+    ListView_SetItemText (list, index, 4, name);
 }
 
 static void update_listview_input (HWND hDlg)
@@ -2766,7 +2773,7 @@ static void update_listview_input (HWND hDlg)
 static int clicked_entry = -1;
 
 #define LOADSAVE_COLUMNS 2
-#define INPUT_COLUMNS 4
+#define INPUT_COLUMNS 5
 #define HARDDISK_COLUMNS 8
 #define DISK_COLUMNS 3
 #define MISC2_COLUMNS 2
@@ -2800,6 +2807,7 @@ void InitializeListView (HWND hDlg)
     int listview_column_width[HARDDISK_COLUMNS];
 
     if (hDlg == pages[HARDDISK_ID]) {
+
 	listview_num_columns = HARDDISK_COLUMNS;
 	lv_type = LV_HARDDISK;
 	_tcscpy (column_heading[0], L"*");
@@ -2811,27 +2819,35 @@ void InitializeListView (HWND hDlg)
 	WIN32GUI_LoadUIString(IDS_HFDSIZE, column_heading[6], MAX_COLUMN_HEADING_WIDTH);
 	WIN32GUI_LoadUIString(IDS_BOOTPRI, column_heading[7], MAX_COLUMN_HEADING_WIDTH);
 	list = GetDlgItem(hDlg, IDC_VOLUMELIST);
+
     } else if (hDlg == pages[INPUT_ID]) {
+
 	listview_num_columns = INPUT_COLUMNS;
 	lv_type = LV_INPUT;
 	WIN32GUI_LoadUIString(IDS_INPUTHOSTWIDGET, column_heading[0], MAX_COLUMN_HEADING_WIDTH);
 	WIN32GUI_LoadUIString(IDS_INPUTAMIGAEVENT, column_heading[1], MAX_COLUMN_HEADING_WIDTH);
 	WIN32GUI_LoadUIString(IDS_INPUTAUTOFIRE, column_heading[2], MAX_COLUMN_HEADING_WIDTH);
-	_tcscpy (column_heading[3], L"#");
+	WIN32GUI_LoadUIString(IDS_INPUTTOGGLE, column_heading[3], MAX_COLUMN_HEADING_WIDTH);
+	_tcscpy (column_heading[4], L"#");
 	list = GetDlgItem(hDlg, IDC_INPUTLIST);
+
     } else if (hDlg == pages[MISC2_ID]) {
+
 	listview_num_columns = MISC2_COLUMNS;
 	lv_type = LV_MISC2;
 	_tcscpy (column_heading[0], L"Extension");
 	_tcscpy (column_heading[1], L"");
 	list = GetDlgItem (hDlg, IDC_ASSOCIATELIST);
+
     } else {
+
 	listview_num_columns = DISK_COLUMNS;
 	lv_type = LV_DISK;
 	_tcscpy (column_heading[0], L"#");
 	WIN32GUI_LoadUIString(IDS_DISK_IMAGENAME, column_heading[1], MAX_COLUMN_HEADING_WIDTH);
 	WIN32GUI_LoadUIString(IDS_DISK_DRIVENAME, column_heading[2], MAX_COLUMN_HEADING_WIDTH);
 	list = GetDlgItem (hDlg, IDC_DISK);
+
     }
 
     cachedlist = list;
@@ -2852,7 +2868,9 @@ void InitializeListView (HWND hDlg)
 	    ListView_InsertColumn (list, i, &lvcolumn);
 	}
     }
+
     if (lv_type == LV_MISC2) {
+
 	listview_column_width[0] = 180;
 	listview_column_width[1] = 10;
 	for (i = 0; exts[i].ext; i++) {
@@ -2865,6 +2883,7 @@ void InitializeListView (HWND hDlg)
 	    ListView_SetItemText (list, result, 1, exts[i].enabled ? L"*" : L"");
 	}
     } else if (lv_type == LV_INPUT) {
+
 	for (i = 0; input_total_devices && i < inputdevice_get_widget_num (input_selected_device); i++) {
 	    TCHAR name[100];
 	    inputdevice_get_widget_type (input_selected_device, i, name);
@@ -2881,9 +2900,12 @@ void InitializeListView (HWND hDlg)
 	}
 	listview_column_width [1] = 260;
 	listview_column_width [2] = 65;
-	listview_column_width [3] = 30;
+	listview_column_width [3] = 65;
+	listview_column_width [4] = 30;
 	update_listview_input (hDlg);
+
     } else if (lv_type == LV_DISK) {
+
 	for (i = 0; i < MAX_SPARE_DRIVES; i++) {
 	    int drv;
 	    _stprintf (tmp, L"%d", i + 1);
@@ -3296,7 +3318,7 @@ static HTREEITEM InitializeConfigTreeView (HWND hDlg)
 	HICON icon;
 	icon = LoadIcon (hInst, (LPCWSTR)MAKEINTRESOURCE(IDI_FOLDER));
 	ImageList_AddIcon (himl, icon);
-	icon = LoadIcon (hInst, (LPCWSTR)MAKEINTRESOURCE(IDI_CONFIGFILE));
+	icon = LoadIcon (hInst, (LPCWSTR)MAKEINTRESOURCE(IDI_FILE));
 	ImageList_AddIcon (himl, icon);
 	icon = LoadIcon (hInst, (LPCWSTR)MAKEINTRESOURCE(IDI_ROOT));
 	ImageList_AddIcon (himl, icon);
@@ -6226,6 +6248,9 @@ static void enable_for_miscdlg (HWND hDlg)
 	ew (hDlg, IDC_STATE_RATE, workprefs.statecapture ? TRUE : FALSE);
 	ew (hDlg, IDC_STATE_BUFFERSIZE, workprefs.statecapture ? TRUE : FALSE);
     }
+    ew (hDlg, IDC_ASSOCIATELIST, !rp_isactive ());
+    ew (hDlg, IDC_ASSOCIATE_ON, !rp_isactive ());
+    ew (hDlg, IDC_ASSOCIATE_OFF, !rp_isactive ());
 }
 
 static void misc_kbled (HWND hDlg, int v, int nv)
@@ -6315,7 +6340,7 @@ static void misc_lang(HWND hDlg)
     }
     SendDlgItemMessage (hDlg, IDC_LANGUAGE, CB_SETCURSEL, idx, 0);
 }
-static void misc_setlang(int v)
+static void misc_setlang (int v)
 {
     int i;
     WORD langid = 0;
@@ -6811,7 +6836,7 @@ static void values_from_cpudlg (HWND hDlg)
 #ifdef JIT
     oldcache = workprefs.cachesize;
     jitena = IsDlgButtonChecked (hDlg, IDC_JITENABLE) ? 1 : 0;
-    workprefs.cachesize = SendMessage (GetDlgItem(hDlg, IDC_CACHE), TBM_GETPOS, 0, 0) * 1024;
+    workprefs.cachesize = SendMessage (GetDlgItem (hDlg, IDC_CACHE), TBM_GETPOS, 0, 0) * 1024;
     if (!jitena) {
 	cachesize_prev = workprefs.cachesize;
 	trust_prev = workprefs.comptrustbyte;
@@ -8458,7 +8483,7 @@ static int getfloppybox (HWND hDlg, int f_text, TCHAR *out, int maxlen)
     i = 0;
     while ((p = DISK_history_get (i))) {
 	if (!_tcscmp (p, out)) {
-	    DISK_history_add (out, -1);
+	    DISK_history_add (out, -1, 0);
 	    break;
 	}
 	i++;
@@ -9047,7 +9072,6 @@ static void enable_for_gameportsdlg (HWND hDlg)
 {
     int v = full_property_sheet;
     ew (hDlg, IDC_PORT_TABLET_FULL, v && is_tablet () && workprefs.input_tablet > 0);
-    ew (hDlg, IDC_PORT_MOUSETRICK, v);
     ew (hDlg, IDC_PORT_TABLET_CURSOR, v && workprefs.input_tablet > 0);
     ew (hDlg, IDC_PORT_TABLET, v);
 }
@@ -9192,7 +9216,7 @@ static void values_from_gameportsdlg (HWND hDlg, int d)
 	if (success)
 	    currprefs.input_mouse_speed = workprefs.input_mouse_speed = i;
 
-	workprefs.input_magic_mouse = IsDlgButtonChecked (hDlg, IDC_PORT_MOUSETRICK) ? -1 : 0;
+	currprefs.input_magic_mouse = workprefs.input_magic_mouse = IsDlgButtonChecked (hDlg, IDC_PORT_MOUSETRICK) ? -1 : 0;
 	workprefs.input_magic_mouse_cursor = SendDlgItemMessage (hDlg, IDC_PORT_TABLET_CURSOR, CB_GETCURSEL, 0, 0L);
 	workprefs.input_tablet = 0;
 	if (IsDlgButtonChecked (hDlg, IDC_PORT_TABLET)) {
@@ -9346,9 +9370,9 @@ static void values_to_portsdlg (HWND hDlg)
     SetDlgItemInt (hDlg, IDC_PRINTERAUTOFLUSH, workprefs.parallel_autoflush_time, FALSE);
     idx = workprefs.parallel_matrix_emulation;
     if (workprefs.parallel_postscript_detection)
-	idx = 2;
-    if (workprefs.parallel_postscript_emulation)
 	idx = 3;
+    if (workprefs.parallel_postscript_emulation)
+	idx = 4;
     SendDlgItemMessage (hDlg, IDC_PRINTERTYPELIST, CB_SETCURSEL, idx, 0);
 
     SetDlgItemText (hDlg, IDC_PS_PARAMS, workprefs.ghostscript_parameters);
@@ -9875,7 +9899,7 @@ static void doinputcustom (HWND hDlg, int newcustom)
     if (_tcslen (custom1) > 0 || newcustom) {
 	if (askinputcustom (hDlg, custom1, sizeof custom1 / sizeof (TCHAR), IDS_SB_CUSTOMEVENT)) {
 	    inputdevice_set_mapping (input_selected_device, input_selected_widget,
-		0, custom1, (flags & IDEV_MAPPED_AUTOFIRE_SET) ? 1 : 0, input_selected_sub_num);
+		0, custom1, flags, input_selected_sub_num);
 	}
     }
 }
@@ -9958,7 +9982,7 @@ static void values_from_inputdlg (HWND hDlg, int inputchange)
 	    custom[0] = 0;
 	inputdevice_set_mapping (input_selected_device, input_selected_widget,
 	    eventnames[input_selected_event], _tcslen (custom) == 0 ? NULL : custom,
-	    (flags & IDEV_MAPPED_AUTOFIRE_SET) ? 1 : 0, input_selected_sub_num);
+	    flags, input_selected_sub_num);
 	update_listview_input (hDlg);
 	inputdevice_updateconfig (&workprefs);
     }
@@ -9998,7 +10022,7 @@ static void input_copy (HWND hDlg)
 
 static void input_toggleautofire (void)
 {
-    int af, flags, evt;
+    int flags, evt;
     TCHAR name[256];
     TCHAR custom[MAX_DPATH];
     if (input_selected_device < 0 || input_selected_widget < 0)
@@ -10007,9 +10031,22 @@ static void input_toggleautofire (void)
 	&flags, name, custom, input_selected_sub_num);
     if (evt <= 0)
 	return;
-    af = (flags & IDEV_MAPPED_AUTOFIRE_SET) ? 0 : 1;
     inputdevice_set_mapping (input_selected_device, input_selected_widget,
-	name, custom, af, input_selected_sub_num);
+	name, custom, flags ^ IDEV_MAPPED_AUTOFIRE_SET, input_selected_sub_num);
+}
+static void input_toggletoggle (void)
+{
+    int flags, evt;
+    TCHAR name[256];
+    TCHAR custom[MAX_DPATH];
+    if (input_selected_device < 0 || input_selected_widget < 0)
+	return;
+    evt = inputdevice_get_mapped_name (input_selected_device, input_selected_widget,
+	&flags, name, custom, input_selected_sub_num);
+    if (evt <= 0)
+	return;
+    inputdevice_set_mapping (input_selected_device, input_selected_widget,
+	name, custom, flags ^ IDEV_MAPPED_TOGGLE, input_selected_sub_num);
 }
 
 static INT_PTR CALLBACK InputDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -10051,7 +10088,7 @@ static INT_PTR CALLBACK InputDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 	    input_swap (hDlg);
 	    break;
 	    case IDC_INPUTDEVICEDISABLE:
-	    inputdevice_set_device_status (input_selected_device, IsDlgButtonChecked( hDlg, IDC_INPUTDEVICEDISABLE) ? 1 : 0);
+	    inputdevice_set_device_status (input_selected_device, IsDlgButtonChecked (hDlg, IDC_INPUTDEVICEDISABLE) ? 1 : 0);
 	    break;
 	    default:
 	    switch (LOWORD (wParam))
@@ -10100,7 +10137,9 @@ static INT_PTR CALLBACK InputDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 		    input_selected_widget = entry;
 		    if (row == 2 && entry == oldentry)
 			input_toggleautofire ();
-		    if (row == 3) {
+		    if (row == 3 && entry == oldentry)
+			input_toggletoggle ();
+		    if (row == 4) {
 			input_selected_sub_num++;
 			if (input_selected_sub_num >= MAX_INPUT_SUB_EVENT)
 			    input_selected_sub_num = 0;
@@ -10156,9 +10195,9 @@ static void enable_for_hw3ddlg (HWND hDlg)
     ew (hDlg, IDC_FILTERVZMULT, v && !as);
     ew (hDlg, IDC_FILTERHO, v && !as);
     ew (hDlg, IDC_FILTERVO, v && !as);
-    ew (hDlg, IDC_FILTERSLR, vv3 && !as);
-    ew (hDlg, IDC_FILTERXL, vv2 && !as);
-    ew (hDlg, IDC_FILTERXLV, vv2 && !as);
+    ew (hDlg, IDC_FILTERSLR, vv3);
+    ew (hDlg, IDC_FILTERXL, vv2);
+    ew (hDlg, IDC_FILTERXLV, vv2);
     ew (hDlg, IDC_FILTERXTRA, vv2);
     ew (hDlg, IDC_FILTERDEFAULT, v);
     ew (hDlg, IDC_FILTERFILTER, vv);
@@ -11708,7 +11747,7 @@ int dragdrop (HWND hDlg, HDROP hd, struct uae_prefs *prefs, int	currentpage)
 
 	if (drvdrag) {
 	    type = ZFILE_DISKIMAGE;
-	} else if (zip) {
+	} else if (zip || harddrive) {
 	    do_filesys_insert (file);
 	    continue;
 	}
@@ -12136,7 +12175,7 @@ static int GetSettings (int all_options, HWND hwnd)
     if (!init_called) {
 	first = 1;
 	panelresource = getresource (IDD_PANEL);
-	LOADSAVE_ID = init_page (IDD_LOADSAVE, IDI_CONFIGFILE, IDS_LOADSAVE, LoadSaveDlgProc, NULL, L"gui/configurations.htm");
+	LOADSAVE_ID = init_page (IDD_LOADSAVE, IDI_FILE, IDS_LOADSAVE, LoadSaveDlgProc, NULL, L"gui/configurations.htm");
 	MEMORY_ID = init_page (IDD_MEMORY, IDI_MEMORY, IDS_MEMORY, MemoryDlgProc, NULL, L"gui/ram.htm");
 	KICKSTART_ID = init_page (IDD_KICKSTART, IDI_MEMORY, IDS_KICKSTART, KickstartDlgProc, NULL, L"gui/rom.htm");
 	CPU_ID = init_page (IDD_CPU, IDI_CPU, IDS_CPU, CPUDlgProc, NULL, L"gui/cpu.htm");
@@ -12153,7 +12192,7 @@ static int GetSettings (int all_options, HWND hwnd)
 	HARDDISK_ID = init_page (IDD_HARDDISK, IDI_HARDDISK, IDS_HARDDISK, HarddiskDlgProc, HarddiskAccel, L"gui/hard-drives.htm");
 #endif
 	GAMEPORTS_ID = init_page (IDD_GAMEPORTS, IDI_GAMEPORTS, IDS_GAMEPORTS, GamePortsDlgProc, NULL, L"gui/gameports.htm");
-	IOPORTS_ID = init_page (IDD_IOPORTS, IDI_IOPORTS, IDS_IOPORTS, IOPortsDlgProc, NULL, L"gui/ioports.htm");
+	IOPORTS_ID = init_page (IDD_IOPORTS, IDI_PORTS, IDS_IOPORTS, IOPortsDlgProc, NULL, L"gui/ioports.htm");
 	INPUT_ID = init_page (IDD_INPUT, IDI_INPUT, IDS_INPUT, InputDlgProc, NULL, L"gui/input.htm");
 	MISC1_ID = init_page (IDD_MISC1, IDI_MISC1, IDS_MISC1, MiscDlgProc1, NULL, L"gui/misc.htm");
 	MISC2_ID = init_page (IDD_MISC2, IDI_MISC2, IDS_MISC2, MiscDlgProc2, NULL, L"gui/misc2.htm");
@@ -12400,13 +12439,16 @@ void gui_led (int led, int on)
 	pos = 5;
 	ptr = _tcscpy (drive_text + pos * 16, L"CD");
     } else if (led == 7) {
+	double fps = (double)gui_data.fps / 10.0;
 	extern int p96vblank;
 	pos = 2;
 	ptr = drive_text + pos * 16;
+	if (fps > 999.9)
+	    fps = 999.9;
 	if (picasso_on)
-	    _stprintf (ptr, L"%d [%.1f]", p96vblank, (double)(gui_data.fps  / 10.0));
+	    _stprintf (ptr, L"%d [%.1f]", p96vblank, fps);
 	else
-	    _stprintf (ptr, L"FPS: %.1f", (double)(gui_data.fps  / 10.0));
+	    _stprintf (ptr, L"FPS: %.1f", fps);
 	if (pause_emulation)
 	    _tcscpy (ptr, L"PAUSED");
     } else if (led == 8) {

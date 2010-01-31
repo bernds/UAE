@@ -1,0 +1,105 @@
+﻿     1>ClCompile:
+         build68k.c
+C:\msvs10\VC\include\crtdefs.h(527): error C2143: syntax error : missing ')' before 'const'
+C:\msvs10\VC\include\crtdefs.h(527): error C2143: syntax error : missing '{' before 'const'
+C:\msvs10\VC\include\crtdefs.h(527): error C2059: syntax error : ','
+C:\msvs10\VC\include\crtdefs.h(527): error C2059: syntax error : ')'
+C:\msvs10\VC\include\stdlib.h(211): error C2146: syntax error : missing ')' before identifier '_purecall_handler'
+C:\msvs10\VC\include\stdlib.h(211): error C2059: syntax error : ')'
+C:\msvs10\VC\include\stdlib.h(211): error C2085: '_Handler' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(212): error C2085: '_get_purecall_handler' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(236): error C2085: '_invalid_parameter_handler' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(239): error C2061: syntax error : identifier '_invalid_parameter_handler'
+C:\msvs10\VC\include\stdlib.h(240): error C2143: syntax error : missing '{' before '__cdecl'
+C:\msvs10\VC\include\stdlib.h(267): error C2143: syntax error : missing ')' before 'type'
+C:\msvs10\VC\include\stdlib.h(267): error C2059: syntax error : ')'
+C:\msvs10\VC\include\stdlib.h(267): error C2085: '_Value' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(268): error C2143: syntax error : missing ')' before 'type'
+C:\msvs10\VC\include\stdlib.h(268): error C2085: '_get_errno' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(268): error C2143: syntax error : missing ';' before 'type'
+C:\msvs10\VC\include\stdlib.h(268): error C2059: syntax error : ')'
+C:\msvs10\VC\include\stdlib.h(268): error C2085: '_Value' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(271): error C2085: '__doserrno' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(274): error C2143: syntax error : missing ')' before 'type'
+C:\msvs10\VC\include\stdlib.h(274): error C2085: '_set_doserrno' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(274): error C2143: syntax error : missing ';' before 'type'
+C:\msvs10\VC\include\stdlib.h(274): error C2059: syntax error : ')'
+C:\msvs10\VC\include\stdlib.h(274): error C2085: '_Value' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(275): error C2143: syntax error : missing ')' before 'type'
+C:\msvs10\VC\include\stdlib.h(275): error C2085: '_get_doserrno' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(275): error C2143: syntax error : missing ';' before 'type'
+C:\msvs10\VC\include\stdlib.h(275): error C2059: syntax error : ')'
+C:\msvs10\VC\include\stdlib.h(275): error C2085: '_Value' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(278): error C2085: '__sys_errlist' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(281): error C2085: '__sys_nerr' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(298): error C2085: '__argc' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(299): error C2085: '__argv' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(300): error C2085: '__wargv' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(314): error C2085: '_environ' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(315): error C2085: '_wenviron' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(318): error C2085: '_pgmptr' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(319): error C2085: '_wpgmptr' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(336): error C2143: syntax error : missing ')' before 'type'
+C:\msvs10\VC\include\stdlib.h(336): error C2085: '_get_pgmptr' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(336): error C2143: syntax error : missing ';' before 'type'
+C:\msvs10\VC\include\stdlib.h(336): error C2059: syntax error : ')'
+C:\msvs10\VC\include\stdlib.h(336): error C2085: '_Value' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(337): error C2146: syntax error : missing ')' before identifier 'wchar_t'
+C:\msvs10\VC\include\stdlib.h(337): error C2085: '_get_wpgmptr' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(337): error C2146: syntax error : missing ',' before identifier 'wchar_t'
+C:\msvs10\VC\include\stdlib.h(337): error C2143: syntax error : missing ';' before '*'
+C:\msvs10\VC\include\stdlib.h(337): error C2059: syntax error : ')'
+C:\msvs10\VC\include\stdlib.h(347): error C2143: syntax error : missing ')' before 'type'
+C:\msvs10\VC\include\stdlib.h(347): error C2059: syntax error : ')'
+C:\msvs10\VC\include\stdlib.h(347): error C2085: '_Mode' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(348): error C2143: syntax error : missing ')' before 'type'
+C:\msvs10\VC\include\stdlib.h(348): error C2085: '_get_fmode' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(348): error C2143: syntax error : missing ';' before 'type'
+C:\msvs10\VC\include\stdlib.h(348): error C2059: syntax error : ')'
+C:\msvs10\VC\include\stdlib.h(348): error C2085: '_PMode' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(368): error C2143: syntax error : missing ')' before 'type'
+C:\msvs10\VC\include\stdlib.h(368): error C2085: 'exit' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(368): error C2143: syntax error : missing ';' before 'type'
+C:\msvs10\VC\include\stdlib.h(368): error C2059: syntax error : ')'
+C:\msvs10\VC\include\stdlib.h(368): error C2085: '_Code' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(369): error C2143: syntax error : missing ')' before 'type'
+C:\msvs10\VC\include\stdlib.h(369): error C2085: '_exit' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(369): error C2143: syntax error : missing ';' before 'type'
+C:\msvs10\VC\include\stdlib.h(369): error C2059: syntax error : ')'
+C:\msvs10\VC\include\stdlib.h(369): error C2085: '_Code' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(370): error C2085: 'abort' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(373): error C2143: syntax error : missing ')' before 'type'
+C:\msvs10\VC\include\stdlib.h(373): error C2085: '_set_abort_behavior' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(373): error C2143: syntax error : missing ';' before 'type'
+C:\msvs10\VC\include\stdlib.h(373): error C2085: '_Flags' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(373): error C2143: syntax error : missing ';' before 'type'
+C:\msvs10\VC\include\stdlib.h(373): error C2059: syntax error : ')'
+C:\msvs10\VC\include\stdlib.h(373): error C2085: '_Mask' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(377): error C2143: syntax error : missing ')' before 'type'
+C:\msvs10\VC\include\stdlib.h(377): error C2085: 'abs' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(377): error C2143: syntax error : missing ';' before 'type'
+C:\msvs10\VC\include\stdlib.h(377): error C2059: syntax error : ')'
+C:\msvs10\VC\include\stdlib.h(377): error C2085: '_X' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(378): error C2143: syntax error : missing ')' before 'type'
+C:\msvs10\VC\include\stdlib.h(378): error C2085: 'labs' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(378): error C2143: syntax error : missing ';' before 'type'
+C:\msvs10\VC\include\stdlib.h(378): error C2059: syntax error : ')'
+C:\msvs10\VC\include\stdlib.h(378): error C2085: '_X' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(379): error C2143: syntax error : missing ')' before 'type'
+C:\msvs10\VC\include\stdlib.h(379): error C2085: 'llabs' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(379): error C2143: syntax error : missing ';' before 'type'
+C:\msvs10\VC\include\stdlib.h(379): error C2059: syntax error : ')'
+C:\msvs10\VC\include\stdlib.h(379): error C2085: '_X' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(382): error C2085: '_abs64' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(410): error C2085: 'atexit' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(414): error C2061: syntax error : identifier '_Check_return_'
+C:\msvs10\VC\include\stdlib.h(415): error C2054: expected '(' to follow '_Check_return_'
+C:\msvs10\VC\include\stdlib.h(415): error C2143: syntax error : missing ')' before 'const'
+C:\msvs10\VC\include\stdlib.h(415): error C2085: '_atof_l' : not in formal parameter list
+C:\msvs10\VC\include\stdlib.h(415): error C2143: syntax error : missing ';' before 'const'
+C:\msvs10\VC\include\stdlib.h(415): error C2059: syntax error : ')'
+C:\msvs10\VC\include\stdlib.h(417): error C2086: 'int _Check_return_' : redefinition
+                 C:\msvs10\VC\include\stdlib.h(415) : see declaration of '_Check_return_'
+C:\msvs10\VC\include\stdlib.h(417): error C2054: expected '(' to follow '_Check_return_'
+C:\msvs10\VC\include\stdlib.h(417): error C2143: syntax error : missing ')' before 'const'
+C:\msvs10\VC\include\stdlib.h(417): fatal error C1003: error count exceeds 100; stopping compilation

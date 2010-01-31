@@ -31,6 +31,7 @@
 #include <shlobj.h>
 #include <shlwapi.h>
 #include <dbghelp.h>
+#include <float.h>
 
 #include "resource"
 
@@ -87,6 +88,7 @@
 extern int harddrive_dangerous, do_rdbdump, aspi_allow_all, no_rawinput, rawkeyboard;
 int log_scsi, log_net, uaelib_debug;
 int pissoff_value = 25000;
+unsigned int fpucontrol;
 
 extern FILE *debugfile;
 extern int console_logging;
@@ -192,13 +194,13 @@ static int init_mmtimer (void)
     int i;
 
     mm_timerres = 0;
-    if (timeGetDevCaps(&tc, sizeof(TIMECAPS)) != TIMERR_NOERROR)
+    if (timeGetDevCaps (&tc, sizeof(TIMECAPS)) != TIMERR_NOERROR)
 	return 0;
     mm_timerres = min (max (tc.wPeriodMin, 1), tc.wPeriodMax);
     sleep_resolution = 1000 / mm_timerres;
     for (i = 0; i < MAX_TIMEHANDLES; i++)
 	timehandle[i] = CreateEvent (NULL, TRUE, FALSE, NULL);
-    InitializeCriticalSection(&cs_time);
+    InitializeCriticalSection (&cs_time);
     timehandlecounter = 0;
     return 1;
 }
@@ -520,9 +522,13 @@ void setmouseactive (int active)
     if (mouseactive == active && active >= 0)
 	return;
 
-    if (active > 0) {
+    if (active == 1 && !currprefs.input_magic_mouse) {
 	HANDLE c = GetCursor ();
 	if (c != normalcursor)
+	    return;
+    }
+    if (active) {
+	if (IsWindowVisible (hAmigaWnd) == FALSE)
 	    return;
     }
 
@@ -559,7 +565,7 @@ void setmouseactive (int active)
 		if (SetForegroundWindow (w1) == FALSE) {
 		    if (w3 == NULL || SetForegroundWindow (w3) == FALSE) {
 			donotfocus = 1;
-			write_log (L"wanted focus but SetforegroundWindow() failed\n");
+			write_log (L"wanted focus but SetForegroundWindow() failed\n");
 		    }
 		}
 	    }
@@ -798,7 +804,7 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
     case WM_LBUTTONDOWN:
     case WM_LBUTTONDBLCLK:
 	if (!mouseactive && isfullscreen() <= 0 && !gui_active && (!mousehack_alive () || currprefs.input_tablet != TABLET_MOUSEHACK)) {
-	    setmouseactive (1);
+	    setmouseactive (message == WM_LBUTTONDBLCLK ? 2 : 1);
 	} else if (dinput_winmouse () >= 0 && isfocus ()) {
 	    setmousebuttonstate (dinput_winmouse (), 0, 1);
 	}
@@ -956,7 +962,6 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 	break;
     }
 
-
     case WM_MOUSEMOVE:
     {
 	int wm = dinput_winmouse ();
@@ -1032,6 +1037,7 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 	    SHNOTIFYSTRUCT *shns = (SHNOTIFYSTRUCT*)wParam;
 	    if (SHGetPathFromIDList ((struct _ITEMIDLIST *)(shns->dwItem1), path)) {
 		int inserted = lParam == SHCNE_MEDIAINSERTED ? 1 : 0;
+	        UINT errormode = SetErrorMode (SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
 		write_log (L"Shell Notification %d '%s'\n", inserted, path);
 		if (!win32_hardfile_media_change (path, inserted)) {	
 		    if ((inserted && CheckRM (path)) || !inserted) {
@@ -1043,6 +1049,7 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 			filesys_media_change (path, inserted, NULL);
 		    }
 		}
+		SetErrorMode (errormode);
 	    }
 	}
     }
@@ -1071,6 +1078,7 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 		if (pBVol->dbcv_unitmask) {
 		    int inserted, i;
 		    TCHAR drive;
+		    UINT errormode = SetErrorMode (SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
 		    for (i = 0; i <= 'Z'-'A'; i++) {
 			if (pBVol->dbcv_unitmask & (1 << i)) {
 			    TCHAR drvname[10];
@@ -1102,6 +1110,7 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 			    }
 			}
 		    }
+		    SetErrorMode (errormode);
 		}
 	    }
 	}
@@ -1110,36 +1119,35 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
     return TRUE;
 
     case WM_SYSCOMMAND:
-	    switch (wParam & 0xfff0) // Check System Calls
+	switch (wParam & 0xfff0) // Check System Calls
+	{
+	    case SC_SCREENSAVE: // Screensaver Trying To Start?
+	    case SC_MONITORPOWER: // Monitor Trying To Enter Powersave?
+	    if (!manual_painting_needed && focus && currprefs.win32_powersavedisabled)
+	        return 0; // Prevent From Happening
+	    break;
+	    default:
 	    {
-		case SC_SCREENSAVE: // Screensaver Trying To Start?
-		case SC_MONITORPOWER: // Monitor Trying To Enter Powersave?
-		if (!manual_painting_needed && focus && currprefs.win32_powersavedisabled) {
-		    return 0; // Prevent From Happening
-		break;
-		default:
-		{
-		    LRESULT lr;
+	        LRESULT lr;
 		    
 #ifdef RETROPLATFORM
-		    if ((wParam & 0xfff0) == SC_CLOSE) {
-			if (rp_close ())
-			    return 0;
-		    }
-#endif
-		    lr = DefWindowProc (hWnd, message, wParam, lParam);
-		    switch (wParam & 0xfff0)
-		    {
-			case SC_MINIMIZE:
-			break;
-			case SC_RESTORE:
-			break;
-			case SC_CLOSE:
-			    PostQuitMessage (0);
-			break;
-		    }
-		    return lr;
+	        if ((wParam & 0xfff0) == SC_CLOSE) {
+		    if (rp_close ())
+		        return 0;
 		}
+#endif
+		lr = DefWindowProc (hWnd, message, wParam, lParam);
+		switch (wParam & 0xfff0)
+		{
+		    case SC_MINIMIZE:
+		    break;
+		    case SC_RESTORE:
+		    break;
+		    case SC_CLOSE:
+		        PostQuitMessage (0);
+		    break;
+		}
+		return lr;
 	    }
 	}
     break;
@@ -2084,7 +2092,7 @@ void target_default_options (struct uae_prefs *p, int type)
 	p->win32_rtgallowscaling = 0;
 	p->win32_rtgscaleaspectratio = -1;
 	p->win32_rtgvblankrate = 0;
-	p->win32_fscodepage = 1252;
+	p->win32_fscodepage = 0;
     }
     if (type == 1 || type == 0) {
 	p->win32_uaescsimode = get_aspi (p->win32_uaescsimode);
@@ -2678,7 +2686,7 @@ static int shell_deassociate (const TCHAR *extension)
 }
 
 static int shell_associate_2 (const TCHAR *extension, const TCHAR *shellcommand, const TCHAR *command, const TCHAR *perceivedtype,
-			      const TCHAR *description, const TCHAR *ext2)
+			      const TCHAR *description, const TCHAR *ext2, int icon)
 {
     TCHAR rpath1[MAX_DPATH], rpath2[MAX_DPATH], progid2[MAX_DPATH];
     HKEY rkey, key1, key2;
@@ -2721,12 +2729,14 @@ static int shell_associate_2 (const TCHAR *extension, const TCHAR *shellcommand,
 		RegSetValueEx (key2, L"", 0, REG_SZ, (CONST BYTE *)defprogid, (_tcslen (defprogid) + 1) * sizeof (TCHAR));
 		RegCloseKey (key2);
 	    }
-	    _tcscpy (tmp, rpath2);
-	    _tcscat (tmp, L"\\DefaultIcon");
-	    if (RegCreateKeyEx (rkey, tmp, 0, NULL, REG_OPTION_NON_VOLATILE, KEY_WRITE | KEY_READ, NULL, &key2, &disposition) == ERROR_SUCCESS) {
-		_stprintf (tmp, L"%s,-1", _wpgmptr);
-		RegSetValueEx (key2, L"", 0, REG_SZ, (CONST BYTE *)tmp, (_tcslen (tmp) + 1) * sizeof (TCHAR));
-		RegCloseKey (key2);
+	    if (icon) {
+		_tcscpy (tmp, rpath2);
+		_tcscat (tmp, L"\\DefaultIcon");
+		if (RegCreateKeyEx (rkey, tmp, 0, NULL, REG_OPTION_NON_VOLATILE, KEY_WRITE | KEY_READ, NULL, &key2, &disposition) == ERROR_SUCCESS) {
+		    _stprintf (tmp, L"%s,%d", _wpgmptr, -icon);
+		    RegSetValueEx (key2, L"", 0, REG_SZ, (CONST BYTE *)tmp, (_tcslen (tmp) + 1) * sizeof (TCHAR));
+		    RegCloseKey (key2);
+		}
 	    }
 	    RegCloseKey (key1);
 	}
@@ -2751,11 +2761,11 @@ static int shell_associate_2 (const TCHAR *extension, const TCHAR *shellcommand,
     regclosetree (fkey);
     return 1;
 }
-static int shell_associate (const TCHAR *extension, const TCHAR *command, const TCHAR *perceivedtype, const TCHAR *description, const TCHAR *ext2)
+static int shell_associate (const TCHAR *extension, const TCHAR *command, const TCHAR *perceivedtype, const TCHAR *description, const TCHAR *ext2, int icon)
 {
-    int v = shell_associate_2 (extension, NULL, command, perceivedtype, description, ext2);
+    int v = shell_associate_2 (extension, NULL, command, perceivedtype, description, ext2, icon);
     if (!_tcscmp (extension, L".uae"))
-	shell_associate_2 (extension, L"edit", L"-f \"%1\" -s use_gui=yes", L"text", description, NULL);
+	shell_associate_2 (extension, L"edit", L"-f \"%1\" -s use_gui=yes", L"text", description, NULL, 0);
     return v;
 }
 
@@ -2778,7 +2788,7 @@ static int shell_associate_is (const TCHAR *extension)
     _tcscpy (rpath1, L"Software\\Classes\\");
     _tcscpy (rpath2, rpath1);
     _tcscat (rpath2, extension);
-    size = sizeof tmp;
+    size = sizeof tmp / sizeof (TCHAR);
     if (RegOpenKeyEx (rkey, rpath2, 0, KEY_READ, &key1) == ERROR_SUCCESS) {
 	if (RegQueryValueEx (key1, NULL, NULL, NULL, (LPBYTE)tmp, &size) == ERROR_SUCCESS) {
 	    if (_tcscmp (tmp, def ? progid : progid2)) {
@@ -2800,13 +2810,13 @@ static int shell_associate_is (const TCHAR *extension)
 }
 
 struct assext exts[] = {
-    { L".uae", L"-f \"%1\"", L"WinUAE configuration file", },
-    { L".adf", L"-0 \"%1\" -s use_gui=no", L"WinUAE floppy disk image" },
-    { L".adz", L"-0 \"%1\" -s use_gui=no", L"WinUAE floppy disk image" },
-    { L".dms", L"-0 \"%1\" -s use_gui=no", L"WinUAE floppy disk image" },
-    { L".fdi", L"-0 \"%1\" -s use_gui=no", L"WinUAE floppy disk image" },
-    { L".ipf", L"-0 \"%1\" -s use_gui=no", L"WinUAE floppy disk image" },
-    { L".uss", L"-s statefile=\"%1\" -s use_gui=no", L"WinUAE statefile" },
+    { L".uae", L"-f \"%1\"", L"WinUAE configuration file", IDI_CONFIGFILE },
+    { L".adf", L"-0 \"%1\" -s use_gui=no", L"WinUAE floppy disk image", IDI_DISKIMAGE },
+    { L".adz", L"-0 \"%1\" -s use_gui=no", L"WinUAE floppy disk image", IDI_DISKIMAGE },
+    { L".dms", L"-0 \"%1\" -s use_gui=no", L"WinUAE floppy disk image", IDI_DISKIMAGE },
+    { L".fdi", L"-0 \"%1\" -s use_gui=no", L"WinUAE floppy disk image", IDI_DISKIMAGE },
+    { L".ipf", L"-0 \"%1\" -s use_gui=no", L"WinUAE floppy disk image", IDI_DISKIMAGE },
+    { L".uss", L"-s statefile=\"%1\" -s use_gui=no", L"WinUAE statefile", IDI_APPICON },
     { NULL }
 };
 
@@ -2819,17 +2829,45 @@ static void associate_init_extensions (void)
 	if (shell_associate_is (exts[i].ext))
 	    exts[i].enabled = 1;
     }
+    if (rp_param)
+	return;
     // associate .uae by default when running for the first time
     if (!regexiststree (NULL, L"FileAssociations")) {
 	UAEREG *fkey;
 	if (exts[0].enabled == 0) {
-	    shell_associate (exts[0].ext, exts[0].cmd, NULL, exts[0].desc, NULL);
+	    shell_associate (exts[0].ext, exts[0].cmd, NULL, exts[0].desc, NULL, exts[0].icon);
 	    exts[0].enabled = shell_associate_is (exts[0].ext);
 	}
         fkey = regcreatetree (NULL, L"FileAssociations");
 	regsetstr (fkey, exts[0].ext, L"");
 	regclosetree (fkey);
     }
+    if (os_winnt_admin > 1) {
+	DWORD disposition;
+	TCHAR rpath[MAX_DPATH];
+        HKEY rkey = HKEY_LOCAL_MACHINE;
+	HKEY key1;
+	int setit = 1;
+
+	_tcscpy (rpath, L"Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\winuae.exe");
+	if (RegOpenKeyEx (rkey, rpath, 0, KEY_READ, &key1) == ERROR_SUCCESS) {
+	    TCHAR tmp[MAX_DPATH];
+	    DWORD size = sizeof tmp / sizeof (TCHAR);
+	    if (RegQueryValueEx (key1, NULL, NULL, NULL, (LPBYTE)tmp, &size) == ERROR_SUCCESS) {
+		if (!_tcscmp (tmp, _wpgmptr))
+		    setit = 0;
+	    }
+	    RegCloseKey (key1);
+	}
+	if (setit) {
+	    if (RegCreateKeyEx (rkey, rpath, 0, NULL, REG_OPTION_NON_VOLATILE, KEY_READ | KEY_WRITE, NULL, &key1, &disposition) == ERROR_SUCCESS) {
+		RegSetValueEx (key1, L"", 0, REG_SZ, (CONST BYTE *)_wpgmptr, (_tcslen (_wpgmptr) + 1) * sizeof (TCHAR));
+		RegCloseKey (key1);
+		SHChangeNotify (SHCNE_ASSOCCHANGED, 0, 0, 0); 
+	    }
+	}
+   }
+
 #if 0
     UAEREG *fkey;
     fkey = regcreatetree (NULL, L"FileAssociations");
@@ -2880,17 +2918,21 @@ void associate_file_extensions (void)
     int i;
     int modified = 0;
 
+    if (rp_param)
+	return;
     for (i = 0; exts[i].ext; i++) {
 	int already = shell_associate_is (exts[i].ext);
 	if (exts[i].enabled == 0 && already) {
 	    shell_deassociate (exts[i].ext);
 	    exts[i].enabled = shell_associate_is (exts[i].ext);
-	    if (exts[i].enabled)
+	    if (exts[i].enabled) {
 		modified = 1;
-	} else if (exts[i].enabled && already == 0) {
-	    shell_associate (exts[i].ext, exts[i].cmd, NULL, exts[i].desc, NULL);
+		shell_associate (exts[i].ext, exts[i].cmd, NULL, exts[i].desc, NULL, exts[i].icon);
+	    }
+	} else if (exts[i].enabled) {
+	    shell_associate (exts[i].ext, exts[i].cmd, NULL, exts[i].desc, NULL, exts[i].icon);
 	    exts[i].enabled = shell_associate_is (exts[i].ext);
-	    if (exts[i].enabled == 0)
+	    if (exts[i].enabled != already)
 		modified = 1;
 	}
     }
@@ -3421,7 +3463,9 @@ static int parseargs (const TCHAR *arg, const TCHAR *np, const TCHAR *np2)
 	zfile_convertimage (np, np2);
 	return -1;
     }
-
+    if (!_tcscmp (arg, L"-console")) {
+	return 1;
+    }
     if (!_tcscmp (arg, L"-log")) {
         console_logging = 1;
         return 1;
@@ -4391,6 +4435,17 @@ uae_u32 emulib_target_getcpurate (uae_u32 v, uae_u32 *low)
     return 0;
 }
 
+void fpux_save (int *v)
+{
+    *v = _controlfp (fpucontrol, _MCW_IC | _MCW_RC | _MCW_PC);
+}
+void fpux_restore (int *v)
+{
+    if (v)
+	_controlfp (*v, _MCW_IC | _MCW_RC | _MCW_PC);
+    else
+	_controlfp (fpucontrol, _MCW_IC | _MCW_RC | _MCW_PC);
+}
 
 typedef BOOL (CALLBACK* SETPROCESSDPIAWARE)(void);
 typedef BOOL (CALLBACK* CHANGEWINDOWMESSAGEFILTER)(UINT, DWORD);
@@ -4408,6 +4463,7 @@ int PASCAL wWinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdL
     GetProcessAffinityMask (GetCurrentProcess (), &original_affinity, &sys_aff);
 
     thread = GetCurrentThread ();
+    fpucontrol = _controlfp (0, 0) & (_MCW_IC | _MCW_RC | _MCW_PC);
     //original_affinity = SetThreadAffinityMask(thread, 1);
 
 #if 0
@@ -4423,6 +4479,7 @@ int PASCAL wWinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdL
 	GetModuleHandle (L"user32.dll"), "SetProcessDPIAware");
     if (pSetProcessDPIAware)
 	pSetProcessDPIAware ();
+    log_open (NULL, 0, 0);
 
     __try {
 	WinMain2 (hInstance, hPrevInstance, lpCmdLine, nCmdShow);

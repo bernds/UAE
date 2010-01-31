@@ -354,25 +354,32 @@ HRESULT DirectDraw_CreateMainSurface (int width, int height)
     desc.dwFlags = DDSD_CAPS;
     desc.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE;
     if (dxdata.fsmodeset) {
+	int ok = 0;
 	DWORD oldcaps = desc.ddsCaps.dwCaps;
 	DWORD oldflags = desc.dwFlags;
 	desc.dwFlags |= DDSD_BACKBUFFERCOUNT;
 	desc.ddsCaps.dwCaps |= DDSCAPS_COMPLEX | DDSCAPS_FLIP;
-	desc.dwBackBufferCount = 2;
-	ddrval = IDirectDraw7_CreateSurface (dxdata.maindd, &desc, &dxdata.primary, NULL);
-	if (SUCCEEDED (ddrval)) {
-	    DDSCAPS2 ddscaps;
-	    memset (&ddscaps, 0, sizeof (ddscaps));
-	    ddscaps.dwCaps = DDSCAPS_BACKBUFFER;
-	    ddrval = IDirectDrawSurface7_GetAttachedSurface (dxdata.primary, &ddscaps, &dxdata.flipping[0]);
-	    if(SUCCEEDED (ddrval)) {
+	desc.dwBackBufferCount = currprefs.gfx_backbuffers;
+	if (desc.dwBackBufferCount > 0) {
+	    ddrval = IDirectDraw7_CreateSurface (dxdata.maindd, &desc, &dxdata.primary, NULL);
+	    if (SUCCEEDED (ddrval)) {
+		DDSCAPS2 ddscaps;
 		memset (&ddscaps, 0, sizeof (ddscaps));
-		ddscaps.dwCaps = DDSCAPS_FLIP;
-		ddrval = IDirectDrawSurface7_GetAttachedSurface (dxdata.flipping[0], &ddscaps, &dxdata.flipping[1]);
+		ddscaps.dwCaps = DDSCAPS_BACKBUFFER;
+		ddrval = IDirectDrawSurface7_GetAttachedSurface (dxdata.primary, &ddscaps, &dxdata.flipping[0]);
+		if(SUCCEEDED (ddrval)) {
+		    if (desc.dwBackBufferCount > 1) {
+			memset (&ddscaps, 0, sizeof (ddscaps));
+			ddscaps.dwCaps = DDSCAPS_FLIP;
+			ddrval = IDirectDrawSurface7_GetAttachedSurface (dxdata.flipping[0], &ddscaps, &dxdata.flipping[1]);
+		    }
+		}
+		if (FAILED (ddrval))
+		    write_log (L"IDirectDrawSurface7_GetAttachedSurface: %s\n", DXError (ddrval));
+		ok = 1;
 	    }
-	    if (FAILED (ddrval))
-		write_log (L"IDirectDrawSurface7_GetAttachedSurface: %s\n", DXError (ddrval));
-	} else {
+	}
+	if (!ok) {
 	    desc.dwBackBufferCount = 0;
 	    desc.ddsCaps.dwCaps = oldcaps;
 	    desc.dwFlags = oldflags;
@@ -431,8 +438,8 @@ HRESULT DirectDraw_CreateMainSurface (int width, int height)
     } else {
 	ddrval = DD_FALSE;
     }
-    write_log (L"DDRAW: primary surface %p, secondary %p (%dx%dx%d)\n",
-	dxdata.primary, surf, width, height, dxdata.native.ddpfPixelFormat.dwRGBBitCount);
+    write_log (L"DDRAW: primary surface %p, secondary %p (%dx%dx%d) bb=%d\n",
+	dxdata.primary, surf, width, height, dxdata.native.ddpfPixelFormat.dwRGBBitCount, dxdata.backbuffers);
     return ddrval;
 }
 
@@ -928,10 +935,12 @@ static void flip (void)
     HRESULT ddrval = DD_OK;
     DWORD flags = DDFLIP_WAIT;
 
+    if (currprefs.turbo_emulation)
+	flags |= DDFLIP_NOVSYNC;
     if (dxdata.backbuffers == 2) {
         DirectDraw_Blit (dxdata.flipping[1], dxdata.flipping[0]);
 	if (currprefs.gfx_avsync) {
-	    if (vblank_skip >= 0) {
+	    if (vblank_skip >= 0 || currprefs.turbo_emulation) {
 	        ddrval = IDirectDrawSurface7_Flip (dxdata.primary, NULL, flags);
 	    } else {
 		if (flipinterval_supported) {
@@ -943,7 +952,7 @@ static void flip (void)
 		}
 	    }
 	} else {
-	    ddrval = IDirectDrawSurface7_Flip (dxdata.primary, NULL, flags);
+	    ddrval = IDirectDrawSurface7_Flip (dxdata.primary, NULL, flags| DDFLIP_NOVSYNC);
 	}
     } else if(dxdata.backbuffers == 1) {
 	if (currprefs.gfx_avsync) { 
@@ -961,7 +970,7 @@ static void flip (void)
 	    flip ();
 	    recurse--;
 	}
-    } else if(FAILED (ddrval)) {
+    } else if (FAILED (ddrval)) {
 	write_log (L"IDirectDrawSurface7_Flip: %s\n", DXError (ddrval));
     }
 }

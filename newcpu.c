@@ -187,6 +187,8 @@ static void build_cpufunctbl (void)
 	break;
 #endif
 #endif
+	default:
+	changed_prefs.cpu_model = currprefs.cpu_model = 68000;
 	case 68000:
 	lvl = 0;
 	tbl = op_smalltbl_5_ff;
@@ -202,7 +204,7 @@ static void build_cpufunctbl (void)
     }
 
     if (tbl == 0) {
-	write_log (L"no CPU emulation cores available!");
+	write_log (L"no CPU emulation cores available CPU=%d!", currprefs.cpu_model);
 	abort ();
     }
 
@@ -1260,7 +1262,7 @@ int m68k_move2c (int regno, uae_u32 *regp)
 	    regs.pcr &= ~(0x40 | 2 | 1);
 	    regs.pcr |= (*regp) & (0x40 | 2 | 1);
 	    if (((opcr ^ regs.pcr) & 2) == 2) {
-		write_log (L"68060 FPU state: %s\n", regs.pcr & 2 ? "disabled" : "enabled");
+		write_log (L"68060 FPU state: %s\n", regs.pcr & 2 ? L"disabled" : L"enabled");
 		/* flush possible already translated FPU instructions */
 		flush_icache (0, 3);
 	    }
@@ -1614,10 +1616,9 @@ void m68k_reset (int hardreset)
     SET_NFLG (&regs.ccrflags, 0);
     regs.intmask = 7;
     regs.vbr = regs.sfc = regs.dfc = 0;
-#ifdef FPUEMU
-    regs.fpcr = regs.fpsr = regs.fpiar = 0;
-    regs.fp_result = 1;
     regs.irc = 0xffff;
+#ifdef FPUEMU
+    fpu_reset ();
 #endif
     regs.caar = regs.cacr = 0;
     regs.itt0 = regs.itt1 = regs.dtt0 = regs.dtt1 = 0;
@@ -3063,7 +3064,7 @@ uae_u8 *restore_cpu (uae_u8 *src)
 	    currprefs.m68k_speed = changed_prefs.m68k_speed = 0;
     }
     write_log (L"CPU %d%s%03d, PC=%08X\n",
-	model / 1000, flags & 1 ? "EC" : "", model % 1000, regs.pc);
+	model / 1000, flags & 1 ? L"EC" : L"", model % 1000, regs.pc);
 
     return src;
 }

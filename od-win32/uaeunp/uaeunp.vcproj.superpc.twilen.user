@@ -10,8 +10,8 @@
 			>
 			<DebugSettings
 				Command="$(TargetPath)"
-				WorkingDirectory="d:\amiga\stuff\new2\z"
-				CommandArguments="-crclist *"
+				WorkingDirectory="d:\amiga\d"
+				CommandArguments="-l d:\amiga\stuff\demos"
 				Attach="false"
 				DebuggerType="3"
 				Remote="1"

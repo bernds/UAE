@@ -53,8 +53,8 @@
 #include "rp.h"
 #endif
 
-#define AMIGA_WIDTH_MAX 752
-#define AMIGA_HEIGHT_MAX 568
+#define AMIGA_WIDTH_MAX (752 / 2)
+#define AMIGA_HEIGHT_MAX (568 / 2)
 
 #define DM_DX_FULLSCREEN 1
 #define DM_W_FULLSCREEN 2
@@ -2009,6 +2009,7 @@ static int getbestmode (int nextbest)
 
 static int create_windows_2 (void)
 {
+    static int firstwindow = 1;
     int dxfs = currentmode->flags & (DM_DX_FULLSCREEN);
     int d3dfs = currentmode->flags & (DM_D3D_FULLSCREEN);
     int fsw = currentmode->flags & (DM_W_FULLSCREEN);
@@ -2212,13 +2213,13 @@ static int create_windows_2 (void)
 	    WS_EX_TOPMOST :
 	    WS_EX_ACCEPTFILES | exstyle | (currprefs.win32_alwaysontop ? WS_EX_TOPMOST : 0),
 	    L"AmigaPowah", L"WinUAE",
-	    (dxfs || d3dfs ? WS_POPUP : (WS_CLIPCHILDREN | WS_CLIPSIBLINGS | (hMainWnd ? WS_VISIBLE | WS_CHILD : WS_VISIBLE | WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX))),
+	    (dxfs || d3dfs || currprefs.headless ? WS_POPUP : (WS_CLIPCHILDREN | WS_CLIPSIBLINGS | (hMainWnd ? WS_VISIBLE | WS_CHILD : WS_VISIBLE | WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX))),
 	    x, y, w, h,
 	    borderless ? NULL : (hMainWnd ? hMainWnd : hhWnd), NULL, hInst, NULL);
     }
     if (!hAmigaWnd) {
 	write_log (L"creation of amiga window failed\n");
-	close_hwnds();
+	close_hwnds ();
 	return 0;
     }
     if (hMainWnd == NULL)
@@ -2228,11 +2229,14 @@ static int create_windows_2 (void)
 	SetCursorPos (x + w / 2, y + h / 2);
     addnotifications (hAmigaWnd, FALSE);
     if (hMainWnd != hAmigaWnd) {
-	ShowWindow (hMainWnd, SW_SHOWNORMAL);
+	if (!currprefs.headless)
+	    ShowWindow (hMainWnd, firstwindow ? SW_SHOWDEFAULT : SW_SHOWNORMAL);
 	UpdateWindow (hMainWnd);
     }
-    ShowWindow (hAmigaWnd, SW_SHOWNORMAL);
+    if (!currprefs.headless)
+	ShowWindow (hAmigaWnd, firstwindow ? SW_SHOWDEFAULT : SW_SHOWNORMAL);
     UpdateWindow (hAmigaWnd);
+    firstwindow = 0;
 
     return 1;
 }
@@ -2353,12 +2357,8 @@ static BOOL doInit (void)
 	    currentmode->native_depth = currentmode->current_depth;
 #if defined (GFXFILTER)
 	    if (currentmode->flags & (DM_OPENGL | DM_D3D | DM_SWSCALE)) {
-		currentmode->amiga_width = AMIGA_WIDTH_MAX;
-		currentmode->amiga_height = AMIGA_HEIGHT_MAX >> (currprefs.gfx_linedbl ? 0 : 1);
-		if (currprefs.gfx_resolution == 0)
-		    currentmode->amiga_width >>= 1;
-		else if (currprefs.gfx_resolution > 1)
-		    currentmode->amiga_width <<= 1;
+		currentmode->amiga_width = AMIGA_WIDTH_MAX << currprefs.gfx_resolution;
+		currentmode->amiga_height = AMIGA_HEIGHT_MAX << (currprefs.gfx_linedbl ? 1 : 0);
 		if (usedfilter) {
 		    if (usedfilter->x[0]) {
 			currentmode->current_depth = (currprefs.gfx_filter_filtermode / 2) ? 32 : 16;

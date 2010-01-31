@@ -511,7 +511,7 @@ static int unpack2 (const TCHAR *src, const TCHAR *match, int level)
 	    s = zfile_open_archive (tmp, 0);
 	    if (!s) {
 		geterror();
-		_tprintf (L"Couldn't open '%s' for reading\n", src);
+		_tprintf (L"Couldn't open '%s' for reading\n", tmp);
 		continue;
 	    }
 	    zfile_fseek (s, 0, SEEK_END); 
@@ -672,13 +672,13 @@ int wmain (int argc, wchar_t *argv[], wchar_t *envp[])
     if (crclist) {
 	docrclist (L".");
 	ok = 1;
-    } else if (match) {
+    } else if (!list && match) {
 	unpack2 (path, match, 0);
 	ok = 1;
-    } else if (!parm2 && all > 0) {
+    } else if (!list && !parm2 && all > 0) {
 	unpack2 (path, L"*", 0);
 	ok = 1;
-    } else if (extract && parm2) {
+    } else if (!list && extract && parm2) {
 	unpack2 (path, parm2, 0);
 	ok = 1;
     } else if (argc == 2 || (argc > 2 && list)) {
@@ -692,7 +692,7 @@ int wmain (int argc, wchar_t *argv[], wchar_t *envp[])
 	ok = 1;
     }
     if (!ok) {
-	_tprintf (L"UAE unpacker uaeunp 0.5c by Toni Wilen (c)2009\n");
+	_tprintf (L"UAE unpacker uaeunp 0.6 by Toni Wilen (c)2009\n");
 	_tprintf (L"\n");
 	_tprintf (L"List: \"uaeunp (-l) <path>\"\n");
 	_tprintf (L"List all recursively: \"uaeunp -l <path> **\"\n");
@@ -703,7 +703,9 @@ int wmain (int argc, wchar_t *argv[], wchar_t *envp[])
 	_tprintf (L"Output to console: \"uaeunp (-x) -o <path> <filename>\"\n");
 	_tprintf (L"\n");
 	_tprintf (L"Supported disk image formats:\n");
-	_tprintf (L" ADF and HDF (OFS/FFS/SFS/SFS2), DMS, encrypted DMS, IPF, FDI, DSQ, WRP\n");
+	_tprintf (L" ADF, HDF, DMS, encrypted DMS, IPF, FDI, DSQ, WRP\n");
+	_tprintf (L"Supported filesystems:\n");
+	_tprintf (L" OFS, FFS, SFS, SFS2 and FAT12\n");
 	_tprintf (L"Supported archive formats:\n");
 	_tprintf (L" 7ZIP, LHA, LZX, RAR (unrar.dll), ZIP, ArchiveAccess.DLL\n");
 	_tprintf (L"Miscellaneous formats:\n");
@@ -715,6 +717,11 @@ int wmain (int argc, wchar_t *argv[], wchar_t *envp[])
 }
 
 /*
+    0.6:
+
+    - rdb handling optimization (no more huge memory usage)
+    - fat12 supported
+
     0.5:
 
     - adf protection flags fixed

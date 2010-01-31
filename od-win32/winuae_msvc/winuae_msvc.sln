@@ -26,6 +26,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "decompress", "..\decompress
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "uaeunp", "..\uaeunp\uaeunp.vcproj", "{6181E50C-5F32-42DC-BEF6-827AA8A5429D}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "consolewrapper", "..\consolewrapper\consolewrapper.vcproj", "{2C44DD04-F5D6-4CC3-B0D6-1F4E51A0D962}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -186,6 +188,18 @@ Global
 		{6181E50C-5F32-42DC-BEF6-827AA8A5429D}.Release64|Win32.ActiveCfg = Release|Win32
 		{6181E50C-5F32-42DC-BEF6-827AA8A5429D}.Release64|Win32.Build.0 = Release|Win32
 		{6181E50C-5F32-42DC-BEF6-827AA8A5429D}.Release64|x64.ActiveCfg = Release|Win32
+		{2C44DD04-F5D6-4CC3-B0D6-1F4E51A0D962}.Debug|Win32.ActiveCfg = Debug|Win32
+		{2C44DD04-F5D6-4CC3-B0D6-1F4E51A0D962}.Debug|x64.ActiveCfg = Debug|Win32
+		{2C44DD04-F5D6-4CC3-B0D6-1F4E51A0D962}.Debug64|Win32.ActiveCfg = Debug|Win32
+		{2C44DD04-F5D6-4CC3-B0D6-1F4E51A0D962}.Debug64|Win32.Build.0 = Debug|Win32
+		{2C44DD04-F5D6-4CC3-B0D6-1F4E51A0D962}.Debug64|x64.ActiveCfg = Debug|Win32
+		{2C44DD04-F5D6-4CC3-B0D6-1F4E51A0D962}.FullRelease|Win32.ActiveCfg = Release|Win32
+		{2C44DD04-F5D6-4CC3-B0D6-1F4E51A0D962}.FullRelease|x64.ActiveCfg = Release|Win32
+		{2C44DD04-F5D6-4CC3-B0D6-1F4E51A0D962}.Release|Win32.ActiveCfg = Release|Win32
+		{2C44DD04-F5D6-4CC3-B0D6-1F4E51A0D962}.Release|x64.ActiveCfg = Release|Win32
+		{2C44DD04-F5D6-4CC3-B0D6-1F4E51A0D962}.Release64|Win32.ActiveCfg = Release|Win32
+		{2C44DD04-F5D6-4CC3-B0D6-1F4E51A0D962}.Release64|Win32.Build.0 = Release|Win32
+		{2C44DD04-F5D6-4CC3-B0D6-1F4E51A0D962}.Release64|x64.ActiveCfg = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

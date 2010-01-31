@@ -272,10 +272,13 @@ static void cfg_dowrite (struct zfile *f, const TCHAR *option, const TCHAR *valu
     cfg_write (tmp, f);
     if (utf8 && !unicode_config) {
 	char *opt = ua (option);
-	if (target)
-	    sprintf (tmpa, "%s.%s.utf8=%s", TARGET_NAME, opt, tmp2);
-	else
+	if (target) {
+	    char *tna = ua (TARGET_NAME);
+	    sprintf (tmpa, "%s.%s.utf8=%s", tna, opt, tmp2);
+	    xfree (tna);
+	} else {
 	    sprintf (tmpa, "%s.utf8=%s", opt, tmp2);
+	}
 	xfree (opt);
 	zfile_fwrite (tmpa, strlen (tmpa), 1, f);
 	zfile_fwrite (&lf, 1, 1, f);
@@ -985,6 +988,7 @@ static int cfgfile_parse_host (struct uae_prefs *p, TCHAR *option, TCHAR *value)
 	|| cfgfile_intval (option, value, L"gfx_height_fullscreen", &p->gfx_size_fs.height, 1)
 	|| cfgfile_intval (option, value, L"gfx_refreshrate", &p->gfx_refreshrate, 1)
 	|| cfgfile_intval (option, value, L"gfx_autoresolution", &p->gfx_autoresolution, 1)
+	|| cfgfile_intval (option, value, L"gfx_backbuffers", &p->gfx_backbuffers, 1)
 
 	|| cfgfile_intval (option, value, L"gfx_center_horizontal_position", &p->gfx_xcenter_pos, 1)
 	|| cfgfile_intval (option, value, L"gfx_center_vertical_position", &p->gfx_ycenter_pos, 1)
@@ -1044,6 +1048,8 @@ static int cfgfile_parse_host (struct uae_prefs *p, TCHAR *option, TCHAR *value)
 	|| cfgfile_yesno (option, value, L"gfx_flickerfixer", &p->gfx_scandoubler)
 	|| cfgfile_yesno (option, value, L"synchronize_clock", &p->tod_hack)
 	|| cfgfile_yesno (option, value, L"magic_mouse", &p->input_magic_mouse)
+	|| cfgfile_yesno (option, value, L"warp", &p->turbo_emulation)
+	|| cfgfile_yesno (option, value, L"headless", &p->headless)
 	|| cfgfile_yesno (option, value, L"bsdsocket_emu", &p->socket_emu))
 	    return 1;
 
@@ -1992,6 +1998,8 @@ static int isobsolete (TCHAR *s)
 	}
 	i++;
     }
+    if (_tcslen (s) > 2 && !_tcsncmp (s, L"w.", 2))
+	return 1;
     if (_tcslen (s) >= 10 && !_tcsncmp (s, L"gfx_opengl", 10)) {
 	write_log (L"obsolete config entry '%s\n", s);
 	return 1;
@@ -3170,6 +3178,7 @@ void default_prefs (struct uae_prefs *p, int type)
     p->gfx_max_vertical = 1;
     p->color_mode = 2;
     p->gfx_blackerthanblack = 0;
+    p->gfx_backbuffers = 2;
 
     p->x11_use_low_bandwidth = 0;
     p->x11_use_mitshm = 0;
@@ -3189,6 +3198,8 @@ void default_prefs (struct uae_prefs *p, int type)
     p->scsi = 0;
     p->uaeserial = 0;
     p->cpu_idle = 0;
+    p->turbo_emulation = 0;
+    p->headless = 0;
     p->catweasel = 0;
     p->tod_hack = 0;
     p->maprom = 0;
@@ -3358,6 +3369,7 @@ static void buildin_default_prefs (struct uae_prefs *p)
     p->scsi = 0;
     p->uaeserial = 0;
     p->cpu_idle = 0;
+    p->turbo_emulation = 0;
     p->catweasel = 0;
     p->tod_hack = 0;
     p->maprom = 0;

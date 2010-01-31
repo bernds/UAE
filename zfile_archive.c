@@ -74,6 +74,9 @@ static struct zvolume *getzvolume (struct znode *parent, struct zfile *zf, unsig
 	case ArchiveFormatRDB:
 	zv = archive_directory_rdb (zf);
 	break;
+	case ArchiveFormatFAT:
+	zv = archive_directory_fat (zf);
+	break;
     }
     if (!zv)
 	zv = archive_directory_arcacc (zf, id);
@@ -110,11 +113,17 @@ struct zfile *archive_getzfile (struct znode *zn, unsigned int id)
 	case ArchiveFormatRDB:
 	zf = archive_access_rdb (zn);
 	break;
+	case ArchiveFormatFAT:
+	zf = archive_access_fat (zn);
+	break;
+	case ArchiveFormatDIR:
+	zf = archive_access_dir (zn);
+	break;
     }
     return zf;
 }
 
-struct zfile *archive_access_select (struct znode *parent, struct zfile *zf, unsigned int id, int dodefault)
+struct zfile *archive_access_select (struct znode *parent, struct zfile *zf, unsigned int id, int dodefault, int *retcode)
 {
     struct zvolume *zv;
     struct znode *zn;
@@ -122,37 +131,44 @@ struct zfile *archive_access_select (struct znode *parent, struct zfile *zf, uns
     TCHAR tmphist[MAX_DPATH];
     struct zfile *z = NULL;
     int we_have_file;
+    int canhistory = (zf->zfdmask & ZFD_DISKHISTORY) && !(zf->zfdmask & ZFD_CHECKONLY);
 
+    if (retcode)
+	*retcode = 0;
     zv = getzvolume (parent, zf, id);
     if (!zv)
-	return zf;
+	return NULL;
     we_have_file = 0;
     tmphist[0] = 0;
     zipcnt = 1;
     first = 1;
     zn = &zv->root;
     while (zn) {
-	int isok = 1;
+	int isok = 1, diskimg = 0;
 
 	if (zn->type != ZNODE_FILE)
 	    isok = 0;
 	if (zfile_is_ignore_ext (zn->fullname))
 	    isok = 0;
+	if (zfile_is_diskimage (zn->fullname))
+	    diskimg = 1;
 	if (isok) {
 	    if (tmphist[0]) {
 #ifndef _CONSOLE
-		DISK_history_add (tmphist, -1);
+		if (diskimg && canhistory)
+		    DISK_history_add (tmphist, -1, 1);
 #endif
 		tmphist[0] = 0;
 		first = 0;
 	    }
 	    if (first) {
-		if (zfile_isdiskimage (zn->fullname))
+		if (diskimg)
 		    _tcscpy (tmphist, zn->fullname);
 	    } else {
 		_tcscpy (tmphist, zn->fullname);
 #ifndef _CONSOLE
-		DISK_history_add (tmphist, -1);
+		if (diskimg && canhistory)
+		    DISK_history_add (tmphist, -1, 1);
 #endif
 		tmphist[0] = 0;
 	    }
@@ -179,21 +195,22 @@ struct zfile *archive_access_select (struct znode *parent, struct zfile *zf, uns
 	zn = zn->next;
     }
 #ifndef _CONSOLE
-    if (first && tmphist[0])
-	DISK_history_add (zfile_getname(zf), -1);
+    if (zfile_is_diskimage (zfile_getname (zf)) && first && tmphist[0] && canhistory)
+	DISK_history_add (zfile_getname (zf), -1, 1);
 #endif
     zfile_fclose_archive (zv);
     if (z) {
 	zfile_fclose (zf);
 	zf = z;
     } else if (!dodefault && zf->zipname && zf->zipname[0]) {
-	zfile_fclose (zf);
+	if (retcode)
+	    *retcode = -1;
 	zf = NULL;
     }
     return zf;
 }
 
-struct zfile *archive_access_arcacc_select (struct zfile *zf, unsigned int id)
+struct zfile *archive_access_arcacc_select (struct zfile *zf, unsigned int id, int *retcode)
 {
     return zf;
 }
@@ -633,10 +650,12 @@ struct zfile *archive_access_rar (struct znode *zn)
 	}
     }
     zf = zfile_fopen_empty (zn->volume->archive, zn->fullname, zn->size);
-    rarunpackzf = zf;
-    if (pRARProcessFile (rc->hArcData, RAR_TEST, NULL, NULL)) {
-	zfile_fclose (zf);
-	zf = NULL;
+    if (zf) {
+	rarunpackzf = zf;
+	if (pRARProcessFile (rc->hArcData, RAR_TEST, NULL, NULL)) {
+	    zfile_fclose (zf);
+	    zf = NULL;
+	}
     }
 end:
     pRARCloseArchive(rc->hArcData);
@@ -844,8 +863,9 @@ static struct znode *addfile (struct zvolume *zv, struct zfile *zf, const TCHAR 
 {
     struct zarchive_info zai;
     struct znode *zn;
-    struct zfile *z = zfile_fopen_empty (zf, path, size);
-
+    struct zfile *z;
+    
+    z = zfile_fopen_empty (zf, path, size);
     zfile_fwrite (data, size, 1, z);
     memset(&zai, 0, sizeof zai);
     zai.name = path;
@@ -867,6 +887,7 @@ struct zvolume *archive_directory_plain (struct zfile *z)
     struct znode *zn;
     struct zarchive_info zai;
     uae_u8 id[8];
+    int rc;
 
     memset (&zai, 0, sizeof zai);
     zv = zvolume_alloc (z, ArchiveFormatPLAIN, NULL, NULL);
@@ -886,19 +907,20 @@ struct zvolume *archive_directory_plain (struct zfile *z)
 	xfree (data);
     }
     zf = zfile_dup (z);
-    zf2 = zuncompress (NULL, zf, 0, ZFD_ALL);
-    if (zf2 != zf) {
-	zf = zf2;
-	zai.name = zfile_getfilename (zf);
+    zf2 = zuncompress (NULL, zf, 0, ZFD_ALL, &rc);
+    if (zf2) {
+	zf = NULL;
+	zai.name = zfile_getfilename (zf2);
 	zai.flags = -1;
-	zfile_fseek(zf, 0, SEEK_END);
+	zfile_fseek (zf2, 0, SEEK_END);
 	zai.size = zfile_ftell (zf2);
-	zfile_fseek(zf, 0, SEEK_SET);
+	zfile_fseek (zf2, 0, SEEK_SET);
 	zn = zvolume_addfile_abs (zv, &zai);
 	if (zn)
 	    zn->offset = 1;
+	zfile_fclose (zf2);
     }
-    zfile_fclose (zf2);
+    zfile_fclose (zf);
     return zv;
 }
 struct zfile *archive_access_plain (struct znode *zn)
@@ -909,8 +931,10 @@ struct zfile *archive_access_plain (struct znode *zn)
 	struct zfile *zf;
 	z = zfile_fopen_empty (zn->volume->archive, zn->fullname, zn->size);
 	zf = zfile_fopen (zfile_getname (zn->volume->archive), L"rb", zn->volume->archive->zfdmask & ~ZFD_ADF);
-	zfile_fread (z->data, zn->size, 1, zf);
-	zfile_fclose (zf);
+	if (zf) {
+	    zfile_fread (z->data, zn->size, 1, zf);
+	    zfile_fclose (zf);
+	}
     } else {
 	z = zfile_fopen_empty (zn->volume->archive, zn->fullname, zn->size);
 	if (z) {
@@ -1047,6 +1071,8 @@ static void recurseadf (struct znode *zn, int root, TCHAR *name)
 	    }
 	    _tcscat (name2, fname);
 	    zai.name = name2;
+	    if (size < 0 || size > 0x7fffffff)
+		size = 0;
 	    zai.size = size;
 	    zai.flags = gl (adf, bs - 48 * 4);
 	    zai.t = put_time (gl (adf, bs - 23 * 4), gl (adf, bs - 22 * 4),gl (adf, bs - 21 * 4));
@@ -1207,11 +1233,12 @@ struct zvolume *archive_directory_adf (struct znode *parent, struct zfile *z)
 	    bs = adf->blocksize = 512;
 	    if (adf->size < 2000000 && adf->rootblock != 880) {
 	        adf->rootblock = 880;
+		if (!adf_read_block (adf, adf->rootblock))
+		    goto fail;
 		if (gl (adf, 0) != 2 || gl (adf, bs - 1 * 4) != 1)
 		    goto fail;
 		if (dos_checksum (adf->block, bs) != 0)
 		    goto fail;
-		goto fail;
 	    }
 	}
 
@@ -1593,10 +1620,281 @@ struct zfile *archive_access_rdb (struct znode *zn)
 	size = zn->size;
     }
 
-    zf = zfile_fopen_empty (z, zn->fullname, size);
-    zfile_fseek (z, block * blocksize, SEEK_SET);
-    zfile_fread (zf->data, size, 1, z);
+    zf = zfile_fopen_parent (z, zn->fullname, block * blocksize, size);
     return zf;
+}
+
+int isfat (uae_u8 *p)
+{
+    int i, b;
+
+    if ((p[0x15] & 0xf0) != 0xf0)
+	return 0;
+    if (p[0x0b] != 0x00 || p[0x0c] != 0x02)
+	return 0;
+    b = 0;
+    for (i = 0; i < 8; i++) {
+	if (p[0x0d] & (1 << i))
+	    b++;
+    }
+    if (b != 1)
+	return 0;
+    if (p[0x0f] != 0)
+	return 0;
+    if (p[0x0e] > 8 || p[0x0e] == 0)
+	return 0;
+    if (p[0x10] == 0 || p[0x10] > 8)
+	return 0;
+    b = (p[0x12] << 8) | p[0x11];
+    if (b > 8192 || b <= 0)
+	return 0;
+    b = p[0x16] | (p[0x17] << 8);
+    if (b == 0 || b > 8192)
+	return 0;
+    return 1;
+}
+
+/*
+ * The epoch of FAT timestamp is 1980.
+ *     :  bits :     value
+ * date:  0 -  4: day   (1 -  31)
+ * date:  5 -  8: month (1 -  12)
+ * date:  9 - 15: year  (0 - 127) from 1980
+ * time:  0 -  4: sec   (0 -  29) 2sec counts
+ * time:  5 - 10: min   (0 -  59)
+ * time: 11 - 15: hour  (0 -  23)
+ */
+#define SECS_PER_MIN    60
+#define SECS_PER_HOUR   (60 * 60)
+#define SECS_PER_DAY    (SECS_PER_HOUR * 24)
+#define UNIX_SECS_1980  315532800L   
+#if BITS_PER_LONG == 64
+#define UNIX_SECS_2108  4354819200L
+#endif
+/* days between 1.1.70 and 1.1.80 (2 leap days) */
+#define DAYS_DELTA      (365 * 10 + 2)         
+/* 120 (2100 - 1980) isn't leap year */
+#define YEAR_2100       120 
+#define IS_LEAP_YEAR(y) (!((y) & 3) && (y) != YEAR_2100)
+
+/* Linear day numbers of the respective 1sts in non-leap years. */
+static time_t days_in_year[] = {
+        /* Jan  Feb  Mar  Apr  May  Jun  Jul  Aug  Sep  Oct  Nov  Dec */
+        0,   0,  31,  59,  90, 120, 151, 181, 212, 243, 273, 304, 334, 0, 0, 0,
+};
+
+/* Convert a FAT time/date pair to a UNIX date (seconds since 1 1 70). */
+static time_t fat_time_fat2unix (uae_u16 time, uae_u16 date, int fat12)
+{
+    time_t second, day, leap_day, month, year;
+
+    if (0 && fat12) {
+	year = date & 0x7f;
+	month = (date >> 7) & 0x0f;
+	day = (date >> 11);
+    } else {
+	year  = date >> 9;  
+	month = max(1, (date >> 5) & 0xf);
+	day   = max(1, date & 0x1f) - 1;
+    }
+
+    leap_day = (year + 3) / 4;
+    if (year > YEAR_2100)           /* 2100 isn't leap year */
+	leap_day--;
+    if (IS_LEAP_YEAR(year) && month > 2)
+	leap_day++;
+
+    second =  (time & 0x1f) << 1;
+    second += ((time >> 5) & 0x3f) * SECS_PER_MIN;
+    second += (time >> 11) * SECS_PER_HOUR;
+    second += (year * 365 + leap_day
+	+ days_in_year[month] + day
+	+ DAYS_DELTA) * SECS_PER_DAY;
+    return second;
+}
+
+static int getcluster (struct zfile *z, int cluster, int fatstart, int fatbits)
+{
+    uae_u32 fat = 0;
+    uae_u8 p[4];
+    int offset = cluster * fatbits;
+    zfile_fseek (z, fatstart * 512 + offset / 8, SEEK_SET);
+    if (fatbits == 12) {
+	zfile_fread (p, 2, 1, z);
+	if ((offset & 4))
+	    fat = ((p[0] & 0xf0) >> 4) | (p[1] << 4);
+	else
+	    fat = (p[0]) | ((p[1] & 0x0f) << 8);
+	if (fat >= 0xff0)
+	    return -1;
+    } else if (fatbits == 16) {
+	zfile_fread (p, 2, 1, z);
+	fat = p[0] | (p[1] << 8);
+	if (fat >= 0xfff0)
+	    return -1;
+    } else if (fatbits == 32) {
+	zfile_fread (p, 4, 1, z);
+	fat = p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24);
+	fat &= ~0x0fffffff;
+	if (fat >= 0x0ffffff0)
+	    return -1;
+    }
+    return fat;
+}
+
+static void fatdirectory (struct zfile *z, struct zvolume *zv, TCHAR *name, int startblock, int entries, int sectorspercluster, int fatstart, int dataregion, int fatbits)
+{
+    struct zarchive_info zai;
+    struct znode *znnew;
+    int i, j;
+
+    for (i = 0; i < entries; i++) {
+	TCHAR name2[MAX_DPATH], *fname;
+	uae_s64 size;
+	uae_u8 fatname[16];
+	uae_u8 buf[32];
+	int attr, cnt, ext;
+	int startcluster;
+
+	memset (buf, 0, sizeof buf);
+	memset (&zai, 0, sizeof zai);
+	zfile_fseek (z, startblock * 512 + i * 32, SEEK_SET);
+	zfile_fread (buf, 32, 1, z);
+	if (buf[0] == 0)
+	    break;
+	if (buf[0] == 0xe5)
+	    continue;
+	if (buf[0] == 0x05)
+	    buf[0] = 0xe5;
+	size = buf[0x1c] | (buf[0x1d] << 8) | (buf[0x1e] << 16) | (buf[0x1f] << 24);
+	attr = buf[0x0b];
+	startcluster = buf[0x1a] | (buf[0x1b] << 8);
+	if ((attr & (0x4 | 0x2)) == 0x06) // system+hidden
+	    continue;
+	if (attr & 8) // disk name
+	    continue;
+	if (attr & 1) // read-only
+	    zai.flags |= 1 << 3;
+	if (!(attr & 32)) // archive
+	    zai.flags |= 1 << 4;
+	
+	cnt = 0;
+	ext = 0;
+	for (j = 0; j < 8 && buf[j] != 0x20 && buf[j] != 0; j++)
+	    fatname[cnt++] = buf[j];
+	for (j = 0; j < 3 && buf[8 + j] != 0x20 && buf[8 + j] != 0; j++) {
+	    if (ext == 0)
+		fatname[cnt++] = '.';
+	    ext = 1;
+	    fatname[cnt++] = buf[8 + j];
+	}
+	fatname[cnt] = 0;
+
+	fname = au (fatname);
+	name2[0] = 0;
+	if (name[0]) {
+	    TCHAR sep[] = { FSDB_DIR_SEPARATOR, 0 };
+	    _tcscpy (name2, name);
+	    _tcscat (name2, sep);
+	}
+	_tcscat (name2, fname);
+
+	zai.name = name2;
+	zai.t = fat_time_fat2unix (buf[0x16] | (buf[0x17] << 8), buf[0x18] | (buf[0x19] << 8), 1);
+	if (attr & (16 | 8)) {
+	    int nextblock, cluster;
+	    nextblock = dataregion + (startcluster - 2) * sectorspercluster;
+	    cluster = getcluster (z, startcluster, fatstart, fatbits);
+	    if ((cluster < 0 || cluster >= 3) && nextblock != startblock) {
+		znnew = zvolume_adddir_abs (zv, &zai);
+		fatdirectory (z, zv, name2, nextblock, sectorspercluster * 512 / 32, sectorspercluster, fatstart, dataregion, fatbits);
+		while (cluster >= 3) {
+		    nextblock = dataregion + (cluster - 2) * sectorspercluster;
+		    fatdirectory (z, zv, name2, nextblock, sectorspercluster * 512 / 32, sectorspercluster, fatstart, dataregion, fatbits);
+		    cluster = getcluster (z, cluster, fatstart, fatbits);
+		}
+	    }
+	} else {
+	    zai.size = size;
+	    znnew = zvolume_addfile_abs (zv, &zai);
+	    znnew->offset = startcluster;
+	}
+
+	xfree (fname);
+    }
+}
+
+struct zvolume *archive_directory_fat (struct zfile *z)
+{
+    uae_u8 buf[512] = { 0 };
+    int fatbits = 12;
+    struct zvolume *zv;
+    int rootdir, reserved, sectorspercluster;
+    int numfats, sectorsperfat, rootentries;
+    int dataregion;
+
+    zfile_fseek (z, 0, SEEK_SET);
+    zfile_fread (buf, 1, 512, z);
+
+    if (!isfat (buf))
+	return NULL;
+    reserved = buf[0x0e] | (buf[0x0f] << 8);
+    numfats = buf[0x10];
+    sectorsperfat = buf[0x16] | (buf[0x17] << 8);
+    rootentries = buf[0x11] | (buf[0x12] << 8);
+    sectorspercluster = buf[0x0d];
+    rootdir = reserved + numfats * sectorsperfat;
+    dataregion = rootdir + rootentries * 32 / 512;
+
+    zv = zvolume_alloc (z, ArchiveFormatFAT, NULL, NULL);
+    fatdirectory (z, zv, L"", rootdir, rootentries, sectorspercluster, reserved, dataregion, fatbits);
+    zv->method = ArchiveFormatFAT;
+    return zv;
+}
+
+struct zfile *archive_access_fat (struct znode *zn)
+{
+    uae_u8 buf[512] = { 0 };
+    int fatbits = 12;
+    int size = zn->size;
+    struct zfile *sz, *dz;
+    int rootdir, reserved, sectorspercluster;
+    int numfats, sectorsperfat, rootentries;
+    int dataregion;
+    int offset, cluster;
+
+    sz = zn->volume->archive;
+
+    zfile_fseek (sz, 0, SEEK_SET);
+    zfile_fread (buf, 1, 512, sz);
+
+    if (!isfat (buf))
+	return NULL;
+    reserved = buf[0x0e] | (buf[0x0f] << 8);
+    numfats = buf[0x10];
+    sectorsperfat = buf[0x16] | (buf[0x17] << 8);
+    rootentries = buf[0x11] | (buf[0x12] << 8);
+    sectorspercluster = buf[0x0d];
+    rootdir = reserved + numfats * sectorsperfat;
+    dataregion = rootdir + rootentries * 32 / 512;
+
+    dz = zfile_fopen_empty (sz, zn->fullname, size);
+    if (!dz)
+	return NULL;
+
+    offset = 0;
+    cluster = zn->offset;
+    while (size && cluster >= 2) {
+	int left = size > sectorspercluster * 512 ? sectorspercluster * 512 : size;
+	int sector = dataregion + (cluster - 2) * sectorspercluster;
+	zfile_fseek (sz, sector * 512, SEEK_SET);
+	zfile_fread (dz->data + offset, 1, left, sz);
+	size -= left;
+	offset += left;
+	cluster = getcluster (sz, cluster, reserved, fatbits);
+    }
+
+    return dz;
 }
 
 void archive_access_close (void *handle, unsigned int id)
@@ -1619,3 +1917,9 @@ void archive_access_close (void *handle, unsigned int id)
 	break;
     }
 }
+
+struct zfile *archive_access_dir (struct znode *zn)
+{
+    return zfile_fopen (zn->fullname, L"rb", 0);
+}
+

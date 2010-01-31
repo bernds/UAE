@@ -686,7 +686,7 @@ static uae_u32 REGPARAM2 arram_lget (uaecptr addr)
     addr &= arram_mask;
     m = (uae_u32 *)(armemory_ram + addr);
     if (strncmp ("T8", (char*)m, 2) == 0)
-	write_log_debug (L"Reading T8 from addr %088x PC=%p\n", addr, m68k_getpc (&regs));
+	write_log_debug (L"Reading T8 from addr %08x PC=%p\n", addr, m68k_getpc (&regs));
     if (strncmp ("LAME", (char*)m, 4) == 0)
 	write_log_debug (L"Reading LAME from addr %08x PC=%p\n", addr, m68k_getpc (&regs));
     if (strncmp ("RES1", (char*)m, 4) == 0)
@@ -1479,7 +1479,8 @@ int action_replay_unload (int in_memory_reset)
 	L"ACTION_REPLAY_HIDE",
     };
 
-    write_log_debug (L"Action Replay State:(%s)\nHrtmon State:(%s)\n", state[action_replay_flag+3],state[hrtmon_flag+3]);
+    write_log_debug (L"Action Replay State:(%s)\nHrtmon State:(%s)\n",
+	state[action_replay_flag + 3], state[hrtmon_flag + 3]);
 
     if (armemory_rom && armodel == 1) {
 	if (is_ar_pc_in_ram() || is_ar_pc_in_rom() || action_replay_flag == ACTION_REPLAY_WAIT_PC) {
@@ -1668,7 +1669,7 @@ int action_replay_load (void)
 	return 0;
     }
     action_replay_flag = ACTION_REPLAY_INACTIVE;
-    armemory_rom = (uae_u8*)xmalloc (ar_rom_file_size);
+    armemory_rom = xmalloc (ar_rom_file_size);
     zfile_fread (armemory_rom, 1, ar_rom_file_size, f);
     zfile_fclose (f);
     if (ar_rom_file_size == 65536) {
@@ -1687,7 +1688,7 @@ int action_replay_load (void)
     }
     arram_mask = arram_size - 1;
     arrom_mask = arrom_size - 1;
-    armemory_ram = (uae_u8*)xcalloc (arram_size, 1);
+    armemory_ram = xcalloc (arram_size, 1);
     write_log (L"Action Replay %d installed at %08X, size %08X\n", armodel, arrom_start, arrom_size);
     action_replay_version();
     return armodel;
@@ -1849,7 +1850,7 @@ int hrtmon_load (void)
     return 1;
 }
 
-void hrtmon_map_banks ()
+void hrtmon_map_banks (void)
 {
     uaecptr addr;
 
@@ -1876,7 +1877,7 @@ void hrtmon_map_banks ()
 	map_banks (&hrtmem3_bank, hrtmem3_start >> 16, hrtmem3_size >> 16, 0);
 }
 
-static void hrtmon_unmap_banks ()
+static void hrtmon_unmap_banks (void)
 {
     uaecptr addr;
 
@@ -1917,8 +1918,8 @@ void action_replay_version(void)
     int iArVersionMinor = -1;
     char* pNext;
     uae_char sArDate[11];
-    *sArDate = '\0';
 
+    *sArDate = '\0';
     if (!armemory_rom)
 	return;
 
@@ -1960,7 +1961,9 @@ void action_replay_version(void)
     }
 
     if (iArVersionMajor > 0) {
-	write_log (L"Version of cart is '%d.%.02d', date is '%s'\n", iArVersionMajor, iArVersionMinor, sArDate);
+	TCHAR *s = au (sArDate);
+	write_log (L"Version of cart is '%d.%.02d', date is '%s'\n", iArVersionMajor, iArVersionMinor, s);
+	xfree (s);
     }
 }
 

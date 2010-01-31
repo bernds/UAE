@@ -9,7 +9,7 @@
 
 #define UAEMAJOR 1
 #define UAEMINOR 6
-#define UAESUBREV 0
+#define UAESUBREV 1
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -180,6 +180,7 @@ struct uae_prefs {
     int gfx_max_horizontal, gfx_max_vertical;
     int gfx_saturation, gfx_luminance, gfx_contrast, gfx_gamma;
     int gfx_blackerthanblack;
+    int gfx_backbuffers;
     int color_mode;
 
     int gfx_filter;
@@ -216,6 +217,8 @@ struct uae_prefs {
     int floppy_write_length;
     int tod_hack;
     uae_u32 maprom;
+    int turbo_emulation;
+    int headless;
 
     int cs_compatible;
     int cs_ciaatod;

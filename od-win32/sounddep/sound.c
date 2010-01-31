@@ -138,14 +138,7 @@ void update_sound (int freq, int longframe)
 	lines += 1.0;
 
     if (have_sound) {
-	if (isvsync () || currprefs.chipset_refreshrate) {
-	    if (currprefs.ntscmode)
-		scaled_sample_evtime_orig = (MAXHPOS_NTSC * (MAXVPOS_NTSC + lines) * freq * CYCLE_UNIT) / (float)sdp->obtainedfreq;
-	    else
-		scaled_sample_evtime_orig = (MAXHPOS_PAL * (MAXVPOS_PAL + lines) * freq * CYCLE_UNIT) / (float)sdp->obtainedfreq;
-	} else {
-	    scaled_sample_evtime_orig = 227.0 * (lines + 312) * 50 * CYCLE_UNIT / (float)sdp->obtainedfreq;
-	}
+	scaled_sample_evtime_orig = 227.0 * (lines + maxvpos) * freq * CYCLE_UNIT / (float)sdp->obtainedfreq;
 	scaled_sample_evtime = scaled_sample_evtime_orig;
     }
 }
@@ -454,6 +447,7 @@ static int open_audio_pa (struct sound_data *sd, int index)
     PaStreamParameters p;
     PaError err;
     TCHAR *name;
+    TCHAR *errtxt;
 
     size = sd->sndbufsize;
     s->paframesperbuffer = size;
@@ -468,9 +462,14 @@ static int open_audio_pa (struct sound_data *sd, int index)
     p.suggestedLatency = di->defaultLowOutputLatency;
     p.hostApiSpecificStreamInfo = NULL; 
     for (;;) {
+	int err2;
 	err = Pa_IsFormatSupported (NULL, &p, freq);
 	if (err == paFormatIsSupported)
 	    break;
+	err2 = err;
+	errtxt = au (Pa_GetErrorText (err));
+	write_log (L"PASOUND: sound format not supported, ch=%d, rate=%d. %s\n", freq, ch, errtxt);
+	xfree (errtxt);
 	if (freq < 48000) {
 	    freq = 48000;
 	    err = Pa_IsFormatSupported (NULL, &p, freq);
@@ -487,12 +486,18 @@ static int open_audio_pa (struct sound_data *sd, int index)
 		break;
 	    }
 	}
-	write_log (L"PASOUND: sound format not supported\n");
+	if (err2 != err) {
+	    errtxt = au (Pa_GetErrorText (err));
+	    write_log (L"PASOUND: sound format not supported, ch=%d, rate=%d. %s\n", freq, ch, errtxt);
+	    xfree (errtxt);
+	}
 	goto end;
     }
     err = Pa_OpenStream (&s->pastream, NULL, &p, freq, s->paframesperbuffer, paNoFlag, portAudioCallback, sd);
     if (err != paNoError) {
-	write_log (L"PASOUND: Pa_OpenStream() error %d (%s)\n", err, Pa_GetErrorText (err));
+	errtxt = au (Pa_GetErrorText (err));
+	write_log (L"PASOUND: Pa_OpenStream() error %d (%s)\n", err, errtxt);
+	xfree (errtxt);
 	goto end;
     }
     s->paevent = CreateEvent (NULL, FALSE, FALSE, NULL);
@@ -1387,7 +1392,7 @@ void send_sound (struct sound_data *sd, uae_u16 *sndbuffer)
 
 void finish_sound_buffer (void)
 {
-    if (turbo_emulation)
+    if (currprefs.turbo_emulation)
 	return;
     if (currprefs.sound_stereo_swap_paula) {
 	if (get_audio_nativechannels () == 2 || get_audio_nativechannels () == 4)
@@ -1458,11 +1463,11 @@ static void OpenALEnumerate (struct sound_device *sds, const char *pDeviceNames,
 		    if (iMajorVersion > 1 || (iMajorVersion == 1 && iMinorVersion > 0)) {
 			ok = 1;
 		    }
+		    alcMakeContextCurrent (NULL);
+		    alcDestroyContext (context);
 		}
-		alcMakeContextCurrent (NULL);
-		alcDestroyContext (context);
+		alcCloseDevice (pDevice);
 	    }
-	    alcCloseDevice (pDevice);
 	} else {
 	    ok = 1;
 	}
@@ -1557,6 +1562,12 @@ static void PortAudioEnumerate (struct sound_device *sds)
     }
 }
 #endif
+
+static LONG WINAPI ExceptionFilter (struct _EXCEPTION_POINTERS * pExceptionPointers, DWORD ec)
+{
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
 int enumerate_sound_devices (void)
 {
     if (!num_sound_devices) {
@@ -1564,21 +1575,26 @@ int enumerate_sound_devices (void)
 	write_log (L"Enumerating DirectSound devices..\n");
 	DirectSoundEnumerate ((LPDSENUMCALLBACK)DSEnumProc, sound_devices);
 	DirectSoundCaptureEnumerate ((LPDSENUMCALLBACK)DSEnumProc, record_devices);
-	if (isdllversion (L"openal32.dll", 6, 14, 357, 22)) {
-	    write_log (L"Enumerating OpenAL devices..\n");
-	    if (alcIsExtensionPresent (NULL, "ALC_ENUMERATION_EXT")) {
-		const char* ppDefaultDevice = alcGetString (NULL, ALC_DEFAULT_DEVICE_SPECIFIER);
-		const char* pDeviceNames = alcGetString (NULL, ALC_DEVICE_SPECIFIER);
-		if (alcIsExtensionPresent (NULL, "ALC_ENUMERATE_ALL_EXT"))
-		    pDeviceNames = alcGetString (NULL, ALC_ALL_DEVICES_SPECIFIER);
-		OpenALEnumerate (sound_devices, pDeviceNames, ppDefaultDevice, FALSE);
-		ppDefaultDevice = alcGetString (NULL, ALC_CAPTURE_DEFAULT_DEVICE_SPECIFIER);
-		pDeviceNames = alcGetString (NULL, ALC_CAPTURE_DEVICE_SPECIFIER);
-		OpenALEnumerate (record_devices, pDeviceNames, ppDefaultDevice, TRUE);
+	__try {
+	    if (isdllversion (L"openal32.dll", 6, 14, 357, 22)) {
+		write_log (L"Enumerating OpenAL devices..\n");
+		if (alcIsExtensionPresent (NULL, "ALC_ENUMERATION_EXT")) {
+		    const char* ppDefaultDevice = alcGetString (NULL, ALC_DEFAULT_DEVICE_SPECIFIER);
+		    const char* pDeviceNames = alcGetString (NULL, ALC_DEVICE_SPECIFIER);
+		    if (alcIsExtensionPresent (NULL, "ALC_ENUMERATE_ALL_EXT"))
+			pDeviceNames = alcGetString (NULL, ALC_ALL_DEVICES_SPECIFIER);
+		    OpenALEnumerate (sound_devices, pDeviceNames, ppDefaultDevice, FALSE);
+		    ppDefaultDevice = alcGetString (NULL, ALC_CAPTURE_DEFAULT_DEVICE_SPECIFIER);
+		    pDeviceNames = alcGetString (NULL, ALC_CAPTURE_DEVICE_SPECIFIER);
+		    OpenALEnumerate (record_devices, pDeviceNames, ppDefaultDevice, TRUE);
+		}
 	    }
-	}
+    } __except(ExceptionFilter (GetExceptionInformation (), GetExceptionCode ())) {
+	write_log (L"OpenAL enumeration crashed!\n");
+        flush_log ();
+    }
 #if PORTAUDIO
-	{
+	__try {
 	    HMODULE hm = WIN32_LoadLibrary (L"portaudio_x86.dll");
 	    if (hm) {
 		TCHAR *s;
@@ -1590,19 +1606,22 @@ int enumerate_sound_devices (void)
 		if (Pa_GetVersion () >= 1899) {
 		    err = Pa_Initialize ();
 		    if (err == paNoError) {
-			PortAudioEnumerate (sound_devices);
+	    		PortAudioEnumerate (sound_devices);
 		    } else {
 			s = au (Pa_GetErrorText (err));
-			write_log (L"Portaudio initializiation failed: %d (%s)\n",
+			write_log (L"Portaudio initialization failed: %d (%s)\n",
 			    err, s);
 			xfree (s);
 			FreeLibrary (hm);
 		    }
 		} else {
 		    write_log (L"Too old PortAudio library\n");
-	    	    FreeLibrary (hm);
+		    flush_log ();
+		    FreeLibrary (hm);
 		}
 	    }
+	} __except(ExceptionFilter (GetExceptionInformation (), GetExceptionCode ())) {
+	    write_log (L"Portaudio enumeration crashed!\n");
 	}
 #endif
 	write_log (L"Enumeration end\n");
