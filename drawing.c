@@ -51,6 +51,8 @@
 #include "savestate.h"
 
 int lores_factor, lores_shift;
+int aga_mode; /* mirror of chipset_mask & CSMASK_AGA */
+int direct_rgb; 
 
 /* The shift factor to apply when converting between Amiga coordinates and window
    coordinates.  Zero if the resolution is the same, positive if window coordinates
@@ -1166,7 +1168,7 @@ static void init_aspect_maps (void)
 
     if (currprefs.gfx_ycenter && !(currprefs.gfx_correct_aspect)) {
 	/* @@@ verify maxvpos vs. MAXVPOS */
-	extra_y_adjust = (gfxvidinfo.height - (maxvpos << (currprefs.gfx_linedbl ? 1 : 0))) >> 1;
+	extra_y_adjust = (gfxvidinfo.height - (maxvpos_max << (currprefs.gfx_linedbl ? 1 : 0))) >> 1;
 	if (extra_y_adjust < 0)
 	    extra_y_adjust = 0;
     }
@@ -1250,7 +1252,7 @@ STATIC_INLINE void do_flush_screen (int start, int stop)
     unlockscr ();
     if (start <= stop)
 	flush_screen (start, stop);
-    else if (currprefs.gfx_afullscreen && currprefs.gfx_vsync)
+    else if ((currprefs.gfx_afullscreen && currprefs.gfx_vsync) || currprefs.gfx_filter == 8)
 	flush_screen (0, 0); /* vsync mode */
 }
 
@@ -1297,7 +1299,7 @@ static void pfield_expand_dp_bplcon (void)
 	 * stuff, and it's set by some demos (e.g. Andromeda Seven Seas) */
 	bplehb = ((dp_for_drawing->bplcon0 & 0x7010) == 0x6000 && !(dp_for_drawing->bplcon2 & 0x200));
     } else {
-	bplehb = (dp_for_drawing->bplcon0 & 0xFC00) == 0x6000;
+	bplehb = (dp_for_drawing->bplcon0 & 0xFC00) == 0x6000 && !(currprefs.chipset_mask & CSMASK_NO_EHB);
     }
     plf1pri = dp_for_drawing->bplcon2 & 7;
     plf2pri = (dp_for_drawing->bplcon2 >> 3) & 7;
@@ -1483,7 +1485,7 @@ static void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
     dh = dh_line;
     xlinebuffer = gfxvidinfo.linemem;
     if (xlinebuffer == 0 && do_double
-	&& (border == 0 || (border != 1 && dip_for_drawing->nr_color_changes > 0)))
+	&& (border == 0 || dip_for_drawing->nr_color_changes > 0))
 	xlinebuffer = gfxvidinfo.emergmem, dh = dh_emerg;
     if (xlinebuffer == 0)
 	xlinebuffer = row_map[gfx_ypos], dh = dh_buf;
@@ -1674,13 +1676,13 @@ static void center_image (void)
 		thisframe_y_adjust = prev_y_adjust;
 	}
 	/* Make sure the value makes sense */
-	if (thisframe_y_adjust + max_drawn_amiga_line > maxvpos)
-	    thisframe_y_adjust = maxvpos - max_drawn_amiga_line;
+	if (thisframe_y_adjust + max_drawn_amiga_line > maxvpos_max)
+	    thisframe_y_adjust = maxvpos_max - max_drawn_amiga_line;
 	if (thisframe_y_adjust < minfirstline)
 	    thisframe_y_adjust = minfirstline;
     }
     thisframe_y_adjust_real = thisframe_y_adjust << (currprefs.gfx_linedbl ? 1 : 0);
-    tmp = (maxvpos - thisframe_y_adjust) << (currprefs.gfx_linedbl ? 1 : 0);
+    tmp = (maxvpos_max - thisframe_y_adjust) << (currprefs.gfx_linedbl ? 1 : 0);
     if (tmp != max_ypos_thisframe) {
 	last_max_ypos = tmp;
 	if (last_max_ypos < 0)
@@ -1754,7 +1756,8 @@ static void init_drawing_frame (void)
     if (thisframe_first_drawn_line > thisframe_last_drawn_line)
 	thisframe_last_drawn_line = thisframe_first_drawn_line;
 
-    maxline = currprefs.gfx_linedbl ? (maxvpos + 1) * 2 + 1 : (maxvpos + 1) + 1;
+    maxline = currprefs.gfx_linedbl ? (maxvpos_max + 1) * 2 + 1 : (maxvpos_max + 1) + 1;
+    maxline++;
 #ifdef SMART_UPDATE
     for (i = 0; i < maxline; i++) {
 	switch (linestate[i]) {
@@ -2057,8 +2060,8 @@ static void lightpen_update (void)
 	lightpen_cx -= maxhpos;
     if (lightpen_cy < minfirstline)
 	lightpen_cy = minfirstline;
-    if (lightpen_cy >= maxvpos)
-	lightpen_cy = maxvpos - 1;
+    if (lightpen_cy >= maxvpos_max)
+	lightpen_cy = maxvpos_max - 1;
 
     for (i = 0; i < LIGHTPEN_HEIGHT; i++) {
         int line = lightpen_y + i - LIGHTPEN_HEIGHT / 2;
@@ -2089,9 +2092,9 @@ void finish_drawing_frame (void)
     return;
 #endif
     for (i = 0; i < max_ypos_thisframe; i++) {
-	int where;
 	int i1 = i + min_ypos_for_screen;
 	int line = i + thisframe_y_adjust_real;
+	int where;
 
 	if (linestate[line] == LINE_UNDECIDED)
 	    break;
@@ -2099,24 +2102,33 @@ void finish_drawing_frame (void)
 	where = amiga2aspect_line_map[i1];
 	if (where >= gfxvidinfo.height)
 	    break;
-	if (where == -1)
+	if (where < 0)
 	    continue;
 
 	pfield_draw_line (line, where, amiga2aspect_line_map[i1 + 1]);
     }
 
     /* clear possible old garbage at the bottom if emulated area become smaller */
-    while (last_max_ypos <  gfxvidinfo.height) {
-	xcolnr tmp = colors_for_drawing.acolors[0];
+    for (i = last_max_ypos; i < gfxvidinfo.height; i++) {
+	int i1 = i + min_ypos_for_screen;
+	int line = i + thisframe_y_adjust_real;
+	int where = amiga2aspect_line_map[i1];
+	xcolnr tmp;
+
+	if (where >= gfxvidinfo.height)
+	    break;
+	if (where < 0)
+	    continue;
+	tmp = colors_for_drawing.acolors[0];
 	colors_for_drawing.acolors[0] = getxcolor (0);
 	xlinebuffer = gfxvidinfo.linemem;
 	if (xlinebuffer == 0)
-	    xlinebuffer = row_map[last_max_ypos];
+	    xlinebuffer = row_map[where];
 	xlinebuffer -= linetoscr_x_adjust_bytes;
 	fill_line ();
-	do_flush_line (last_max_ypos);
+	linestate[line] = LINE_UNDECIDED;
+	do_flush_line (where);
 	colors_for_drawing.acolors[0] = tmp;
-	last_max_ypos++;
     }
 
     if (currprefs.leds_on_screen) {
@@ -2376,10 +2388,12 @@ void drawing_init (void)
 
     uae_sem_init (&gui_sem, 0, 1);
 #ifdef PICASSO96
-    InitPicasso96 ();
-    picasso_on = 0;
-    picasso_requested_on = 0;
-    gfx_set_picasso_state (0);
+    if (savestate_state != STATE_RESTORE) {
+	InitPicasso96 ();
+	picasso_on = 0;
+	picasso_requested_on = 0;
+	gfx_set_picasso_state (0);
+    }
 #endif
     xlinebuffer = gfxvidinfo.bufmem;
     inhibit_frame = 0;

@@ -188,10 +188,10 @@ static uae_u32 REGPARAM2 dev_close (TrapContext *context)
     struct devstruct *dev;
 
     dev = getdevstruct (get_long(request + 24));
-    if (log_uaeserial)
-	write_log ("%s:%d close, req=%x\n", getdevname(), dev->unit, request);
     if (!dev)
 	return 0;
+    if (log_uaeserial)
+	write_log ("%s:%d close, req=%x\n", getdevname(), dev->unit, request);
     dev_close_3 (dev);
     put_long (request + 24, 0);
     put_word (m68k_areg(&context->regs, 6) + 32, get_word (m68k_areg(&context->regs, 6) + 32) - 1);
@@ -201,7 +201,7 @@ static uae_u32 REGPARAM2 dev_close (TrapContext *context)
 static void resetparams(struct devstruct *dev, uaecptr req)
 {
     put_long(req + io_CtlChar, 0x00001311);
-    put_long(req + io_RBufLen, 8192);
+    put_long(req + io_RBufLen, 1024);
     put_long(req + io_ExtFlags, 0);
     put_long(req + io_Baud, 9600);
     put_long(req + io_BrkTime, 250000);
@@ -271,19 +271,19 @@ static uae_u32 REGPARAM2 dev_open (TrapContext *context)
     uae_u32 unit = m68k_dreg (&context->regs, 0);
     uae_u32 flags = m68k_dreg (&context->regs, 1);
     struct devstruct *dev;
-    int i;
+    int i, err;
 
     for (i = 0; i < MAX_TOTAL_DEVICES; i++) {
-	if (devst[i].unit == unit && devst[i].exclusive)
+	if (devst[i].open && devst[i].unit == unit && devst[i].exclusive)
 	    return openfail (ioreq, -6); /* busy */
     }
     for (i = 0; i < MAX_TOTAL_DEVICES; i++) {
 	if (!devst[i].open)
 	    break;
     }
-    dev = &devst[i];
     if (i == MAX_TOTAL_DEVICES)
 	return openfail (ioreq, 32); /* badunitnum */
+    dev = &devst[i];
     dev->sysdata = xcalloc (uaeser_getdatalenght(), 1);
     if (!uaeser_open (dev->sysdata, dev, unit)) {
 	xfree (dev->sysdata);
@@ -295,7 +295,13 @@ static uae_u32 REGPARAM2 dev_open (TrapContext *context)
     dev->exclusive = (get_word(ioreq + io_SerFlags) & SERF_SHARED) ? 0 : 1;
     put_long (ioreq + 24, dev->uniq);
     resetparams (dev, ioreq);
-    setparams (dev, ioreq);
+    err = setparams (dev, ioreq);
+    if (err) {
+	uaeser_close (dev->sysdata);
+	dev->open = 0;
+	xfree (dev->sysdata);
+	return openfail (ioreq, err);
+    }
     if (log_uaeserial)
 	write_log ("%s:%d open ioreq=%08.8X\n", getdevname(), unit, ioreq);
     start_thread (dev);
@@ -383,7 +389,7 @@ static void abort_async (struct devstruct *dev, uaecptr request)
 {
     struct asyncreq *ar = get_async_request (dev, request, 1);
     if (!ar) {
-	write_log ("%s:d: abort sync but no request %x found!\n", getdevname(), dev->unit, request);
+	write_log ("%s:%d: abort sync but no request %x found!\n", getdevname(), dev->unit, request);
 	return;
     }
     if (log_uaeserial)

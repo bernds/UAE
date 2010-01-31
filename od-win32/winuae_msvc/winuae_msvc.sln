@@ -1,5 +1,5 @@
-Microsoft Visual Studio Solution File, Format Version 9.00
-# Visual Studio 2005
+Microsoft Visual Studio Solution File, Format Version 10.00
+# Visual Studio Codename Orcas
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "winuae", "winuae_msvc.vcproj", "{4ADAA943-1AC8-4FB5-82E5-4FB753B6C2DA}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "gencpu", "..\gencpu_msvc\gencpu_msvc.vcproj", "{DEF7ACF7-050E-4069-BB99-5B5D93F60521}"

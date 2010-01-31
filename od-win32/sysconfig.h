@@ -36,9 +36,10 @@
 #define SCSIEMU /* uaescsi.device emulation */
 #define UAESERIAL /* uaeserial.device emulation */
 #define FPUEMU /* FPU emulation */
+#define MMUEMU
 #define CPUEMU_0 /* generic 680x0 emulation */
-#define CPUEMU_5 /* 68000+prefetch emulation */
-#define CPUEMU_6 /* cycle-exact cpu&blitter */
+#define CPUEMU_11 /* 68000+prefetch emulation */
+#define CPUEMU_12 /* cycle-exact cpu&blitter */
 #define ACTION_REPLAY /* Action Replay 1/2/3 support */
 #define PICASSO96 /* Picasso96 display card emulation */
 #define BSDSOCKET /* bsdsocket.library emulation */
@@ -50,6 +51,8 @@
 #define ARCHIVEACCESS /* ArchiveAccess decompression library */
 #define LOGITECHLCD /* Logitech G15 LCD */
 #define SAVESTATE /* State file support */
+#define A2091 /* A590/A2091 SCSI */
+#define NCR /* A4000T/A4091 SCSI */
 
 #else
 
@@ -64,8 +67,8 @@
 #define OPENGL
 #endif
 #define CAPS
-#define CPUEMU_6
-#define CPUEMU_5
+#define CPUEMU_12
+#define CPUEMU_11
 
 
 #endif

@@ -64,7 +64,7 @@ extern uaecptr a3000lmem_start, a3000hmem_start;
 extern int ersatzkickfile;
 extern int cloanto_rom;
 extern uae_u16 kickstart_version;
-extern int uae_boot_rom;
+extern int uae_boot_rom, uae_boot_rom_size;
 
 extern uae_u8* baseaddr[];
 
@@ -109,15 +109,18 @@ extern addrbank expamem_bank;
 extern addrbank fastmem_bank;
 extern addrbank gfxmem_bank, gfxmem_bankx;
 extern addrbank gayle_bank;
+extern addrbank gayle2_bank;
+extern addrbank gayle_attr_bank;
 extern addrbank mbres_bank;
 extern addrbank akiko_bank;
-extern addrbank mbdmac_bank;
+extern addrbank mbdmac_a3000_bank;
 extern addrbank cardmem_bank;
 
 extern void rtarea_init (void);
 extern void rtarea_setup (void);
 extern void expamem_init (void);
 extern void expamem_reset (void);
+extern void expamem_next (void);
 
 extern uae_u32 gfxmem_start;
 extern uae_u8 *gfxmemory;

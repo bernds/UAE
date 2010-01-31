@@ -13,6 +13,9 @@
 #define CSMASK_ECS_AGNUS 1
 #define CSMASK_ECS_DENISE 2
 #define CSMASK_AGA 4
+#define CSMASK_BUGS 0x300
+#define CSMASK_NO_EHB 0x100
+#define CSMASK_BLTBUSY_BUG 0x200
 
 uae_u32 get_copper_address(int copno);
 
@@ -76,6 +79,7 @@ extern int joy0button, joy1button;
 
 extern void INTREQ (uae_u16);
 extern void INTREQ_0 (uae_u16);
+extern void INTREQ_f (uae_u32);
 extern uae_u16 INTREQR (void);
 
 /* maximums for statically allocated tables */
@@ -101,7 +105,7 @@ extern uae_u16 INTREQR (void);
 #define VBLANK_HZ_PAL 50
 #define VBLANK_HZ_NTSC 60
 
-extern int maxhpos, maxvpos, minfirstline, vblank_endline, numscrlines;
+extern int maxhpos, maxvpos, maxvpos_max, minfirstline, vblank_endline, numscrlines;
 extern int vblank_hz, fake_vblank_hz, vblank_skip;
 extern frame_time_t syncbase;
 #define NUMSCRLINES (maxvpos+1-minfirstline+1)

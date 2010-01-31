@@ -22,6 +22,8 @@
 #include "zfile.h"
 #include "catweasel.h"
 #include "cdtv.h"
+#include "a2091.h"
+#include "ncr_scsi.h"
 #include "debug.h"
 
 #define MAX_EXPANSION_BOARDS 8
@@ -125,7 +127,7 @@ uaecptr ROM_filesys_resname, ROM_filesys_resid;
 uaecptr ROM_filesys_diagentry;
 uaecptr ROM_hardfile_resname, ROM_hardfile_resid;
 uaecptr ROM_hardfile_init;
-int uae_boot_rom;
+int uae_boot_rom, uae_boot_rom_size; /* size = code size only */
 
 /* ********************************************************** */
 
@@ -748,6 +750,9 @@ static void expamem_map_fastcard (void)
 
 static void expamem_init_fastcard (void)
 {
+    uae_u16 mid = currprefs.cs_a2091 ? commodore : uae_id;
+    uae_u8 pid = currprefs.cs_a2091 ? commodore_a2091_ram : 1;
+
     expamem_init_clear();
     if (allocated_fastmem == 0x100000)
 	expamem_write (0x00, Z2_MEM_1MB + add_memory + zorroII);
@@ -760,10 +765,10 @@ static void expamem_init_fastcard (void)
 
     expamem_write (0x08, care_addr);
 
-    expamem_write (0x04, 1);
+    expamem_write (0x04, pid);
 
-    expamem_write (0x10, uae_id >> 8);
-    expamem_write (0x14, uae_id & 0xff);
+    expamem_write (0x10, mid >> 8);
+    expamem_write (0x14, mid & 0xff);
 
     expamem_write (0x18, 0x00); /* ser.no. Byte 0 */
     expamem_write (0x1c, 0x00); /* ser.no. Byte 1 */
@@ -1055,6 +1060,47 @@ static void allocate_expamem (void)
 #endif /* SAVESTATE */
 }
 
+int need_uae_boot_rom(void)
+{
+    if (nr_units() > 0)
+	return 1;
+    if (currprefs.socket_emu)
+	return 1;
+    if (currprefs.uaeserial)
+	return 1;
+    if (currprefs.scsi)
+	return 1;
+    if (currprefs.win32_outsidemouse)
+	return 1;
+    if (currprefs.gfxmem_size)
+	return 1;
+    return 0;
+}
+
+void expamem_next(void)
+{
+    expamem_init_clear();
+    map_banks (&expamem_bank, 0xE8, 1, 0);
+    ++ecard;
+    if (ecard < MAX_EXPANSION_BOARDS)
+        (*card_init[ecard]) ();
+    else
+        expamem_init_clear2 ();
+}
+
+static void expamem_init_cdtv (void)
+{
+    cdtv_init();
+}
+static void expamem_init_a2091 (void)
+{
+    a2091_init();
+}
+static void expamem_init_a4091 (void)
+{
+    ncr_init();
+}
+
 void expamem_reset (void)
 {
     int do_mount = 1;
@@ -1064,9 +1110,6 @@ void expamem_reset (void)
     uae_id = hackers_id;
 
     allocate_expamem ();
-
-    if (currprefs.cs_cdtvcd)
-	cdtv_init ();
 
     /* check if Kickstart version is below 1.3 */
     if (! ersatzkickfile && kickstart_version
@@ -1079,11 +1122,8 @@ void expamem_reset (void)
 	write_log ("Kickstart version is below 1.3!  Disabling autoconfig devices.\n");
 	do_mount = 0;
     }
-#ifdef FILESYS
-    /* No need for filesystem stuff if there aren't any mounted.  */
-    if (nr_units() == 0)
+    if (need_uae_boot_rom() == 0)
 	do_mount = 0;
-#endif
     if (fastmemory != NULL) {
 	card_init[cardno] = expamem_init_fastcard;
 	card_map[cardno++] = expamem_map_fastcard;
@@ -1092,6 +1132,24 @@ void expamem_reset (void)
 	card_init[cardno] = expamem_init_z3fastmem;
 	card_map[cardno++] = expamem_map_z3fastmem;
     }
+#ifdef CDTV
+    if (currprefs.cs_cdtvcd) {
+	card_init[cardno] = expamem_init_cdtv;
+	card_map[cardno++] = NULL;
+    }
+#endif
+#ifdef NCR
+    if (currprefs.cs_a4091) {
+	card_init[cardno] = expamem_init_a4091;
+	card_map[cardno++] = NULL;
+    }
+#endif
+#ifdef A2091
+    if (currprefs.cs_a2091) {
+	card_init[cardno] = expamem_init_a2091;
+	card_map[cardno++] = NULL;
+    }
+#endif
 #ifdef PICASSO96
     if (gfxmemory != NULL) {
 	card_init[cardno] = expamem_init_gfxcard;
@@ -1110,6 +1168,7 @@ void expamem_reset (void)
 	card_map[cardno++] = expamem_map_catweasel;
     }
 #endif
+
     if (cardno > 0 && cardno < MAX_EXPANSION_BOARDS) {
 	card_init[cardno] = expamem_init_last;
 	card_map[cardno++] = expamem_map_clear;
@@ -1247,7 +1306,8 @@ uae_u8 *save_expansion (int *len, uae_u8 *dstptr)
     save_u32 (fastmem_start);
     save_u32 (z3fastmem_start);
     save_u32 (gfxmem_start);
-    *len = 4 + 4 + 4;
+    save_u32 (RTAREA_BASE);
+    *len = 4 + 4 + 4 + 4;
     return dstbak;
 }
 
@@ -1256,6 +1316,7 @@ uae_u8 *restore_expansion (uae_u8 *src)
     fastmem_start = restore_u32 ();
     z3fastmem_start = restore_u32 ();
     gfxmem_start = restore_u32 ();
+    restore_u32();
     return src;
 }
 

@@ -26,6 +26,7 @@
 #include "options.h"
 #include "uae.h"
 #include "gensound.h"
+#include "audio.h"
 #include "sounddep/sound.h"
 #include "events.h"
 #include "memory.h"
@@ -36,7 +37,6 @@
 #include "blitter.h"
 #include "xwin.h"
 #include "inputdevice.h"
-#include "audio.h"
 #include "keybuf.h"
 #include "serial.h"
 #include "osemu.h"
@@ -56,6 +56,10 @@
 #if defined(ENFORCER)
 #include "enforcer.h"
 #endif
+#include "gayle.h"
+#include "gfxfilter.h"
+#include "a2091.h"
+#include "ncr_scsi.h"
 
 STATIC_INLINE int nocustom(void)
 {
@@ -159,6 +163,7 @@ static uae_u32 cop1lc,cop2lc,copcon;
 
 int maxhpos = MAXHPOS_PAL;
 int maxvpos = MAXVPOS_PAL;
+int maxvpos_max = MAXVPOS_PAL;
 int minfirstline = VBLANK_ENDLINE_PAL;
 int vblank_hz = VBLANK_HZ_PAL, fake_vblank_hz, vblank_skip;
 frame_time_t syncbase;
@@ -197,7 +202,7 @@ static int sprite_last_drawn_at[MAX_SPRITES];
 static int last_sprite_point, nr_armed;
 static int sprite_width, sprres, sprite_buffer_res;
 
-#ifdef CPUEMU_6
+#ifdef CPUEMU_12
 uae_u8 cycle_line[256];
 #endif
 
@@ -304,13 +309,13 @@ static int delta_sprite_entry = 0;
 static int max_color_change = 400;
 static int delta_color_change = 0;
 #else
-struct sprite_entry sprite_entries[2][MAX_SPR_PIXELS / 16];
-struct color_change color_changes[2][MAX_REG_CHANGE];
+static struct sprite_entry sprite_entries[2][MAX_SPR_PIXELS / 16];
+static struct color_change color_changes[2][MAX_REG_CHANGE];
 #endif
 
 struct decision line_decisions[2 * (MAXVPOS + 1) + 1];
-struct draw_info line_drawinfo[2][2 * (MAXVPOS + 1) + 1];
-struct color_entry color_tables[2][(MAXVPOS + 1) * 2];
+static struct draw_info line_drawinfo[2][2 * (MAXVPOS + 1) + 1];
+static struct color_entry color_tables[2][(MAXVPOS + 1) * 2];
 
 static int next_sprite_entry = 0;
 static int prev_next_sprite_entry;
@@ -418,7 +423,7 @@ STATIC_INLINE void docols (struct color_entry *colentry)
 	    int v = color_reg_get (colentry, i);
 	    if (v < 0 || v > 16777215)
 		continue;
-	    colentry->acolors[i] = CONVERT_RGB (v);
+	    colentry->acolors[i] = getxcolor (v);
 	}
     } else {
 #endif
@@ -426,22 +431,24 @@ STATIC_INLINE void docols (struct color_entry *colentry)
 	    int v = color_reg_get (colentry, i);
 	    if (v < 0 || v > 4095)
 		continue;
-	    colentry->acolors[i] = xcolors[v];
+	    colentry->acolors[i] = getxcolor (v);
 	}
 #ifdef AGA
     }
 #endif
 }
 
+extern struct color_entry colors_for_drawing;
+
 void notice_new_xcolors (void)
 {
     int i;
 
     docols(&current_colors);
-/*    docols(&colors_for_drawing);*/
-    for (i = 0; i < (MAXVPOS + 1)*2; i++) {
-	docols(color_tables[0]+i);
-	docols(color_tables[1]+i);
+    docols(&colors_for_drawing);
+    for (i = 0; i < (MAXVPOS + 1) * 2; i++) {
+	docols(color_tables[0] + i);
+	docols(color_tables[1] + i);
     }
 }
 
@@ -2252,6 +2259,7 @@ void init_hz (void)
 	    vblank_hz = VBLANK_HZ_NTSC;
 	    sprite_vblank_endline = VBLANK_SPRITE_NTSC;
 	}
+        maxvpos_max = maxvpos;
     }
     if (beamcon0 & 0x80) {
 	if (vtotal >= MAXVPOS)
@@ -2267,6 +2275,7 @@ void init_hz (void)
 	if (minfirstline >= maxvpos)
 	    minfirstline = maxvpos - 1;
 	sprite_vblank_endline = minfirstline - 2;
+	maxvpos_max = maxvpos;
 	dumpsync();
     }
     /* limit to sane values */
@@ -2318,21 +2327,6 @@ static void calcdiw (void)
     plffirstline = vstrt;
     plflastline = vstop;
 
-#if 0
-    /* This happens far too often. */
-    if (plffirstline < minfirstline_bpl) {
-	write_log ("Warning: Playfield begins before line %d (%d)!\n", minfirstline_bpl, plffirstline);
-    }
-#endif
-
-#if 0 /* this comparison is not needed but previous is.. */
-    if (plflastline > 313) {
-	/* Turrican does this */
-	write_log ("Warning: Playfield out of range!\n");
-	plflastline = 313;
-    }
-#endif
-
     plfstrt = ddfstrt;
     plfstop = ddfstop;
     /* probably not the correct place.. */
@@ -2344,9 +2338,15 @@ static void calcdiw (void)
     }
 }
 
+static void update_mirrors(void)
+{
+    aga_mode = (currprefs.chipset_mask & CSMASK_AGA) ? 1 : 0;
+    direct_rgb = aga_mode;
+}
 /* display mode changed (lores, doubling etc..), recalculate everything */
 void init_custom (void)
 {
+    update_mirrors();
     create_cycle_diagram_table ();
     reset_drawing ();
     init_hz ();
@@ -2392,7 +2392,7 @@ STATIC_INLINE uae_u16 DMACONR (void)
 {
     uae_u16 v;
     decide_blitter (current_hpos ());
-    v = dmacon | (bltstate == BLT_done ? 0 : 0x4000)
+    v = dmacon | (bltstate == BLT_done || (bltstate != BLT_done && (currprefs.chipset_mask & CSMASK_BLTBUSY_BUG) && !blt_info.got_cycle) ? 0 : 0x4000)
 	    | (blt_info.blitzero ? 0x2000 : 0);
     return v;
 }
@@ -2424,16 +2424,16 @@ STATIC_INLINE uae_u16 VPOSR (void)
     int vp = (GETVPOS() >> 8) & 7;
 
     if (currprefs.cs_agnusrev >= 0) {
-	csbit |= currprefs.cs_agnusrev << 8;
+	csbit |= currprefs.cs_agnusrev  << 8;
     } else {
-	if (currprefs.ntscmode)
-	    csbit |= 0x1000;
 #ifdef AGA
 	csbit |= (currprefs.chipset_mask & CSMASK_AGA) ? 0x2300 : 0;
 #endif
 	csbit |= (currprefs.chipset_mask & CSMASK_ECS_AGNUS) ? 0x2000 : 0;
 	if (currprefs.chipmem_size > 1024 * 1024 && (currprefs.chipset_mask & CSMASK_ECS_AGNUS))
 	    csbit |= 0x2100;
+	if (currprefs.ntscmode)
+	    csbit |= 0x1000;
     }
 
     if (!(currprefs.chipset_mask & CSMASK_ECS_AGNUS))
@@ -2442,7 +2442,7 @@ STATIC_INLINE uae_u16 VPOSR (void)
 #if 0
     write_log ("vposr %x at %x\n", vp, m68k_getpc(&regs));
 #endif
-    if (currprefs.cpu_level >= 2)
+    if (currprefs.cpu_model >= 68020)
 	hsyncdelay();
     return vp;
 }
@@ -2464,7 +2464,7 @@ STATIC_INLINE uae_u16 VHPOSR (void)
     uae_u16 hp = GETHPOS();
     vp <<= 8;
     vp |= hp;
-    if (currprefs.cpu_level >= 2)
+    if (currprefs.cpu_model >= 68020)
 	hsyncdelay();
     return vp;
 }
@@ -2649,11 +2649,14 @@ void INTREQ_0 (uae_u16 v)
     doint ();
 }
 
-static void INTREQ_f(uae_u32 data)
+void INTREQ_f(uae_u32 data)
 {
     INTREQ_0 (data);
     serial_check_irq ();
     rethink_cias ();
+#ifdef A2091
+    rethink_a2091 ();
+#endif
 }
 
 static void INTREQ_d (uae_u16 v, int d)
@@ -3298,7 +3301,7 @@ static void COLOR_WRITE (int hpos, uae_u16 v, int num)
 	record_color_change (hpos, colreg, cval);
 	remembered_color_entry = -1;
 	current_colors.color_regs_aga[colreg] = cval;
-	current_colors.acolors[colreg] = CONVERT_RGB (cval);
+	current_colors.acolors[colreg] = getxcolor (cval);
    } else {
 #endif
 	if (current_colors.color_regs_ecs[num] == v)
@@ -3307,7 +3310,7 @@ static void COLOR_WRITE (int hpos, uae_u16 v, int num)
 	record_color_change (hpos, num, v);
 	remembered_color_entry = -1;
 	current_colors.color_regs_ecs[num] = v;
-	current_colors.acolors[num] = xcolors[v];
+	current_colors.acolors[num] = getxcolor (v);
 #ifdef AGA
     }
 #endif
@@ -3536,7 +3539,7 @@ static void update_copper (int until_hpos)
 	    if (copper_cant_read (old_hpos))
 		continue;
 	    cop_state.i1 = chipmem_agnus_wget (cop_state.ip);
-#ifdef CPUEMU_6
+#ifdef CPUEMU_12
 	    cycle_line[old_hpos] |= CYCLE_COPPER;
 #endif
 	    cop_state.ip += 2;
@@ -3550,7 +3553,7 @@ static void update_copper (int until_hpos)
 	    if (copper_cant_read (old_hpos))
 		continue;
 	    cop_state.i2 = chipmem_agnus_wget (cop_state.ip);
-#ifdef CPUEMU_6
+#ifdef CPUEMU_12
 	    cycle_line[old_hpos] |= CYCLE_COPPER;
 #endif
 	    cop_state.ip += 2;
@@ -3737,7 +3740,7 @@ STATIC_INLINE uae_u16 sprite_fetch (struct sprite *s, int dma, int hpos, int cyc
     uae_u16 data = last_custom_value;
     if (dma) {
 	data = last_custom_value = chipmem_agnus_wget (s->pt);
-#ifdef CPUEMU_6
+#ifdef CPUEMU_12
 	cycle_line[hpos] |= CYCLE_SPRITE;
 #endif
     }
@@ -4153,7 +4156,7 @@ static void vsync_handler (void)
 
     handle_events ();
 
-    INTREQ_d (0x8000 | 0x0020, 2);
+    INTREQ_d (0x8000 | 0x0020, 3);
     if (bplcon0 & 4)
 	lof ^= 0x8000;
 
@@ -4162,8 +4165,6 @@ static void vsync_handler (void)
     if (picasso_on)
 	picasso_handle_vsync ();
 #endif
-
-   vsync_handle_redraw (lof, lof_changed);
 
     if (quit_program > 0) {
 	/* prevent possible infinite loop at wait_cycles().. */
@@ -4184,6 +4185,8 @@ static void vsync_handler (void)
 
     if (debug_copper)
 	record_copper_reset();
+
+    vsync_handle_redraw (lof, lof_changed);
 
     /* For now, let's only allow this to change at vsync time.  It gets too
      * hairy otherwise.  */
@@ -4297,7 +4300,7 @@ static void hsync_handler (void)
 #ifdef CDTV
 	CDTV_hsync_handler ();
 #endif
-#ifdef CPUEMU_6
+#ifdef CPUEMU_12
 	if (currprefs.cpu_cycle_exact || currprefs.blitter_cycle_exact) {
 	    decide_blitter (hpos);
 	    memset (cycle_line, 0, sizeof cycle_line);
@@ -4457,6 +4460,7 @@ static void hsync_handler (void)
     }
 
     inputdevice_hsync ();
+    gayle_hsync();
 
     hsync_counter++;
     //copper_check (2);
@@ -4580,16 +4584,17 @@ void customreset (void)
     lightpen_cx = lightpen_cy = -1;
     if (! savestate_state) {
 	currprefs.chipset_mask = changed_prefs.chipset_mask;
-	if ((currprefs.chipset_mask & CSMASK_AGA) == 0) {
+	update_mirrors();
+	if (!aga_mode) {
 	    for (i = 0; i < 32; i++) {
 		current_colors.color_regs_ecs[i] = 0;
-		current_colors.acolors[i] = xcolors[0];
+		current_colors.acolors[i] = getxcolor(0);
 	    }
 #ifdef AGA
 	} else {
 	    for (i = 0; i < 256; i++) {
 		current_colors.color_regs_aga[i] = 0;
-		current_colors.acolors[i] = CONVERT_RGB (zero);
+		current_colors.acolors[i] = getxcolor(0);
 	    }
 #endif
 	}
@@ -4622,6 +4627,13 @@ void customreset (void)
     a1000_reset ();
     DISK_reset ();
     CIA_reset ();
+    gayle_reset (0);
+#ifdef A2091
+    a2091_reset ();
+#endif
+#ifdef NCR
+    ncr_reset ();
+#endif
 #ifdef JIT
     compemu_reset ();
 #endif
@@ -4866,13 +4878,13 @@ addrbank custom_bank = {
 
 static uae_u32 REGPARAM2 custom_wgeti (uaecptr addr)
 {
-    if (currprefs.cpu_level >= 2)
+    if (currprefs.cpu_model >= 68020)
 	return dummy_wgeti(addr);
     return custom_wget(addr);
 }
 static uae_u32 REGPARAM2 custom_lgeti (uaecptr addr)
 {
-    if (currprefs.cpu_level >= 2)
+    if (currprefs.cpu_model >= 68020)
 	return dummy_lgeti(addr);
     return custom_lget(addr);
 }
@@ -5250,6 +5262,7 @@ uae_u8 *restore_custom (uae_u8 *src)
     audio_reset ();
 
     changed_prefs.chipset_mask = currprefs.chipset_mask = RL;
+    update_mirrors();
     RW;				/* 000 ? */
     RW;				/* 002 DMACONR */
     RW;				/* 004 VPOSR */
@@ -5664,7 +5677,7 @@ void check_prefs_changed_custom (void)
 #endif
 }
 
-#ifdef CPUEMU_6
+#ifdef CPUEMU_12
 
 STATIC_INLINE void sync_copper (int hpos)
 {

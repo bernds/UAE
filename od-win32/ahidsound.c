@@ -26,6 +26,7 @@
 
 #include "sysdeps.h"
 #include "options.h"
+#include "audio.h"
 #include "memory.h"
 #include "events.h"
 #include "custom.h"
@@ -190,7 +191,7 @@ void ahi_updatesound(int force)
     if(sound_flushes2 == 1) {
 	oldpos = 0;
 	intcount = 1;
-	INTREQ(0x8000 | 0x2000);
+	INTREQ_f (0x8000 | 0x2000);
 	hr = IDirectSoundBuffer_Play(lpDSB2, 0, 0, DSBPLAY_LOOPING);
 	if(hr == DSERR_BUFFERLOST) {
 	    IDirectSoundBuffer_Restore(lpDSB2);
@@ -209,7 +210,7 @@ void ahi_updatesound(int force)
 	if (force == 1) {
 	    if (oldpos != pos) {
 		intcount = 1;
-		INTREQ(0x8000 | 0x2000);
+		INTREQ_f (0x8000 | 0x2000);
 		return; //to generate amiga ints every amigablksize
 	    } else {
 		return;
@@ -251,7 +252,7 @@ void ahi_updatesound(int force)
 	oldpos -= ahisndbufsize;
     if (oldpos != pos) {
 	intcount = 1;
-	INTREQ(0x8000 | 0x2000);
+	INTREQ_f (0x8000 | 0x2000);
     }
 }
 

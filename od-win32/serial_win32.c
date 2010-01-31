@@ -35,6 +35,7 @@ static int dtr;
 static int serial_period_hsyncs, serial_period_hsync_counter;
 static int ninebit;
 int serdev;
+int seriallog;
 
 void serial_open(void);
 void serial_close(void);
@@ -118,7 +119,7 @@ static void checkreceive (int mode)
 	gettimeofday (&tv, NULL);
 	if (tv.tv_sec > lastchartime) {
 	    ovrun = 1;
-	    INTREQ (0x8000 | 0x0800);
+	    INTREQ_f (0x8000 | 0x0800);
 	    while (readser (&recdata));
 	    write_log ("SERIAL: overrun\n");
 	}
@@ -183,7 +184,7 @@ static void checksend (int mode)
 	writeser (serdatshift);
 #endif
 	data_in_serdat = 0;
-        INTREQ (0x8000 | 0x0001);
+        INTREQ_f (0x8000 | 0x0001);
 #if SERIALDEBUG > 2
 	write_log ("SERIAL: send %04.4X (%c)\n", serdatshift, dochar (serdatshift));
 #endif
@@ -221,7 +222,7 @@ void SERDAT (uae_u16 w)
 
     if (!(w & 0x3ff)) {
 #if SERIALDEBUG > 1
-	write_log ("SERIAL: zero serial word written?! PC=%x\n", m68k_getpc());
+	write_log ("SERIAL: zero serial word written?! PC=%x\n", M68K_GETPC);
 #endif
 	return;
     }
@@ -232,6 +233,9 @@ void SERDAT (uae_u16 w)
     }
 #endif
     
+    if (seriallog)
+	console_out("%c", dochar (w));
+
     if (serper == 372) {
 	extern int enforcermode;
 	if (enforcermode & 2) {
@@ -246,7 +250,7 @@ void SERDAT (uae_u16 w)
 	checksend (1);
 
 #if SERIALDEBUG > 2
-    write_log ("SERIAL: wrote 0x%04x (%c) PC=%x\n", w, dochar (w), m68k_getpc());
+    write_log ("SERIAL: wrote 0x%04x (%c) PC=%x\n", w, dochar (w), M68K_GETPC);
 #endif
 
     return;

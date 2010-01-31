@@ -21,6 +21,7 @@
 #include "uae.h"
 #include "gui.h"
 #include "options.h"
+#include "audio.h"
 #include "memory.h"
 #include "custom.h"
 #include "events.h"
@@ -361,7 +362,7 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 	    if (ctrlpressed ()) {
 		code = AKS_TOGGLEFULLSCREEN;
 	    } else if (shiftpressed () || specialpressed ()) {
-		if (!isfullscreen()) {
+		if (isfullscreen() <= 0) {
 		    disablecapture ();
 		    code = AKS_ENTERDEBUGGER;
 		}
@@ -488,9 +489,6 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 	    case DIK_NUMPADSLASH:
 	    if (specialpressed ())
 		code = AKS_STATEREWIND;
-	    break;
-	    case DIK_ESCAPE:
-	    bleh();
 	    break;
 	}
     }

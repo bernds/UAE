@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="Windows-1252"?>
 <VisualStudioUserFile
 	ProjectType="Visual C++"
-	Version="8,00"
+	Version="9,00"
 	ShowAllFiles="false"
 	>
 	<Configurations>
@@ -11,7 +11,7 @@
 			<DebugSettings
 				Command="$(TargetPath)"
 				WorkingDirectory="d:\amiga"
-				CommandArguments="-log "
+				CommandArguments="-log -scsilog"
 				Attach="false"
 				DebuggerType="3"
 				Remote="1"
@@ -67,7 +67,7 @@
 			<DebugSettings
 				Command="$(TargetPath)"
 				WorkingDirectory="d:\amiga"
-				CommandArguments="-log"
+				CommandArguments="-log -scsilog"
 				Attach="false"
 				DebuggerType="3"
 				Remote="1"

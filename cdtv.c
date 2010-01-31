@@ -26,6 +26,7 @@
 #include "gui.h"
 #include "zfile.h"
 #include "threaddep/thread.h"
+#include "a2091.h"
 
 #define AUDIO_STATUS_NOT_SUPPORTED  0x00
 #define AUDIO_STATUS_IN_PROGRESS    0x11
@@ -50,20 +51,23 @@ static volatile int cdtv_command_len;
 static volatile uae_u8 cdtv_command_buf[6];
 static volatile uae_u8 dmac_istr, dmac_cntr;
 static volatile uae_u16 dmac_dawr;
-static volatile uae_u32 dmac_acr, dmac_wtc;
+static volatile uae_u32 dmac_acr;
+static volatile int dmac_wtc;
 static volatile int dmac_dma;
 
 static volatile int activate_stch, cdrom_command_done, play_state, play_statewait;
 static volatile int cdrom_sector, cdrom_sectors, cdrom_length, cdrom_offset;
 static volatile int cd_playing, cd_paused, cd_motor, cd_media, cd_error, cd_finished, cd_isready, cd_hunt;
 
-static volatile int cdtv_hsync, dma_wait, dma_finished;
+static volatile int cdtv_hsync, dma_finished, cdtv_sectorsize;
+static volatile uae_u64 dma_wait;
 
 static void do_stch(void);
 
 static void INT2(void)
 {
-    INTREQ(0x8000 | 0x0008);
+    if (!(intreq & 8))
+	INTREQ_f(0x8000 | 0x0008);
 }
 
 static int cdrom_command_cnt_out, cdrom_command_size_out;
@@ -121,10 +125,16 @@ static int get_qcode(void)
     if (!s)
 	return 0;
     memcpy (cdrom_qcode, s, 16);
-    if (cd_playing && s[1] == 0x11) {
-	int end = msf2lsn((s[5 + 4] << 16) | (s[6 + 4] << 8) | (s[7 + 4]));
-	if (end >= play_end) {
-	    sys_command_cd_pause (DF_IOCTL, unitnum, 1);
+    if (cd_playing) {
+	if (s[1] == AUDIO_STATUS_IN_PROGRESS) {
+	    int end = msf2lsn((s[5 + 4] << 16) | (s[6 + 4] << 8) | (s[7 + 4]));
+	    if (end >= play_end - 75) {
+		sys_command_cd_pause (DF_IOCTL, unitnum, 1);
+		cd_audio_status = AUDIO_STATUS_PLAY_COMPLETE;
+		cd_playing = 0;
+		do_stch();
+	    }
+	} else if (s[1] == AUDIO_STATUS_PLAY_COMPLETE) {
 	    cd_audio_status = AUDIO_STATUS_PLAY_COMPLETE;
 	    cd_playing = 0;
 	    do_stch();
@@ -170,11 +180,11 @@ static int pause_audio (int pause)
 
 static int read_sectors(int start, int length)
 {
-    write_log("READ DATA sector %d, %d sectors\n", start, length);
+    write_log("READ DATA sector %d, %d sectors (blocksize=%d)\n", start, length, cdtv_sectorsize);
     cdrom_sector = start;
     cdrom_sectors = length;
-    cdrom_offset = start * 2048;
-    cdrom_length = length * 2048;
+    cdrom_offset = start * cdtv_sectorsize;
+    cdrom_length = length * cdtv_sectorsize;
     cd_motor = 1;
     cd_audio_status = AUDIO_STATUS_NOT_SUPPORTED;
     if (cd_playing)
@@ -238,6 +248,8 @@ static int play_cd(uae_u8 *p)
 
     start = (p[1] << 16) | (p[2] << 8) | p[3];
     end = (p[4] << 16) | (p[5] << 8) | p[6];
+    if (p[0] == 0x09) /* end is length in lsn-mode */
+	end += start;
     if (start == 0 && end == 0) {
 	cd_finished = 0;
 	if (cd_playing)
@@ -248,15 +260,16 @@ static int play_cd(uae_u8 *p)
 	cd_audio_status = AUDIO_STATUS_PLAY_COMPLETE;
 	sys_command_cd_pause (DF_IOCTL, unitnum, 0);
 	sys_command_cd_stop (DF_IOCTL, unitnum);
-	cd_isready = 10;
+	cd_isready = 50;
 	return 0;
     }
-    if (end == 0x00ffffff)
-	end = last_cd_position;
-    if (p[0] == 0x09) {
+    if (p[0] == 0x09) { /* lsn */
 	start = lsn2msf (start);
-	end = lsn2msf (end);
+	if (end < 0x00ffffff)
+	    end = lsn2msf (end);
     }
+    if (end == 0x00ffffff || end > last_cd_position)
+	end = last_cd_position;
     play_end = msf2lsn(end);
     play_start = msf2lsn(start);
     write_log("PLAY CD AUDIO from %06.6X (%d) to %06.6X (%d)\n",
@@ -349,6 +362,16 @@ static int read_toc(int track, int msflsn, uae_u8 *out)
 	}
     }
     return -1;
+}
+
+static int cdrom_modeset(uae_u8 *cmd)
+{
+    cdtv_sectorsize = (cmd[2] << 8) | cmd[3];
+    if (cdtv_sectorsize != 2048 && cdtv_sectorsize != 2336) {
+	write_log("CDTV: tried to set unknown sector size %d\n", cdtv_sectorsize);
+	cdtv_sectorsize = 2048;
+    }
+    return 0;
 }
 
 static void cdrom_command_accepted(int size, uae_u8 *cdrom_command_input, int *cdrom_command_cnt_in)
@@ -456,7 +479,7 @@ static void cdrom_command_thread(uae_u8 b)
 	break;
 	case 0x84:
 	if (cdrom_command_cnt_in == 7) {
-	    cdrom_command_accepted(0, s, &cdrom_command_cnt_in);
+	    cdrom_command_accepted(cdrom_modeset(cdrom_command_input), s, &cdrom_command_cnt_in);
 	    cd_finished = 1;
 	}
 	break;
@@ -503,20 +526,66 @@ static void cdrom_command_thread(uae_u8 b)
 #define ISTR_INT_P (1 << 4)
 #define ISTR_E_INT (1 << 5)
 
+static uae_u8 *read_raw(int sector, int size)
+{
+    int osector = sector;
+    static struct zfile *f;
+    static int track;
+    int trackcnt;
+    char fname[MAX_DPATH];
+    static uae_u8 buf[4096];
+    uae_u32 prevlsn = 0;
+    uae_u8 *s = cdrom_toc + 4;
+
+    memset(buf, 0, sizeof buf);
+    trackcnt = 0;
+    for (;;) {
+	uae_u32 msf = (s[8] << 16) | (s[9] << 8) | s[10];
+	uae_u32 lsn = msf2lsn (msf);
+	if (s[3] >= 0xa0) {
+	    s += 11;
+	    continue;
+	}
+	if (sector < lsn - prevlsn)
+	    break;
+	trackcnt++;
+	sector -= lsn - prevlsn;
+	prevlsn = lsn;
+	s += 11;
+    }
+    if (track != trackcnt) {
+	sprintf(fname, "track%d.bin", trackcnt);
+	zfile_fclose(f);
+	f = zfile_fopen(fname, "rb");
+	if (!f)
+	    write_log("failed to open '%s'\n", fname);
+	else
+	    write_log("opened '%s'\n", fname);
+	track = trackcnt;
+    }
+    if (f) {
+	write_log("%dx%d=%d\n", sector, size, sector * size);
+	zfile_fseek (f, sector * size, SEEK_SET);
+	zfile_fread (buf, size, 1, f);
+	return buf;
+    }
+    return sys_command_cd_rawread (DF_IOCTL, unitnum, osector, size);
+}
+
 static void dma_do_thread(void)
 {
     static int readsector;
     uae_u8 *p = NULL;
 
-#ifdef CDTV_DEBUG
-    write_log("DMAC DMA: sector=%d, cnt=%d, addr=%08.8X, %d\n",
-	cdrom_sector, cdrom_sectors, dmac_acr, dmac_wtc);
-#endif
-    dma_wait += dmac_wtc * 312 * 50 / 75 + 1;
+    write_log("DMAC DMA: sector=%d, addr=%08.8X, words=%d\n", cdrom_offset / cdtv_sectorsize, dmac_acr, dmac_wtc);
+    dma_wait += dmac_wtc * (uae_u64)312 * 50 / 75 + 1;
     while (dmac_wtc > 0 && dmac_dma) {
-	if (!p || readsector != (cdrom_offset / 2048)) {
-	    readsector = cdrom_offset / 2048;
-	    p = sys_command_cd_read (DF_IOCTL, unitnum, readsector);
+	if (!p || readsector != (cdrom_offset / cdtv_sectorsize)) {
+	    readsector = cdrom_offset / cdtv_sectorsize;
+	    if (cdtv_sectorsize == 2336)
+		p = read_raw (readsector, cdtv_sectorsize);
+	    else
+		p = sys_command_cd_read (DF_IOCTL, unitnum, readsector);
 	    if (!p) {
 		cd_error = 1;
 		activate_stch = 1;
@@ -525,8 +594,8 @@ static void dma_do_thread(void)
 	    }
 
 	}
-        put_byte (dmac_acr, p[(cdrom_offset % 2048) + 0]);
-        put_byte (dmac_acr + 1, p[(cdrom_offset % 2048) + 1]);
+        put_byte (dmac_acr, p[(cdrom_offset % cdtv_sectorsize) + 0]);
+        put_byte (dmac_acr + 1, p[(cdrom_offset % cdtv_sectorsize) + 1]);
         dmac_wtc--;
         dmac_acr+=2;
         cdrom_length-=2;
@@ -734,7 +803,7 @@ void CDTV_hsync_handler(void)
 {
     static int subqcnt;
 
-    if (!currprefs.cs_cdtvcd)
+    if (!currprefs.cs_cdtvcd || !configured)
 	return;
 
     cdtv_hsync++;
@@ -744,11 +813,12 @@ void CDTV_hsync_handler(void)
     if (dma_wait >= 0 && dma_wait < 1024 && dma_finished) {
         if ((dmac_cntr & (CNTR_INTEN | CNTR_TCEN)) == (CNTR_INTEN | CNTR_TCEN)) {
 	    dmac_istr |= ISTR_INT_P | ISTR_E_INT;
-	    INT2();
 	}
 	dma_finished = 0;
 	cdtv_hsync = -1;
     }
+    if (dmac_istr & ISTR_E_INT)
+	INT2();
 
     if (cdrom_command_done) {
 	cdrom_command_done = 0;
@@ -848,6 +918,14 @@ static uae_u32 dmac_bget2 (uaecptr addr)
 	case 0x43:
 	v = dmac_cntr;
 	break;
+	case 0x91:
+	if (currprefs.cs_cdtvscsi)
+	    v = wdscsi_getauxstatus();
+	break;
+	case 0x93:
+	if (currprefs.cs_cdtvscsi)
+	    v = wdscsi_get();
+	break;
 	case 0xa1:
 	if (cdrom_command_cnt_out < 0) {
 	    cd_error = 1;
@@ -876,7 +954,7 @@ static uae_u32 dmac_bget2 (uaecptr addr)
     return v;
 }
 
-uae_u32 REGPARAM2 dmac_lget (uaecptr addr)
+static uae_u32 REGPARAM2 dmac_lget (uaecptr addr)
 {
     uae_u32 v;
 #ifdef JIT
@@ -891,7 +969,7 @@ uae_u32 REGPARAM2 dmac_lget (uaecptr addr)
     return v;
 }
 
-uae_u32 REGPARAM2 dmac_wget (uaecptr addr)
+static uae_u32 REGPARAM2 dmac_wget (uaecptr addr)
 {
     uae_u32 v;
 #ifdef JIT
@@ -905,7 +983,7 @@ uae_u32 REGPARAM2 dmac_wget (uaecptr addr)
     return v;
 }
 
-uae_u32 REGPARAM2 dmac_bget (uaecptr addr)
+static uae_u32 REGPARAM2 dmac_bget (uaecptr addr)
 {
     uae_u32 v;
 #ifdef JIT
@@ -976,6 +1054,14 @@ static void dmac_bput2 (uaecptr addr, uae_u32 b)
 	dmac_dawr &= 0xff00;
 	dmac_dawr |= b << 0;
 	break;
+	case 0x91:
+        if (currprefs.cs_cdtvscsi)
+	    wdscsi_sasr (b);
+	break;
+	case 0x93:
+	if (currprefs.cs_cdtvscsi)
+	    wdscsi_put (b);
+	break;
  	case 0xa1:
 	cdrom_command(b);
 	break;
@@ -1037,17 +1123,18 @@ static void REGPARAM2 dmac_bput (uaecptr addr, uae_u32 b)
     special_mem |= S_WRITE;
 #endif
     addr &= 65535;
+    b &= 0xff;
     if (addr == 0x48) {
-	map_banks (&dummy_bank, 0xe80000 >> 16, 0x10000 >> 16, 0x10000);
 	map_banks (&dmac_bank, b, 0x10000 >> 16, 0x10000);
 	write_log ("CDTV DMAC autoconfigured at %02.2X0000\n", b & 0xff);
 	configured = 1;
+	expamem_next();
 	return;
     }
     if (addr == 0x4c) {
-	map_banks (&dummy_bank, 0xe80000 >> 16, 0x10000 >> 16, 0x10000);
 	write_log ("CDTV DMAC AUTOCONFIG SHUT-UP!\n");
 	configured = 1;
+	expamem_next();
 	return;
     }
     if (!configured)

@@ -168,8 +168,8 @@ static void CIA_update (void)
 	ciaata -= ciaclocks;
     }
     if ((ciaacrb & 0x61) == 0x01) {
-	assert ((ciaatb+1) >= ciaclocks);
-	if ((ciaatb+1) == ciaclocks) aovflb = 1;
+	assert ((ciaatb + 1) >= ciaclocks);
+	if ((ciaatb + 1) == ciaclocks) aovflb = 1;
 	ciaatb -= ciaclocks;
     }
 
@@ -188,8 +188,8 @@ static void CIA_update (void)
 	ciabta -= ciaclocks;
     }
     if ((ciabcrb & 0x61) == 0x01) {
-	assert ((ciabtb+1) >= ciaclocks);
-	if ((ciabtb+1) == ciaclocks) bovflb = 1;
+	assert ((ciabtb + 1) >= ciaclocks);
+	if ((ciabtb + 1) == ciaclocks) bovflb = 1;
 	ciabtb -= ciaclocks;
     }
 
@@ -488,15 +488,15 @@ static uae_u8 ReadCIAA (unsigned int addr)
 	    tmp = arcadia_parport (0, ciaaprb, ciaadrb);
 #endif
 	} else {
-	    tmp = handle_parport_joystick (0, ciaaprb, ciaadrb);
-	}
 #else
-	tmp = handle_parport_joystick (0, ciaaprb, ciaadrb);
+	{
+#endif
+	    tmp = handle_parport_joystick (0, ciaaprb, ciaadrb);
 #ifdef DONGLE_DEBUG
-	if (notinrom())
-	    write_log ("BFE101 R %02.2X %s\n", tmp, debuginfo(0));
+	    if (notinrom())
+		write_log ("BFE101 R %02.2X %s\n", tmp, debuginfo(0));
 #endif
-#endif
+	}
 	if (ciaacrb & 2) {
 	    int pb7 = 0;
 	    if (ciaacrb & 4)
@@ -1067,7 +1067,7 @@ static void cia_wait_post (void)
     do_cycles (2 * CYCLE_UNIT / 2);
 }
 
-uae_u32 REGPARAM2 cia_bget (uaecptr addr)
+static uae_u32 REGPARAM2 cia_bget (uaecptr addr)
 {
     int r = (addr & 0xf00) >> 8;
     uae_u8 v;
@@ -1089,7 +1089,7 @@ uae_u32 REGPARAM2 cia_bget (uaecptr addr)
 	v = (addr & 1) ? ReadCIAA (r) : 0xff;
 	break;
 	case 3:
-	if (currprefs.cpu_level == 0 && currprefs.cpu_compatible)
+	if (currprefs.cpu_model == 68000 && currprefs.cpu_compatible)
 	    v = (addr & 1) ? regs.irc : regs.irc >> 8;
 	if (warned > 0) {
 	    write_log ("cia_bget: unknown CIA address %x PC=%x\n", addr, M68K_GETPC);
@@ -1101,7 +1101,7 @@ uae_u32 REGPARAM2 cia_bget (uaecptr addr)
     return v;
 }
 
-uae_u32 REGPARAM2 cia_wget (uaecptr addr)
+static uae_u32 REGPARAM2 cia_wget (uaecptr addr)
 {
     int r = (addr & 0xf00) >> 8;
     uae_u16 v;
@@ -1123,7 +1123,7 @@ uae_u32 REGPARAM2 cia_wget (uaecptr addr)
 	v = (0xff << 8) | ReadCIAA (r);
 	break;
 	case 3:
-	if (currprefs.cpu_level == 0 && currprefs.cpu_compatible)
+	if (currprefs.cpu_model == 68000 && currprefs.cpu_compatible)
 	    v = regs.irc;
 	if (warned > 0) {
 	    write_log ("cia_wget: unknown CIA address %x PC=%x\n", addr, M68K_GETPC);
@@ -1136,7 +1136,7 @@ uae_u32 REGPARAM2 cia_wget (uaecptr addr)
     return v;
 }
 
-uae_u32 REGPARAM2 cia_lget (uaecptr addr)
+static uae_u32 REGPARAM2 cia_lget (uaecptr addr)
 {
     uae_u32 v;
 #ifdef JIT
@@ -1149,18 +1149,18 @@ uae_u32 REGPARAM2 cia_lget (uaecptr addr)
 
 static uae_u32 REGPARAM2 cia_wgeti (uaecptr addr)
 {
-    if (currprefs.cpu_level >= 2)
+    if (currprefs.cpu_model >= 68020)
 	return dummy_wgeti(addr);
     return cia_wget(addr);
 }
 static uae_u32 REGPARAM2 cia_lgeti (uaecptr addr)
 {
-    if (currprefs.cpu_level >= 2)
+    if (currprefs.cpu_model >= 68020)
 	return dummy_lgeti(addr);
     return cia_lget(addr);
 }
 
-void REGPARAM2 cia_bput (uaecptr addr, uae_u32 value)
+static void REGPARAM2 cia_bput (uaecptr addr, uae_u32 value)
 {
     int r = (addr & 0xf00) >> 8;
 
@@ -1179,9 +1179,10 @@ void REGPARAM2 cia_bput (uaecptr addr, uae_u32 value)
     cia_wait_post ();
 }
 
-void REGPARAM2 cia_wput (uaecptr addr, uae_u32 value)
+static void REGPARAM2 cia_wput (uaecptr addr, uae_u32 value)
 {
     int r = (addr & 0xf00) >> 8;
+
 #ifdef JIT
     special_mem |= S_WRITE;
 #endif
@@ -1197,7 +1198,7 @@ void REGPARAM2 cia_wput (uaecptr addr, uae_u32 value)
     cia_wait_post ();
 }
 
-void REGPARAM2 cia_lput (uaecptr addr, uae_u32 value)
+static void REGPARAM2 cia_lput (uaecptr addr, uae_u32 value)
 {
 #ifdef JIT
     special_mem |= S_WRITE;
@@ -1243,17 +1244,17 @@ void rtc_hardreset(void)
     }
 }
 
-uae_u32 REGPARAM2 clock_lget (uaecptr addr)
+static uae_u32 REGPARAM2 clock_lget (uaecptr addr)
 {
     return (clock_wget (addr) << 16) | clock_wget (addr + 2);
 }
 
-uae_u32 REGPARAM2 clock_wget (uaecptr addr)
+static uae_u32 REGPARAM2 clock_wget (uaecptr addr)
 {
     return (clock_bget (addr) << 8) | clock_bget (addr + 1);
 }
 
-uae_u32 REGPARAM2 clock_bget (uaecptr addr)
+static uae_u32 REGPARAM2 clock_bget (uaecptr addr)
 {
     time_t t = time(0);
     struct tm *ct;
@@ -1270,7 +1271,7 @@ uae_u32 REGPARAM2 clock_bget (uaecptr addr)
     addr &= 0x3f;
     if ((addr & 3) == 2 || (addr & 3) == 0) {
 	int v = 0;
-	if (currprefs.cpu_level == 0 && currprefs.cpu_compatible)
+	if (currprefs.cpu_model == 68000 && currprefs.cpu_compatible)
 	    v = regs.irc >> 8;
 	return v;
     }
@@ -1323,19 +1324,19 @@ uae_u32 REGPARAM2 clock_bget (uaecptr addr)
     return 0;
 }
 
-void REGPARAM2 clock_lput (uaecptr addr, uae_u32 value)
+static void REGPARAM2 clock_lput (uaecptr addr, uae_u32 value)
 {
     clock_wput (addr, value >> 16);
     clock_wput (addr + 2, value);
 }
 
-void REGPARAM2 clock_wput (uaecptr addr, uae_u32 value)
+static void REGPARAM2 clock_wput (uaecptr addr, uae_u32 value)
 {
     clock_bput (addr, value >> 8);
     clock_bput (addr + 1, value);
 }
 
-void REGPARAM2 clock_bput (uaecptr addr, uae_u32 value)
+static void REGPARAM2 clock_bput (uaecptr addr, uae_u32 value)
 {
 #ifdef JIT
     special_mem |= S_WRITE;
@@ -1478,7 +1479,7 @@ uae_u8 *save_cia (int num, int *len, uae_u8 *dstptr)
     save_u8 (b);
     t = (num ? ciabta - ciabta_passed : ciaata - ciaata_passed);/* 4 TA */
     save_u16 (t);
-    t = (num ? ciabtb - ciabtb_passed : ciaatb - ciaatb_passed);/* 8 TB */
+    t = (num ? ciabtb - ciabtb_passed : ciaatb - ciaatb_passed);/* 6 TB */
     save_u16 (t);
     b = (num ? ciabtod : ciaatod);			/* 8 TODL */
     save_u8 (b);

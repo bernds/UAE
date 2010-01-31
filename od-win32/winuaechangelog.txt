@@ -1,4 +1,289 @@
 
+Beta 12:
+
+- CDTV right button/second firebutton pin state fixed (CDPD IV)
+  (logic high when inactive, not floating like with other models)
+- Quickstart DF0:/DF1: text changed (future improvement), no
+  functional changes yet
+
+Beta 11:
+
+- fixed randomly lost CDTV CD transfer finished interrupt in
+  CE-mode
+- fixed windowed mode size check
+- added some preliminary SCSI hardware emulation stuff
+  - A3000, minimal support, KS driver detects SCSI controller
+    with no SCSI devices connected. (SuperDMAC + WD33C93)
+  - A590/A2091, (DMAC + WD33C93), minimal support, boot ROM
+    (tested with rev7) detects controller with no SCSI devices.
+    (check log if for some weird reason you want to test it..)
+  - A4000T NCR53C710, nothing implemented yet (no datasheet)
+- CDTV and A590/A2091 autoconfig chained with UAE autoconfig
+  devices (fast ram, HD etc works in CDTV mode)
+- more GUI debugger updates
+
+Beta 10:
+
+- CDTV CDROM command 0x09 (play audio cd in lsn mode) fixed, parameters
+  are start sector and number of sectors, not start and end sector..
+- state file load: keep current disk in drive if image's path in state
+  file does not exist. (keeps some programs happy that don't access the
+  disk but start complaining if disk is suddenly ejected)
+- fixed stupid typo in fpu clamping fix (327676 instead of 32767..)
+- CDTV audio cd end position detection didn't always work
+- GUI debugger improvements (Karsten Bock & TW)
+
+Beta 9:
+
+- new PAL filter configuration file support (forgot it in b8)
+- PAL filter now works both in 16 and 32-bit modes. Internal color
+  space is now only R5G6B5, even in 32-bit AGA. Makes things simpler
+  (minus image quality loss) Fix later, not sure..
+- map "UAE Boot ROM" automatically if any "external" expansion is
+  enabled (uaescsi, uaeserial, bsdsocket etc..) Previously it was
+  only mapped if filesystem (directory or hdf) was configured.
+- IDE non-RDB HDF statefile support added
+- filter default centering fixed (I think..) and other related tweaks
+- minor FPU updates to very rarely used instructions (from aranym)
+- "cpu060_revision" config entry added ("read-only", not created when
+  saving config), sets 68060 revision field in PCR register (current
+  default is 1)
+
+Beta 8:
+
+- very long CDTV CD reads don't freeze anymore (overflow in CD
+  speed varible)
+- added "PAL" filter. It is based on Vice C64 PAL filter with some
+  changes like scanlines in 1x-mode and noise. Simulates blurry
+  composite/RF signal. 32bit color depth only. NOTE: filter + AGA
+  enabled = RGB 6:6:6 internal color space only. (compromise between
+  speed+memory usage and image quality)
+- command line parameter was skipped if previous parameter was
+  win32-specific or it needed numeric parameter(s). (b7)
+- IDE partition (non-RDB) hardfile support (no custom filesystem
+  supported yet) NOTE: virtual RDB is read-only, all write attempts
+  to RDB area are silently ignored, no errors returned.
+- non-3D filter improved default centering
+- replaced GUI scanline sliders with more flexible extra parameters
+  settings. Added built-in filter preset support (single PAL filter
+  example currently)
+
+Beta 7:
+
+- hardfile reset routine randomly read non-existing memory (b4)
+- IDE emulation froze if total read or write transfer was larger
+  than current multimode sector amount
+- added 2 scanline delay before IDE command complete-interrupt is
+  sent. Could cause missed interrupts in compatible 68000-mode and
+  also made emulation sluggish during large reads or writes.
+- HRTMon IDE commands work now in A600 configuration.
+- HD onscreen led write color fixed in IDE mode
+- 4/6 channel modes should really work with Emu10K based cards..
+  (I can always hope..) EDIT: It did work!
+- USP and ISP registers are back in debugger
+- brightness/contrast/gamma setting added to display panel
+  (not working in real time yet)
+- "IDE Splitter" / "4-Way IDE" hardware emulation added. IDEFix or
+  similar driver needed. Enabled if IDE3/IDE4 selected
+- much faster IDE in JIT modes
+
+Beta 6:
+
+- added 4 channel and cloned stereo in 5.1 native mode. Workaround for
+  non-working 4.0 modes on many sound cards. (5.1 center and lf
+  channels are silent currently)
+- 4ch/6ch mode swap channel, interpolation, filter (anti and sinc only)
+  and stereo separation support added
+- IDE CHS calculation fixed. Max heads is always 16 and max sectors is
+  63 for drives smaller than 8GB. (A600/A1200 crashed or gurued with
+  large HDF images) >8G should also work, current "hardware" max limit
+  is 128G (no LBA48 support) NOTE: CHS value is only imaginary value for
+  compatibility purposes and it has nothing to do with real geometry, it
+  can even change and HD still works fine. Internally it is always
+  translated to LBA.
+- added some ATA-3 bits to identify drive reply
+
+Beta 5:
+
+- A600/A1200 and A4000 IDE emulation (mount RDB HDF as a IDE drive)
+  - Following IDE harddrive commands emulated (commands that KS ROM
+    require, also IDEFix97 appears to work fine)
+   - Format Track (50, dummy command)
+   - Identify Drive (EC)
+   - Initialize Drive Parameters (91)
+   - Read Sector(s) (20 and 21)
+   - Read Multiple (C4)
+   - Write Sector(s) (30 and 31)
+   - Write Multiple (C5)
+   - Recalibrate (10, dummy command)
+   - Set Multiple Mode (C6)
+   - Set Features (EF, no feature commands supported)
+   
+  - max 2 drives available. "HD Controller"-selection added to GUI.
+  - support statefiles (WARNING: HDF data corruption danger!)
+  - ATAPI (IDE CDROM) emulation not supported (yet?)
+
+  Notes: you can't mix Kickstart versions. A4000 KS has only A4000
+  IDE driver, A600/A1200 KS has only A600/A1200 driver.
+
+  Emulated drive is ancient ATA-1 feature level drive, size limits
+  not tested, PIO-0 speed restrictions not emulated :)
+
+  This also means some defaults have been changed. Real IDE without
+  harddrive installed is now enabled if chipset extra is set to
+  A600/A1200 or A4000. Emulated "IDE wire trick" is enabled if no
+  drives installed to prevent long KS boot delay.
+
+  Interesting note: A600/A1200 and A4000 KS IDE drivers are totally
+  different, for example A4000 uses LBA addressing but A600/A1200
+  uses CHS. I don't see the point when the only hardware differences
+  basically are base IO address and different interrupt register..
+  
+- HRTMon IDE activated if IDE emulation enabled. AR A1200 also works.
+- 68020/68030 + JIT random crashing fixed (b4)
+- non-3d filters work again (broke in 1.4.2b2)
+- Agnus/Denise revision settings re-added to advanced chipset
+- added non-EHB A1000 to Quickstart (not yet in advanced chipset),
+  also added blitter busy bug to A1000 QS if cycle-exact enabled.
+  (busy flag not set until blitter gets first bus access cycle)
+
+
+Beta 4:
+
+- statefiles with autoconfigurable (fast and z3fast) memory wasn't
+  restored properly
+- directory filesystem statefile support.
+- Picasso96 statefile support (not very compatible yet)
+- HDF statefile support. WARNING: HDF _WILL_ get CORRUPTED if you
+  try to restore same HDF statefiles multiple times and there has been
+  one or more writes between restores. Read-only will be forced before
+  official release.
+- JIT slowdown after restore fixed (CPU CACR register instruction cache
+  setting syncronized with JIT cache settings)
+
+  Filesystem statefile information:
+
+  Handling of missing files or directories during restore:
+  - missing root directory: most likely crashes
+  - open file:
+  dummy file with exact same name and size will be created (filled
+  with zeros) to prevent crashes. Of course application using the
+  file most likely fails because it may not contain data it expects
+  but at least FS emulation and AmigaDOS is happy..
+  - open lock:
+  lock is re-created but missing file/directory stays missing. Again,
+  filesystem and AmigaDOS is happy. Application may crash or return
+  weird errors..
+  
+  Always check the log first if there are problems.
+  
+  NOTE: uaescsi, bsdsocket etc.. are not saved. You may be able to
+  restore statefile with unsupported "expansion" devices enabled
+  without crashing (for example restored uaescsi won't crash the
+  emulator but Amiga-side program can get confused.. Tested with
+  AmiKit, no crashes but CD0: stops working)
+  
+  NOTE2: statefile format can and will change in future betas.
+
+  Manual loading of configuration recommended before restoring.
+
+
+Beta 3:
+
+- CPU/FPU on the fly change fixes
+- report 68060 EC/LC ID in PCR register when FPU not enabled,
+  68040/60 FPU disabled exception emulated.
+- some 68030 MMU instructions had incorrect instruction length
+  (no, MMU is NOT emulated but MMU instructions are still processed
+  normally instead of reporting illegal instruction because some
+  programs expect MMU and most/all 68EC030's don't report exceptions
+  either, they simply have MMU that does not work 100%)
+- http://aminet.net/util/sys/Mu680x0Libs.lha appears to be free,
+  working replacement for 680x0-libraries. 68030 (didn't work in b2),
+  68040 and 68060 with or without FPU confirmed working.
+- FPU state restore fixed
+- added CPU/FPU frequency to state files (not yet really used except
+  sets A500 speed if stored statefile was A500-speed config)
+- added 68030+ control register statefile support
+- 1340b4 "rare divide by zero error..." really fixed..
+
+Beta 2:
+
+- 10x+ performance increase during "decrunching" color effects when
+  no filters enabled and bitplanes disabled (background color only)
+- console debugger breakpoints sometimes continued immediately
+- quickstart "random" selection inside archives should be fixed
+- mousehack interrupt do not start multiple times anymore
+- all CPU-specific special registers added to debugger
+- CPU/FPU configuration rewrite.
+  - new FPU options: none/68881/68882/CPU internal
+  - 68030 (EC-version, 030-only MMU instructions are simply ignored)
+  - proper 68060 with FPU support. See NOTEs below!
+  - 68040/68060 without FPU allowed but note that 68060.library does
+  not appear to like non-FPU 68060s..
+  - no FPU+68000/68010 (technically possible but not worth the trouble)
+
+  68060 NOTES: No working Setpatch and 68060.library = NO FPU.
+  68060 has FPU disable bit that all real 68060 accelerators' boot ROM
+  set because KS task switching routine do not understand 68060's
+  FRESTORE/FSAVE frames. Setpatch+68060.library is the fix.
+
+  Real 68060 is also extremely slow without 68060.library because all
+  caches and other speed-up features are not enabled but this is
+  completely irrelevant in emulation.
+
+  You can use "C:CPU" command to check CPU/FPU status:
+  - Incorrect: "System: 68060 (INST: blahblah"
+  - Correct: "System 68060 68882 (INST: blahblah"
+  New setpatch (44.38 confirmed) support 68060.library directly, older
+  versions need dummy 68040.library (less than 1K in size)
+ 
+  NOTE2: FPU emulation emulates all 6888x instructions, even those that
+  were removed from real 68040/060. 
+
+  !!! NOTE3: _EMULATED_ 68040 and 68060 HAVE EQUAL SPEED !!!
+
+  
+Beta 1:
+
+- Chip set extra config load/save missed some models (crash when
+  saving if using missing models)
+- GUI font dynamically switches to "Segoe UI" (Vista) or "Tahoma"
+  (XP or 2000). Old font still in resource file to keep compatibility
+  with older Windows versions. TODO: new GUI tree icons.
+- dynamically modifying resources and resizing dialogs is "fun"...
+- finally removed pixel format detection. It has not been needed for
+  years..
+- merged (and modified) "GUI" debugger by Karsten Bock. WIP.
+  F1-F6: switch between different pages
+  F1 and F2: two work areas
+  F3 and F4: memory viewer
+  F5 and F6: disassembler
+  F3-F6: alt+cursor up/down/left/right modifies current address
+- x closes debugger, xx switches between console and GUI debuggers
+- extended debugger 'm' instruction, 'm r<cpu register>' 
+- direct harddrive support now works with drives that return empty
+  vendor and product id (confirmed: SyQuest removable harddrive)
+- log window position and size stored in registry. (Log window first
+  appearing in default position before jumping to stored position
+  is normal, logging must be initialized before registry handling)
+  Windows 2000 or newer only.
+- GUI/Main window registry entry names changed, positions will reset
+- blitter CE-mode ABC channel combination cycle allocation fixed
+- rar archives left "temporary" files around (stupid unrar.dll..)
+- added combination of fullscreen and windowed mode. If you have two
+  (or more) monitors, load your favorite WB configuration, select
+  non-primary monitor and "full-window" mode to both native and RTG,
+  also make sure "Magic mouse" is enabled, adjust P96 resolution.
+  D3D/OGL filter may also be good idea.
+  Result will be near-seamless Windows/Amiga integration :)
+- "Magic mouse" didn't work with some system patches, also adjusted
+  sensitivity
+- tweaked vblank interrupt delay by 1 cycle (game Feud)
+- refresh rate switching (PAL/NTSC or by poking VPOSW) improved
+
+1.4.1
+
 Beta 4:
 
 - skip unknown extensions (or files without extension) when scanning

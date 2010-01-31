@@ -67,7 +67,7 @@ static void read_counts (void)
     if (file) {
 	fscanf (file, "Total: %lu\n", &total);
 	while (fscanf (file, "%lx: %lu %s\n", &opcode, &count, name) == 3) {
-	    opcode_next_clev[nr] = 4;
+	    opcode_next_clev[nr] = 6;
 	    opcode_last_postfix[nr] = -1;
 	    opcode_map[nr++] = opcode;
 	    counts[opcode] = count;
@@ -80,7 +80,7 @@ static void read_counts (void)
 	if (table68k[opcode].handler == -1 && table68k[opcode].mnemo != i_ILLG
 	    && counts[opcode] == 0)
 	{
-	    opcode_next_clev[nr] = 4;
+	    opcode_next_clev[nr] = 6;
 	    opcode_last_postfix[nr] = -1;
 	    opcode_map[nr++] = opcode;
 	    counts[opcode] = count;
@@ -790,9 +790,9 @@ static void genmovemle (uae_u16 opcode)
     char putcode[100];
     int size = table68k[opcode].size == sz_long ? 4 : 2;
     if (table68k[opcode].size == sz_long) {
-	strcpy (putcode, "put_long(srca,");
+	strcpy (putcode, "put_long(srca");
     } else {
-	strcpy (putcode, "put_word(srca,");
+	strcpy (putcode, "put_word(srca");
     }
 
     printf ("\tuae_u16 mask = %s;\n", gen_nextiword (0));
@@ -803,16 +803,21 @@ static void genmovemle (uae_u16 opcode)
     start_brace ();
     if (table68k[opcode].dmode == Apdi) {
 	printf ("\tuae_u16 amask = mask & 0xff, dmask = (mask >> 8) & 0xff;\n");
-	printf ("\twhile (amask) { srca -= %d; %s m68k_areg(regs, movem_index2[amask])); amask = movem_next[amask]; }\n",
-		size, putcode);
-	printf ("\twhile (dmask) { srca -= %d; %s m68k_dreg(regs, movem_index2[dmask])); dmask = movem_next[dmask]; }\n",
-		size, putcode);
+	printf ("\tint type = get_cpu_model() >= 68020;\n");
+	printf ("\twhile (amask) {\n");
+	printf ("\t\tsrca -= %d;\n", size);
+	printf ("\t\tif (type) m68k_areg(regs, dstreg) = srca;\n");
+	printf ("\t\t%s, m68k_areg(regs, movem_index2[amask]));\n", putcode);
+	printf ("\t\tamask = movem_next[amask];\n");
+	printf ("\t}\n");
+	printf ("\twhile (dmask) { srca -= %d; %s, m68k_dreg(regs, movem_index2[dmask])); dmask = movem_next[dmask]; }\n",
+	    size, putcode);
 	printf ("\tm68k_areg(regs, dstreg) = srca;\n");
     } else {
 	printf ("\tuae_u16 dmask = mask & 0xff, amask = (mask >> 8) & 0xff;\n");
-	printf ("\twhile (dmask) { %s m68k_dreg(regs, movem_index1[dmask])); srca += %d; dmask = movem_next[dmask]; }\n",
+	printf ("\twhile (dmask) { %s, m68k_dreg(regs, movem_index1[dmask])); srca += %d; dmask = movem_next[dmask]; }\n",
 		putcode, size);
-	printf ("\twhile (amask) { %s m68k_areg(regs, movem_index1[amask])); srca += %d; amask = movem_next[amask]; }\n",
+	printf ("\twhile (amask) { %s, m68k_areg(regs, movem_index1[amask])); srca += %d; amask = movem_next[amask]; }\n",
 		putcode, size);
     }
 }
@@ -2860,6 +2865,18 @@ static void gen_opcode (unsigned long int opcode)
 	sync_m68k_pc ();
 	printf ("\tmmu_op(opcode, regs, extra);\n");
 	break;
+    case i_MMUOP30A:
+	printf ("\tuaecptr pc = m68k_getpc (regs);\n");
+	genamode (curi->smode, "srcreg", curi->size, "extra", 1, 0, 0);
+	sync_m68k_pc ();
+	printf ("\tmmu_op30(pc, opcode, regs, 1, extra);\n");
+	break;
+    case i_MMUOP30B:
+	printf ("\tuaecptr pc = m68k_getpc (regs);\n");
+	genamode (curi->smode, "srcreg", curi->size, "extra", 1, 0, 0);
+	sync_m68k_pc ();
+	printf ("\tmmu_op30(pc, opcode, regs, 0, 0);\n");
+	break;
     default:
 	abort ();
 	break;
@@ -3176,29 +3193,32 @@ int main (int argc, char **argv)
     using_ce = 0;
 
     postfix2 = -1;
-    for (i = 0; i < 7; i++) {
+    for (i = 0; i < 13; i++) {
 	postfix = i;
-	if (i == 0 || i == 5 || i == 6) {
+	if (i >= 7 && i < 11)
+	    continue;
+	if (i == 0 || i == 11 || i == 12) {
 	    fprintf (stblfile, "#ifdef CPUEMU_%d\n", postfix);
 	    postfix2 = postfix;
 	    sprintf (fname, "cpuemu_%d.c", postfix);
 	    freopen (fname, "wb", stdout);
 	    generate_includes (stdout);
 	}
-	cpu_level = 4 - i;
-	if (i == 5 || i == 6) {
+	cpu_level = 6 - i;
+	if (i == 11 || i == 12) {
 	    cpu_level = 0;
 	    using_prefetch = 1;
 	    using_exception_3 = 1;
-	    if (i == 6) using_ce = 1;
+	    if (i == 12)
+		using_ce = 1;
 	    for (rp = 0; rp < nr_cpuop_funcs; rp++)
 		opcode_next_clev[rp] = 0;
 	}
-	if (i > 0 && i < 4)
+	if (i > 0 && i < 7)
 	    fprintf (stblfile, "#ifndef CPUEMU_68000_ONLY\n");
 	fprintf (stblfile, "const struct cputbl CPUFUNC(op_smalltbl_%d)[] = {\n", postfix);
 	generate_func ();
-	if (i > 0 && i < 4)
+	if (i > 0 && i < 7)
 	    fprintf (stblfile, "#endif /* CPUEMU_68000_ONLY */\n");
 	if (postfix2 >= 0)
 	    fprintf (stblfile, "#endif /* CPUEMU_%d */\n", postfix2);

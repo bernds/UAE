@@ -1118,7 +1118,7 @@ static void drive_motor (drive * drv, int off)
 #endif
 	if (disk_debug_logging > 1)
 	    write_log (" ->motor off");
-	if (currprefs.cpu_level <= 1 && currprefs.m68k_speed == 0) {
+	if (currprefs.cpu_model <= 68010 && currprefs.m68k_speed == 0) {
 	    drv->motordelay = 1;
 	    event2_newevent2(30, drv - floppy, motordelay_func);
 	}
@@ -2878,7 +2878,7 @@ void DSKLEN (uae_u16 v, int hpos)
 		    pos += 16;
 		    pos %= drv->tracklen;
 		}
-		INTREQ (0x8000 | 0x1000);
+		INTREQ_f (0x8000 | 0x1000);
 		done = 1;
 
 	    } else if (dskdmaen == 3) { /* TURBO write */
@@ -2897,7 +2897,7 @@ void DSKLEN (uae_u16 v, int hpos)
 	        put_word (dskpt, 0);
 	        dskpt += 2;
 	    }
-	    INTREQ (0x8000 | 0x1000);
+	    INTREQ_f (0x8000 | 0x1000);
 	    done = 1;
 	}
 
@@ -3074,6 +3074,8 @@ uae_u8 *restore_disk(int num,uae_u8 *src)
 {
     drive *drv;
     int state, dfxtype;
+    char old[MAX_DPATH];
+    int newis;
 
     drv = &floppy[num];
     disabled &= ~(1 << num);
@@ -3112,12 +3114,19 @@ uae_u8 *restore_disk(int num,uae_u8 *src)
     drv->dskchange = 0;
     drv->dskchange_time = 0;
     restore_u32 ();
+    strcpy (old, currprefs.df[num]);
     strncpy(changed_prefs.df[num],src,255);
+    newis = changed_prefs.df[num][0] ? 1 : 0;
     src+=strlen(src)+1;
     drive_insert (floppy + num, &currprefs, num, changed_prefs.df[num]);
-    if (drive_empty (floppy + num))
-	drv->dskchange = 1;
-
+    if (drive_empty (floppy + num)) {
+	if (newis && old[0]) {
+	    strcpy (changed_prefs.df[num], old);
+	    drive_insert (floppy + num, &currprefs, num, changed_prefs.df[num]);
+	    if (drive_empty (floppy + num))
+		drv->dskchange = 1;
+        }
+    }
     return src;
 }
 

@@ -105,7 +105,7 @@ extern struct regstruct
     flagtype stopped;
     int intmask;
 
-    uae_u32 vbr,sfc,dfc;
+    uae_u32 vbr, sfc, dfc;
 
 #ifdef FPUEMU
     fptype fp[8];
@@ -114,7 +114,20 @@ extern struct regstruct
     uae_u32 fpcr,fpsr, fpiar;
     uae_u32 fpsr_highbyte;
 #endif
+#ifndef CPUEMU_68000_ONLY
+    uae_u32 cacr, caar;
+    uae_u32 itt0, itt1, dtt0, dtt1;
+    uae_u32 tcr, mmusr, urp, srp, buscr;
 
+    uae_u32 mmu_fslw, mmu_fault_addr;
+    uae_u16 mmu_ssw;
+    uae_u32 wb3_data;
+    uae_u16 wb3_status;
+    int mmu_enabled;
+    int mmu_pagesize_8k;
+#endif
+
+    uae_u32 pcr;
     uae_u32 spcflags;
     uae_u32 kick_mask;
     uae_u32 address_space_mask;
@@ -286,6 +299,8 @@ extern uae_u32 REGPARAM3 get_disp_ea_020i (struct regstruct *regs, uae_u32 base,
 extern uae_u32 REGPARAM3 get_disp_ea_000 (struct regstruct *regs, uae_u32 base, uae_u32 dp) REGPARAM;
 extern void m68k_disasm_ea (void *f, uaecptr addr, uaecptr *nextpc, int cnt, uae_u32 *seaddr, uae_u32 *deaddr);
 extern void m68k_disasm (void *f, uaecptr addr, uaecptr *nextpc, int cnt);
+extern void m68k_disasm_2 (char *buf, int bufsize, uaecptr addr, uaecptr *nextpc, int cnt, uae_u32 *seaddr, uae_u32 *deaddr, int safemode);
+extern int get_cpu_model(void);
 
 extern void REGPARAM3 MakeSR (struct regstruct *regs) REGPARAM;
 extern void REGPARAM3 MakeFromSR (struct regstruct *regs) REGPARAM;
@@ -308,6 +323,7 @@ extern int getDivu68kCycles(uae_u32 dividend, uae_u16 divisor);
 extern int getDivs68kCycles(uae_s32 dividend, uae_s16 divisor);
 
 extern void mmu_op       (uae_u32, struct regstruct *regs, uae_u16);
+extern void mmu_op30     (uaecptr, uae_u32, struct regstruct *regs, int, uae_u16);
 
 extern void fpp_opp      (uae_u32, struct regstruct *regs, uae_u16);
 extern void fdbcc_opp    (uae_u32, struct regstruct *regs, uae_u16);
@@ -327,20 +343,24 @@ extern void fill_prefetch_slow (struct regstruct *regs);
 
 #define CPU_OP_NAME(a) op ## a
 
-/* 68040 */
+/* 68060 */
 extern const struct cputbl op_smalltbl_0_ff[];
-/* 68020 + 68881 */
+/* 68040 */
 extern const struct cputbl op_smalltbl_1_ff[];
-/* 68020 */
+/* 68020/68030+FPU */
 extern const struct cputbl op_smalltbl_2_ff[];
-/* 68010 */
+/* 68030 */
 extern const struct cputbl op_smalltbl_3_ff[];
-/* 68000 */
+/* 68020 */
 extern const struct cputbl op_smalltbl_4_ff[];
-/* 68000 slow but compatible.  */
+/* 68010 */
 extern const struct cputbl op_smalltbl_5_ff[];
-/* 68000 slow but compatible and cycle-exact.  */
+/* 68000 */
 extern const struct cputbl op_smalltbl_6_ff[];
+/* 68000 slow but compatible.  */
+extern const struct cputbl op_smalltbl_11_ff[];
+/* 68000 slow but compatible and cycle-exact.  */
+extern const struct cputbl op_smalltbl_12_ff[];
 
 extern cpuop_func *cpufunctbl[65536] ASM_SYM_FOR_FUNC ("cpufunctbl");
 
@@ -365,3 +385,11 @@ extern void check_prefs_changed_comp (void);
 #else
 #define flush_icache(X) do {} while (0)
 #endif
+
+extern int movec_illg (int regno);
+extern uae_u32 val_move2c (int regno);
+struct cpum2c {
+    int regno;
+    char *regname;
+};
+extern struct cpum2c m2cregs[];

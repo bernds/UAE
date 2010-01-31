@@ -9,7 +9,7 @@
 
 #define UAEMAJOR 1
 #define UAEMINOR 4
-#define UAESUBREV 1
+#define UAESUBREV 2
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -64,6 +64,7 @@ struct uaedev_config_info {
     int reserved;
     int blocksize;
     int configoffset;
+    int controller;
 };
 
 struct uae_prefs {
@@ -153,7 +154,8 @@ struct uae_prefs {
     int gfx_pfullscreen;
     int gfx_xcenter;
     int gfx_ycenter;
-    int gfx_hue, gfx_saturation, gfx_luminance, gfx_contrast, gfx_gamma;
+    int gfx_saturation, gfx_luminance, gfx_contrast, gfx_gamma;
+    int color_mode;
 
     int gfx_filter;
     int gfx_filter_scanlines;
@@ -163,7 +165,8 @@ struct uae_prefs {
     int gfx_filter_horiz_zoom_mult, gfx_filter_vert_zoom_mult;
     int gfx_filter_horiz_offset, gfx_filter_vert_offset;
     int gfx_filter_filtermode;
-    int color_mode;
+    int gfx_filter_noise, gfx_filter_blur;
+    int gfx_filter_saturation, gfx_filter_luminance, gfx_filter_contrast, gfx_filter_gamma;
 
     int immediate_blits;
     unsigned int chipset_mask;
@@ -204,6 +207,8 @@ struct uae_prefs {
     int cs_agnusrev;
     int cs_deniserev;
     int cs_mbdmac;
+    int cs_cdtvscsi;
+    int cs_a2091, cs_a4091;
     int cs_df0idhw;
 
     char df[4][MAX_DPATH];
@@ -226,6 +231,10 @@ struct uae_prefs {
 
     int m68k_speed;
     int cpu_level;
+    int cpu_model;
+    int cpu060_revision;
+    int fpu_model;
+    int fpu_revision;
     int cpu_compatible;
     int address_space_24;
     int picasso96_nocustom;
@@ -318,7 +327,7 @@ extern void cfgfile_backup (const char *path);
 extern int add_filesys_config (struct uae_prefs *p, int index,
 			char *devname, char *volname, char *rootdir, int readonly,
 			int secspertrack, int surfaces, int reserved,
-			int blocksize, int bootpri, char *filesysdir, int flags);
+			int blocksize, int bootpri, char *filesysdir, int hdc, int flags);
 
 extern void default_prefs (struct uae_prefs *, int);
 extern void discard_prefs (struct uae_prefs *, int);
@@ -353,6 +362,7 @@ extern int cmdlineparser (char *s, char *outp[], int max);
 extern int cfgfile_configuration_change(int);
 extern void fixup_prefs_dimensions (struct uae_prefs *prefs);
 extern void fixup_prefs (struct uae_prefs *prefs);
+extern void fixup_cpu (struct uae_prefs *prefs);
 
 extern void check_prefs_changed_custom (void);
 extern void check_prefs_changed_cpu (void);

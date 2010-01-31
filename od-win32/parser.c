@@ -43,6 +43,7 @@
 #include "zfile.h"
 #include "threaddep/thread.h"
 #include "serial.h"
+#include "savestate.h"
 
 #include <Ghostscript/errors.h>
 #include <Ghostscript/iapi.h>
@@ -549,9 +550,11 @@ int uaeser_setparams (struct uaeserialdatawin32 *sd, int baud, int rbuffer, int 
     if (!GetCommState (sd->hCom, &dcb))
 	return 5;
 
+    dcb.fBinary = TRUE;
     dcb.BaudRate = baud;
     dcb.ByteSize = bits;
     dcb.Parity = parity == 0 ? NOPARITY : (parity == 1 ? ODDPARITY : EVENPARITY);
+    dcb.fParity = FALSE;
     dcb.StopBits = sbits == 1 ? ONESTOPBIT : TWOSTOPBITS;
 
     dcb.fDsrSensitivity = FALSE;
@@ -567,11 +570,11 @@ int uaeser_setparams (struct uaeserialdatawin32 *sd, int baud, int rbuffer, int 
     }   
 
     dcb.fTXContinueOnXoff = FALSE;
-    dcb.XonChar = (xonxoff >> 8) & 0xff;
-    dcb.XoffChar = (xonxoff >> 16) & 0xff;
     if (xonxoff & 1) {
 	dcb.fOutX = TRUE;
 	dcb.fInX = TRUE;
+	dcb.XonChar = (xonxoff >> 8) & 0xff;
+	dcb.XoffChar = (xonxoff >> 16) & 0xff;
     } else {
 	dcb.fOutX = FALSE;
 	dcb.fInX = FALSE;
@@ -581,8 +584,8 @@ int uaeser_setparams (struct uaeserialdatawin32 *sd, int baud, int rbuffer, int 
     dcb.fNull = FALSE;
     dcb.fAbortOnError = FALSE;
 
-    dcb.XoffLim = 512;
-    dcb.XonLim = 2048;
+    //dcb.XoffLim = 512;
+    //dcb.XonLim = 2048;
 
     if (!SetCommState (sd->hCom, &dcb)) {
 	write_log("uaeserial: SetCommState() failed %d\n", GetLastError());
@@ -736,7 +739,7 @@ void uaeser_close (struct uaeserialdatawin32 *sd)
 	    Sleep(10);
 	CloseHandle (sd->evtt);
     }
-    if (sd->hCom)
+    if (sd->hCom != INVALID_HANDLE_VALUE)
 	CloseHandle(sd->hCom);
     if (sd->evtr)
 	CloseHandle(sd->evtr);
@@ -792,7 +795,7 @@ int openser (char *sername)
     }
 
     SetCommMask (hCom, EV_RXFLAG);
-    SetupComm (hCom, 65536,128);
+    SetupComm (hCom, 65536, 128);
     PurgeComm (hCom, PURGE_TXABORT | PURGE_RXABORT | PURGE_TXCLEAR | PURGE_RXCLEAR);
     CommTimeOuts.ReadIntervalTimeout = 0xFFFFFFFF;
     CommTimeOuts.ReadTotalTimeoutMultiplier = 0;
@@ -804,9 +807,11 @@ int openser (char *sername)
     dcb.DCBlength = sizeof (DCB);
     GetCommState (hCom, &dcb);
 
+    dcb.fBinary = TRUE;
     dcb.BaudRate = 9600;
     dcb.ByteSize = 8;
     dcb.Parity = NOPARITY;
+    dcb.fParity = FALSE;
     dcb.StopBits = ONESTOPBIT;
 
     dcb.fDsrSensitivity = FALSE;
@@ -829,8 +834,8 @@ int openser (char *sername)
     dcb.fNull = FALSE;
     dcb.fAbortOnError = FALSE;
 	
-    dcb.XoffLim = 512;
-    dcb.XonLim = 2048;
+    //dcb.XoffLim = 512;
+    //dcb.XonLim = 2048;
 
     if (SetCommState (hCom, &dcb)) {
         write_log ("SERIAL: Using %s CTS/RTS=%d\n", sername, currprefs.serial_hwctsrts);

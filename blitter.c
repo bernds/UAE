@@ -56,7 +56,7 @@ enum blitter_states bltstate;
 static int blit_cyclecounter, blit_maxcyclecounter, blit_slowdown;
 static int blit_linecyclecounter, blit_misscyclecounter;
 
-#ifdef CPUEMU_6
+#ifdef CPUEMU_12
 extern uae_u8 cycle_line[];
 #endif
 
@@ -140,7 +140,7 @@ static const int blit_cycle_diagram[][10] =
     { 3, 3, 1,3,4, 1,3,0 },	/* B */
     { 2, 3, 1,2,0, 1,2 },	/* C */
     { 3, 3, 1,2,4, 1,2,0 },	/* D */
-    { 0, 4, 1,2,3,0 },		/* E */
+    { 0, 3, 1,2,3 },		/* E */
     { 4, 4, 1,2,3,4, 1,2,3,0 }	/* F */
 };
 
@@ -162,7 +162,7 @@ static const int blit_cycle_diagram_fill[][10] =
     { 3, 3, 1,3,4, 1,3,0 },	/* B */
     { 2, 3, 1,2,5, 1,2 },	/* C */
     { 3, 4, 1,2,5,4, 1,2,0 },	/* D */
-    { 0, 4, 1,2,3,0 },		/* E */
+    { 0, 3, 1,2,3 },		/* E */
     { 4, 4, 1,2,3,4, 1,2,3,0 }	/* F */
 };
 
@@ -568,7 +568,7 @@ STATIC_INLINE void blitter_nxline(void)
     bltstate = BLT_read;
 }
 
-#ifdef CPUEMU_6
+#ifdef CPUEMU_12
 
 static int blit_last_hpos;
 
@@ -673,7 +673,7 @@ void blitter_handler(uae_u32 data)
     blitter_done ();
 }
 
-#ifdef CPUEMU_6
+#ifdef CPUEMU_12
 
 static uae_u32 preva, prevb;
 STATIC_INLINE uae_u16 blitter_doblit (void)
@@ -807,6 +807,7 @@ void decide_blitter (int hpos)
     if (!blitter_cycle_exact)
 	return;
     if (blitline) {
+        blt_info.got_cycle = 1;
 	decide_blitter_line (hpos);
 	return;
     }
@@ -840,6 +841,7 @@ void decide_blitter (int hpos)
 		    break;
 		}
 
+	        blt_info.got_cycle = 1;
 		if (c < 0) { /* no channel but bus still needs to be allocated.. */
 		    cycle_line[blit_last_hpos] |= CYCLE_BLITTER;
 		    blit_cyclecounter++;
@@ -1007,6 +1009,7 @@ void do_blitter (int hpos)
     bltstate = BLT_init;
     preva = 0;
     prevb = 0;
+    blt_info.got_cycle = 0;
 
     blit_firstline_cycles = blit_first_cycle = get_cycles ();
     blit_misscyclecounter = 0;
@@ -1069,6 +1072,7 @@ void do_blitter (int hpos)
 	return;
     }
 
+    blt_info.got_cycle = 1;
     if (currprefs.immediate_blits)
 	cycles = 1;
 

@@ -38,6 +38,7 @@
 #include "ar.h"
 #include "gui.h"
 #include "disk.h"
+#include "audio.h"
 #include "sound.h"
 #include "savestate.h"
 #include "arcadia.h"
@@ -777,7 +778,7 @@ static uaecptr get_intuitionbase(void)
 	    magicmouse_ibase = 0xffffffff;
 	    return 0;
 	}
-	if (b->flags != ABFLAG_ROM)
+	if (b->flags != ABFLAG_ROM && b->flags != ABFLAG_RAM)
 	    return 0;
 	p = b->xlateaddr(v2);
 	if (!strcmp(p, "intuition.library"))
@@ -790,9 +791,9 @@ static void mousehack_enable (void)
 {
     if (!uae_boot_rom)
 	return;
-    if (rtarea[get_long (RTAREA_BASE + 40) + 12 - 1])
+    if (rtarea[get_long (RTAREA_BASE + 40) + 12 - 2] == 0xff)
 	return;
-    rtarea[get_long (RTAREA_BASE + 40) + 12 - 1] = 1;
+    rtarea[get_long (RTAREA_BASE + 40) + 12 - 2] = 1;
 }
 
 static void mousehack_setpos(int mousexpos, int mouseypos)
@@ -809,8 +810,7 @@ static void mousehack_setpos(int mousexpos, int mouseypos)
 }
 
 static int mouseedge_x, mouseedge_y, mouseedge_time;
-#define MOUSEEDGE_RANGE 1000
-#define MOUSEEDGE_RANGE_MENU 1000
+#define MOUSEEDGE_RANGE 300
 #define MOUSEEDGE_TIME 2
 
 void setamigamouse(int x, int y)
@@ -865,7 +865,7 @@ static void mouseedge(void)
         melast_x = x;
     }
     if (melast_y == y) {
-	if (mouseedge_y < -MOUSEEDGE_RANGE_MENU) {
+	if (mouseedge_y < -MOUSEEDGE_RANGE) {
 	    mouseedge_y = 0;
 	    dir |= 4;
 	    goto end;
@@ -1228,6 +1228,12 @@ static uae_u16 handle_joystick_potgor (uae_u16 potgor)
 	uae_u16 p5dir = 0x0200 << (i * 4); /* output enable P5 */
 	uae_u16 p5dat = 0x0100 << (i * 4); /* data P5 */
 
+	if (currprefs.cs_cdtvcd) {
+	    /* CDTV P9 is not floating */
+	    if (!(potgo_value & p9dir))
+		potgor |= p9dat;
+	}
+
 	if (mouse_port[i]) {
 	    /* official Commodore mouse has pull-up resistors in button lines
 	     * NOTE: 3rd party mice may not have pullups! */
@@ -1236,6 +1242,7 @@ static uae_u16 handle_joystick_potgor (uae_u16 potgor)
 	    if (!(potgo_value & p9dir))
 		potgor |= p9dat;
 	}
+
 	if (potgo_hsync < 0) {
 	    /* first 10 or so lines after potgo has started
 	     * forces input-lines to zero
@@ -1846,7 +1853,7 @@ void inputdevice_vsync (void)
 	}
     }
     mouseupdate (100);
-    inputdelay = uaerand () % (maxvpos == 0 ? 1 : maxvpos - 1);
+    inputdelay = uaerand () % (maxvpos <= 1 ? 1 : maxvpos - 1);
     idev[IDTYPE_MOUSE].read ();
     input_read = 1;
     input_vpos = 0;

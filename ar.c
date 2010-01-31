@@ -193,7 +193,7 @@ static void hrtmon_unmap_banks(void);
 void check_prefs_changed_carts(int in_memory_reset);
 int action_replay_unload(int in_memory_reset);
 
-static int stored_picasso_on;
+static int stored_picasso_on = -1;
 
 static void cartridge_enter(void)
 {
@@ -205,7 +205,9 @@ static void cartridge_enter(void)
 static void cartridge_exit(void)
 {
 #ifdef PICASSO96
-    picasso_requested_on = stored_picasso_on;
+    if (stored_picasso_on >= 0)
+	picasso_requested_on = stored_picasso_on;
+    stored_picasso_on = -1;
 #endif
 }
 
@@ -1443,7 +1445,6 @@ static void hrtmon_configure(void)
 	return;
     cfg->col0h = 0x00; cfg->col0l = 0x5a;
     cfg->col1h = 0x0f; cfg->col1l = 0xff;
-    cfg->a1200 = (currprefs.chipset_mask & CSMASK_AGA) ? 1 : 0;
     cfg->aga = (currprefs.chipset_mask & CSMASK_AGA) ? 1 : 0;
     cfg->cd32 = currprefs.cs_cd32cd ? 1 : 0;
     cfg->screenmode = currprefs.ntscmode;
@@ -1453,6 +1454,8 @@ static void hrtmon_configure(void)
     cfg->keyboard = hrtmon_lang;
     do_put_mem_long(&cfg->max_chip, currprefs.chipmem_size);
     do_put_mem_long(&cfg->mon_size, 0x800000);
+    cfg->ide = currprefs.cs_ide ? 1 : 0;
+    cfg->a1200 = currprefs.cs_ide == 1 ? 1 : 0; /* type of IDE interface, not Amiga model */
 }
 
 int hrtmon_load(void)

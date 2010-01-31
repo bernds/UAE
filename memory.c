@@ -50,7 +50,7 @@ uae_u32 max_z3fastmem = 2048UL * 1024 * 1024;
 uae_u32 max_z3fastmem = 512 * 1024 * 1024;
 #endif
 
-static size_t chip_filepos, bogo_filepos, rom_filepos, a3000lmem_filepos, a3000hmem_filepos;
+static size_t bootrom_filepos, chip_filepos, bogo_filepos, rom_filepos, a3000lmem_filepos, a3000hmem_filepos;
 
 static struct romlist *rl;
 static int romlist_cnt;
@@ -685,7 +685,7 @@ static uae_u32 REGPARAM2 dummy_lget (uaecptr addr)
 #endif
     if (currprefs.illegal_mem)
 	dummylog(0, addr, 4, 0, 0);
-    if (currprefs.cpu_level >= 2)
+    if (currprefs.cpu_model >= 68020)
 	return NONEXISTINGDATA;
     return (regs.irc << 16) | regs.irc;
 }
@@ -696,7 +696,7 @@ uae_u32 REGPARAM2 dummy_lgeti (uaecptr addr)
 #endif
     if (currprefs.illegal_mem)
 	dummylog(0, addr, 4, 0, 1);
-    if (currprefs.cpu_level >= 2)
+    if (currprefs.cpu_model >= 68020)
 	return NONEXISTINGDATA;
     return (regs.irc << 16) | regs.irc;
 }
@@ -708,7 +708,7 @@ static uae_u32 REGPARAM2 dummy_wget (uaecptr addr)
 #endif
     if (currprefs.illegal_mem)
 	dummylog(0, addr, 2, 0, 0);
-    if (currprefs.cpu_level >= 2)
+    if (currprefs.cpu_model >= 68020)
 	return NONEXISTINGDATA;
     return regs.irc;
 }
@@ -719,7 +719,7 @@ uae_u32 REGPARAM2 dummy_wgeti (uaecptr addr)
 #endif
     if (currprefs.illegal_mem)
 	dummylog(0, addr, 2, 0, 1);
-    if (currprefs.cpu_level >= 2)
+    if (currprefs.cpu_model >= 68020)
 	return NONEXISTINGDATA;
     return regs.irc;
 }
@@ -731,7 +731,7 @@ static uae_u32 REGPARAM2 dummy_bget (uaecptr addr)
 #endif
     if (currprefs.illegal_mem)
 	dummylog(0, addr, 1, 0, 0);
-    if (currprefs.cpu_level >= 2)
+    if (currprefs.cpu_model >= 68020)
 	return NONEXISTINGDATA;
     return (addr & 1) ? regs.irc : regs.irc >> 8;
 }
@@ -1514,7 +1514,7 @@ uae_u8 *REGPARAM2 default_xlate (uaecptr a)
 {
     if (quit_program == 0) {
 	/* do this only in 68010+ mode, there are some tricky A500 programs.. */
-	if (currprefs.cpu_level > 0 || !currprefs.cpu_compatible) {
+	if (currprefs.cpu_model > 68000 || !currprefs.cpu_compatible) {
 #if defined(ENFORCER)
 	    enforcer_disable ();
 #endif
@@ -1522,7 +1522,7 @@ uae_u8 *REGPARAM2 default_xlate (uaecptr a)
 		int i, j;
 		uaecptr a2 = a - 32;
 		uaecptr a3 = m68k_getpc(&regs) - 32;
-		write_log ("Your Amiga program just did something terribly stupid %p PC=%p\n", a, M68K_GETPC);
+		write_log ("Your Amiga program just did something terribly stupid %08.8X PC=%08.8X\n", a, M68K_GETPC);
 		m68k_dumpstate (0, 0);
 		for (i = 0; i < 10; i++) {
 		    write_log ("%08.8X ", i >= 5 ? a3 : a2);
@@ -2188,6 +2188,7 @@ static void allocate_memory (void)
 	cdtv_loadcardmem(cardmemory, allocated_cardmem);
     }
     if (savestate_state == STATE_RESTORE) {
+	restore_ram (bootrom_filepos, rtarea);
 	restore_ram (chip_filepos, chipmemory);
 	if (allocated_bogomem > 0)
 	    restore_ram (bogo_filepos, bogomemory);
@@ -2213,7 +2214,7 @@ void map_overlay (int chip)
 
     cb = &chipmem_bank;
 #ifdef AGA
-    if (currprefs.cpu_cycle_exact && currprefs.cpu_level >= 2)
+    if (currprefs.cpu_cycle_exact && currprefs.cpu_model >= 68020)
 	cb = &chipmem_bank_ce2;
 #endif
     if (chip)
@@ -2273,20 +2274,21 @@ void memory_reset (void)
 	} else {
 	    struct romdata *rd = getromdatabydata (kickmemory, kickmem_size);
 	    if (rd) {
-		if ((rd->cpu & 3) == 1 && changed_prefs.cpu_level < 2) {
+		if ((rd->cpu & 3) == 1 && changed_prefs.cpu_model < 68020) {
 		    notify_user (NUMSG_KS68EC020);
 		    uae_restart (-1, NULL);
-		} else if ((rd->cpu & 3) == 2 && (changed_prefs.cpu_level < 2 || changed_prefs.address_space_24)) {
+		} else if ((rd->cpu & 3) == 2 && (changed_prefs.cpu_model < 68020 || changed_prefs.address_space_24)) {
 		    notify_user (NUMSG_KS68020);
 		    uae_restart (-1, NULL);
 		}
 		if (rd->cloanto)
 		    cloanto_rom = 1;
-		if ((rd->cpu & 4) && currprefs.cs_compatible) { /* A4000 ROM = need some mb resources */
+		if ((rd->cpu & 4) && currprefs.cs_compatible) { /* A4000 ROM = need ramsey, gary and ide */
 		    if (currprefs.cs_ramseyrev < 0) 
 			changed_prefs.cs_ramseyrev = currprefs.cs_ramseyrev = 0x0f;
 		    changed_prefs.cs_fatgaryrev = currprefs.cs_fatgaryrev = 0;
-		    changed_prefs.cs_mbdmac = currprefs.cs_mbdmac = 0;
+		    if (currprefs.cs_ide != 2)
+			changed_prefs.cs_ide = currprefs.cs_ide = -1;
 		}
 	    }
 	}
@@ -2305,7 +2307,7 @@ void memory_reset (void)
     bnk = allocated_chipmem >> 16;
     if (bnk < 0x20 + (currprefs.fastmem_size >> 16))
 	bnk = 0x20 + (currprefs.fastmem_size >> 16);
-    map_banks (&dummy_bank, bnk, (currprefs.chipset_mask & CSMASK_AGA ? 0xBF : 0xA0) - bnk, 0);
+    map_banks (&dummy_bank, bnk, (((currprefs.chipset_mask & CSMASK_AGA) || currprefs.cs_ide == 1) ? 0xBF : 0xA0) - bnk, 0);
     if (currprefs.chipset_mask & CSMASK_AGA)
 	map_banks (&dummy_bank, 0xc0, 0xd8 - 0xc0, 0);
 
@@ -2313,20 +2315,32 @@ void memory_reset (void)
 	int t = allocated_bogomem >> 16;
 	if (t > 0x1C)
 	    t = 0x1C;
-	if (t > 0x10 && ((currprefs.chipset_mask & CSMASK_AGA) || currprefs.cpu_level >= 2))
+	if (t > 0x10 && ((currprefs.chipset_mask & CSMASK_AGA) || currprefs.cpu_model >= 68020))
 	    t = 0x10;
 	map_banks (&bogomem_bank, 0xC0, t, 0);
     }
-    if (currprefs.cs_ide)
-	map_banks (&gayle_bank, 0xD8, 6, 0);
+    if (currprefs.cs_ide) {
+	if(currprefs.cs_ide == 1) {
+	    map_banks (&gayle_bank, 0xD8, 6, 0);
+	    map_banks (&gayle2_bank, 0xDD, 2, 0);
+	    // map_banks (&gayle_attr_bank, 0xA0, 8, 0); only if PCMCIA card inserted */
+	}
+	if (currprefs.cs_ide == 2 || currprefs.cs_mbdmac == 2) {
+	    map_banks (&gayle_bank, 0xDD, 1, 0);
+	}
+	if (currprefs.cs_ide < 0) {
+	    map_banks (&gayle_bank, 0xD8, 6, 0);
+	    map_banks (&gayle_bank, 0xDD, 1, 0);
+	}
+    }
     if (currprefs.cs_rtc)
 	map_banks (&clock_bank, 0xDC, 1, 0);
     if (currprefs.cs_fatgaryrev >= 0|| currprefs.cs_ramseyrev >= 0)
 	map_banks (&mbres_bank, 0xDE, 1, 0);
     if (currprefs.cs_cd32c2p || currprefs.cs_cd32cd || currprefs.cs_cd32nvram)
 	map_banks (&akiko_bank, AKIKO_BASE >> 16, 1, 0);
-    if (currprefs.cs_mbdmac >= 0)
-	map_banks (&mbdmac_bank, 0xDD, 1, 0);
+    if (currprefs.cs_mbdmac == 1)
+	map_banks (&mbdmac_a3000_bank, 0xDD, 1, 0);
     if (a3000lmemory != 0)
         map_banks (&a3000lmem_bank, a3000lmem_start >> 16, allocated_a3000lmem >> 16, 0);
     if (a3000hmemory != 0)
@@ -2335,7 +2349,7 @@ void memory_reset (void)
 	map_banks (&cardmem_bank, cardmem_start >> 16, allocated_cardmem >> 16, 0);
 
 #ifdef AUTOCONFIG
-    if (nr_units()) {
+    if (need_uae_boot_rom()) {
 	uae_boot_rom = 1;
 	map_banks (&rtarea_bank, RTAREA_BASE >> 16, 1, 0);
     }
@@ -2385,8 +2399,10 @@ void memory_reset (void)
     if ((cloanto_rom || currprefs.cs_ksmirror) && !currprefs.maprom && !extendedkickmem_type)
         map_banks (&kickmem_bank, 0xE0, 8, 0);
     if (currprefs.cs_ksmirror == 2) { /* unexpanded A1200 also maps ROM here.. */
-        map_banks (&kickmem_bank, 0xA8, 8, 0);
-        map_banks (&kickmem_bank, 0xB0, 8, 0);
+	if (!currprefs.cart_internal) {
+	    map_banks (&kickmem_bank, 0xA8, 8, 0);
+	    map_banks (&kickmem_bank, 0xB0, 8, 0);
+	}
     }
 #ifdef ARCADIA
     if (is_arcadia_rom (currprefs.romextfile) == ARCADIA_BIOS) {
@@ -2484,6 +2500,8 @@ void memory_cleanup (void)
 
 void memory_hardreset(void)
 {
+    if (savestate_state == STATE_RESTORE)
+	return;
     if (chipmemory)
 	memset (chipmemory, 0, allocated_chipmem);
     if (bogomemory)
@@ -2557,6 +2575,14 @@ void map_banks (addrbank *bank, int start, int size, int realsize)
 
 /* memory save/restore code */
 
+uae_u8 *save_bootrom(int *len)
+{
+    if (!uae_boot_rom)
+	return 0;
+    *len = uae_boot_rom_size;
+    return rtarea;
+}
+
 uae_u8 *save_cram (int *len)
 {
     *len = allocated_chipmem;
@@ -2579,6 +2605,11 @@ uae_u8 *save_a3000hram (int *len)
 {
     *len = allocated_a3000hmem;
     return a3000hmemory;
+}
+
+void restore_bootrom (int len, size_t filepos)
+{
+    bootrom_filepos = filepos;
 }
 
 void restore_cram (int len, size_t filepos)

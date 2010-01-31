@@ -14,6 +14,7 @@
 
 #include "options.h"
 #include "uae.h"
+#include "audio.h"
 #include "autoconf.h"
 #include "events.h"
 #include "custom.h"
@@ -46,7 +47,8 @@ static const struct cfg_lines opttable[] =
     {"use_gui", "Enable the GUI?  If no, then goes straight to emulator" },
     {"use_debugger", "Enable the debugger?" },
     {"cpu_speed", "can be max, real, or a number between 1 and 20" },
-    {"cpu_type", "Can be 68000, 68010, 68020, 68020/68881" },
+    {"cpu_model", "Can be 68000, 68010, 68020, 68030, 68040, 68060" },
+    {"fpu_model", "Can be 68881, 68882, 68040, 68060" },
     {"cpu_compatible", "yes enables compatibility-mode" },
     {"cpu_24bit_addressing", "must be set to 'no' in order for Z3mem or P96mem to work" },
     {"autoconfig", "yes = add filesystems and extra ram" },
@@ -119,17 +121,13 @@ static const char *csmode[] = { "ocs", "ecs_agnus", "ecs_denise", "ecs", "aga", 
 static const char *linemode1[] = { "none", "double", "scanlines", 0 };
 static const char *linemode2[] = { "n", "d", "s", 0 };
 static const char *speedmode[] = { "max", "real", 0 };
-static const char *cpumode[] = {
-    "68000", "68000", "68010", "68010", "68ec020", "68020", "68ec020/68881", "68020/68881",
-    "68040", "68040", "xxxxx", "xxxxx", "68060", "68060", 0
-};
 static const char *colormode1[] = { "8bit", "15bit", "16bit", "8bit_dither", "4bit_dither", "32bit", 0 };
 static const char *colormode2[] = { "8", "15", "16", "8d", "4d", "32", 0 };
 static const char *soundmode1[] = { "none", "interrupts", "normal", "exact", 0 };
 static const char *soundmode2[] = { "none", "interrupts", "good", "best", 0 };
 static const char *centermode1[] = { "none", "simple", "smart", 0 };
 static const char *centermode2[] = { "false", "true", "smart", 0 };
-static const char *stereomode[] = { "mono", "stereo", "clonedstereo", "4ch", "mixed", 0 };
+static const char *stereomode[] = { "mono", "stereo", "clonedstereo", "4ch", "clonedstereo6ch", "6ch", "mixed", 0 };
 static const char *interpolmode[] = { "none", "anti", "sinc", "rh", "crux", 0 };
 static const char *collmode[] = { "none", "sprites", "playfields", "full", 0 };
 static const char *compmode[] = { "direct", "indirect", "indirectKS", "afterPic", 0 };
@@ -147,7 +145,12 @@ static const char *idemode[] = { "none", "a600/a1200", "a4000", 0 };
 static const char *rtctype[] = { "none", "MSM6242B", "RP5C01A", 0 };
 static const char *ciaatodmode[] = { "vblank", "50hz", "60hz", 0 };
 static const char *ksmirrortype[] = { "none", "e0", "a8+e0", 0 };
-static const char *cscompa[] = { "-", "Generic", "CDTV", "CD32", "A500", "A500+", "A600", "A1000", "A1200", "A2000", "A4000", 0 };
+static const char *cscompa[] = {
+    "-", "Generic", "CDTV", "CD32", "A500", "A500+", "A600",
+    "A1000", "A1200", "A2000", "A3000", "A3000T", "A4000", "A4000T", 0
+};
+/* 3-state boolean! */
+static const char *fullmodes[] = { "false", "true", /* "FILE_NOT_FOUND", */ "fullwindow", 0 };
 
 static const char *obsolete[] = {
     "accuracy", "gfx_opengl", "gfx_32bit_blits", "32bit_blits",
@@ -217,6 +220,7 @@ static void write_filesys_config (struct uae_prefs *p, const char *unexpanded,
 {
     int i;
     char tmp[MAX_DPATH];
+    char *hdcontrollers[] = { "uae", "ide0", "ide1", "ide2", "ide3" };
 
     for (i = 0; i < p->mountitems; i++) {
 	struct uaedev_config_info *uci = &p->mountconfig[i];
@@ -231,11 +235,11 @@ static void write_filesys_config (struct uae_prefs *p, const char *unexpanded,
 		uci->volname, str);
 	    zfile_fputs (f, tmp);
 	} else {
-	    sprintf (tmp, "hardfile2=%s,%s:%s,%d,%d,%d,%d,%d,%s\n",
+	    sprintf (tmp, "hardfile2=%s,%s:%s,%d,%d,%d,%d,%d,%s,%s\n",
 		     uci->readonly ? "ro" : "rw",
 		     uci->devname ? uci->devname : "", str,
 		     uci->sectors, uci->surfaces, uci->reserved, uci->blocksize,
-		     uci->bootpri, uci->filesys ? uci->filesys : "");
+		     uci->bootpri, uci->filesys ? uci->filesys : "", hdcontrollers[uci->controller]);
 	    zfile_fputs (f, tmp);
 	    sprintf (tmp, "hardfile=%s,%d,%d,%d,%d,%s\n",
 		     uci->readonly ? "ro" : "rw", uci->sectors,
@@ -246,6 +250,24 @@ static void write_filesys_config (struct uae_prefs *p, const char *unexpanded,
     }
 }
 
+static void write_compatibility_cpu(struct zfile *f, struct uae_prefs *p)
+{
+    char tmp[100];
+    int model;
+
+    model = p->cpu_model;
+    if (model == 68030)
+	model = 68020;
+    if (model == 68060)
+	model = 68040;
+    if (p->address_space_24 && model == 68020)
+	strcpy (tmp, "68ec020");
+    else
+	sprintf(tmp, "%d", model);
+    if (model == 68020 && (p->fpu_model == 68881 || p->fpu_model == 68882)) 
+	strcat(tmp,"/68881");
+    cfgfile_write (f, "cpu_type=%s\n", tmp);
+}
 
 void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type)
 {
@@ -404,8 +426,8 @@ void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type)
     cfgfile_write (f, "gfx_lores_mode=%s\n", loresmode[p->gfx_lores_mode]);
     cfgfile_write (f, "gfx_linemode=%s\n", linemode1[p->gfx_linedbl]);
     cfgfile_write (f, "gfx_correct_aspect=%s\n", p->gfx_correct_aspect ? "true" : "false");
-    cfgfile_write (f, "gfx_fullscreen_amiga=%s\n", p->gfx_afullscreen ? "true" : "false");
-    cfgfile_write (f, "gfx_fullscreen_picasso=%s\n", p->gfx_pfullscreen ? "true" : "false");
+    cfgfile_write (f, "gfx_fullscreen_amiga=%s\n", fullmodes[p->gfx_afullscreen]);
+    cfgfile_write (f, "gfx_fullscreen_picasso=%s\n", fullmodes[p->gfx_pfullscreen]);
     cfgfile_write (f, "gfx_center_horizontal=%s\n", centermode1[p->gfx_xcenter]);
     cfgfile_write (f, "gfx_center_vertical=%s\n", centermode1[p->gfx_ycenter]);
     cfgfile_write (f, "gfx_colour_mode=%s\n", colormode1[p->color_mode]);
@@ -446,6 +468,16 @@ void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type)
     cfgfile_write (f, "gfx_filter_scanlines=%d\n", p->gfx_filter_scanlines);
     cfgfile_write (f, "gfx_filter_scanlinelevel=%d\n", p->gfx_filter_scanlinelevel);
     cfgfile_write (f, "gfx_filter_scanlineratio=%d\n", p->gfx_filter_scanlineratio);
+    cfgfile_write (f, "gfx_filter_luminance=%d\n", p->gfx_filter_luminance);
+    cfgfile_write (f, "gfx_filter_contrast=%d\n", p->gfx_filter_contrast);
+    cfgfile_write (f, "gfx_filter_saturation=%d\n", p->gfx_filter_saturation);
+    cfgfile_write (f, "gfx_filter_gamma=%d\n", p->gfx_filter_gamma);
+    cfgfile_write (f, "gfx_filter_blur=%d\n", p->gfx_filter_blur);
+    cfgfile_write (f, "gfx_filter_noise=%d\n", p->gfx_filter_noise);
+
+    cfgfile_write (f, "gfx_luminance=%d\n", p->gfx_luminance);
+    cfgfile_write (f, "gfx_contrast=%d\n", p->gfx_contrast);
+    cfgfile_write (f, "gfx_gamma=%d\n", p->gfx_gamma);
 #endif
 
     cfgfile_write (f, "immediate_blits=%s\n", p->immediate_blits ? "true" : "false");
@@ -482,6 +514,10 @@ void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type)
     cfgfile_write (f, "a1000ram=%s\n", p->cs_a1000ram ? "true" : "false");
     cfgfile_write (f, "fatgary=%d\n", p->cs_fatgaryrev);
     cfgfile_write (f, "ramsey=%d\n", p->cs_ramseyrev);
+    cfgfile_write (f, "scsi_cdtv=%s\n", p->cs_cdtvscsi ? "true" : "false");
+    cfgfile_write (f, "scsi_a2091=%s\n", p->cs_a2091 ? "true" : "false");
+    cfgfile_write (f, "scsi_a4091=%s\n", p->cs_a4091 ? "true" : "false");
+    cfgfile_write (f, "scsi_a3000=%s\n", p->cs_mbdmac ? "true" : "false");
 
     cfgfile_write (f, "fastmem_size=%d\n", p->fastmem_size / 0x100000);
     cfgfile_write (f, "a3000mem_size=%d\n", p->mbresmem_low_size / 0x100000);
@@ -497,8 +533,14 @@ void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type)
     else
 	cfgfile_write (f, "cpu_speed=%s\n", p->m68k_speed == -1 ? "max" : "real");
 
-    cfgfile_write (f, "cpu_type=%s\n", cpumode[p->cpu_level * 2 + !p->address_space_24]);
+    /* do not reorder start */
+    write_compatibility_cpu(f, p);
+    cfgfile_write (f, "cpu_model=%d\n", p->cpu_model);
+    if (p->fpu_model)
+	cfgfile_write (f, "fpu_model=%d\n", p->fpu_model);
     cfgfile_write (f, "cpu_compatible=%s\n", p->cpu_compatible ? "true" : "false");
+    cfgfile_write (f, "cpu_24bit_addressing=%s\n", p->address_space_24 ? "true" : "false");
+    /* do not reorder end */
     cfgfile_write (f, "cpu_cycle_exact=%s\n", p->cpu_cycle_exact ? "true" : "false");
     cfgfile_write (f, "blitter_cycle_exact=%s\n", p->blitter_cycle_exact ? "true" : "false");
     cfgfile_write (f, "rtg_nocustom=%s\n", p->picasso96_nocustom ? "true" : "false");
@@ -733,6 +775,15 @@ static int cfgfile_parse_host (struct uae_prefs *p, char *option, char *value)
 	|| cfgfile_intval (option, value, "gfx_filter_scanlines", &p->gfx_filter_scanlines, 1)
 	|| cfgfile_intval (option, value, "gfx_filter_scanlinelevel", &p->gfx_filter_scanlinelevel, 1)
 	|| cfgfile_intval (option, value, "gfx_filter_scanlineratio", &p->gfx_filter_scanlineratio, 1)
+	|| cfgfile_intval (option, value, "gfx_filter_luminance", &p->gfx_filter_luminance, 1)
+	|| cfgfile_intval (option, value, "gfx_filter_contrast", &p->gfx_filter_contrast, 1)
+	|| cfgfile_intval (option, value, "gfx_filter_saturation", &p->gfx_filter_saturation, 1)
+	|| cfgfile_intval (option, value, "gfx_filter_gamma", &p->gfx_filter_gamma, 1)
+	|| cfgfile_intval (option, value, "gfx_filter_blur", &p->gfx_filter_blur, 1)
+	|| cfgfile_intval (option, value, "gfx_filter_noise", &p->gfx_filter_noise, 1)
+	|| cfgfile_intval (option, value, "gfx_luminance", &p->gfx_luminance, 1)
+	|| cfgfile_intval (option, value, "gfx_contrast", &p->gfx_contrast, 1)
+	|| cfgfile_intval (option, value, "gfx_gamma", &p->gfx_gamma, 1)
 #endif
 	|| cfgfile_intval (option, value, "floppy0sound", &p->dfxclick[0], 1)
 	|| cfgfile_intval (option, value, "floppy1sound", &p->dfxclick[1], 1)
@@ -763,8 +814,6 @@ static int cfgfile_parse_host (struct uae_prefs *p, char *option, char *value)
 	|| cfgfile_yesno (option, value, "gfx_vsync", &p->gfx_vsync)
 	|| cfgfile_yesno (option, value, "gfx_lores", &p->gfx_lores)
 	|| cfgfile_yesno (option, value, "gfx_correct_aspect", &p->gfx_correct_aspect)
-	|| cfgfile_yesno (option, value, "gfx_fullscreen_amiga", &p->gfx_afullscreen)
-	|| cfgfile_yesno (option, value, "gfx_fullscreen_picasso", &p->gfx_pfullscreen)
 	|| cfgfile_yesno (option, value, "show_leds", &p->leds_on_screen)
 	|| cfgfile_yesno (option, value, "synchronize_clock", &p->tod_hack)
 	|| cfgfile_yesno (option, value, "bsdsocket_emu", &p->socket_emu))
@@ -778,6 +827,8 @@ static int cfgfile_parse_host (struct uae_prefs *p, char *option, char *value)
 	|| cfgfile_strval (option, value, "use_gui", &p->start_gui, guimode1, 1)
 	|| cfgfile_strval (option, value, "use_gui", &p->start_gui, guimode2, 1)
 	|| cfgfile_strval (option, value, "use_gui", &p->start_gui, guimode3, 0)
+	|| cfgfile_strval (option, value, "gfx_fullscreen_amiga", &p->gfx_afullscreen, fullmodes, 0)
+	|| cfgfile_strval (option, value, "gfx_fullscreen_picasso", &p->gfx_pfullscreen, fullmodes, 0)
 	|| cfgfile_strval (option, value, "gfx_lores_mode", &p->gfx_lores_mode, loresmode, 0)
 	|| cfgfile_strval (option, value, "gfx_linemode", &p->gfx_linedbl, linemode1, 1)
 	|| cfgfile_strval (option, value, "gfx_linemode", &p->gfx_linedbl, linemode2, 0)
@@ -912,8 +963,8 @@ static int cfgfile_parse_host (struct uae_prefs *p, char *option, char *value)
     }
 
     if (cfgfile_strval (option, value, "sound_channels", &p->sound_stereo, stereomode, 1)) {
-	if (p->sound_stereo == 4) { /* "mixed stereo" compatibility hack */
-	    p->sound_stereo = 1;
+	if (p->sound_stereo == SND_NONE) { /* "mixed stereo" compatibility hack */
+	    p->sound_stereo = SND_STEREO;
 	    p->sound_mixed_stereo = 5;
 	    p->sound_stereo_separation = 7;
 	}
@@ -1064,7 +1115,7 @@ static struct uaedev_config_info *getuci(struct uae_prefs *p)
 int add_filesys_config (struct uae_prefs *p, int index,
 			char *devname, char *volname, char *rootdir, int readonly,
 			int secspertrack, int surfaces, int reserved,
-			int blocksize, int bootpri, char *filesysdir, int flags) {
+			int blocksize, int bootpri, char *filesysdir, int hdc, int flags) {
     struct uaedev_config_info *uci;
     if (index < 0)
 	uci = getuci(p);
@@ -1083,6 +1134,7 @@ int add_filesys_config (struct uae_prefs *p, int index,
     uci->blocksize = blocksize;
     uci->bootpri = bootpri;
     uci->configoffset = -1;
+    uci->controller = hdc;
     strcpy (uci->filesys, filesysdir ? filesysdir : "");
     if (!uci->devname[0])
 	sprintf(uci->devname,"DH%d", uci - &p->mountconfig[0]);
@@ -1097,7 +1149,7 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 
     if (cfgfile_yesno (option, value, "cpu_cycle_exact", &p->cpu_cycle_exact)
 	|| cfgfile_yesno (option, value, "blitter_cycle_exact", &p->blitter_cycle_exact)) {
-	if (p->cpu_level > 1 && p->cachesize > 0)
+	if (p->cpu_model >= 68020 && p->cachesize > 0)
 	    p->cpu_cycle_exact = p->blitter_cycle_exact = 0;
 	/* we don't want cycle-exact in 68020/40+JIT modes */
 	return 1;
@@ -1111,6 +1163,10 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	|| cfgfile_yesno (option, value, "cdtvcd", &p->cs_cdtvcd)
 	|| cfgfile_yesno (option, value, "cdtvram", &p->cs_cdtvram)
 	|| cfgfile_yesno (option, value, "a1000ram", &p->cs_a1000ram)
+	|| cfgfile_yesno (option, value, "scsi_cdtv", &p->cs_cdtvscsi)
+	|| cfgfile_yesno (option, value, "scsi_a4091", &p->cs_a4091)
+	|| cfgfile_yesno (option, value, "scsi_a2091", &p->cs_a2091)
+	|| cfgfile_yesno (option, value, "scsi_a3000", &p->cs_mbdmac)
 
 	|| cfgfile_yesno (option, value, "kickshifter", &p->kickshifter)
 	|| cfgfile_yesno (option, value, "ntsc", &p->ntscmode)
@@ -1137,6 +1193,8 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	return 1;
 
     if (cfgfile_intval (option, value, "cachesize", &p->cachesize, 1)
+	|| cfgfile_intval (option, value, "cpu060_revision", &p->cpu060_revision, 1)
+	|| cfgfile_intval (option, value, "fpu_revision", &p->fpu_revision, 1)
 	|| cfgfile_intval (option, value, "cdtvramcard", &p->cs_cdtvcard, 1)
 	|| cfgfile_intval (option, value, "fatgary", &p->cs_fatgaryrev, 1)
 	|| cfgfile_intval (option, value, "ramsey", &p->cs_ramseyrev, 1)
@@ -1214,11 +1272,48 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	return 1;
     }
 
-    if (cfgfile_strval (option, value, "cpu_type", &p->cpu_level, cpumode, 0)) {
-	p->address_space_24 = p->cpu_level < 8 && !(p->cpu_level & 1);
-	p->cpu_level >>= 1;
+    if (cfgfile_string (option, value, "fpu_model", tmpbuf, sizeof tmpbuf)) {
+	p->fpu_model = atol(tmpbuf);
 	return 1;
     }
+
+    if (cfgfile_string (option, value, "cpu_model", tmpbuf, sizeof tmpbuf)) {
+	p->cpu_model = atol(tmpbuf);
+	p->fpu_model = 0;
+	return 1;
+    }
+
+    /* old-style CPU configuration */
+    if (cfgfile_string (option, value, "cpu_type", tmpbuf, sizeof tmpbuf)) {
+	p->fpu_model = 0;
+	p->address_space_24 = 0;
+	p->cpu_model = 680000;
+	if (!strcmp(tmpbuf, "68000")) {
+	    p->cpu_model = 68000;
+	} else if (!strcmp(tmpbuf, "68010")) {
+	    p->cpu_model = 68010;
+	} else if (!strcmp(tmpbuf, "68ec020")) {
+	    p->cpu_model = 68020;
+	    p->address_space_24 = 1;
+	} else if (!strcmp(tmpbuf, "68020")) {
+	    p->cpu_model = 68020;
+	} else if (!strcmp(tmpbuf, "68ec020/68881")) {
+	    p->cpu_model = 68020;
+	    p->fpu_model = 68881;
+	    p->address_space_24 = 1;
+	} else if (!strcmp(tmpbuf, "68020/68881")) {
+	    p->cpu_model = 68020;
+	    p->fpu_model = 68881;
+	} else if (!strcmp(tmpbuf, "68040")) {
+	    p->cpu_model = 68040;
+	    p->fpu_model = 68040;
+	} else if (!strcmp(tmpbuf, "68060")) {
+	    p->cpu_model = 68060;
+	    p->fpu_model = 68060;
+	}
+	return 1;
+    }
+
     if (p->config_version < (21 << 16)) {
 	if (cfgfile_strval (option, value, "cpu_speed", &p->m68k_speed, speedmode, 1)
 	    /* Broken earlier versions used to write this out as a string.  */
@@ -1290,7 +1385,7 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	}
 	str = cfgfile_subst_path (UNEXPANDED, p->path_hardfile, root);
 #ifdef FILESYS
-	add_filesys_config (p, -1, NULL, aname, str, ro, secs, heads, reserved, bs, 0, NULL, 0);
+	add_filesys_config (p, -1, NULL, aname, str, ro, secs, heads, reserved, bs, 0, NULL, 0, 0);
 #endif
 	free (str);
 	return 1;
@@ -1300,8 +1395,8 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
     if (strcmp (option, "filesystem2") == 0
 	|| strcmp (option, "hardfile2") == 0)
     {
-	int secs, heads, reserved, bs, ro, bp;
-	char *dname, *aname, *root, *fs;
+	int secs, heads, reserved, bs, ro, bp, hdcv;
+	char *dname, *aname, *root, *fs, *hdc;
 	char *tmpp = strchr (value, ',');
 	char *str;
 
@@ -1317,7 +1412,7 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	else
 	    goto invalid_fs;
 	secs = 0; heads = 0; reserved = 0; bs = 0; bp = 0;
-	fs = 0;
+	fs = 0; hdc = 0; hdcv = 0;
 
 	value = tmpp;
 	if (strcmp (option, "filesystem2") == 0) {
@@ -1358,13 +1453,20 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	    if (getintval2 (&tmpp, &bp, ',')) {
 		fs = tmpp;
 		tmpp = strchr (tmpp, ',');
-		if (tmpp != 0)
-		    *tmpp = 0;
+		if (tmpp != 0) {
+		    *tmpp++ = 0;
+		    hdc = tmpp;
+		    if(strlen(hdc) >= 4 && !memcmp(hdc, "ide", 3)) {
+			hdcv = hdc[3] - '0' + 1;
+			if (hdcv < 1 || hdcv > 4)
+			    hdcv = 0;
+		    }
+		}
 	    }
 	}
 	str = cfgfile_subst_path (UNEXPANDED, p->path_hardfile, root);
 #ifdef FILESYS
-	add_filesys_config (p, -1, dname, aname, str, ro, secs, heads, reserved, bs, bp, fs, 0);
+	add_filesys_config (p, -1, dname, aname, str, ro, secs, heads, reserved, bs, bp, fs, hdcv, 0);
 #endif
 	free (str);
 	return 1;
@@ -1774,12 +1876,12 @@ static void parse_sound_spec (struct uae_prefs *p, char *spec)
     if (x1) {
 	p->sound_stereo_separation = 0;
 	if (*x1 == 'S') {
-	    p->sound_stereo = 1;
+	    p->sound_stereo = SND_STEREO;
 	    p->sound_stereo_separation = 7;
 	} else if (*x1 == 's')
-	    p->sound_stereo = 1;
+	    p->sound_stereo = SND_STEREO;
 	else
-	    p->sound_stereo = 0;
+	    p->sound_stereo = SND_MONO;
     }
     if (x2)
 	p->sound_bits = atoi (x2);
@@ -1848,7 +1950,7 @@ static void parse_filesys_spec (struct uae_prefs *p, int readonly, char *spec)
 	}
 #endif
 #ifdef FILESYS
-	add_filesys_config (p, -1, NULL, buf, s2, readonly, 0, 0, 0, 0, 0, 0, 0);
+	add_filesys_config (p, -1, NULL, buf, s2, readonly, 0, 0, 0, 0, 0, 0, 0, 0);
 #endif
     } else {
 	write_log ("Usage: [-m | -M] VOLNAME:mount_point\n");
@@ -1877,7 +1979,7 @@ static void parse_hardfile_spec (struct uae_prefs *p, char *spec)
 	goto argh;
     *x4++ = '\0';
 #ifdef FILESYS
-    add_filesys_config (p, -1, NULL, NULL, x4, 0, atoi (x0), atoi (x1), atoi (x2), atoi (x3), 0, 0, 0);
+    add_filesys_config (p, -1, NULL, NULL, x4, 0, atoi (x0), atoi (x1), atoi (x2), atoi (x3), 0, 0, 0, 0);
 #endif
     free (x0);
     return;
@@ -1895,21 +1997,21 @@ static void parse_cpu_specs (struct uae_prefs *p, char *spec)
 	return;
     }
 
-    p->cpu_level = *spec++ - '0';
-    p->address_space_24 = p->cpu_level < 2;
+    p->cpu_model = (*spec++) * 10 + 68000;
+    p->address_space_24 = p->cpu_model < 68020;
     p->cpu_compatible = 0;
     while (*spec != '\0') {
 	switch (*spec) {
 	 case 'a':
-	    if (p->cpu_level < 2)
+	    if (p->cpu_model < 68020)
 		write_log ("In 68000/68010 emulation, the address space is always 24 bit.\n");
-	    else if (p->cpu_level >= 4)
+	    else if (p->cpu_model >= 68040)
 		write_log ("In 68040/060 emulation, the address space is always 32 bit.\n");
 	    else
 		p->address_space_24 = 1;
 	    break;
 	 case 'c':
-	    if (p->cpu_level != 0)
+	    if (p->cpu_model != 68000)
 		write_log  ("The more compatible CPU emulation is only available for 68000\n"
 			 "emulation, not for 68010 upwards.\n");
 	    else
@@ -2472,7 +2574,7 @@ static void default_prefs_mini (struct uae_prefs *p, int type)
     p->nr_floppies = 1;
     p->dfxtype[0] = DRV_35_DD;
     p->dfxtype[1] = DRV_NONE;
-    p->cpu_level = 0;
+    p->cpu_model = 68000;
     p->address_space_24 = 1;
     p->chipmem_size = 0x00080000;
     p->bogomem_size = 0x00080000;
@@ -2513,7 +2615,7 @@ void default_prefs (struct uae_prefs *p, int type)
     p->keyboard_lang = KBD_LANG_US;
 
     p->produce_sound = 3;
-    p->sound_stereo = 1;
+    p->sound_stereo = SND_STEREO;
     p->sound_stereo_separation = 7;
     p->sound_mixed_stereo = 0;
     p->sound_bits = DEFAULT_SOUND_BITS;
@@ -2603,6 +2705,20 @@ void default_prefs (struct uae_prefs *p, int type)
     p->cs_compatible = 1;
     p->cs_rtc = 2;
     p->cs_df0idhw = 1;
+    p->cs_a1000ram = 0;
+    p->cs_fatgaryrev = -1;
+    p->cs_ramseyrev = -1;
+    p->cs_agnusrev = -1;
+    p->cs_deniserev = -1;
+    p->cs_mbdmac = 0;
+    p->cs_a2091 = 0;
+    p->cs_a4091 = 0;
+    p->cs_cd32c2p = p->cs_cd32cd = p->cs_cd32nvram = 0;
+    p->cs_cdtvcd = p->cs_cdtvram = p->cs_cdtvcard = 0;
+    p->cs_pcmcia = 0;
+    p->cs_ksmirror = 1;
+    p->cs_ciaatod = 0;
+    p->cs_df0idhw = 1;
 
     p->gfx_filter = 0;
     p->gfx_filter_horiz_zoom_mult = 1000;
@@ -2627,7 +2743,10 @@ void default_prefs (struct uae_prefs *p, int type)
     p->prtname[0] = 0;
     p->sername[0] = 0;
 
-    p->cpu_level = 0;
+    p->fpu_model = 0;
+    p->cpu_model = 68000;
+    p->cpu060_revision = 1;
+    p->fpu_revision = -1;
     p->m68k_speed = 0;
     p->cpu_compatible = 1;
     p->address_space_24 = 1;
@@ -2667,7 +2786,8 @@ void default_prefs (struct uae_prefs *p, int type)
 
 static void buildin_default_prefs_68020 (struct uae_prefs *p)
 {
-    p->cpu_level = 2;
+    p->cpu_model = 68020;
+    p->address_space_24 = 1;
     p->cpu_compatible = 1;
     p->chipset_mask = CSMASK_ECS_AGNUS | CSMASK_ECS_DENISE | CSMASK_AGA;
     p->chipmem_size = 0x200000;
@@ -2679,7 +2799,7 @@ static void buildin_default_host_prefs (struct uae_prefs *p)
 {
 #if 0
     p->sound_filter = FILTER_SOUND_OFF;
-    p->sound_stereo = 1;
+    p->sound_stereo = SND_STEREO;
     p->sound_stereo_separation = 7;
     p->sound_mixed_stereo = 0;
 #endif
@@ -2696,7 +2816,10 @@ static void buildin_default_prefs (struct uae_prefs *p)
     p->dfxtype[3] = DRV_NONE;
     p->floppy_speed = 100;
 
-    p->cpu_level = 0;
+    p->fpu_model = 0;
+    p->cpu_model = 68000;
+    p->cpu060_revision = 1;
+    p->fpu_revision = -1;
     p->m68k_speed = 0;
     p->cpu_compatible = 1;
     p->address_space_24 = 1;
@@ -2713,6 +2836,7 @@ static void buildin_default_prefs (struct uae_prefs *p)
     p->tod_hack = 0;
     p->maprom = 0;
     p->cachesize = 0;
+    p->socket_emu = 0;
 
     p->chipmem_size = 0x00080000;
     p->bogomem_size = 0x00080000;
@@ -2728,7 +2852,9 @@ static void buildin_default_prefs (struct uae_prefs *p)
     p->cs_ramseyrev = -1;
     p->cs_agnusrev = -1;
     p->cs_deniserev = -1;
-    p->cs_mbdmac = -1;
+    p->cs_mbdmac = 0;
+    p->cs_a2091 = 0;
+    p->cs_a4091 = 0;
     p->cs_cd32c2p = p->cs_cd32cd = p->cs_cd32nvram = 0;
     p->cs_cdtvcd = p->cs_cdtvram = p->cs_cdtvcard = 0;
     p->cs_ide = 0;
@@ -2800,12 +2926,14 @@ static int bip_a1000 (struct uae_prefs *p, int config, int compa, int romcheck)
     p->chipset_mask = 0;
     p->bogomem_size = 0;
     p->sound_filter = FILTER_SOUND_ON;
-    if (config == 1)
-	p->chipmem_size = 0x40000;
     set_68000_compa (p, compa);
     p->dfxtype[1] = DRV_NONE;
     p->cs_compatible = 7;
     build_in_chipset_prefs (p);
+    if (config > 0)
+	p->chipset_mask |= CSMASK_NO_EHB;
+    if (config > 1)
+	p->chipmem_size = 0x40000;
     return configure_rom (p, roms, romcheck);
 }
 
@@ -2994,7 +3122,8 @@ static int bip_super (struct uae_prefs *p, int config, int compa, int romcheck)
     p->chipmem_size = 0x400000;
     p->z3fastmem_size = 8 * 1024 * 1024;
     p->gfxmem_size = 8 * 1024 * 1024;
-    p->cpu_level = 4;
+    p->cpu_model = 68060;
+    p->fpu_model = 68060;
     p->chipset_mask = CSMASK_AGA | CSMASK_ECS_AGNUS | CSMASK_ECS_DENISE;
     p->cpu_compatible = p->address_space_24 = 0;
     p->m68k_speed = -1;
@@ -3092,6 +3221,7 @@ int build_in_chipset_prefs (struct uae_prefs *p)
     if (!p->cs_compatible)
 	return 1;
 
+    p->chipset_mask &= ~CSMASK_BUGS;
     p->cs_a1000ram = 0;
     p->cs_cd32c2p = p->cs_cd32cd = p->cs_cd32nvram = 0;
     p->cs_cdtvcd = p->cs_cdtvram = 0;
@@ -3100,7 +3230,8 @@ int build_in_chipset_prefs (struct uae_prefs *p)
     p->cs_ramseyrev = -1;
     p->cs_deniserev = -1;
     p->cs_agnusrev = -1;
-    p->cs_mbdmac = -1;
+    p->cs_mbdmac = 0;
+    p->cs_a2091 = 0;
     p->cs_pcmcia = 0;
     p->cs_ksmirror = 1;
     p->cs_ciaatod = 0;
@@ -3139,6 +3270,7 @@ int build_in_chipset_prefs (struct uae_prefs *p)
 	    p->cs_ciaatod = p->ntscmode ? 2 : 1;
 	    p->cs_ksmirror = 0;
 	    p->cs_rtc = 0;
+	    p->chipset_mask |= CSMASK_BLTBUSY_BUG;
 	break;
 	case  8: // A1200
 	    p->cs_ide = 1;
@@ -3169,14 +3301,14 @@ int build_in_chipset_prefs (struct uae_prefs *p)
 	    p->cs_fatgaryrev = 0;
 	    p->cs_ramseyrev = 0x0f;
 	    p->cs_ide = 2;
-	    p->cs_mbdmac = 1;
+	    p->cs_mbdmac = 0;
 	break;
 	case 13: // A4000T
 	    p->cs_rtc = 2;
 	    p->cs_fatgaryrev = 0;
 	    p->cs_ramseyrev = 0x0f;
 	    p->cs_ide = 2;
-	    p->cs_mbdmac = 1;
+	    p->cs_mbdmac = 2;
 	break;
     }
     return 1;
