@@ -320,10 +320,14 @@ static void setcursor (int oldx, int oldy)
     int y = (amigawin_rect.bottom - amigawin_rect.top) / 2;
     mouseposx = oldx - x;
     mouseposy = oldy - y;
-    if (abs (mouseposx) < 50 && abs (mouseposy) < 50)
-	return;
-    mouseposx = 0;
-    mouseposy = 0;
+    if (oldx >= 30000 || oldy >= 30000 || oldx <= -30000 || oldy <= -30000) {
+	mouseposx = mouseposy = 0;
+	oldx = oldy = 0;
+    } else {
+	if (abs (mouseposx) < 50 && abs (mouseposy) < 50)
+	    return;
+    }
+    mouseposx = mouseposy = 0;
 //    if (oldx < amigawin_rect.left || oldy < amigawin_rect.top || oldx > amigawin_rect.right || oldy > amigawin_rect.bottom) {
     if (oldx < 0 || oldy < 0 || oldx > amigawin_rect.right - amigawin_rect.left || oldy > amigawin_rect.bottom - amigawin_rect.top) {
 	write_log ("Mouse out of range: %dx%d (%dx%d %dx%d)\n", oldx, oldy,
@@ -487,7 +491,7 @@ void setmouseactive (int active)
 	if (rp_isactive ())
 	    w3 = rp_getparent ();
 #endif
-	if (!(fw == w1 || fw == w2)) {
+	if (isfullscreen () > 0 || (!(fw == w1 || fw == w2))) {
 	    if (SetForegroundWindow (w2) == FALSE) {
 		if (SetForegroundWindow (w1) == FALSE) {
 		    if (w3 == NULL || SetForegroundWindow (w3) == FALSE) {
@@ -514,7 +518,7 @@ void setmouseactive (int active)
 		ClipCursor (&amigawin_rect);
 	    }
 	    showcursor = 1;
-	    setcursor (-1, -1);
+	    setcursor (-30000, -30000);
 	}
 	inputdevice_acquire (TRUE);
     } else {
@@ -648,10 +652,12 @@ void setmouseactivexy (int x, int y, int dir)
 	x += (amigawin_rect.right - amigawin_rect.left) / 2;
 	y += (amigawin_rect.bottom - amigawin_rect.top) / 2;
     }
-    disablecapture ();
-    SetCursorPos (x, y);
-    if (dir)
-	recapture = 1;
+    if (mouseactive) {
+	disablecapture ();
+	SetCursorPos (x, y);
+	if (dir)
+	    recapture = 1;
+    }
 }
 
 static void handleXbutton (WPARAM wParam, int updown)
@@ -675,9 +681,6 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 #endif
     if (ignore_messages_all)
 	return DefWindowProc (hWnd, message, wParam, lParam);
-
-    if (hMainWnd == 0)
-	hMainWnd = hWnd;
 
     switch (message)
     {
@@ -768,6 +771,7 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
     case WM_MOUSEWHEEL:
 	if (dinput_winmouse () >= 0) {
 	    int val = ((short)HIWORD (wParam));
+	    //write_log ("dinput_winmouse=%d dinput_wheelbuttonstart=%d wheel=%d\n", dinput_winmouse(), dinput_wheelbuttonstart(), val);
 	    setmousestate (dinput_winmouse (), 2, val, 0);
 	    if (val < 0)
 		setmousebuttonstate (dinput_winmouse (), dinput_wheelbuttonstart () + 0, -1);
@@ -775,6 +779,7 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 		setmousebuttonstate (dinput_winmouse (), dinput_wheelbuttonstart () + 1, -1);
 	    return TRUE;
 	}
+	//write_log ("dinput_winmouse() = %d\n", dinput_winmouse());
     return 0;
     case WM_MOUSEHWHEEL:
 	if (dinput_winmouse () >= 0) {
@@ -1178,9 +1183,12 @@ static LRESULT CALLBACK MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 
     case WM_WINDOWPOSCHANGED:
 	WIN32GFX_WindowMove ();
-	if (hAmigaWnd && isfullscreen () <= 0 && GetWindowRect (hAmigaWnd, &amigawin_rect)) {
-	    DWORD aw = amigawin_rect.right - amigawin_rect.left;
-	    DWORD ah = amigawin_rect.bottom - amigawin_rect.top;
+	if (hAmigaWnd && isfullscreen () <= 0) {
+	    DWORD aw, ah;
+	    if (!IsIconic (hWnd))
+		GetWindowRect (hAmigaWnd, &amigawin_rect);
+	    aw = amigawin_rect.right - amigawin_rect.left;
+	    ah = amigawin_rect.bottom - amigawin_rect.top;
 	    if (in_sizemove > 0)
 		break;
 
@@ -1606,7 +1614,7 @@ HMODULE language_load (WORD language)
 			    if (vsFileInfo &&
 				HIWORD(vsFileInfo->dwProductVersionMS) == UAEMAJOR
 				&& LOWORD(vsFileInfo->dwProductVersionMS) == UAEMINOR
-				&& (HIWORD(vsFileInfo->dwProductVersionLS) == UAESUBREV)) {
+				&& (HIWORD(vsFileInfo->dwProductVersionLS) == UAESUBREV || HIWORD(vsFileInfo->dwProductVersionLS) == UAESUBREV - 1)) {
 				success = TRUE;
 				write_log ("Translation DLL '%s' loaded and enabled\n", dllbuf);
 			    } else {
@@ -1970,15 +1978,15 @@ void target_save_options (struct zfile *f, struct uae_prefs *p)
     cfgfile_target_dwrite (f, "ctrl_f11_is_quit=%s\n", p->win32_ctrl_F11_is_quit ? "true" : "false");
     cfgfile_target_dwrite (f, "midiout_device=%d\n", p->win32_midioutdev );
     cfgfile_target_dwrite (f, "midiin_device=%d\n", p->win32_midiindev );
-    cfgfile_target_dwrite (f, "rtg_match_depth=%s\n", p->win32_rtgmatchdepth ? "true" : "false" );
-    cfgfile_target_dwrite (f, "rtg_scale_small=%s\n", p->win32_rtgscaleifsmall ? "true" : "false" );
-    cfgfile_target_dwrite (f, "rtg_scale_allow=%s\n", p->win32_rtgallowscaling ? "true" : "false" );
+    cfgfile_target_dwrite (f, "rtg_match_depth=%s\n", p->win32_rtgmatchdepth ? "true" : "false");
+    cfgfile_target_dwrite (f, "rtg_scale_small=%s\n", p->win32_rtgscaleifsmall ? "true" : "false");
+    cfgfile_target_dwrite (f, "rtg_scale_allow=%s\n", p->win32_rtgallowscaling ? "true" : "false");
     cfgfile_target_dwrite (f, "rtg_scale_aspect_ratio=%d:%d\n",
 	p->win32_rtgscaleaspectratio >= 0 ? (p->win32_rtgscaleaspectratio >> 8) : -1,
 	p->win32_rtgscaleaspectratio >= 0 ? (p->win32_rtgscaleaspectratio & 0xff) : -1);
-    cfgfile_target_dwrite (f, "borderless=%s\n", p->win32_borderless ? "true" : "false" );
+    cfgfile_target_dwrite (f, "borderless=%s\n", p->win32_borderless ? "true" : "false");
     cfgfile_target_dwrite (f, "uaescsimode=%s\n", scsimode[p->win32_uaescsimode]);
-    cfgfile_target_dwrite (f, "soundcard=%d\n", p->win32_soundcard );
+    cfgfile_target_dwrite (f, "soundcard=%d\n", p->win32_soundcard);
     cfgfile_target_dwrite (f, "cpu_idle=%d\n", p->cpu_idle);
     cfgfile_target_dwrite (f, "notaskbarbutton=%s\n", p->win32_notaskbarbutton ? "true" : "false");
     cfgfile_target_dwrite (f, "always_on_top=%s\n", p->win32_alwaysontop ? "true" : "false");
@@ -2321,6 +2329,25 @@ static void initpath (char *name, char *path)
     set_path (name, NULL);
 }
 
+static void romlist_add2 (char *path, struct romdata *rd)
+{
+    if (getregmode ()) {
+	int ok = 0;
+	char tmp[MAX_DPATH];
+	if (path[0] == '/' || path[0] == '\\')
+	    ok = 1;
+	if (strlen (path) > 1 && path[1] == ':')
+	    ok = 1;
+	if (!ok) {
+	    strcpy (tmp, start_path_exe);
+	    strcat (tmp, path);
+	    romlist_add (tmp, rd);
+	    return;
+	}
+    }
+    romlist_add (path, rd);
+}
+
 extern int scan_roms (int);
 void read_rom_list (void)
 {
@@ -2363,10 +2390,10 @@ void read_rom_list (void)
 			s = strchr (s2, '\"');
 			if (s)
 			    *s = 0;
-			romlist_add (s2, rd);
+			romlist_add2 (s2, rd);
 			xfree (s2);
 		    } else {
-			romlist_add (tmp2, rd);
+			romlist_add2 (tmp2, rd);
 		    }
 		}
 	    }
@@ -3214,7 +3241,7 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
 
     if (WIN32_RegisterClasses () && WIN32_InitLibraries () && DirectDraw_Start (NULL)) {
 	DEVMODE devmode;
-	DWORD i = 0;
+	DWORD i;
 
 	DirectDraw_Release ();
 	write_log ("Enumerating display devices.. \n");
@@ -3222,8 +3249,16 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
 	write_log ("Sorting devices and modes..\n");
 	sortdisplays ();
 	write_log ("Display buffer mode = %d\n", ddforceram);
+	write_log ("Enumerating sound devices:\n");
+	enumerate_sound_devices ();
+	for (i = 0; sound_devices[i].name; i++) {
+	    write_log ("%d:%s: %s\n", i, sound_devices[i].type == SOUND_DEVICE_DS ? "DS" : "AL", sound_devices[i].name);
+	}
+	write_log ("Enumerating recording devices:\n");
+	for (i = 0; record_devices[i].name; i++) {
+	    write_log ("%d:%s: %s\n", i, record_devices[i].type == SOUND_DEVICE_DS ? "DS" : "AL", record_devices[i].name);
+	}
 	write_log ("done\n");
-
 	memset (&devmode, 0, sizeof(devmode));
 	devmode.dmSize = sizeof (DEVMODE);
 	if (EnumDisplaySettings (NULL, ENUM_CURRENT_SETTINGS, &devmode)) {

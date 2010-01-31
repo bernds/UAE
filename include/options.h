@@ -9,7 +9,7 @@
 
 #define UAEMAJOR 1
 #define UAEMINOR 5
-#define UAESUBREV 1
+#define UAESUBREV 2
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -343,6 +343,8 @@ struct uae_prefs {
     int input_joymouse_deadzone;
     int input_joystick_deadzone;
     int input_joymouse_speed;
+    int input_analog_joystick_mult;
+    int input_analog_joystick_offset;
     int input_autofire_framecnt;
     int input_mouse_speed;
     struct uae_input_device joystick_settings[MAX_INPUT_SETTINGS + 1][MAX_INPUT_DEVICES];

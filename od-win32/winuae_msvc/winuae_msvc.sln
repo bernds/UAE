@@ -22,8 +22,6 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ipctester", "..\ipctester\i
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "genlinetoscr", "..\genlinetoscr_msvc\genlinetoscr_msvc.vcproj", "{E9F73E11-A463-45C6-A733-2BED75852BA1}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "spsutil", "..\spsutil\spsutil.vcproj", "{FB18B65B-0606-4AC5-8B91-D1BBF77139FC}"
-EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "decompress", "..\decompress\decompress.vcproj", "{38FAC3FB-A2B7-453F-8A6A-73B97201BB04}"
 EndProject
 Global
@@ -160,16 +158,6 @@ Global
 		{E9F73E11-A463-45C6-A733-2BED75852BA1}.Release|x64.ActiveCfg = Release|Win32
 		{E9F73E11-A463-45C6-A733-2BED75852BA1}.Release64|Win32.ActiveCfg = Release|Win32
 		{E9F73E11-A463-45C6-A733-2BED75852BA1}.Release64|x64.ActiveCfg = Release|Win32
-		{FB18B65B-0606-4AC5-8B91-D1BBF77139FC}.Debug|Win32.ActiveCfg = Debug|Win32
-		{FB18B65B-0606-4AC5-8B91-D1BBF77139FC}.Debug|x64.ActiveCfg = Debug|Win32
-		{FB18B65B-0606-4AC5-8B91-D1BBF77139FC}.Debug64|Win32.ActiveCfg = Debug|Win32
-		{FB18B65B-0606-4AC5-8B91-D1BBF77139FC}.Debug64|x64.ActiveCfg = Debug|Win32
-		{FB18B65B-0606-4AC5-8B91-D1BBF77139FC}.FullRelease|Win32.ActiveCfg = FullRelease|Win32
-		{FB18B65B-0606-4AC5-8B91-D1BBF77139FC}.FullRelease|x64.ActiveCfg = FullRelease|Win32
-		{FB18B65B-0606-4AC5-8B91-D1BBF77139FC}.Release|Win32.ActiveCfg = Release|Win32
-		{FB18B65B-0606-4AC5-8B91-D1BBF77139FC}.Release|x64.ActiveCfg = Release|Win32
-		{FB18B65B-0606-4AC5-8B91-D1BBF77139FC}.Release64|Win32.ActiveCfg = Release|Win32
-		{FB18B65B-0606-4AC5-8B91-D1BBF77139FC}.Release64|x64.ActiveCfg = Release|Win32
 		{38FAC3FB-A2B7-453F-8A6A-73B97201BB04}.Debug|Win32.ActiveCfg = Debug|Win32
 		{38FAC3FB-A2B7-453F-8A6A-73B97201BB04}.Debug|x64.ActiveCfg = Debug|Win32
 		{38FAC3FB-A2B7-453F-8A6A-73B97201BB04}.Debug64|Win32.ActiveCfg = Debug|Win32

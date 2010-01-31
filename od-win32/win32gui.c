@@ -772,6 +772,12 @@ static struct romdata *scan_single_rom (char *path)
     return scan_single_rom_2 (z);
 }
 
+static void abspathtorelative (char *name)
+{
+    if (!strnicmp (start_path_exe, name, strlen (start_path_exe)))
+	memmove (name, name + strlen (start_path_exe), strlen (name) - strlen (start_path_exe) + 1);
+}
+
 static int addrom (UAEREG *fkey, struct romdata *rd, char *name)
 {
     char tmp1[MAX_DPATH], tmp2[MAX_DPATH];
@@ -786,6 +792,8 @@ static int addrom (UAEREG *fkey, struct romdata *rd, char *name)
     getromname (rd, tmp2);
     if (name) {
 	strcat (tmp2, " / \"");
+	if (getregmode ())
+	    abspathtorelative (name);
 	strcat (tmp2, name);
 	strcat (tmp2, "\"");
     }
@@ -2578,7 +2586,6 @@ static int clicked_entry = -1;
 #define LV_DISK 4
 
 static int listview_num_columns;
-static int listview_column_width[HARDDISK_COLUMNS];
 
 void InitializeListView (HWND hDlg)
 {
@@ -2597,6 +2604,7 @@ void InitializeListView (HWND hDlg)
     int width = 0;
     int items = 0, result = 0, i, j, entry = 0, temp = 0;
     char tmp[10], tmp2[MAX_DPATH];
+    int listview_column_width[HARDDISK_COLUMNS];
 
     if (hDlg == pages[HARDDISK_ID]) {
 	listview_num_columns = HARDDISK_COLUMNS;
@@ -2885,15 +2893,16 @@ static int listview_entry_from_click (HWND list, int *column)
 		int i, x;
 		UINT flag = LVIS_SELECTED | LVIS_FOCUSED;
 
-		ListView_GetItemPosition(list, entry, &ppt);
+		ListView_GetItemPosition (list, entry, &ppt);
 		x = ppt.x;
 		ListView_SetItemState (list, entry, flag, flag);
 		for (i = 0; i < listview_num_columns && column; i++) {
-		    if (x < point.x && x + listview_column_width[i] > point.x) {
+		    int cw = ListView_GetColumnWidth (list, i);
+		    if (x < point.x && x + cw > point.x) {
 			*column = i;
 			break;
 		    }
-		    x += listview_column_width[i];
+		    x += cw;
 		}
 		return entry;
 	    }
@@ -6720,7 +6729,8 @@ static void values_to_sounddlg (HWND hDlg)
     sprintf (txt, "%d", workprefs.sound_freq);
     SendDlgItemMessage (hDlg, IDC_SOUNDFREQ, WM_SETTEXT, 0, (LPARAM)txt);
 
-    switch (workprefs.produce_sound) {
+    switch (workprefs.produce_sound)
+    {
      case 0: which_button = IDC_SOUND0; break;
      case 1: which_button = IDC_SOUND1; break;
      case 2: which_button = IDC_SOUND2; break;
@@ -6887,6 +6897,8 @@ static INT_PTR CALLBACK SoundDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 
     switch (msg) {
     case WM_INITDIALOG:
+    {
+	int gotnonds = 0;
 	sound_loaddrivesamples ();
 	SendDlgItemMessage (hDlg, IDC_SOUNDBUFFERRAM, TBM_SETRANGE, TRUE, MAKELONG (MIN_SOUND_MEM, MAX_SOUND_MEM));
 	SendDlgItemMessage (hDlg, IDC_SOUNDBUFFERRAM, TBM_SETPAGESIZE, 0, 1);
@@ -6902,14 +6914,24 @@ static INT_PTR CALLBACK SoundDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 
 	SendDlgItemMessage (hDlg, IDC_SOUNDCARDLIST, CB_RESETCONTENT, 0, 0L);
 	numdevs = enumerate_sound_devices ();
-	for (card = 0; card < numdevs; card++)
-	    SendDlgItemMessage (hDlg, IDC_SOUNDCARDLIST, CB_ADDSTRING, 0, (LPARAM)sound_devices[card].name);
+	for (card = 0; card < numdevs; card++) {
+	    if (sound_devices[card].type != SOUND_DEVICE_DS)
+		gotnonds = 1;
+	}
+	for (card = 0; card < numdevs; card++) {
+	    char tmp[MAX_DPATH];
+	    if (gotnonds)
+		sprintf (tmp, "%s: %s", sound_devices[card].type == SOUND_DEVICE_DS ? "DS" : "AL", sound_devices[card].name);
+	    else
+		strcpy (tmp, sound_devices[card].name);
+	    SendDlgItemMessage (hDlg, IDC_SOUNDCARDLIST, CB_ADDSTRING, 0, (LPARAM)tmp);
+	}
 	if (numdevs == 0)
 	    workprefs.produce_sound = 0; /* No sound card in system, enable_for_sounddlg will accomodate this */
 
 	pages[SOUND_ID] = hDlg;
 	currentpage = SOUND_ID;
-
+    }
     case WM_USER:
 	recursive++;
 	values_to_sounddlg (hDlg);
@@ -9567,7 +9589,7 @@ static void enable_for_hw3ddlg (HWND hDlg)
     ew (hDlg, IDC_FILTERPRESETDELETE, filterpreset_selected > 0 && filterpreset_builtin < 0);
 }
 
-static void makefilter(char *s, int x, int flags)
+static void makefilter (char *s, int x, int flags)
 {
     sprintf (s, "%dx", x);
     if ((flags & (UAE_FILTER_MODE_16_16 | UAE_FILTER_MODE_32_32)) == (UAE_FILTER_MODE_16_16 | UAE_FILTER_MODE_32_32)) {
@@ -9617,6 +9639,19 @@ static int *filtervars[] = {
 	&workprefs.gfx_filter_luminance, &workprefs.gfx_filter_contrast, &workprefs.gfx_filter_saturation,
 	&workprefs.gfx_filter_gamma, &workprefs.gfx_filter_blur, &workprefs.gfx_filter_noise,
 	&workprefs.gfx_filter_keep_aspect, &workprefs.gfx_filter_aspect,
+	NULL
+    };
+static int *filtervars2[] = {
+	NULL, &currprefs.gfx_filter_filtermode,
+	&currprefs.gfx_filter_vert_zoom, &currprefs.gfx_filter_horiz_zoom,
+	&currprefs.gfx_filter_vert_zoom_mult, &currprefs.gfx_filter_horiz_zoom_mult,
+	&currprefs.gfx_filter_vert_offset, &currprefs.gfx_filter_horiz_offset,
+	&currprefs.gfx_filter_scanlines, &currprefs.gfx_filter_scanlinelevel, &currprefs.gfx_filter_scanlineratio,
+	&currprefs.gfx_resolution, &currprefs.gfx_linedbl, &currprefs.gfx_correct_aspect,
+	&currprefs.gfx_xcenter, &currprefs.gfx_ycenter,
+	&currprefs.gfx_filter_luminance, &currprefs.gfx_filter_contrast, &currprefs.gfx_filter_saturation,
+	&currprefs.gfx_filter_gamma, &currprefs.gfx_filter_blur, &currprefs.gfx_filter_noise,
+	&currprefs.gfx_filter_keep_aspect, &currprefs.gfx_filter_aspect,
 	NULL
     };
 
@@ -9919,6 +9954,8 @@ static void filter_preset (HWND hDlg, WPARAM wParam)
 	    *t++ = 0;
 	    for (i = 0; filtervars[i]; i++) {
 		*(filtervars[i]) = atol(s);
+		if (filtervars2[i])
+		    *(filtervars2[i]) = *(filtervars[i]);
 		s = t;
 		t = strchr (s, ',');
 		if (!t)
@@ -9929,11 +9966,11 @@ static void filter_preset (HWND hDlg, WPARAM wParam)
     }
 end:
     regclosetree (fkey);
+    enable_for_hw3ddlg (hDlg);
     if (load) {
 	values_to_hw3ddlg (hDlg);
 	SendMessage (hDlg, WM_HSCROLL, 0, 0);
     }
-    enable_for_hw3ddlg (hDlg);
 }
 
 static void filter_handle (HWND hDlg)
@@ -10023,7 +10060,9 @@ static INT_PTR CALLBACK hw3dDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM 
 		case IDC_FILTERPRESETLOAD:
 		case IDC_FILTERPRESETSAVE:
 		case IDC_FILTERPRESETDELETE:
+		recursive--;
 		filter_preset (hDlg, wParam);
+		recursive++;
 		break;
 		case IDC_FILTERENABLE:
 		filter_handle (hDlg);

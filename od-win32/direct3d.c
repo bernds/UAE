@@ -961,7 +961,7 @@ void D3D_free (void)
 
 const char *D3D_init (HWND ahwnd, int w_w, int w_h, int t_w, int t_h, int depth)
 {
-    HRESULT ret;
+    HRESULT ret, hr;
     static char errmsg[100] = { 0 };
     D3DDISPLAYMODE mode;
     D3DDISPLAYMODEEX modeex;
@@ -972,9 +972,6 @@ const char *D3D_init (HWND ahwnd, int w_w, int w_h, int t_w, int t_h, int depth)
 
     D3D_free ();
     D3D_canshaders ();
-    adapter = currprefs.gfx_display - 1;
-    if (adapter < 0)
-	adapter = 0;
     d3d_enabled = 0;
     scanlines_ok = 0;
     if (currprefs.gfx_filter != UAE_FILTER_DIRECT3D) {
@@ -1010,11 +1007,19 @@ const char *D3D_init (HWND ahwnd, int w_w, int w_h, int t_w, int t_h, int depth)
         }
     }
 
+    adapter = currprefs.gfx_display - 1;
+    if (adapter < 0)
+	adapter = 0;
+    if (adapter >= IDirect3D9_GetAdapterCount (d3d))
+	adapter = 0;
+
     modeex.Size = sizeof modeex;
     if (d3dex && D3DEX)
 	IDirect3D9Ex_GetAdapterDisplayModeEx (d3dex, adapter, &modeex, NULL);
-    IDirect3D9_GetAdapterDisplayMode (d3d, adapter, &mode);
-    IDirect3D9_GetDeviceCaps (d3d, adapter, D3DDEVTYPE_HAL, &d3dCaps);
+    if (FAILED (hr = IDirect3D9_GetAdapterDisplayMode (d3d, adapter, &mode)))
+        write_log ("D3D: IDirect3D9_GetAdapterDisplayMode failed %s\n", D3D_ErrorString (hr));
+    if (FAILED (hr = IDirect3D9_GetDeviceCaps (d3d, adapter, D3DDEVTYPE_HAL, &d3dCaps)))
+        write_log ("D3D: IDirect3D9_GetDeviceCaps failed %s\n", D3D_ErrorString (hr));
 
     memset (&dpp, 0, sizeof (dpp));
     dpp.Windowed = isfullscreen() <= 0;
@@ -1057,13 +1062,13 @@ const char *D3D_init (HWND ahwnd, int w_w, int w_h, int t_w, int t_h, int depth)
     flags |= D3DCREATE_NOWINDOWCHANGES | D3DCREATE_FPU_PRESERVE;
 
     if (d3d_ex && D3DEX) {
-	ret = IDirect3D9Ex_CreateDeviceEx (d3dex, adapter, D3DDEVTYPE_HAL, ahwnd, flags, &dpp, &modeex, &d3ddevex);
+	ret = IDirect3D9Ex_CreateDeviceEx (d3dex, adapter, D3DDEVTYPE_HAL, d3dhwnd, flags, &dpp, &modeex, &d3ddevex);
 	d3ddev = (LPDIRECT3DDEVICE9)d3ddevex;
     } else {
-	ret = IDirect3D9_CreateDevice (d3d, adapter, D3DDEVTYPE_HAL, ahwnd, flags, &dpp, &d3ddev);
+	ret = IDirect3D9_CreateDevice (d3d, adapter, D3DDEVTYPE_HAL, d3dhwnd, flags, &dpp, &d3ddev);
     }
-    if(FAILED (ret)) {
-	sprintf (errmsg, "%s failed, %s\n", d3d_ex ? "CreateDeviceEx" : "CreateDevice", D3D_ErrorString (ret));
+    if (FAILED (ret)) {
+	sprintf (errmsg, "%s failed, %s\n", d3d_ex && D3DEX ? "CreateDeviceEx" : "CreateDevice", D3D_ErrorString (ret));
 	D3D_free ();
 	return errmsg;
     }
@@ -1297,10 +1302,19 @@ int D3D_locktexture (void)
 	return 0;
     }
 
+    locked.pBits = NULL;
+    locked.Pitch = 0;
     hr = IDirect3DTexture9_LockRect (texture, 0, &locked, NULL, D3DLOCK_NO_DIRTY_UPDATE);
     if (FAILED (hr)) {
-	write_log ("IDirect3DTexture9_LockRect failed: %s\n", D3D_ErrorString (hr));
-	D3D_unlocktexture ();
+	if (hr != D3DERR_DRIVERINTERNALERROR) {
+	    write_log ("IDirect3DTexture9_LockRect failed: %s\n", D3D_ErrorString (hr));
+	    D3D_unlocktexture ();
+	    return 0;
+	}
+    }
+    if (locked.pBits == NULL || locked.Pitch == 0) {
+	write_log ("IDirect3DTexture9_LockRect return NULL texture\n");
+        D3D_unlocktexture ();
 	return 0;
     }
     gfxvidinfo.bufmem = locked.pBits;

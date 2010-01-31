@@ -47,6 +47,7 @@
 #include "a2091.h"
 #include "cdtv.h"
 #include "sana2.h"
+#include "bsdsocket.h"
 #include "uaeresource.h"
 
 #define TRACING_ENABLED 0
@@ -156,12 +157,19 @@ int nr_units (void)
     return cnt;
 }
 
-int nr_directory_units (void)
+int nr_directory_units (struct uae_prefs *p)
 {
     int i, cnt = 0;
-    for (i = 0; i < MAX_FILESYSTEM_UNITS; i++) {
-	if (mountinfo.ui[i].open && mountinfo.ui[i].controller == 0)
-	    cnt++;
+    if (p) {
+	for (i = 0; i < p->mountitems; i++) {
+	    if (p->mountconfig[i].controller == 0)
+		cnt++;
+	}
+    } else {
+	for (i = 0; i < MAX_FILESYSTEM_UNITS; i++) {
+	    if (mountinfo.ui[i].open && mountinfo.ui[i].controller == 0)
+		cnt++;
+	}
     }
     return cnt;
 }
@@ -4809,6 +4817,9 @@ static uae_u32 REGPARAM2 filesys_diagentry (TrapContext *context)
      * diag entry. */
 
     resaddr = uaeres_startup (resaddr);
+#ifdef BSDSOCKET
+    resaddr = bsdlib_startup (resaddr);
+#endif
 #ifdef SCSIEMU
     resaddr = scsidev_startup (resaddr);
 #endif
