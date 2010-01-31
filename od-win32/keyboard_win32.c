@@ -156,20 +156,36 @@ static struct uae_input_device_kbr_default keytrans[] = {
     { DIK_SLASH, INPUTEVENT_KEY_DIV },
     { DIK_OEM_102, INPUTEVENT_KEY_30 },
 
-    { DIK_BACK, INPUTEVENT_SPC_STATEREWIND },
-
     { DIK_VOLUMEDOWN, INPUTEVENT_SPC_VOLUME_DOWN },
     { DIK_VOLUMEUP, INPUTEVENT_SPC_VOLUME_UP },
     { DIK_MUTE, INPUTEVENT_SPC_VOLUME_MUTE },
+
+    { DIK_HOME, INPUTEVENT_KEY_70 },
+    { DIK_END, INPUTEVENT_KEY_71 },
+    { DIK_SYSRQ, INPUTEVENT_KEY_6E },
+    { DIK_F12, INPUTEVENT_KEY_6F },
+    { DIK_INSERT, INPUTEVENT_KEY_47 },
+    { DIK_PRIOR, INPUTEVENT_KEY_48 },
+    { DIK_NEXT, INPUTEVENT_KEY_49 },
+    { DIK_F11, INPUTEVENT_KEY_4B },
+
+    { DIK_MEDIASTOP, INPUTEVENT_KEY_CDTV_STOP },
+    { DIK_PLAYPAUSE, INPUTEVENT_KEY_CDTV_PLAYPAUSE },
+    { DIK_PREVTRACK, INPUTEVENT_KEY_CDTV_PREV },
+    { DIK_NEXTTRACK, INPUTEVENT_KEY_CDTV_NEXT },
 
     { -1, 0 }
 };
 
 extern int ispressed (int key);
 
-static int endpressed (void)
+static int specialkeycode (void)
 {
-    return ispressed(DIK_END);
+    return currprefs.win32_specialkey;
+}
+static int specialpressed (void)
+{
+    return ispressed(specialkeycode());
 }
 
 static int shiftpressed (void)
@@ -206,7 +222,7 @@ int getcapslock (void)
     GetKeyboardState (keyState);
     newstate = keyState[VK_CAPITAL] & 1;
     if (newstate != capslockstate)
-        inputdevice_translatekeycode (0, DIK_CAPITAL, newstate);
+	inputdevice_translatekeycode (0, DIK_CAPITAL, newstate);
     capslockstate = newstate;
     return capslockstate;
 }
@@ -303,8 +319,8 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 	    case DIK_F12:
 	    if (ctrlpressed ()) {
 		code = AKS_TOGGLEFULLSCREEN;
-	    } else if (shiftpressed () || endpressed ()) {
-	        disablecapture ();
+	    } else if (shiftpressed () || specialpressed ()) {
+		disablecapture ();
 		code = AKS_ENTERDEBUGGER;
 	    } else {
 		code = AKS_ENTERGUI;
@@ -320,7 +336,7 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 	    case DIK_F2:
 	    case DIK_F3:
 	    case DIK_F4:
-	    if (endpressed ()) {
+	    if (specialpressed ()) {
 		if (shiftpressed ())
 		    code = AKS_EFLOPPY0 + (scancode - DIK_F1);
 		else
@@ -328,7 +344,7 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 	    }
 	    break;
 	    case DIK_F5:
-	    if (endpressed ()) {
+	    if (specialpressed ()) {
 		if (shiftpressed ())
 		    code = AKS_STATESAVEDIALOG;
 		else
@@ -345,7 +361,7 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 	    case DIK_8:
 	    case DIK_9:
 	    case DIK_0:
-	    if (endpressed ()) {
+	    if (specialpressed ()) {
 		int num = scancode - DIK_1;
 		if (shiftpressed ())
 		    num += 10;
@@ -374,7 +390,7 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 	    case DIK_NUMPAD8:
 	    case DIK_NUMPAD9:
 	    case DIK_NUMPADPERIOD:
-	    if (endpressed ()) {
+	    if (specialpressed ()) {
 		int i = 0, v = -1;
 		while (np[i] >= 0) {
 		    v = np[i + 1];
@@ -387,10 +403,10 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 	    }
 	    break;
 	    case DIK_SYSRQ:
-	    screenshot (endpressed() ? 1 : 0, 1);
+	    screenshot (specialpressed() ? 1 : 0, 1);
 	    break;
 	    case DIK_PAUSE:
-	    if (endpressed ())
+	    if (specialpressed ())
 		code = AKS_WARP;
 	    else
 		code = AKS_PAUSE;
@@ -407,7 +423,7 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 	    case DIK_NEXT:
 	    break;
 	    case DIK_NUMPADMINUS:
-	    if (endpressed ()) {
+	    if (specialpressed ()) {
 		if (shiftpressed ())
 		    code = AKS_DECREASEREFRESHRATE;
 		else
@@ -415,7 +431,7 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 	    }
 	    break;
 	    case DIK_NUMPADPLUS:
-	    if (endpressed ()) {
+	    if (specialpressed ()) {
 		if (shiftpressed ())
 		    code = AKS_INCREASEREFRESHRATE;
 		else
@@ -423,11 +439,11 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 	    }
 	    break;
 	    case DIK_NUMPADSTAR:
-	    if (endpressed ())
+	    if (specialpressed ())
 		code = AKS_VOLMUTE;
 	    break;
 	    case DIK_NUMPADSLASH:
-	    if (endpressed ())
+	    if (specialpressed ())
 		code = AKS_STATEREWIND;
 	    break;
 	}
@@ -436,7 +452,7 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 	inputdevice_add_inputcode (code, 1);
 	return;
     }
-    if (endpressed ())
+    if (scancode == specialkeycode())
 	return;
 
     if (scancode == DIK_CAPITAL) {
@@ -448,11 +464,11 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 
     if (currprefs.input_selected_setting == 0) {
 #ifdef CD32
-        if (handlecd32 (scancode, newstate))
+	if (handlecd32 (scancode, newstate))
 	    return;
 #endif
 #ifdef ARCADIA
-        if (handlearcadia (scancode, newstate))
+	if (handlearcadia (scancode, newstate))
 	    return;
 #endif
     }

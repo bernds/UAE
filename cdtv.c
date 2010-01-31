@@ -38,7 +38,7 @@ static void cdtv_do_interrupt (void)
 {
     if (dmacmemory[0x41] & 0x10) {
 	write_log ("cdtv doint\n");
-        INTREQ (0x8008);
+	INTREQ (0x8008);
     }
 }
 
@@ -78,7 +78,7 @@ static uae_u32 dmac_bget2 (uaecptr addr)
 	{
 	    case 0x17: /* SCSI STATUS */
 	    return 0x22;
-	    
+
 	    default:
 	    return dmacmemory[0x93];
 	}

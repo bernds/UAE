@@ -1,17 +1,17 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * MC68000 emulation - machine dependent bits
   *
   * Copyright 1996 Bernd Schmidt
   */
 
- 
+
 struct flag_struct {
     unsigned int c;
     unsigned int z;
     unsigned int n;
-    unsigned int v; 
+    unsigned int v;
     unsigned int x;
 };
 

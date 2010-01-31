@@ -47,7 +47,7 @@ static void read_joy(int nr)
 		return;
 	} else if (isjoy (nr, 1)) {
 	    if (JSEM_ISNUMPAD (1, &currprefs) || JSEM_ISCURSOR (1, &currprefs) || JSEM_ISSOMEWHEREELSE (1, &currprefs))
-	        return;
+		return;
 	} else
 	    return;
     }
@@ -61,7 +61,7 @@ static void read_joy(int nr)
     num = SDL_JoystickNumButtons (joy);
     for (i = 0; i < num; i++) {
 	int bs = SDL_JoystickGetButton (joy, i) ? 1 : 0;
-        setjoybuttonstate (nr, i, bs);
+	setjoybuttonstate (nr, i, bs);
     }
 }
 

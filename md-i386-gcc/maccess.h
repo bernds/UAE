@@ -1,6 +1,6 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Memory access functions
   *
   * Copyright 1996 Bernd Schmidt
@@ -101,7 +101,7 @@ static __inline__ uae_u32 wordget_1 (uae_cptr addr)
 	     : "=c" (result), "=d" (addr) : "1" (addr), "r" (good_address_map) : "cc");
     return result;
 }
-static __inline__ uae_u32 byteget_1 (uae_cptr addr) 
+static __inline__ uae_u32 byteget_1 (uae_cptr addr)
 {
     uae_u32 result;
 

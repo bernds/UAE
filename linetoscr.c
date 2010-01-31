@@ -1,5 +1,5 @@
 
-static int LNAME (int spix, int dpix, int stoppos)
+static  NOINLINE int LNAME (int spix, int dpix, int stoppos)
 {
     TYPE *buf = ((TYPE *)xlinebuffer);
     uae_u8 xor_val;

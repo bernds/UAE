@@ -8,7 +8,7 @@
   */
 
 #define UAEMAJOR 1
-#define UAEMINOR 0
+#define UAEMINOR 1
 #define UAESUBREV 0
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
@@ -24,7 +24,7 @@ struct strlist {
 };
 
 /* maximum number native input devices supported (single type) */
-#define MAX_INPUT_DEVICES 6
+#define MAX_INPUT_DEVICES 8
 /* maximum number of native input device's buttons and axles supported */
 #define MAX_INPUT_DEVICE_EVENTS 256
 /* 4 different customization settings */
@@ -53,8 +53,8 @@ struct uae_prefs {
     char description[256];
     char info[256];
     int config_version;
-    char config_hardware_path[256];
-    char config_host_path[256];
+    char config_hardware_path[MAX_DPATH];
+    char config_host_path[MAX_DPATH];
 
     int illegal_mem;
     int no_xhair;
@@ -140,6 +140,7 @@ struct uae_prefs {
     int immediate_blits;
     unsigned int chipset_mask;
     int ntscmode;
+    int genlock;
     int chipset_refreshrate;
     int collision_level;
     int leds_on_screen;
@@ -156,12 +157,15 @@ struct uae_prefs {
     int tod_hack;
     uae_u32 maprom;
 
-    char df[4][256];
-    char dfxlist[MAX_SPARE_DRIVES][256];
-    char romfile[256];
-    char romextfile[256];
-    char flashfile[256];
-    char cartfile[256];
+    char df[4][MAX_DPATH];
+    char dfxlist[MAX_SPARE_DRIVES][MAX_DPATH];
+    char romfile[MAX_DPATH];
+    char romident[256];
+    char romextfile[MAX_DPATH];
+    char romextident[256];
+    char flashfile[MAX_DPATH];
+    char cartfile[MAX_DPATH];
+    char cartident[256];
     char pci_devices[256];
     char prtname[256];
     char sername[256];
@@ -185,6 +189,7 @@ struct uae_prefs {
     int kickshifter;
     int filesys_no_uaefsdb;
     int filesys_custom_uaefsdb;
+    int mmkeyboard;
 
     struct uaedev_mount_info *mountinfo;
 
@@ -217,11 +222,14 @@ struct uae_prefs {
     int win32_no_overlay; /* If this is set, we won't try and use any RGB overlays */
     int win32_ctrl_F11_is_quit;
     int win32_automount_drives;
+    int win32_automount_netdrives;
     int win32_midioutdev;
     int win32_midiindev;
-    int win32_aspi;
+    int win32_uaescsimode;
     int win32_soundcard;
     int win32_norecyclebin;
+    int win32_specialkey;
+    int win32_kbledmode;
 
     int curses_reverse_video;
 
@@ -248,6 +256,7 @@ struct uae_prefs {
 extern char optionsfile[];
 extern void save_options (struct zfile *, struct uae_prefs *, int);
 extern void cfgfile_write (struct zfile *, char *format,...);
+extern void cfgfile_target_write (struct zfile *, char *format,...);
 extern void cfgfile_backup (const char *path);
 
 extern void default_prefs (struct uae_prefs *, int);

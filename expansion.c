@@ -1,4 +1,4 @@
- /* 
+ /*
   * UAE - The Un*x Amiga Emulator
   *
   * AutoConfig (tm) Expansions (ZorroII/III)
@@ -26,7 +26,7 @@
 #include "cdtv.h"
 #include "arcadia.h"
 
-#define MAX_EXPANSION_BOARDS	8
+#define MAX_EXPANSION_BOARDS 8
 
 /* ********************************************************** */
 /* 00 / 02 */
@@ -67,10 +67,10 @@
 #define hackers_id	2011 /* Special ID for test cards */
 
 /* Card Type */
-#define commodore_a2091	     3 /* A2091 / A590 Card from C= */
+#define commodore_a2091	    3 /* A2091 / A590 Card from C= */
 #define commodore_a2091_ram 10 /* A2091 / A590 Ram on HD-Card */
 #define commodore_a2232	    70 /* A2232 Multiport Expansion */
-#define ass_nexus_scsi	     1 /* Nexus SCSI Controller */
+#define ass_nexus_scsi	    1 /* Nexus SCSI Controller */
 
 #define gvp_series_2_scsi   11
 #define gvp_iv_24_gfx	    32
@@ -140,7 +140,7 @@ static int ecard;
 /* Please note: ZorroIII implementation seems to work different
  * than described in the HRM. This claims that ZorroIII config
  * address is 0xff000000 while the ZorroII config space starts
- * at 0x00e80000. In reality, both, Z2 and Z3 cards are 
+ * at 0x00e80000. In reality, both, Z2 and Z3 cards are
  * configured in the ZorroII config space. Kickstart 3.1 doesn't
  * even do a single read or write access to the ZorroIII space.
  * The original Amiga include files tell the same as the HRM.
@@ -149,7 +149,7 @@ static int ecard;
  * to a ZorroIII card on a real Amiga. This is not implemented
  * yet.
  *  -- Stefan
- * 
+ *
  * Surprising that 0xFF000000 isn't used. Maybe it depends on the
  * ROM. Anyway, the HRM says that Z3 cards may appear in Z2 config
  * space, so what we are doing here is correct.
@@ -261,7 +261,7 @@ static void REGPARAM2 expamem_wput (uaecptr addr, uae_u32 value)
 	 case 0x44:
 	    if (expamem_type() == zorroIII) {
 		// +Bernd Roesch
-		value = value - 0x3000;  // maps to 0x10000000     
+		value = value - 0x3000;  // maps to 0x10000000
 		chipmem_wput (regs.regs[11] + 0x20, value);
 		chipmem_wput (regs.regs[11] + 0x28, value);
 		// -Bernd Roesch
@@ -506,7 +506,7 @@ static addrbank catweasel_bank = {
 static void expamem_map_catweasel (void)
 {
     catweasel_start = ((expamem_hi | (expamem_lo >> 4)) << 16);
-    map_banks (&catweasel_bank, catweasel_start >> 16, 1, 0);  
+    map_banks (&catweasel_bank, catweasel_start >> 16, 1, 0);
     write_log ("Catweasel MK%d: mapped @$%lx\n", cwc.type, catweasel_start);
 }
 
@@ -875,7 +875,7 @@ static void expamem_init_arcadia (void)
 
 #endif
 
-/* 
+/*
  * Filesystem device
  */
 
@@ -897,9 +897,9 @@ static void expamem_init_filesys (void)
 {
     /* struct DiagArea - the size has to be large enough to store several device ROMTags */
     uae_u8 diagarea[] = { 0x90, 0x00, /* da_Config, da_Flags */
-                          0x02, 0x00, /* da_Size */
-                          0x01, 0x00, /* da_DiagPoint */
-                          0x01, 0x06  /* da_BootPoint */
+	0x02, 0x00, /* da_Size */
+	0x01, 0x00, /* da_DiagPoint */
+	0x01, 0x06  /* da_BootPoint */
     };
 
     expamem_init_clear();
@@ -993,11 +993,11 @@ static void expamem_init_z3fastmem (void)
     z3fastmem_start = 0x10000000;
 
     map_banks (&z3fastmem_bank, z3fastmem_start >> 16, currprefs.z3fastmem_size >> 16,
-	       allocated_z3fastmem);
+	allocated_z3fastmem);
 
 }
 
-#ifdef PICASSO96
+#if defined(PICASSO96)
 /*
  *  Fake Graphics Card (ZORRO III) - BDK
  */
@@ -1012,13 +1012,13 @@ static void expamem_map_gfxcard (void)
 static void expamem_init_gfxcard (void)
 {
     int code = (allocated_gfxmem == 0x100000 ? Z2_MEM_1MB
-        : allocated_gfxmem == 0x200000 ? Z2_MEM_2MB
-        : allocated_gfxmem == 0x400000 ? Z2_MEM_4MB
-        : allocated_gfxmem == 0x800000 ? Z2_MEM_8MB
-        : allocated_gfxmem == 0x1000000 ? Z2_MEM_16MB
-        : allocated_gfxmem == 0x2000000 ? Z2_MEM_32MB
-        : allocated_gfxmem == 0x4000000 ? Z2_MEM_64MB
-        : Z2_MEM_128MB);
+	: allocated_gfxmem == 0x200000 ? Z2_MEM_2MB
+	: allocated_gfxmem == 0x400000 ? Z2_MEM_4MB
+	: allocated_gfxmem == 0x800000 ? Z2_MEM_8MB
+	: allocated_gfxmem == 0x1000000 ? Z2_MEM_16MB
+	: allocated_gfxmem == 0x2000000 ? Z2_MEM_32MB
+	: allocated_gfxmem == 0x4000000 ? Z2_MEM_64MB
+	: Z2_MEM_128MB);
 
     expamem_init_clear();
     expamem_write (0x00, zorroIII | code);
@@ -1082,6 +1082,7 @@ static void allocate_expamem (void)
 	}
 	clearexec ();
     }
+#if defined(PICASSO96)
     if (allocated_gfxmem != currprefs.gfxmem_size) {
 	if (gfxmemory)
 	    mapped_free (gfxmemory);
@@ -1099,6 +1100,7 @@ static void allocate_expamem (void)
 	}
 	clearexec ();
     }
+#endif
 
     z3fastmem_bank.baseaddr = z3fastmem;
     fastmem_bank.baseaddr = fastmemory;
@@ -1114,11 +1116,13 @@ static void allocate_expamem (void)
 	    map_banks (&z3fastmem_bank, z3fastmem_start >> 16, currprefs.z3fastmem_size >> 16,
 		       allocated_z3fastmem);
 	}
+#if defined(PICASSO96)
 	if (allocated_gfxmem > 0 && gfxmem_start > 0) {
 	    restore_ram (p96_filepos, gfxmemory);
 	    map_banks (&gfxmem_bank, gfxmem_start >> 16, currprefs.gfxmem_size >> 16,
 		       allocated_gfxmem);
 	}
+#endif
     }
 }
 
@@ -1135,8 +1139,8 @@ void expamem_reset (void)
 #ifdef CDTV
 #if 0
     if (cdtv_enabled) {
-        map_banks (&dmac_bank, DMAC_START >> 16, 0x10000 >> 16, 0x10000);
-        dmac_init ();
+	map_banks (&dmac_bank, DMAC_START >> 16, 0x10000 >> 16, 0x10000);
+	dmac_init ();
     }
 #endif
 #endif
@@ -1159,7 +1163,7 @@ void expamem_reset (void)
 #ifdef ARCADIA
     if (arcadia_rom) {
 	arcadiaboot = mapped_malloc (0x10000, "arcadia");
-	arcadia_bank.baseaddr = arcadiaboot;    
+	arcadia_bank.baseaddr = arcadiaboot;
 	card_init[cardno] = expamem_init_arcadia;
 	card_map[cardno++] = expamem_map_arcadia;
     }
@@ -1183,9 +1187,9 @@ void expamem_reset (void)
 	card_map[cardno++] = expamem_map_filesys;
     }
 #ifdef CATWEASEL
-    if (catweasel_init ()) {
-        card_init[cardno] = expamem_init_catweasel;
-        card_map[cardno++] = expamem_map_catweasel;
+    if (currprefs.catweasel && catweasel_init ()) {
+	card_init[cardno] = expamem_init_catweasel;
+	card_map[cardno++] = expamem_map_catweasel;
     }
 #endif
     while (cardno < MAX_EXPANSION_BOARDS) {
@@ -1206,9 +1210,13 @@ void expansion_init (void)
     allocated_fastmem = 0;
     fastmem_mask = fastmem_start = 0;
     fastmemory = 0;
+#if defined(PICASSO96)
     gfxmem_mask = gfxmem_start = 0;
     gfxmemory = 0;
+#endif
+#if defined(CATWEASEL)
     catweasel_mask = catweasel_start = 0;
+#endif
     filesys_start = 0;
     filesysory = 0;
     z3fastmem_mask = z3fastmem_start = 0;
@@ -1238,7 +1246,7 @@ void expansion_cleanup (void)
     z3fastmem = 0;
     gfxmemory = 0;
     filesysory = 0;
-#ifdef CATWEASEL
+#if defined(CATWEASEL)
     catweasel_free ();
 #endif
 }

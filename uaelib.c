@@ -309,12 +309,12 @@ static uae_u32 FindFunctionInObject (uae_u8 *objectptr)
     return 0;
 }
 
-#define CREATE_NATIVE_FUNC_PTR uae_u32 (* native_func)( uae_u32, uae_u32, uae_u32, uae_u32, uae_u32, uae_u32, uae_u32, \
+#define	CREATE_NATIVE_FUNC_PTR uae_u32 (* native_func)(	uae_u32, uae_u32, uae_u32, uae_u32, uae_u32, uae_u32, uae_u32, \
 						 uae_u32, uae_u32, uae_u32, uae_u32, uae_u32, uae_u32)
-#define SET_NATIVE_FUNC(x) native_func = (uae_u32 (*)(uae_u32, uae_u32, uae_u32, uae_u32, uae_u32, uae_u32, uae_u32, uae_u32, uae_u32, uae_u32, uae_u32, uae_u32, uae_u32))(x)
-#define CALL_NATIVE_FUNC( d1,d2,d3,d4,d5,d6,d7,a1,a2,a3,a4,a5,a6 ) if(native_func) native_func( d1,d2,d3,d4,d5,d6,d7,a1,a2,a3,a4,a5,a6 )
+#define	SET_NATIVE_FUNC(x) native_func = (uae_u32 (*)(uae_u32, uae_u32,	uae_u32, uae_u32, uae_u32, uae_u32, uae_u32, uae_u32, uae_u32, uae_u32,	uae_u32, uae_u32, uae_u32))(x)
+#define	CALL_NATIVE_FUNC( d1,d2,d3,d4,d5,d6,d7,a1,a2,a3,a4,a5,a6 ) if(native_func) native_func( d1,d2,d3,d4,d5,d6,d7,a1,a2,a3,a4,a5,a6 )
 /* A0 - Contains a ptr to the native .obj data.  This ptr is Amiga-based. */
-/*      We simply find the first function in this .obj data, and execute it. */
+/*	We simply find the first function in this .obj data, and execute it. */
 static uae_u32 emulib_ExecuteNativeCode (void)
 {
 #if 0
@@ -416,6 +416,7 @@ static uae_u32 uaelib_demux (void)
      case 80: return currprefs.maprom ? currprefs.maprom : 0xffffffff;
      case 81: return cfgfile_uaelib (ARG1, ARG2, ARG3, ARG4);
      case 82: return cfgfile_uaelib_modify (ARG1, ARG2, ARG3, ARG4, ARG5);
+     case 83: currprefs.mmkeyboard = ARG1 ? 1 : 0; return currprefs.mmkeyboard;
     }
     return 0;
 }
@@ -426,6 +427,7 @@ static uae_u32 uaelib_demux (void)
 void emulib_install (void)
 {
     uaecptr a = here ();
+    currprefs.mmkeyboard = 0;
     org (RTAREA_BASE + 0xFF60);
     dw (0x4eb9);
     dw ((RTAREA_BASE >> 16) | get_word(RTAREA_BASE + 36));

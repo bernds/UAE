@@ -164,7 +164,7 @@ static void build_cpufunctbl (void)
 	    tbl = op_smalltbl_5_ff; /* prefetch */
 #endif
 #ifdef CPUEMU_6
-        if (currprefs.cpu_cycle_exact)
+	if (currprefs.cpu_cycle_exact)
 	    tbl = op_smalltbl_6_ff; /* prefetch and cycle-exact */
 #endif
 	break;
@@ -181,7 +181,7 @@ static void build_cpufunctbl (void)
 #ifdef JIT
 	tbl[i].specific = 0;
 #endif
-        cpufunctbl[tbl[i].opcode] = tbl[i].handler;
+	cpufunctbl[tbl[i].opcode] = tbl[i].handler;
     }
     opcnt = 0;
     for (opcode = 0; opcode < 65536; opcode++) {
@@ -311,25 +311,25 @@ void init_m68k (void)
     }
     switch (currprefs.cpu_level) {
     case 1:
-        write_log ("010");
-        break;
+	write_log ("010");
+	break;
     case 2:
-        write_log ("020");
-        break;
+	write_log ("020");
+	break;
     case 3:
-        write_log ("020/881");
-        break;
+	write_log ("020/881");
+	break;
     case 4:
-        /* Who is going to miss the MMU anyway...? :-)  */
-        write_log ("040");
-        break;
+	/* Who is going to miss the MMU anyway...? :-)  */
+	write_log ("040");
+	break;
     case 6:
-        /* Who is going to miss the MMU anyway...? :-)  */
-        write_log ("060");
-        break;
+	/* Who is going to miss the MMU anyway...? :-)  */
+	write_log ("060");
+	break;
     default:
-        write_log ("000");
-        break;
+	write_log ("000");
+	break;
     }
     if (currprefs.cpu_cycle_exact) {
 	if (currprefs.cpu_level == 0)
@@ -343,7 +343,7 @@ void init_m68k (void)
 	write_log (" 24-bit addressing");
     }
     write_log ("\n");
-    
+
     read_table68k ();
     do_merges ();
 
@@ -366,7 +366,7 @@ int lastint_no;
 #define get_ibyte_1(o) get_byte(regs.pc + (regs.pc_p - regs.pc_oldp) + (o) + 1)
 #define get_iword_1(o) get_word(regs.pc + (regs.pc_p - regs.pc_oldp) + (o))
 #define get_ilong_1(o) get_long(regs.pc + (regs.pc_p - regs.pc_oldp) + (o))
-	
+
 uae_s32 ShowEA (void *f, uae_u16 opcode, int reg, amodes mode, wordsizes size, char *buf)
 {
     uae_u16 dp;
@@ -395,10 +395,16 @@ uae_s32 ShowEA (void *f, uae_u16 opcode, int reg, amodes mode, wordsizes size, c
 	sprintf (buffer,"-(A%d)", reg);
 	break;
      case Ad16:
-	disp16 = get_iword_1 (m68kpc_offset); m68kpc_offset += 2;
-	addr = m68k_areg(regs,reg) + (uae_s16)disp16;
-	sprintf (buffer,"(A%d,$%04x) == $%08lx", reg, disp16 & 0xffff,
-					(unsigned long)addr);
+	{
+	    char offtxt[80];
+	    disp16 = get_iword_1 (m68kpc_offset); m68kpc_offset += 2;
+	    if (disp16 < 0)
+		sprintf (offtxt, "-$%04x", -disp16);
+	    else
+		sprintf (offtxt, "$%04x", disp16);
+	    addr = m68k_areg(regs,reg) + disp16;
+	    sprintf (buffer,"(A%d,%s) == $%08lx", reg, offtxt, (unsigned long)addr);
+	}
 	break;
      case Ad8r:
 	dp = get_iword_1 (m68kpc_offset); m68kpc_offset += 2;
@@ -521,7 +527,7 @@ uae_s32 ShowEA (void *f, uae_u16 opcode, int reg, amodes mode, wordsizes size, c
 	offset = (uae_s32)(uae_s16)get_iword_1 (m68kpc_offset);
 	m68kpc_offset += 2;
 	buffer[0] = 0;
-        sprintf (buffer,"#$%04x", (unsigned int)(offset & 0xffff));
+	sprintf (buffer,"#$%04x", (unsigned int)(offset & 0xffff));
 	break;
      case imm2:
 	offset = (uae_s32)get_ilong_1 (m68kpc_offset);
@@ -750,10 +756,10 @@ void MakeFromSR (void)
     SET_VFLG ((regs.sr >> 1) & 1);
     SET_CFLG (regs.sr & 1);
     if (regs.t1 == ((regs.sr >> 15) & 1) &&
-        regs.t0 == ((regs.sr >> 14) & 1) &&
-        regs.s == ((regs.sr >> 13) & 1) &&
+	regs.t0 == ((regs.sr >> 14) & 1) &&
+	regs.s == ((regs.sr >> 13) & 1) &&
 	regs.m == ((regs.sr >> 12) & 1) &&
-        regs.intmask == ((regs.sr >> 8) & 7))
+	regs.intmask == ((regs.sr >> 8) & 7))
 	    return;
     regs.t1 = (regs.sr >> 15) & 1;
     regs.t0 = (regs.sr >> 14) & 1;
@@ -798,7 +804,7 @@ void MakeFromSR (void)
     if (regs.t1 || regs.t0)
 	set_special (SPCFLAG_TRACE);
     else
-    	/* Keep SPCFLAG_DOTRACE, we still want a trace exception for
+	/* Keep SPCFLAG_DOTRACE, we still want a trace exception for
 	   SR-modifying instructions (including STOP).  */
 	unset_special (SPCFLAG_TRACE);
 }
@@ -821,7 +827,7 @@ static void exception_debug (int nr)
 #ifdef DEBUGGER
     if (!exception_debugging)
 	return;
-    console_out ("Exception %d, PC=%08.8X\n", nr, m68k_getpc()); 
+    console_out ("Exception %d, PC=%08.8X\n", nr, m68k_getpc());
 #endif
 }
 
@@ -846,10 +852,10 @@ static void Exception_ce (int nr, uaecptr oldpc)
 	c = 6;
 	break;
 	case 4: /* illegal instruction */
-    	c = 6;
+	c = 6;
 	break;
 	case 5: /* divide by zero */
-    	c = 10;
+	c = 10;
 	break;
 	case 6: /* chk */
 	c = 12;
@@ -897,23 +903,23 @@ static void Exception_ce (int nr, uaecptr oldpc)
 	do_cycles (c * CYCLE_UNIT / 2);
     if (!regs.s) {
 	regs.usp = m68k_areg(regs, 7);
-        m68k_areg(regs, 7) = regs.isp;
+	m68k_areg(regs, 7) = regs.isp;
 	regs.s = 1;
     }
     if (nr == 2 || nr == 3) { /* 2=bus error,3=address error */
-        uae_u16 mode = (sv ? 4 : 0) | (last_instructionaccess_for_exception_3 ? 2 : 1);
+	uae_u16 mode = (sv ? 4 : 0) | (last_instructionaccess_for_exception_3 ? 2 : 1);
 	mode |= last_writeaccess_for_exception_3 ? 0 : 16;
-        m68k_areg(regs, 7) -= 14;
-        /* fixme: bit3=I/N */
-        put_word_ce (m68k_areg(regs, 7) + 12, last_addr_for_exception_3);
-        put_word_ce (m68k_areg(regs, 7) + 8, regs.sr);
-        put_word_ce (m68k_areg(regs, 7) + 10, last_addr_for_exception_3 >> 16);
-        put_word_ce (m68k_areg(regs, 7) + 6, last_op_for_exception_3);
-        put_word_ce (m68k_areg(regs, 7) + 4, last_fault_for_exception_3);
-        put_word_ce (m68k_areg(regs, 7) + 0, mode);
-        put_word_ce (m68k_areg(regs, 7) + 2, last_fault_for_exception_3 >> 16);
-        write_log ("Exception %d (%x) at %x -> %x!\n", nr, oldpc, currpc, get_long (4 * nr));
-        goto kludge_me_do;
+	m68k_areg(regs, 7) -= 14;
+	/* fixme: bit3=I/N */
+	put_word_ce (m68k_areg(regs, 7) + 12, last_addr_for_exception_3);
+	put_word_ce (m68k_areg(regs, 7) + 8, regs.sr);
+	put_word_ce (m68k_areg(regs, 7) + 10, last_addr_for_exception_3 >> 16);
+	put_word_ce (m68k_areg(regs, 7) + 6, last_op_for_exception_3);
+	put_word_ce (m68k_areg(regs, 7) + 4, last_fault_for_exception_3);
+	put_word_ce (m68k_areg(regs, 7) + 0, mode);
+	put_word_ce (m68k_areg(regs, 7) + 2, last_fault_for_exception_3 >> 16);
+	write_log ("Exception %d (%x) at %x -> %x!\n", nr, oldpc, currpc, get_long (4 * nr));
+	goto kludge_me_do;
     }
     m68k_areg (regs, 7) -= 6;
     put_word_ce (m68k_areg(regs, 7) + 4, currpc);
@@ -989,8 +995,8 @@ static void Exception_normal (int nr, uaecptr oldpc)
 		    m68k_areg(regs, 7) -= 2;
 		    put_word (m68k_areg(regs, 7), 0);
 		}
-	        m68k_areg(regs, 7) -= 4;
-	        put_long (m68k_areg(regs, 7), last_fault_for_exception_3);
+		m68k_areg(regs, 7) -= 4;
+		put_long (m68k_areg(regs, 7), last_fault_for_exception_3);
 		m68k_areg(regs, 7) -= 2;
 		put_word (m68k_areg(regs, 7), 0);
 		m68k_areg(regs, 7) -= 2;
@@ -1026,7 +1032,7 @@ static void Exception_normal (int nr, uaecptr oldpc)
 	}
     } else if (nr == 2 || nr == 3) {
 	uae_u16 mode = (sv ? 4 : 0) | (last_instructionaccess_for_exception_3 ? 2 : 1);
-        mode |= last_writeaccess_for_exception_3 ? 0 : 16;
+	mode |= last_writeaccess_for_exception_3 ? 0 : 16;
 	m68k_areg(regs, 7) -= 14;
 	/* fixme: bit3=I/N */
 	put_word (m68k_areg(regs, 7) + 0, mode);
@@ -1034,7 +1040,7 @@ static void Exception_normal (int nr, uaecptr oldpc)
 	put_word (m68k_areg(regs, 7) + 6, last_op_for_exception_3);
 	put_word (m68k_areg(regs, 7) + 8, regs.sr);
 	put_long (m68k_areg(regs, 7) + 10, last_addr_for_exception_3);
-        write_log ("Exception %d (%x) at %x -> %x!\n", nr, oldpc, currpc, get_long (regs.vbr + 4*nr));
+	write_log ("Exception %d (%x) at %x -> %x!\n", nr, oldpc, currpc, get_long (regs.vbr + 4*nr));
 	goto kludge_me_do;
     }
     m68k_areg(regs, 7) -= 4;
@@ -1127,7 +1133,7 @@ int m68k_move2c (int regno, uae_u32 *regp)
 	switch (regno) {
 	case 0: regs.sfc = *regp & 7; break;
 	case 1: regs.dfc = *regp & 7; break;
-	 case 2: 
+	 case 2:
 	    cacr = *regp & (currprefs.cpu_level < 4 ? 0x3 : (currprefs.cpu_level == 4 ? 0x80008000 : 0xf8800e00));
 #ifdef JIT
 	    if (currprefs.cpu_level < 4) {
@@ -1468,7 +1474,7 @@ void m68k_reset (void)
     regs.kick_mask = 0x00F80000;
     regs.spcflags = 0;
     if (savestate_state == STATE_RESTORE || savestate_state == STATE_REWIND) {
-        m68k_setpc (regs.pc);
+	m68k_setpc (regs.pc);
 	/* MakeFromSR() must not swap stack pointer */
 	regs.s = (regs.sr >> 13) & 1;
 	MakeFromSR();
@@ -1525,7 +1531,7 @@ unsigned long REGPARAM2 op_illg (uae_u32 opcode)
     }
 
     if (opcode == 0x4E7B && in_rom (pc) && get_long (0x10) == 0) {
-        notify_user (NUMSG_KS68020);
+	notify_user (NUMSG_KS68020);
 	uae_restart (-1, NULL);
     }
 
@@ -1556,7 +1562,7 @@ unsigned long REGPARAM2 op_illg (uae_u32 opcode)
 
     if ((opcode & 0xF000) == 0xF000) {
 	if (warned < 20) {
- 	    write_log ("B-Trap %x at %x (%p)\n", opcode, m68k_getpc () + m68kpc_offset, regs.pc_p);
+	    write_log ("B-Trap %x at %x (%p)\n", opcode, m68k_getpc () + m68kpc_offset, regs.pc_p);
 	    warned++;
 	}
 	Exception(0xB,0);
@@ -1573,8 +1579,8 @@ unsigned long REGPARAM2 op_illg (uae_u32 opcode)
 	return 4;
     }
     if (warned < 20) {
-        write_log ("Illegal instruction: %04x at %08.8X -> %08.8X\n", opcode, pc, get_long (regs.vbr + 0x10));
-        warned++;
+	write_log ("Illegal instruction: %04x at %08.8X -> %08.8X\n", opcode, pc, get_long (regs.vbr + 0x10));
+	warned++;
     }
 
     Exception (4,0);
@@ -1654,14 +1660,14 @@ static int do_specialties (int cycles)
 	if(!(regs.spcflags & ~SPCFLAG_ACTION_REPLAY)) return 0;
     }
     #endif
-    if ((regs.spcflags & SPCFLAG_ACTION_REPLAY) && action_replay_flag != ACTION_REPLAY_INACTIVE ) 
+    if ((regs.spcflags & SPCFLAG_ACTION_REPLAY) && action_replay_flag != ACTION_REPLAY_INACTIVE )
     {
 	/*if(action_replay_flag == ACTION_REPLAY_ACTIVE && !is_ar_pc_in_rom())*/
 	/*	write_log("PC:%p\n",m68k_getpc());*/
-	       	
-	if(action_replay_flag == ACTION_REPLAY_ACTIVATE || action_replay_flag == ACTION_REPLAY_DORESET) 
+
+	if(action_replay_flag == ACTION_REPLAY_ACTIVATE || action_replay_flag == ACTION_REPLAY_DORESET)
 	    action_replay_enter();
-	if(action_replay_flag == ACTION_REPLAY_HIDE && !is_ar_pc_in_rom()) 
+	if(action_replay_flag == ACTION_REPLAY_HIDE && !is_ar_pc_in_rom())
 	{
 	    action_replay_hide();
 	    unset_special(SPCFLAG_ACTION_REPLAY);
@@ -1686,11 +1692,11 @@ static int do_specialties (int cycles)
 #endif
 
     while ((regs.spcflags & SPCFLAG_BLTNASTY) && dmaen (DMA_BLITTER) && cycles > 0 && !currprefs.blitter_cycle_exact) {
-        int c = blitnasty();
-        if (c > 0) {
-            cycles -= c * CYCLE_UNIT * 2;
-            if (cycles < CYCLE_UNIT)
-	        cycles = 0;
+	int c = blitnasty();
+	if (c > 0) {
+	    cycles -= c * CYCLE_UNIT * 2;
+	    if (cycles < CYCLE_UNIT)
+		cycles = 0;
 	} else
 	    c = 4;
 	do_cycles (c * CYCLE_UNIT);
@@ -1706,7 +1712,7 @@ static int do_specialties (int cycles)
     }
 
     while (regs.spcflags & SPCFLAG_STOP) {
- 	do_cycles (4 * CYCLE_UNIT);
+	do_cycles (4 * CYCLE_UNIT);
 	if (regs.spcflags & SPCFLAG_COPPER)
 	    do_copper ();
 	if (regs.spcflags & (SPCFLAG_INT | SPCFLAG_DOINT)) {
@@ -1716,33 +1722,35 @@ static int do_specialties (int cycles)
 		unset_special (SPCFLAG_INT | SPCFLAG_DOINT);
 #endif
 	    if (intr != -1 && intr > regs.intmask)
-	        Interrupt (intr);
+		Interrupt (intr);
 	}
 	if ((regs.spcflags & (SPCFLAG_BRK | SPCFLAG_MODE_CHANGE))) {
 	    unset_special (SPCFLAG_BRK | SPCFLAG_MODE_CHANGE);
 	    return 1;
 	}
-#ifdef JIT
+
 	if (currprefs.cpu_idle && currprefs.m68k_speed != 0 && ((regs.spcflags & SPCFLAG_STOP)) == SPCFLAG_STOP) {
 	    /* sleep 1ms if STOP-instruction is executed */
 	    if (1) {
 		static int sleepcnt, lvpos, zerocnt;
 		if (vpos != lvpos) {
 		    sleepcnt--;
+#ifdef JIT
 		    if (pissoff == 0 && compiled_code && --zerocnt < 0) {
 			sleepcnt = -1;
 			zerocnt = IDLETIME / 4;
 		    }
+#endif
 		    lvpos = vpos;
 		    if (sleepcnt < 0) {
-		        sleepcnt = IDLETIME / 2;
+			sleepcnt = IDLETIME / 2;
 			sleep_millis (1);
 		    }
 		}
 	    }
 	}
-#endif
     }
+
     if (regs.spcflags & SPCFLAG_TRACE)
 	do_trace ();
 
@@ -1755,12 +1763,12 @@ static int do_specialties (int cycles)
 #else
     if (regs.spcflags & SPCFLAG_INT) {
 #endif
-        int intr = intlev ();
+	int intr = intlev ();
 #ifdef JIT
 	if (currprefs.cachesize)
 	    unset_special (SPCFLAG_DOINT);
 #endif
- 	if (intr != -1 && intr > regs.intmask)
+	if (intr != -1 && intr > regs.intmask)
 	    Interrupt (intr);
     }
 
@@ -1885,14 +1893,14 @@ void exec_nostats(void)
 {
     int new_cycles;
 
-    for (;;) 
-    { 
+    for (;;)
+    {
 	uae_u16 opcode = get_iword(0);
 #if defined X86_ASSEMBLY
 	__asm__ __volatile__("\tpush %%ebp\n\tcall *%%ebx\n\tpop %%ebp" /* FIXME */
-			     : "=&a" (new_cycles) 
+			     : "=&a" (new_cycles)
 			     : "b" (cpufunctbl[opcode]), "0" (opcode)
-			     : "%edx", "%ecx", "%esi", "%edi", 
+			     : "%edx", "%ecx", "%esi", "%edi",
 			     "%ebp", "memory", "cc");
 #else
 	new_cycles = (*cpufunctbl[opcode])(opcode);
@@ -1901,7 +1909,7 @@ void exec_nostats(void)
 	new_cycles &= cycles_mask;
 	new_cycles |= cycles_val;
 	do_cycles (new_cycles);
-	
+
 	if (end_block(opcode) ||
 	    regs.spcflags) {
 	    return; /* We will deal with the spcflags in the caller */
@@ -1922,9 +1930,9 @@ void execute_normal(void)
 	return;
     total_cycles = 0;
     blocklen = 0;
-    start_pc_p = regs.pc_oldp;  
-    start_pc = regs.pc; 
-    for (;;) 
+    start_pc_p = regs.pc_oldp;
+    start_pc = regs.pc;
+    for (;;)
     {    /* Take note: This is the do-it-normal loop */
 	uae_u16 opcode = get_iword (0);
 
@@ -1932,9 +1940,9 @@ void execute_normal(void)
 	pc_hist[blocklen].location = (uae_u16*)regs.pc_p;
 #if defined X86_ASSEMBLY
 	__asm__ __volatile__("\tpush %%ebp\n\tcall *%%ebx\n\tpop %%ebp" /* FIXME */
-			     : "=&a" (new_cycles) 
+			     : "=&a" (new_cycles)
 			     : "b" (cpufunctbl[opcode]), "0" (opcode)
-			     : "%edx", "%ecx", "%esi", "%edi", 
+			     : "%edx", "%ecx", "%esi", "%edi",
 			     "%ebp", "memory", "cc");
 #else
 	new_cycles = (*cpufunctbl[opcode])(opcode);
@@ -1959,11 +1967,11 @@ typedef void compiled_handler(void);
 
 static void m68k_run_2a (void)
 {
-    for (;;) {  
-#if defined X86_ASSEMBLY 
+    for (;;) {
+#if defined X86_ASSEMBLY
 	__asm__ __volatile__(
 	    "\tpush %%ebp\n\tcall *%0\n\tpop %%ebp"  /* FIXME */
-	    :: "m" (cache_tags[cacheline(regs.pc_p)].handler) 
+	    :: "m" (cache_tags[cacheline(regs.pc_p)].handler)
 	    : "%edx", "%ecx", "%eax",
 	    "%esi", "%ebx", "%edi", "%ebp", "memory", "cc");
 #else
@@ -2066,7 +2074,7 @@ static void m68k_run_2p (void)
 	cycles = (*cpufunctbl[opcode])(opcode);
 	cycles &= cycles_mask;
 	cycles |= cycles_val;
-        do_cycles (cycles);
+	do_cycles (cycles);
 	if (regs.spcflags) {
 	    if (do_specialties (cycles))
 		return;
@@ -2102,7 +2110,7 @@ static void m68k_run_2 (void)
 	}
 #endif
 	/* assert (!regs.stopped && !(regs.spcflags & SPCFLAG_STOP)); */
-/*	regs_backup[backup_pointer = (backup_pointer + 1) % 16] = regs;*/
+/*	regs_backup[backup_pointer = (backup_pointer + 1) % 16]	= regs;*/
 #if COUNT_INSTRS == 2
 	if (table68k[opcode].handler != -1)
 	    instrcount[table68k[opcode].handler]++;
@@ -2121,7 +2129,7 @@ static void m68k_run_2 (void)
 	/*n_insns++;*/
 	cycles &= cycles_mask;
 	cycles |= cycles_val;
-        do_cycles (cycles);
+	do_cycles (cycles);
 	if (regs.spcflags) {
 	    if (do_specialties (cycles))
 		return;
@@ -2139,7 +2147,7 @@ STATIC_INLINE void m68k_run1 (void (*func)(void))
 			  : : "r" (func) : "%eax", "%edx", "%ecx", "memory", "cc");
 }
 #else
-#define m68k_run1(F) (F) ()
+#define	m68k_run1(F) (F) ()
 #endif
 
 int in_m68k_go = 0;
@@ -2181,13 +2189,13 @@ void m68k_go (int may_quit)
 	    customreset ();
 	    m68k_reset ();
 	    if (hardreset) {
-	        memset (chipmemory, 0, allocated_chipmem);
+		memset (chipmemory, 0, allocated_chipmem);
 		write_log ("chipmem cleared\n");
 	    }
 	    /* We may have been restoring state, but we're done now.  */
 	    if (savestate_state == STATE_RESTORE || savestate_state == STATE_REWIND) {
-	        map_overlay (1);
-	        fill_prefetch_slow (); /* compatibility with old state saves */
+		map_overlay (1);
+		fill_prefetch_slow (); /* compatibility with old state saves */
 	    }
 	    savestate_restore_finish ();
 	    fill_prefetch_slow ();
@@ -2196,7 +2204,7 @@ void m68k_go (int may_quit)
 	    handle_active_events ();
 	    if (regs.spcflags)
 		do_specialties (0);
-            m68k_setpc (regs.pc);
+	    m68k_setpc (regs.pc);
 	}
 
 #ifdef DEBUGGER
@@ -2210,7 +2218,7 @@ void m68k_go (int may_quit)
 	    if (regs.isp & 1)
 		regs.panic = 1;
 	    if (!regs.panic)
-	        exception2_handle (regs.panic_pc, regs.panic_addr);
+		exception2_handle (regs.panic_pc, regs.panic_addr);
 	    if (regs.panic) {
 		/* system is very badly confused */
 		write_log ("double bus error or corrupted stack, forcing reboot..\n");
@@ -2224,8 +2232,8 @@ void m68k_go (int may_quit)
 		    currprefs.cpu_level == 0 && currprefs.cpu_compatible ? m68k_run_1 :
 		    currprefs.cpu_compatible ? m68k_run_2p : m68k_run_2);
 #else
-	m68k_run1 (currprefs.cpu_cycle_exact && currprefs.cpu_level == 0 ? m68k_run_1_ce : 
-		   currprefs.cpu_compatible > 0 && currprefs.cpu_level == 0 ? m68k_run_1 : 
+	m68k_run1 (currprefs.cpu_cycle_exact && currprefs.cpu_level == 0 ? m68k_run_1_ce :
+		   currprefs.cpu_compatible > 0 && currprefs.cpu_level == 0 ? m68k_run_1 :
 		   currprefs.cpu_level >= 2 && currprefs.cachesize ? m68k_run_2a :
 		   currprefs.cpu_compatible ? m68k_run_2p : m68k_run_2);
 #endif
@@ -2308,7 +2316,7 @@ void m68k_disasm (void *f, uaecptr addr, uaecptr *nextpc, int cnt)
 	    newpc += ShowEA (0, opcode, dp->dreg, dp->dmode, dp->size, instrname);
 	}
 
-    
+
 	for (i = 0; i < (m68kpc_offset - oldpc) / 2; i++) {
 	    f_out (f, "%04x ", get_iword_1 (oldpc + i * 2));
 	}
@@ -2347,7 +2355,7 @@ void sm68k_disasm(char *instrname, char *instrcode, uaecptr addr, uaecptr *nextp
     oldpc = m68kpc_offset;
     opcode = get_iword_1 (m68kpc_offset);
     if (cpufunctbl[opcode] == op_illg_1) {
-        opcode = 0x4AFC;
+	opcode = 0x4AFC;
     }
     dp = table68k + opcode;
     for (lookup = lookuptab;lookup->mnemo != dp->mnemo; lookup++);
@@ -2357,7 +2365,7 @@ void sm68k_disasm(char *instrname, char *instrcode, uaecptr addr, uaecptr *nextp
     strcpy (instrname, lookup->name);
     ccpt = strstr (instrname, "cc");
     if (ccpt != 0) {
-        strncpy (ccpt, ccnames[dp->cc], 2);
+	strncpy (ccpt, ccnames[dp->cc], 2);
     }
     switch (dp->size){
 	case sz_byte: strcat (instrname, ".B "); break;
@@ -2367,16 +2375,16 @@ void sm68k_disasm(char *instrname, char *instrcode, uaecptr addr, uaecptr *nextp
     }
 
     if (dp->suse) {
-        newpc = m68k_getpc () + m68kpc_offset;
-        newpc += ShowEA (0, opcode, dp->sreg, dp->smode, dp->size, instrname);
+	newpc = m68k_getpc () + m68kpc_offset;
+	newpc += ShowEA (0, opcode, dp->sreg, dp->smode, dp->size, instrname);
     }
     if (dp->suse && dp->duse)
-        strcat (instrname, ",");
+	strcat (instrname, ",");
     if (dp->duse) {
-        newpc = m68k_getpc () + m68kpc_offset;
-        newpc += ShowEA (0, opcode, dp->dreg, dp->dmode, dp->size, instrname);
+	newpc = m68k_getpc () + m68kpc_offset;
+	newpc += ShowEA (0, opcode, dp->dreg, dp->dmode, dp->size, instrname);
     }
-    
+
     if (instrcode)
     {
 	int i;
@@ -2407,13 +2415,13 @@ void m68k_dumpstate (void *f, uaecptr *nextpc)
     if (regs.s && regs.m) regs.msp = m68k_areg(regs, 7);
     if (regs.s && regs.m == 0) regs.isp = m68k_areg(regs, 7);
     f_out (f, "USP=%08lx ISP=%08lx MSP=%08lx VBR=%08lx\n",
-	     regs.usp,regs.isp,regs.msp,regs.vbr);
+	regs.usp,regs.isp,regs.msp,regs.vbr);
     f_out (f, "T=%d%d S=%d M=%d X=%d N=%d Z=%d V=%d C=%d IMASK=%d\n",
-	     regs.t1, regs.t0, regs.s, regs.m,
-	     GET_XFLG, GET_NFLG, GET_ZFLG, GET_VFLG, GET_CFLG, regs.intmask);
+	regs.t1, regs.t0, regs.s, regs.m,
+	GET_XFLG, GET_NFLG, GET_ZFLG, GET_VFLG, GET_CFLG, regs.intmask);
 #ifdef FPUEMU
     if (currprefs.cpu_level >= 2) {
-        uae_u32 fpsr;
+	uae_u32 fpsr;
 	for (i = 0; i < 8; i++){
 	    f_out (f, "FP%d: %g ", i, regs.fp[i]);
 	    if ((i & 3) == 3) f_out (f, "\n");
@@ -2433,12 +2441,12 @@ void m68k_dumpstate (void *f, uaecptr *nextpc)
 	for (lookup1 = lookuptab; lookup1->mnemo != dp->mnemo; lookup1++);
 	dp = table68k + regs.ir;
 	for (lookup2 = lookuptab; lookup2->mnemo != dp->mnemo; lookup2++);
-	f_out (f, "prefetch %04x (%s) %04x (%s)\n", regs.irc, lookup1->name, regs.ir, lookup2->name);
+	f_out (f, "Prefetch %04x (%s) %04x (%s)\n", regs.irc, lookup1->name, regs.ir, lookup2->name);
     }
 
     m68k_disasm (f, m68k_getpc (), nextpc, 1);
     if (nextpc)
-	f_out (f, "next PC: %08lx\n", *nextpc);
+	f_out (f, "Next PC: %08lx\n", *nextpc);
 }
 
 
@@ -2513,7 +2521,7 @@ uae_u8 *restore_cpu (uae_u8 *src)
 	    currprefs.m68k_speed = changed_prefs.m68k_speed = -1;
     }
     write_log ("CPU %d%s%03d, PC=%08.8X\n",
-	       model / 1000, flags & 1 ? "EC" : "", model % 1000, regs.pc);
+	model / 1000, flags & 1 ? "EC" : "", model % 1000, regs.pc);
 
     init_m68k_full ();
     m68k_setpc (regs.pc);
@@ -2530,7 +2538,7 @@ uae_u8 *save_cpu (int *len, uae_u8 *dstptr)
     if (dstptr)
 	dstbak = dst = dstptr;
     else
-        dstbak = dst = malloc(4+4+15*4+4+4+4+4+2+4+4+4+4+4+4+4);
+	dstbak = dst = malloc(4+4+15*4+4+4+4+4+2+4+4+4+4+4+4+4);
     model = cpumodel[currprefs.cpu_level];
     save_u32 (model);					/* MODEL */
     save_u32 (currprefs.address_space_24 ? 1 : 0);	/* FLAGS */
@@ -2571,6 +2579,7 @@ void exception3 (uae_u32 opcode, uaecptr addr, uaecptr fault)
 {
     exception3f (opcode, addr, fault, 0, 0);
 }
+
 void exception3i (uae_u32 opcode, uaecptr addr, uaecptr fault)
 {
     exception3f (opcode, addr, fault, 0, 1);
@@ -2613,3 +2622,146 @@ void cpureset (void)
 }
 
 
+/*
+
+ The routines below take dividend and divisor as parameters.
+ They return 0 if division by zero, or exact number of cycles otherwise.
+
+ The number of cycles returned assumes a register operand.
+ Effective address time must be added if memory operand.
+
+ For 68000 only (not 68010, 68012, 68020, etc).
+ Probably valid for 68008 after adding the extra prefetch cycle.
+
+
+ Best and worst cases are for register operand:
+ (Note the difference with the documented range.)
+
+
+ DIVU:
+
+ Overflow (always): 10 cycles.
+ Worst case: 136 cycles.
+ Best case: 76 cycles.
+
+
+ DIVS:
+
+ Absolute overflow: 16-18 cycles.
+ Signed overflow is not detected prematurely.
+
+ Worst case: 156 cycles.
+ Best case without signed overflow: 122 cycles.
+ Best case with signed overflow: 120 cycles
+
+
+ */
+
+
+//
+// DIVU
+// Unsigned division
+//
+
+STATIC_INLINE int getDivu68kCycles_2(uae_u32 dividend, uae_u16 divisor)
+{
+	int mcycles;
+	uae_u32 hdivisor;
+	int i;
+
+	if(divisor == 0)
+		return 0;
+
+	// Overflow
+	if((dividend >> 16) >= divisor)
+		return (mcycles = 5) * 2;
+
+	mcycles = 38;
+	hdivisor = divisor << 16;
+
+	for( i = 0; i < 15; i++)
+	{
+		uae_u32 temp;
+		temp = dividend;
+
+		dividend <<= 1;
+
+		// If carry from shift
+		if((uae_s32)temp < 0)
+		{
+			dividend -= hdivisor;
+		}
+		else
+		{
+			mcycles += 2;
+			if(dividend >= hdivisor)
+			{
+				dividend -= hdivisor;
+				mcycles--;
+			}
+		}
+	}
+	return mcycles * 2;
+}
+int getDivu68kCycles(uae_u32 dividend, uae_u16 divisor)
+{
+    int v = getDivu68kCycles_2(dividend, divisor) - 4;
+//    write_log("U%d ",	v);
+    return v;
+}
+
+//
+// DIVS
+// Signed division
+//
+
+STATIC_INLINE int getDivs68kCycles_2(uae_s32 dividend, uae_s16 divisor)
+{
+	int mcycles;
+	uae_u32 aquot;
+	int i;
+
+	if(divisor == 0)
+		return 0;
+
+	mcycles = 6;
+
+	if( dividend < 0)
+		mcycles++;
+
+	// Check for absolute overflow
+	if(((uae_u32)abs(dividend) >> 16) >= (uae_u16)abs(divisor))
+	{
+		return (mcycles + 2) * 2;
+	}
+
+	// Absolute quotient
+	aquot = (uae_u32) abs(dividend) / (uae_u16)abs(divisor);
+
+	mcycles += 55;
+
+	if(divisor >= 0)
+	{
+		if(dividend >= 0)
+			mcycles--;
+		else
+			mcycles++;
+	}
+
+	// Count 15 msbits in absolute of quotient
+
+	for( i = 0; i < 15; i++)
+	{
+		if((uae_s16)aquot >= 0)
+			mcycles++;
+		aquot <<= 1;
+	}
+
+	return mcycles * 2;
+}
+int getDivs68kCycles(uae_s32 dividend, uae_s16 divisor)
+{
+    int v = getDivs68kCycles_2(dividend, divisor) - 4;
+//    write_log("S%d ",	v);
+    return v;
+}

@@ -165,7 +165,7 @@ static __inline__ void byteput_1 (uae_cptr addr, uae_u32 b)
 
 static __inline__ uae_u32 do_get_mem_long(uae_u32 *a)
 {
-#ifndef _MSC_VER
+#if !defined(X86_MSVC_ASSEMBLY)
     uae_u8 *b = (uae_u8 *)a;
     return (*b << 24) | (*(b+1) << 16) | (*(b+2) << 8) | (*(b+3));
 #else
@@ -192,7 +192,7 @@ static __inline__ uae_u16 do_get_mem_word(uae_u16 *a)
 
 static __inline__ void do_put_mem_long(uae_u32 *a, uae_u32 v)
 {
-#ifndef _MSC_VER
+#if !defined(X86_MSVC_ASSEMBLY)
     uae_u8 *b = (uae_u8 *)a;
     
     *b = v >> 24;
@@ -208,6 +208,19 @@ static __inline__ void do_put_mem_long(uae_u32 *a, uae_u32 v)
 	mov	[eax], ebx
     }
 #endif
+}
+
+static __inline__ void do_put_mem_long_long(uae_u64 *a, uae_u64 v)
+{
+    uae_u8 *b = (uae_u8 *)a;
+    *b = (uae_u8)(v >> 56);
+    *(b+1) = (uae_u8)(v >> 48);
+    *(b+2) = (uae_u8)(v >> 40);
+    *(b+3) = (uae_u8)(v >> 32);
+    *(b+4) = (uae_u8)(v >> 24);
+    *(b+5) = (uae_u8)(v >> 16);
+    *(b+6) = (uae_u8)(v >> 8);
+    *(b+7) = (uae_u8)(v);
 }
 
 static __inline__ void do_put_mem_word(uae_u16 *a, uae_u16 v)

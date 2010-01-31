@@ -12,32 +12,78 @@
 #include "autoconf.h"
 #include "win32.h"
 
+#if defined(NATMEM_OFFSET)
+
 static struct shmid_ds shmids[MAX_SHMID];
 static uae_u32 gfxoffs;
 
-uae_u32 natmem_offset = 0;
+uae_u8 *natmem_offset = NULL;
+#ifdef CPU_64_BIT
+uae_u32 max_allowed_mman = 2048;
+#else
 uae_u32 max_allowed_mman = 512;
+#endif
+
+static uae_u8 stackmagic64asm[] = {
+    0x48,0x8b,0x44,0x24,0x28,	// mov rax,qword ptr [rsp+28h] 
+    0x49,0x8b,0xe1,		// mov rsp,r9 
+    0xff,0xd0			// call rax
+};
+uae_u8 *stack_magic_amd64_asm_executable;
+
+void cache_free(void *cache)
+{
+    VirtualFree (cache, 0, MEM_RELEASE);
+}
+
+void *cache_alloc(int size)
+{
+    uae_u8 *cache;
+    cache = VirtualAlloc (NULL, size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+    return cache;
+}
 
 void init_shm(void)
 {
+    static int allocated;
     int i;
     LPVOID blah = NULL;
-    LPBYTE address = (LPBYTE)0x10000000; // Letting the system decide doesn't seem to work on some systems
+    // Letting the system decide doesn't seem to work on some systems (Win9x..)
+    LPBYTE address = (LPBYTE)0x10000000;
     uae_u32 size;
     uae_u32 add = 0x11000000;
     uae_u32 inc = 0x100000;
+    uae_u64 size64, total64;
+    uae_u64 totalphys64;
     MEMORYSTATUS memstats;
+
+#ifdef CPU_64_BIT
+    if (!stack_magic_amd64_asm_executable) {
+	stack_magic_amd64_asm_executable = cache_alloc(sizeof stackmagic64asm);
+	memcpy(stack_magic_amd64_asm_executable, stackmagic64asm, sizeof stackmagic64asm);
+    }
+#endif
+
+    if (natmem_offset && os_winnt)
+	VirtualFree(natmem_offset, 0, MEM_RELEASE);
+    natmem_offset = NULL;
 
     memstats.dwLength = sizeof(memstats);
     GlobalMemoryStatus(&memstats);
-    max_z3fastmem = 16 * 1024 * 1024;
 
-    while ((uae_u64)memstats.dwAvailPageFile + (uae_u64)memstats.dwAvailPhys >= ((uae_u64)max_z3fastmem << 1)
-	&& max_z3fastmem != ((uae_u64)2048 * 1024 * 1024))
-	    max_z3fastmem <<= 1;
-    size = max_z3fastmem;
-    if (size > max_allowed_mman * 1024 * 1024)
-	size = max_allowed_mman * 1024 * 1024;
+    totalphys64 = memstats.dwTotalPhys;
+    size64 = 16 * 1024 * 1024;
+    total64 = (uae_u64)memstats.dwAvailPageFile + (uae_u64)memstats.dwAvailPhys;
+    while (total64 >= (size64 << 1)
+	&& size64 != ((uae_u64)2048) * 1024 * 1024)
+	    size64 <<= 1;
+    if (size64 > max_allowed_mman * 1024 * 1024)
+	size64 = max_allowed_mman * 1024 * 1024;
+    if (size64 > 0x20000000)
+	size64 = 0x20000000;
+    if (size64 < 8 * 1024 * 1024)
+	size64 = 8 * 1024 * 1024;
+    size = max_z3fastmem = (uae_u32)size64;
 
     canbang = 0;
     gfxoffs = 0;
@@ -60,17 +106,17 @@ void init_shm(void)
 	}
     }
     if (os_winnt) {
-	natmem_offset = (uae_u32)blah;
+	natmem_offset = blah;
     } else {
 	VirtualFree(blah, 0, MEM_RELEASE);
-        while (address < (LPBYTE)0xa0000000) {
+	while (address < (LPBYTE)0xa0000000) {
 	    blah = VirtualAlloc(address, size + add, MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 	    if (blah == NULL) {
 		address += inc;
 	    } else {
 		VirtualFree (blah, 0, MEM_RELEASE);
 		address += inc * 32;
-		natmem_offset = (uae_u32)address;
+		natmem_offset = address;
 		break;
 	    }
 	}
@@ -83,12 +129,13 @@ void init_shm(void)
 	write_log("NATMEM: Our special area: 0x%p-0x%p (%dM)\n",
 	    natmem_offset, (uae_u8*)natmem_offset + size + add, (size + add) >> 20);
 	canbang = 1;
+	allocated = 1;
     }
 
     while (memstats.dwAvailPageFile + memstats.dwAvailPhys < max_z3fastmem)
-        max_z3fastmem <<= 1;
+	max_z3fastmem <<= 1;
 
-    write_log("Max Z3FastRAM %dM\n", max_z3fastmem >> 20);
+    write_log("Max Z3FastRAM %dM. Total physical RAM %uM\n", max_z3fastmem >> 20, totalphys64 >> 20);
 }
 
 
@@ -114,7 +161,7 @@ void mapped_free(uae_u8 *mem)
 	    else
 	    {
 		//free( x->native_address );
-	        VirtualFree((LPVOID)mem, 0, os_winnt ? MEM_RESET : (MEM_DECOMMIT | MEM_RELEASE));
+		VirtualFree((LPVOID)mem, 0, os_winnt ? MEM_RESET : (MEM_DECOMMIT | MEM_RELEASE));
 	    }
 	}
 	x = x->next;
@@ -154,17 +201,17 @@ int mprotect(void *addr, size_t len, int prot)
     return result;
 }
 
-void *shmat(int shmid, LPVOID shmaddr, int shmflg)
+void *shmat(int shmid, void *shmaddr, int shmflg)
 { 
     void *result = (void *)-1;
     BOOL got = FALSE;
 	
 #ifdef NATMEM_OFFSET
-    int size=shmids[shmid].size;
+    unsigned int size=shmids[shmid].size;
     extern uae_u32 allocated_z3fastmem;
     if(shmids[shmid].attached )
 	return shmids[shmid].attached;
-    if (shmaddr<natmem_offset){
+    if ((uae_u8*)shmaddr<natmem_offset){
 	if(!strcmp(shmids[shmid].name,"chip"))
 	{
 	    shmaddr=natmem_offset;
@@ -203,7 +250,7 @@ void *shmat(int shmid, LPVOID shmaddr, int shmflg)
 	if(!strcmp(shmids[shmid].name,"z3")) {
 	    shmaddr=natmem_offset+0x10000000;
 	    if (allocated_z3fastmem<0x1000000)
-	        gfxoffs=0x1000000;
+		gfxoffs=0x1000000;
 	    else
 		gfxoffs=allocated_z3fastmem;
 	    got = TRUE;
@@ -275,18 +322,15 @@ int shmget(key_t key, size_t size, int shmflg, char *name)
     {
 	write_log( "shmget of size %d (%dk) for %s\n", size, size >> 10, name );
 	if( ( result = get_next_shmkey() ) != -1 )
-    {
-		
-        //blah = VirtualAlloc( 0, size,MEM_COMMIT, PAGE_EXECUTE_READWRITE );
-
-		shmids[result].size = size;
-		strcpy( shmids[result].name, name );
-	    }
-		
-	    else
-	    {
-		result = -1;
-	    }
+	{
+	    //blah = VirtualAlloc( 0, size,MEM_COMMIT, PAGE_EXECUTE_READWRITE );
+	    shmids[result].size = size;
+	    strcpy( shmids[result].name, name );
+	}
+	else
+        {
+	    result = -1;
+	}
     }
     return result;
 }
@@ -320,12 +364,11 @@ int isinf( double x )
     const int nClass = _fpclass(x);
     int result;
     if (nClass == _FPCLASS_NINF || nClass == _FPCLASS_PINF)  result = 1;
-    else
- result = 0;
+	else
+    result = 0;
 #else
     int result = 0;
 #endif
-
     return result;
 }
 
@@ -336,19 +379,7 @@ int isnan( double x )
 #else
     int result = 0;
 #endif
-
     return result;
 }
 
-void cache_free(void *cache)
-{
-    VirtualFree (cache, 0, MEM_RELEASE);
-}
-
-void *cache_alloc(int size)
-{
-    uae_u8 *cache;
-    cache = VirtualAlloc (NULL, size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-    return cache;
-}
-
+#endif

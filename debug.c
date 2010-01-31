@@ -42,6 +42,8 @@ static int debug_rewind;
 static int memwatch_enabled, memwatch_triggered;
 int debugging;
 int exception_debugging;
+int debug_copper;
+static uaecptr debug_copper_pc;
 
 extern int audio_channel_mask;
 
@@ -75,20 +77,22 @@ static char help[] = {
     "  d <address> [<lines>] Disassembly starting at <address>\n"
     "  t [instructions]      Step one or more instructions\n"
     "  z                     Step through one instruction - useful for JSR, DBRA etc\n"
-    "  f                     Step forward until PC in RAM\n"
+    "  f                     Step forward until PC in RAM (\"boot block finder\")\n"
     "  f <address>           Add/remove breakpoint\n"
     "  fi                    Step forward until PC points to RTS/RTD or RTE\n"
     "  fi <opcode>           Step forward until PC points to <opcode>\n"
     "  fl                    List breakpoints\n"
     "  fd                    Remove all breakpoints\n"
     "  f <addr1> <addr2>     Step forward until <addr1> <= PC <= <addr2>\n"
-    "  e                     Dump contents of all custom registers\n"
-    "  i                     Dump contents of interrupt and trap vectors\n"
-    "  o <1|2|addr> [<lines>]View memory as Copper instructions\n"
+    "  e [<addr>]            Dump contents of all custom registers\n"
+    "  i [<addr>]            Dump contents of interrupt and trap vectors\n"
+    "  o <0-2|addr> [<lines>]View memory as Copper instructions\n"
+    "  od                    Enable/disable Copper vpos/hpos tracing\n"
+    "  ot                    Copper single step trace\n"
+    "  ob <addr>             Copper breakpoint\n"
     "  O                     Display bitplane offsets\n"
     "  O <plane> <offset>    Offset a bitplane\n"
-    "  H[H] <count>          Show PC history (HH=full CPU info) <count> instructions\n"
-    "  M                     Search for *Tracker sound modules\n"
+    "  H[H] <cnt>            Show PC history (HH=full CPU info) <cnt> instructions\n"
     "  C <value>             Search for values like energy or lifes in games\n"
     "  W <address> <value>   Write into Amiga memory\n"
     "  w <num> <address> <length> <R/W/RW> [<value>]\n"
@@ -100,8 +104,9 @@ static char help[] = {
     "  T                     Show exec tasks and their PCs\n"
     "  h,?                   Show this help page\n"
     "  b                     Step to previous state capture position\n"
-    "  am <channel mask>     Enable or disable audio channels\n"                  
+    "  am <channel mask>     Enable or disable audio channels\n"
     "  di <mode> [<track>]   Break on disk access. R=DMA read,W=write,RW=both,P=PIO\n"
+    "                        Also enables extended disk logging\n"
     "  q                     Quit the emulator. You don't want to use this command.\n\n"
 };
 
@@ -153,7 +158,7 @@ static uae_u32 readint (char **c)
 	return readhex (c);
     }
     if (**c == '0' && toupper((*c)[1]) == 'X') {
-	(*c)+= 2;	
+	(*c)+= 2;
 	return readhex (c);
     }
     if (**c == '-')
@@ -254,75 +259,6 @@ static void dumpmem (uaecptr addr, uaecptr *nxmem, int lines)
     *nxmem = addr;
 }
 
-static void foundmod (uae_u32 ptr, char *type)
-{
-    char name[21];
-    uae_u8 *ptr2 = chipmemory + ptr;
-    int i,length;
-
-    console_out ("Found possible %s module at 0x%lx.\n", type, ptr);
-    memcpy (name, ptr2, 20);
-    name[20] = '\0';
-
-    /* Browse playlist */
-    length = 0;
-    for (i = 0x3b8; i < 0x438; i++)
-	if (ptr2[i] > length)
-	    length = ptr2[i];
-
-    length = (length+1)*1024 + 0x43c;
-
-    /* Add sample lengths */
-    ptr2 += 0x2A;
-    for (i = 0; i < 31; i++, ptr2 += 30)
-	length += 2*((ptr2[0]<<8)+ptr2[1]);
-    
-    console_out ("Name \"%s\", Length 0x%lx bytes.\n", name, length);
-}
-
-static void modulesearch (void)
-{
-    uae_u8 *p = get_real_address (0);
-    uae_u32 ptr;
-
-    for (ptr = 0; ptr < allocated_chipmem - 40; ptr += 2, p += 2) {
-	/* Check for Mahoney & Kaktus */
-	/* Anyone got the format of old 15 Sample (SoundTracker)modules? */
-	if (ptr >= 0x438 && p[0] == 'M' && p[1] == '.' && p[2] == 'K' && p[3] == '.')
-	    foundmod (ptr - 0x438, "ProTracker (31 samples)");
-
-	if (ptr >= 0x438 && p[0] == 'F' && p[1] == 'L' && p[2] == 'T' && p[3] == '4')
-	    foundmod (ptr - 0x438, "Startrekker");
-
-	if (strncmp ((char *)p, "SMOD", 4) == 0) {
-	    console_out ("Found possible FutureComposer 1.3 module at 0x%lx, length unknown.\n", ptr);
-	}
-	if (strncmp ((char *)p, "FC14", 4) == 0) {
-	    console_out ("Found possible FutureComposer 1.4 module at 0x%lx, length unknown.\n", ptr);
-	}
-	if (p[0] == 0x48 && p[1] == 0xe7 && p[4] == 0x61 && p[5] == 0
-	    && p[8] == 0x4c && p[9] == 0xdf && p[12] == 0x4e && p[13] == 0x75
-	    && p[14] == 0x48 && p[15] == 0xe7 && p[18] == 0x61 && p[19] == 0
-	    && p[22] == 0x4c && p[23] == 0xdf && p[26] == 0x4e && p[27] == 0x75) {
-	    console_out ("Found possible Whittaker module at 0x%lx, length unknown.\n", ptr);
-	}
-	if (p[4] == 0x41 && p[5] == 0xFA) {
-	    int i;
-
-	    for (i = 0; i < 0x240; i += 2)
-		if (p[i] == 0xE7 && p[i + 1] == 0x42 && p[i + 2] == 0x41 && p[i + 3] == 0xFA)
-		    break;
-	    if (i < 0x240) {
-		uae_u8 *p2 = p + i + 4;
-		for (i = 0; i < 0x30; i += 2)
-		    if (p2[i] == 0xD1 && p2[i + 1] == 0xFA) {
-			console_out ("Found possible MarkII module at %lx, length unknown.\n", ptr);
-		    }
-	    }
-	}
-    }
-}
-
 static void dump_custom_regs (void)
 {
     int len, i, j, end;
@@ -367,21 +303,24 @@ static void dump_custom_regs (void)
     free (p2);
 }
 
-static void dump_vectors (void)
+static void dump_vectors (uaecptr addr)
 {
     int i = 0, j = 0;
+    
+    if (addr == 0xffffffff)
+	addr = regs.vbr;
 
     while (int_labels[i].name || trap_labels[j].name) {
 	if (int_labels[i].name) {
-	    console_out ("$%08X: %s  \t $%08X\t", int_labels[i].adr + regs.vbr,
-		int_labels[i].name, get_long (int_labels[i].adr + (int_labels[i].adr == 4 ? 0 : regs.vbr)));
+	    console_out ("$%08X: %s  \t $%08X\t", int_labels[i].adr + addr,
+		int_labels[i].name, get_long (int_labels[i].adr + (int_labels[i].adr == 4 ? 0 : addr)));
 	    i++;
 	} else {
 	    console_out ("\t\t\t\t");
 	}
 	if (trap_labels[j].name) {
-	    console_out("$%08X: %s  \t $%08X", trap_labels[j].adr + regs.vbr,
-	       trap_labels[j].name, get_long (trap_labels[j].adr + regs.vbr));
+	    console_out("$%08X: %s  \t $%08X", trap_labels[j].adr + addr,
+	       trap_labels[j].name, get_long (trap_labels[j].adr + addr));
 	    j++;
 	}
 	console_out ("\n");
@@ -425,17 +364,76 @@ static void disassemble_wait (FILE *file, unsigned long insn)
 	     vp, ve, hp, he, bfd);
 }
 
+#define NR_COPPER_RECORDS 40000
+/* Record copper activity for the debugger.  */
+struct cop_record
+{
+  int hpos, vpos;
+  uaecptr addr;
+};
+static struct cop_record *cop_record[2];
+static int nr_cop_records[2], curr_cop_set;
+
+void record_copper_reset(void)
+{
+/* Start a new set of copper records.  */
+    curr_cop_set ^= 1;
+    nr_cop_records[curr_cop_set] = 0;
+}
+
+void record_copper (uaecptr addr, int hpos, int vpos)
+{
+    int t = nr_cop_records[curr_cop_set];
+    if (!cop_record[0]) {
+	cop_record[0] = malloc (NR_COPPER_RECORDS * sizeof (struct cop_record));
+	cop_record[1] = malloc (NR_COPPER_RECORDS * sizeof (struct cop_record));
+    }
+    if (t < NR_COPPER_RECORDS) {
+	cop_record[curr_cop_set][t].addr = addr;
+	cop_record[curr_cop_set][t].hpos = hpos;
+	cop_record[curr_cop_set][t].vpos = vpos;
+	nr_cop_records[curr_cop_set] = t + 1;
+    }
+    if (debug_copper & 2) { /* trace */
+	debug_copper &= ~2;
+	activate_debugger();
+    }
+    if ((debug_copper & 4) && addr >= debug_copper_pc && addr <= debug_copper_pc + 3) {
+	debug_copper &= ~4;
+	activate_debugger();
+    }
+}
+
+static int find_copper_record (uaecptr addr, int *phpos, int *pvpos)
+{
+    int s = curr_cop_set ^ 1;
+    int t = nr_cop_records[s];
+    int i;
+    for (i = 0; i < t; i++) {
+	if (cop_record[s][i].addr == addr) {
+	    *phpos = cop_record[s][i].hpos;
+	    *pvpos = cop_record[s][i].vpos;
+	    return 1;
+	}
+    }
+    return 0;
+}
+
 /* simple decode copper by Mark Cox */
 static void decode_copper_insn (FILE* file, unsigned long insn, unsigned long addr)
 {
     uae_u32 insn_type = insn & 0x00010001;
     int hpos, vpos;
+    char here = ' ';
     char record[] = "          ";
     if (find_copper_record (addr, &hpos, &vpos)) {
 	sprintf (record, " [%03x %03x]", vpos, hpos);
     }
+    
+    if (get_copper_address(-1) >= addr && get_copper_address(-1) <= addr + 3)
+	here = '*';
 
-    console_out ("%08lx: %04lx %04lx%s\t; ", addr, insn >> 16, insn & 0xFFFF, record);
+    console_out ("%c%08lx: %04lx %04lx%s\t; ", here, addr, insn >> 16, insn & 0xFFFF, record);
 
     switch (insn_type) {
     case 0x00010000: /* WAIT insn */
@@ -475,7 +473,6 @@ static void decode_copper_insn (FILE* file, unsigned long insn, unsigned long ad
 
 }
 
-
 static uaecptr decode_copperlist (FILE* file, uaecptr address, int nolines)
 {
     uae_u32 insn;
@@ -486,10 +483,54 @@ static uaecptr decode_copperlist (FILE* file, uaecptr address, int nolines)
     }
     return address;
     /* You may wonder why I don't stop this at the end of the copperlist?
-     * Well, often nice things are hidden at the end and it is debatable the actual 
+     * Well, often nice things are hidden at the end and it is debatable the actual
      * values that mean the end of the copperlist */
 }
 
+static int copper_debugger (char **c)
+{
+    static uaecptr nxcopper;
+    uae_u32 maddr;
+    int lines;
+
+    if (**c == 'd') {
+	next_char(c);
+	if (debug_copper)
+	    debug_copper = 0;
+	else
+	    debug_copper = 1;
+	console_out ("Copper debugger %s.\n", debug_copper ? "enabled" : "disabled");
+    } else if(**c == 't') {
+	debug_copper = 1|2;
+	return 1;
+    } else if(**c == 'b') {
+	(*c)++;
+	debug_copper = 1|4;
+	if (more_params(c)) {
+	    debug_copper_pc = readhex(c);
+	    console_out ("Copper breakpoint @0x%08.8x\n", debug_copper_pc);
+	} else {
+	    debug_copper &= ~4;
+	}
+    } else {
+	if (more_params(c)) {
+	    maddr = readhex(c);
+	    if (maddr == 1 || maddr == 2)
+		maddr = get_copper_address (maddr);
+	    else if (maddr == 0)
+		maddr = get_copper_address (-1);
+	} else
+	    maddr = nxcopper;
+
+	if (more_params (c))
+	    lines = readhex (c);
+	else
+	    lines = 20;
+
+	nxcopper = decode_copperlist (stdout, maddr, lines);
+    }
+    return 0;
+}
 
 /* cheat-search by Holger Jakob */
 static void cheatsearch (char **c)
@@ -530,7 +571,7 @@ static void cheatsearch (char **c)
     } else {
 	for (count = 0; count<255; count++) {
 	    if (p[vlist[count]+3] == (val & 0xff)
-		&& p[vlist[count]+2] == (val>>8 & 0xff) 
+		&& p[vlist[count]+2] == (val>>8 & 0xff)
 		&& p[vlist[count]+1] == (val>>16 & 0xff)
 		&& p[vlist[count]] == (val>>24 & 0xff))
 	    {
@@ -647,15 +688,15 @@ static void illg_debug_do (uaecptr addr, int rw, int size, uae_u32 val)
 	    else
 		write_log ("RW: %08.8X    %c PC=%08.8X\n", ad, rws, pc);
 	    if (illgdebug_break)
-    		activate_debugger ();
+		activate_debugger ();
 	} else if ((mask & 1) && rw) {
 	    write_log ("RO: %08.8X=%02.2X %c PC=%08.8X\n", ad, v, rws, pc);
 	    if (illgdebug_break)
-    		activate_debugger ();
+		activate_debugger ();
 	} else if ((mask & 2) && !rw) {
 	    write_log ("WO: %08.8X    %c PC=%08.8X\n", ad, rws, pc);
 	    if (illgdebug_break)
-    		activate_debugger ();
+		activate_debugger ();
 	}
     }
 }
@@ -692,7 +733,7 @@ static void memwatch_func (uaecptr addr, int rw, int size, uae_u32 val)
 	    brk = 1;
 	if (brk && mwnodes[i].modval_written) {
 	    if (!rw) {
-	        brk = 0;
+		brk = 0;
 	    } else if (mwnodes[i].modval_written == 1) {
 		mwnodes[i].modval_written = 2;
 		mwnodes[i].modval = val;
@@ -716,7 +757,7 @@ static void memwatch_func (uaecptr addr, int rw, int size, uae_u32 val)
     }
 }
 
-static uae_u32 debug_lget (uaecptr addr)
+static uae_u32 REGPARAM debug_lget (uaecptr addr)
 {
     int off = debug_mem_off (addr);
     uae_u32 v;
@@ -724,7 +765,7 @@ static uae_u32 debug_lget (uaecptr addr)
     memwatch_func (addr, 0, 4, v);
     return v;
 }
-static uae_u32 debug_wget (uaecptr addr)
+static uae_u32 REGPARAM2 debug_wget (uaecptr addr)
 {
     int off = debug_mem_off (addr);
     uae_u32 v;
@@ -732,7 +773,7 @@ static uae_u32 debug_wget (uaecptr addr)
     memwatch_func (addr, 0, 2, v);
     return v;
 }
-static uae_u32 debug_bget (uaecptr addr)
+static uae_u32 REGPARAM2 debug_bget (uaecptr addr)
 {
     int off = debug_mem_off (addr);
     uae_u32 v;
@@ -740,29 +781,29 @@ static uae_u32 debug_bget (uaecptr addr)
     memwatch_func (addr, 0, 1, v);
     return v;
 }
-static void debug_lput (uaecptr addr, uae_u32 v)
+static void REGPARAM2 debug_lput (uaecptr addr, uae_u32 v)
 {
     int off = debug_mem_off (addr);
     memwatch_func (addr, 1, 4, v);
     debug_mem_banks[off]->lput(addr, v);
-}   
-static void debug_wput (uaecptr addr, uae_u32 v)
+}
+static void REGPARAM2 debug_wput (uaecptr addr, uae_u32 v)
 {
     int off = debug_mem_off (addr);
     memwatch_func (addr, 1, 2, v);
     debug_mem_banks[off]->wput(addr, v);
-}   
-static void debug_bput (uaecptr addr, uae_u32 v)
+}
+static void REGPARAM2 debug_bput (uaecptr addr, uae_u32 v)
 {
     int off = debug_mem_off (addr);
     memwatch_func (addr, 1, 1, v);
     debug_mem_banks[off]->bput(addr, v);
-}   
-static int debug_check (uaecptr addr, uae_u32 size)
+}
+static int REGPARAM2 debug_check (uaecptr addr, uae_u32 size)
 {
     return debug_mem_banks[munge24 (addr) >> 16]->check (addr, size);
 }
-static uae_u8 *debug_xlate (uaecptr addr)
+static uae_u8 *REGPARAM2 debug_xlate (uaecptr addr)
 {
     return debug_mem_banks[munge24 (addr) >> 16]->xlateaddr (addr);
 }
@@ -1016,7 +1057,7 @@ static int instruction_breakpoint (char **c)
 		console_out ("No breakpoints\n");
 	    else
 		console_out ("\n");
-    	    return 0;
+	    return 0;
 	}
 	skipaddr_doskip = 1;
 	skipaddr_start = readhex (c);
@@ -1040,15 +1081,15 @@ static int instruction_breakpoint (char **c)
 		bpn->addr = skipaddr_start;
 		bpn->enabled = 1;
 		console_out ("Breakpoint added\n");
-	        skipaddr_start = 0xffffffff;
-	        skipaddr_doskip = 0;
+		skipaddr_start = 0xffffffff;
+		skipaddr_doskip = 0;
 		break;
 	    }
 	    return 0;
 	}
     }
     if (skipaddr_start == 0xC0DEDBAD) {
-        trace_same_insn_count = 0;
+	trace_same_insn_count = 0;
 	logfile = fopen ("uae.trace", "w");
 	memcpy (trace_insn_copy, regs.pc_p, 10);
 	memcpy (&trace_prev_regs, &regs, sizeof regs);
@@ -1188,14 +1229,14 @@ static void searchmem (char **cc)
     if (!got)
 	console_out ("nothing found");
     console_out ("\n");
-}	
+}
 
 static int staterecorder (char **cc)
 {
     char nc;
 
     if (!more_params (cc)) {
-        if (savestate_dorewind (1)) {
+	if (savestate_dorewind (1)) {
 	    debug_rewind = 1;
 	    return 1;
 	}
@@ -1214,6 +1255,7 @@ static void disk_debug(char **inptr)
     char parm[10];
     int i;
 
+    disk_debug_logging = 1;
     disk_debug_mode = 0;
     disk_debug_track = -1;
     ignore_ws(inptr);
@@ -1244,7 +1286,7 @@ static void m68k_modify (char **inptr)
     uae_u32 v;
     char parm[10];
     char c1, c2;
-    
+
     if (!next_string (inptr, parm, sizeof (parm), 1))
 	return;
     c1 = toupper (parm[0]);
@@ -1286,31 +1328,35 @@ static void m68k_modify (char **inptr)
 static void debug_1 (void)
 {
     char input[80];
-    uaecptr nxdis,nxmem,nxcopper;
+    uaecptr nxdis, nxmem, addr;
 
     m68k_dumpstate (stdout, &nextpc);
-    nxdis = nextpc; nxmem = nxcopper = 0;
+    nxdis = nextpc; nxmem = 0;
 
     for (;;) {
 	char cmd, *inptr;
 
 	console_out (">");
 	console_flush ();
-        if (!console_get (input, 80))
+	if (!console_get (input, 80))
 	    continue;
 	inptr = input;
 	cmd = next_char (&inptr);
 	switch (cmd) {
 	case 'c': dumpcia (); dumpdisk (); dumpcustom (); break;
-	case 'i': dump_vectors (); break;
+	case 'i':
+	    addr = 0xffffffff;
+	    if (more_params (&inptr))
+		addr = readhex (&inptr);
+	    dump_vectors (addr);
+	break;
 	case 'e': dump_custom_regs (); break;
 	case 'r': if (more_params(&inptr))
-		      m68k_modify (&inptr);
+		    m68k_modify (&inptr);
 		  else
-		      m68k_dumpstate (stdout, &nextpc);
+		    m68k_dumpstate (stdout, &nextpc);
 	break;
-	case 'M': modulesearch (); break;
-	case 'C': cheatsearch (&inptr); break; 
+	case 'C': cheatsearch (&inptr); break;
 	case 'W': writeintomem (&inptr); break;
 	case 'w': memwatch (&inptr); break;
 	case 'S': savemem (&inptr); break;
@@ -1327,7 +1373,7 @@ static void debug_1 (void)
 		next_char(&inptr);
 		disk_debug(&inptr);
 	    } else {
-	        uae_u32 daddr;
+		uae_u32 daddr;
 		int count;
 		if (more_params(&inptr))
 		    daddr = readhex(&inptr);
@@ -1404,9 +1450,9 @@ static void debug_1 (void)
 		    temp--;
 	    }
 	    while (temp != lasthist) {
-	        regs = history[temp];
+		regs = history[temp];
 		regflags = historyf[temp];
-	        m68k_setpc(history[temp].pc);
+		m68k_setpc(history[temp].pc);
 		if (badly) {
 		    m68k_dumpstate(stdout, NULL);
 		} else {
@@ -1436,23 +1482,11 @@ static void debug_1 (void)
 	break;
 	case 'o':
 	{
-	    uae_u32 maddr;
-	    int lines;
- 
-	    if (more_params(&inptr)) {
-		maddr = readhex(&inptr);
-		if (maddr == 1 || maddr == 2)
-		    maddr = get_copper_address (maddr);		
+	    if (copper_debugger(&inptr)) {
+	        debugger_active = 0;
+	        debugging = 0;
+		return;
 	    }
-	    else
-		maddr = nxcopper;
-
-	    if (more_params (&inptr))
-		lines = readhex (&inptr);
-	    else
-		lines = 20;
-
-	    nxcopper = decode_copperlist (stdout, maddr, lines);
 	    break;
 	}
 	case 'O':
@@ -1469,7 +1503,7 @@ static void debug_1 (void)
 	    break;
 	case 'b':
 	    if (staterecorder (&inptr))
-	        return;
+		return;
 	    break;
 	case 'a':
 	    if (more_params (&inptr)) {
@@ -1534,7 +1568,7 @@ void debug (void)
 	    int bp = 0;
 
 	    for (i = 0; i < BREAKPOINT_TOTAL; i++) {
-	        if (!bpnodes[i].enabled)
+		if (!bpnodes[i].enabled)
 		    continue;
 		if (bpnodes[i].addr == pc) {
 		    bp = 1;
@@ -1562,12 +1596,12 @@ void debug (void)
 		}
 	    }
 	    if (!bp) {
-	        set_special (SPCFLAG_BRK);
+		set_special (SPCFLAG_BRK);
 		return;
 	    }
 	}
     } else {
-        write_log ("Memwatch %d: break at %08.8X.%c %c %08.8X\n", memwatch_triggered - 1, mwhit.addr,
+	write_log ("Memwatch %d: break at %08.8X.%c %c %08.8X\n", memwatch_triggered - 1, mwhit.addr,
 	    mwhit.size == 1 ? 'B' : (mwhit.size == 2 ? 'W' : 'L'), mwhit.rw ? 'W' : 'R', mwhit.val);
 	memwatch_triggered = 0;
     }
@@ -1607,7 +1641,7 @@ void debug (void)
 	    do_skip = 1;
     }
     if (do_skip) {
-        set_special (SPCFLAG_BRK);
+	set_special (SPCFLAG_BRK);
 	debugging = 1;
     }
     resume_sound ();
@@ -1620,7 +1654,7 @@ int notinrom (void)
 	return 1;
     return 0;
 }
-
+/*
 const char *debuginfo (int mode)
 {
     static char txt[100];
@@ -1629,3 +1663,4 @@ const char *debuginfo (int mode)
 	pc, get_word(pc), get_word(pc+2), get_word(pc+4));
     return txt;
 }
+*/

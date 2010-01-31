@@ -293,7 +293,7 @@ static void pfield_init_linetoscr (void)
 
     playfield_start = linetoscr_diw_start;
     playfield_end = linetoscr_diw_end;
-    
+
     if (playfield_start < visible_left_border)
 	playfield_start = visible_left_border;
     if (playfield_start > visible_right_border)
@@ -307,8 +307,8 @@ static void pfield_init_linetoscr (void)
     real_playfield_start = playfield_start;
 #ifdef AGA
     if (brdsprt && dip_for_drawing->nr_sprites) {
-        int min = visible_right_border, max = visible_left_border, i;
-        for (i = 0; i < dip_for_drawing->nr_sprites; i++) {
+	int min = visible_right_border, max = visible_left_border, i;
+	for (i = 0; i < dip_for_drawing->nr_sprites; i++) {
 	    int x;
 	    x = curr_sprite_entries[dip_for_drawing->first_sprite_entry + i].pos;
 	    if (x < min) min = x;
@@ -319,13 +319,13 @@ static void pfield_init_linetoscr (void)
 	max += (DIW_DDF_OFFSET - DISPLAY_LEFT_SHIFT) << (2 - lores_shift);
 	if (min < playfield_start)
 	    playfield_start = min;
-        if (playfield_start < visible_left_border)
+	if (playfield_start < visible_left_border)
 	    playfield_start = visible_left_border;
 	if (max > playfield_end)
 	    playfield_end = max;
-        if (playfield_end > visible_right_border)
+	if (playfield_end > visible_right_border)
 	    playfield_end = visible_right_border;
-    }    
+    }
 #endif
     /* Now, compute some offsets.  */
 
@@ -514,7 +514,7 @@ STATIC_INLINE void fill_line (void)
     val = colors_for_drawing.acolors[0];
 #endif
     if (gfxvidinfo.pixbytes == 2)
-        val |= val << 16;
+	val |= val << 16;
     for (; nints > 0; nints -= 8, start += 8) {
 	*start = val;
 	*(start+1) = val;
@@ -550,7 +550,7 @@ static void pfield_do_linetoscr (int start, int stop)
 {
 #ifdef AGA
     if (currprefs.chipset_mask & CSMASK_AGA) {
-        if (res_shift == 0)
+	if (res_shift == 0)
 	    switch (gfxvidinfo.pixbytes) {
 	    case 1: src_pixel = linetoscr_8_aga (src_pixel, start, stop); break;
 	    case 2: src_pixel = linetoscr_16_aga (src_pixel, start, stop); break;
@@ -570,7 +570,7 @@ static void pfield_do_linetoscr (int start, int stop)
 	    }
     } else {
 #endif
-        if (res_shift == 0)
+	if (res_shift == 0)
 	    switch (gfxvidinfo.pixbytes) {
 	    case 1: src_pixel = linetoscr_8 (src_pixel, start, stop); break;
 	    case 2: src_pixel = linetoscr_16 (src_pixel, start, stop); break;
@@ -656,7 +656,7 @@ static void init_ham_decoding (void)
 	    }
 	} else if (bplplanecnt == 6) { /* AGA mode HAM6 */
 	    while (unpainted_amiga-- > 0) {
-    		int pv = pixdata.apixels[ham_decode_pixel++];
+		int pv = pixdata.apixels[ham_decode_pixel++];
 		switch (pv & 0x30) {
 		case 0x00: ham_lastcolor = colors_for_drawing.color_regs_aga[pv]; break;
 		case 0x10: ham_lastcolor &= 0xFFFF00; ham_lastcolor |= (pv & 0xF) << 4; break;
@@ -667,7 +667,7 @@ static void init_ham_decoding (void)
 	}
 #endif
     } else {
-        if (bplplanecnt == 6) { /* OCS/ECS mode HAM6 */
+	if (bplplanecnt == 6) { /* OCS/ECS mode HAM6 */
 	    while (unpainted_amiga-- > 0) {
 		int pv = pixdata.apixels[ham_decode_pixel++];
 		switch (pv & 0x30) {
@@ -724,9 +724,9 @@ static void decode_ham (int pix, int stoppos)
 	}
 #endif
     } else {
-        if (bplplanecnt == 6) { /* OCS/ECS mode HAM6 */
+	if (bplplanecnt == 6) { /* OCS/ECS mode HAM6 */
 	    while (todraw_amiga-- > 0) {
-    		int pv = pixdata.apixels[ham_decode_pixel];
+		int pv = pixdata.apixels[ham_decode_pixel];
 		switch (pv & 0x30) {
 		case 0x00: ham_lastcolor = colors_for_drawing.color_regs_ecs[pv]; break;
 		case 0x10: ham_lastcolor &= 0xFF0; ham_lastcolor |= (pv & 0xF); break;
@@ -787,7 +787,7 @@ static void gen_pfield_tables (void)
    function only pass in constant arguments (except for E).  This means
    that many of the if statements will go away completely after inlining.  */
 STATIC_INLINE void draw_sprites_1 (struct sprite_entry *e, int ham, int dualpf,
-				   int doubling, int skip, int has_attach, int aga)
+    int doubling, int skip, int has_attach, int aga)
 {
     int *shift_lookup = dualpf ? (bpldualpfpri ? dblpf_ms2 : dblpf_ms1) : dblpf_ms;
     uae_u16 *buf = spixels + e->first_pixel;
@@ -837,7 +837,7 @@ STATIC_INLINE void draw_sprites_1 (struct sprite_entry *e, int ham, int dualpf,
 #if SPRITE_DEBUG > 0
 	    v |= 1 | 4;
 #endif
- 
+
 	    if (has_attach && (stbuf[pos] & (3 << offs))) {
 		col = v;
 		if (aga)
@@ -906,23 +906,23 @@ STATIC_INLINE void draw_sprites_1 (struct sprite_entry *e, int ham, int dualpf,
 	window_pos += 1 << doubling;
     }
 }
-  
+
 /* See comments above.  Do not touch if you don't know what's going on.
  * (We do _not_ want the following to be inlined themselves).  */
 /* lores bitplane, lores sprites */
-static void draw_sprites_normal_sp_lo_nat (struct sprite_entry *e) { draw_sprites_1	(e, 0, 0, 0, 0, 0, 0); }
-static void draw_sprites_normal_dp_lo_nat (struct sprite_entry *e) { draw_sprites_1	(e, 0, 1, 0, 0, 0, 0); }
-static void draw_sprites_ham_sp_lo_nat (struct sprite_entry *e) { draw_sprites_1	(e, 1, 0, 0, 0, 0, 0); }
-static void draw_sprites_normal_sp_lo_at (struct sprite_entry *e) { draw_sprites_1	(e, 0, 0, 0, 0, 1, 0); }
-static void draw_sprites_normal_dp_lo_at (struct sprite_entry *e) { draw_sprites_1	(e, 0, 1, 0, 0, 1, 0); }
-static void draw_sprites_ham_sp_lo_at (struct sprite_entry *e) { draw_sprites_1		(e, 1, 0, 0, 0, 1, 0); }
+static void NOINLINE draw_sprites_normal_sp_lo_nat (struct sprite_entry *e) { draw_sprites_1 (e, 0, 0, 0, 0, 0, 0); }
+static void NOINLINE draw_sprites_normal_dp_lo_nat (struct sprite_entry *e) { draw_sprites_1 (e, 0, 1, 0, 0, 0, 0); }
+static void NOINLINE draw_sprites_ham_sp_lo_nat (struct sprite_entry *e) { draw_sprites_1 (e, 1, 0, 0, 0, 0, 0); }
+static void NOINLINE draw_sprites_normal_sp_lo_at (struct sprite_entry *e) { draw_sprites_1 (e, 0, 0, 0, 0, 1, 0); }
+static void NOINLINE draw_sprites_normal_dp_lo_at (struct sprite_entry *e) { draw_sprites_1 (e, 0, 1, 0, 0, 1, 0); }
+static void NOINLINE draw_sprites_ham_sp_lo_at (struct sprite_entry *e) { draw_sprites_1 (e, 1, 0, 0, 0, 1, 0); }
 /* hires bitplane, lores sprites */
-static void draw_sprites_normal_sp_hi_nat (struct sprite_entry *e) { draw_sprites_1	(e, 0, 0, 1, 0, 0, 0); }
-static void draw_sprites_normal_dp_hi_nat (struct sprite_entry *e) { draw_sprites_1	(e, 0, 1, 1, 0, 0, 0); }
-static void draw_sprites_ham_sp_hi_nat (struct sprite_entry *e) { draw_sprites_1	(e, 1, 0, 1, 0, 0, 0); }
-static void draw_sprites_normal_sp_hi_at (struct sprite_entry *e) { draw_sprites_1	(e, 0, 0, 1, 0, 1, 0); }
-static void draw_sprites_normal_dp_hi_at (struct sprite_entry *e) { draw_sprites_1	(e, 0, 1, 1, 0, 1, 0); }
-static void draw_sprites_ham_sp_hi_at (struct sprite_entry *e) { draw_sprites_1		(e, 1, 0, 1, 0, 1, 0); }
+static void NOINLINE draw_sprites_normal_sp_hi_nat (struct sprite_entry *e) { draw_sprites_1 (e, 0, 0, 1, 0, 0, 0); }
+static void NOINLINE draw_sprites_normal_dp_hi_nat (struct sprite_entry *e) { draw_sprites_1 (e, 0, 1, 1, 0, 0, 0); }
+static void NOINLINE draw_sprites_ham_sp_hi_nat (struct sprite_entry *e) { draw_sprites_1 (e, 1, 0, 1, 0, 0, 0); }
+static void NOINLINE draw_sprites_normal_sp_hi_at (struct sprite_entry *e) { draw_sprites_1 (e, 0, 0, 1, 0, 1, 0); }
+static void NOINLINE draw_sprites_normal_dp_hi_at (struct sprite_entry *e) { draw_sprites_1 (e, 0, 1, 1, 0, 1, 0); }
+static void NOINLINE draw_sprites_ham_sp_hi_at (struct sprite_entry *e) { draw_sprites_1 (e, 1, 0, 1, 0, 1, 0); }
 
 #ifdef AGA
 /* not very optimized */
@@ -999,7 +999,7 @@ static void clear_bitplane_border_aga (void)
 static void weird_bitplane_fix (void)
 {
     int i, shift = lores_shift - bplres;
-    
+
     if (shift < 0) {
 	shift = -shift;
 	for (i = playfield_start << lores_shift; i < playfield_end << lores_shift; i++) {
@@ -1033,15 +1033,15 @@ STATIC_INLINE void pfield_doline_1 (uae_u32 *pixels, int wordcount, int planes)
 	b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0, b7 = 0;
 	switch (planes) {
 #ifdef AGA
-	case 8: b0 = GETLONG ((uae_u32 *)real_bplpt[7]); real_bplpt[7] += 4;
-	case 7: b1 = GETLONG ((uae_u32 *)real_bplpt[6]); real_bplpt[6] += 4;
+	case 8: b0 = GETLONG (real_bplpt[7]); real_bplpt[7] += 4;
+	case 7: b1 = GETLONG (real_bplpt[6]); real_bplpt[6] += 4;
 #endif
-	case 6: b2 = GETLONG ((uae_u32 *)real_bplpt[5]); real_bplpt[5] += 4;
-	case 5: b3 = GETLONG ((uae_u32 *)real_bplpt[4]); real_bplpt[4] += 4;
-	case 4: b4 = GETLONG ((uae_u32 *)real_bplpt[3]); real_bplpt[3] += 4;
-	case 3: b5 = GETLONG ((uae_u32 *)real_bplpt[2]); real_bplpt[2] += 4;
-	case 2: b6 = GETLONG ((uae_u32 *)real_bplpt[1]); real_bplpt[1] += 4;
-	case 1: b7 = GETLONG ((uae_u32 *)real_bplpt[0]); real_bplpt[0] += 4;
+	case 6: b2 = GETLONG (real_bplpt[5]); real_bplpt[5] += 4;
+	case 5: b3 = GETLONG (real_bplpt[4]); real_bplpt[4] += 4;
+	case 4: b4 = GETLONG (real_bplpt[3]); real_bplpt[3] += 4;
+	case 3: b5 = GETLONG (real_bplpt[2]); real_bplpt[2] += 4;
+	case 2: b6 = GETLONG (real_bplpt[1]); real_bplpt[1] += 4;
+	case 1: b7 = GETLONG (real_bplpt[0]); real_bplpt[0] += 4;
 	}
 
 	MERGE (b0, b1, 0x55555555, 1);
@@ -1082,15 +1082,15 @@ STATIC_INLINE void pfield_doline_1 (uae_u32 *pixels, int wordcount, int planes)
 
 /* See above for comments on inlining.  These functions should _not_
    be inlined themselves.  */
-static void pfield_doline_n1 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 1); }
-static void pfield_doline_n2 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 2); }
-static void pfield_doline_n3 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 3); }
-static void pfield_doline_n4 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 4); }
-static void pfield_doline_n5 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 5); }
-static void pfield_doline_n6 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 6); }
+static void NOINLINE pfield_doline_n1 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 1); }
+static void NOINLINE pfield_doline_n2 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 2); }
+static void NOINLINE pfield_doline_n3 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 3); }
+static void NOINLINE pfield_doline_n4 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 4); }
+static void NOINLINE pfield_doline_n5 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 5); }
+static void NOINLINE pfield_doline_n6 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 6); }
 #ifdef AGA
-static void pfield_doline_n7 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 7); }
-static void pfield_doline_n8 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 8); }
+static void NOINLINE pfield_doline_n7 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 7); }
+static void NOINLINE pfield_doline_n8 (uae_u32 *data, int count) { pfield_doline_1 (data, count, 8); }
 #endif
 
 static void pfield_doline (int lineno)
@@ -1278,7 +1278,7 @@ static void adjust_drawing_colors (int ctable, int need_full)
 	    color_match_type = color_match_full;
 	} else {
 	    memcpy (colors_for_drawing.acolors, curr_color_tables[ctable].acolors,
-	        sizeof colors_for_drawing.acolors);
+		sizeof colors_for_drawing.acolors);
 	    color_match_type = color_match_acolors;
 	}
 	drawing_color_matches = ctable;
@@ -1472,12 +1472,12 @@ STATIC_INLINE void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 	    }
 	    bplham = dp_for_drawing->ham_at_start;
 	}
-        if (plf2pri > 5 && bplplanecnt == 5 && !(currprefs.chipset_mask & CSMASK_AGA))
+	if (plf2pri > 5 && bplplanecnt == 5 && !(currprefs.chipset_mask & CSMASK_AGA))
 	    weird_bitplane_fix ();
 
 	{
 	    if (dip_for_drawing->nr_sprites) {
-	        int i;
+		int i;
 #ifdef AGA
 		if (brdsprt)
 		    clear_bitplane_border_aga ();
@@ -1564,7 +1564,7 @@ static void center_image (void)
     int prev_y_adjust = thisframe_y_adjust;
 
     if (currprefs.gfx_xcenter) {
-        int w = gfxvidinfo.width;
+	int w = gfxvidinfo.width;
 
 	if (max_diwstop - min_diwstart < w && currprefs.gfx_xcenter == 2)
 	    /* Try to center. */
@@ -1637,7 +1637,7 @@ static void init_drawing_frame (void)
     int i, maxline;
 
     if (can_use_lores > AUTO_LORES_FRAMES && 0) {
-        lores_factor = 1;
+	lores_factor = 1;
 	lores_shift = 0;
     } else {
 	can_use_lores++;
@@ -1707,7 +1707,9 @@ static int td_pos = (TD_RIGHT|TD_BOTTOM);
 
 #define NUMBERS_NUM 14
 
-static char *numbers = { /* ugly */
+#define TD_BORDER 0x333
+
+static char *numbers = { /* ugly  0123456789CHD% */
 "+++++++--++++-+++++++++++++++++-++++++++++++++++++++++++++++++++++++++++++++-++++++-++++----++---+"
 "+xxxxx+--+xx+-+xxxxx++xxxxx++x+-+x++xxxxx++xxxxx++xxxxx++xxxxx++xxxxx++xxxx+-+x++x+-+xxx++-+xx+-+x"
 "+x+++x+--++x+-+++++x++++++x++x+++x++x++++++x++++++++++x++x+++x++x+++x++x++++-+x++x+-+x++x+--+x++x+"
@@ -1746,7 +1748,7 @@ static void write_tdnumber (int x, int y, int num)
 {
     int j;
     uae_u8 *numptr;
-    
+
     numptr = numbers + num * TD_NUM_WIDTH + NUMBERS_NUM * TD_NUM_WIDTH * y;
     for (j = 0; j < TD_NUM_WIDTH; j++) {
 	if (*numptr == 'x')
@@ -1760,21 +1762,20 @@ static void write_tdnumber (int x, int y, int num)
 static void draw_status_line (int line)
 {
     int x_start, y, j, led;
-    
+
     if (td_pos & TD_RIGHT)
-        x_start = gfxvidinfo.width - TD_PADX - NUM_LEDS * TD_WIDTH;
+	x_start = gfxvidinfo.width - TD_PADX - NUM_LEDS * TD_WIDTH;
     else
-        x_start = TD_PADX;
+	x_start = TD_PADX;
 
     y = line - (gfxvidinfo.height - TD_TOTAL_HEIGHT);
     xlinebuffer = gfxvidinfo.linemem;
     if (xlinebuffer == 0)
 	xlinebuffer = row_map[line];
 
-    memset (xlinebuffer, 0, gfxvidinfo.width * gfxvidinfo.pixbytes);
-
     for (led = 0; led < NUM_LEDS; led++) {
-	int side, pos, num1 = -1, num2 = -1, num3 = -1, num4 = -1, x, off_rgb, on_rgb, c, on = 0;
+	int side, pos, num1 = -1, num2 = -1, num3 = -1, num4 = -1;
+	int x, off_rgb, on_rgb, c, on = 0, am = 2;
 	if (led >= 1 && led <= 4) {
 	    int pled = led - 1;
 	    int track = gui_data.drive_track[pled];
@@ -1785,8 +1786,8 @@ static void draw_status_line (int line)
 		num1 = -1;
 		num2 = track / 10;
 		num3 = track % 10;
-	        on = gui_data.drive_motor[pled];
-	        if (gui_data.drive_writing[pled])
+		on = gui_data.drive_motor[pled];
+		if (gui_data.drive_writing[pled])
 		    on_rgb = 0xc00;
 	    }
 	    side = gui_data.drive_side;
@@ -1819,6 +1820,9 @@ static void draw_status_line (int line)
 	    num1 = fps / 100;
 	    num2 = (fps - num1 * 100) / 10;
 	    num3 = fps % 10;
+	    am = 3;
+	    if (num1 == 0)
+		am = 2;
 	} else if (led == 8) {
 	    int idle = (gui_data.idle + 5) / 10;
 	    pos = 0;
@@ -1828,26 +1832,34 @@ static void draw_status_line (int line)
 	    num2 = (idle - num1 * 100) / 10;
 	    num3 = idle % 10;
 	    num4 = 13;
+	    am = 4;
+	    if (num1 == 0)
+		am = 3;
 	}
 
 	c = xcolors[on ? on_rgb : off_rgb];
+	if (y == 0 || y == TD_TOTAL_HEIGHT - 1)
+	    c = xcolors[TD_BORDER];
 
 	x = x_start + pos * TD_WIDTH;
-	for (j = 0; j < TD_LED_WIDTH; j++) 
+	putpixel (x - 1, xcolors[TD_BORDER]);
+	for (j = 0; j < TD_LED_WIDTH; j++)
 	    putpixel (x + j, c);
+	putpixel (x + j, xcolors[TD_BORDER]);
 
 	if (y >= TD_PADY && y - TD_PADY < TD_NUM_HEIGHT) {
 	    if (num3 >= 0) {
-		int tn = num1 > 0 ? 3 : 2;
-		int offs = (TD_LED_WIDTH - tn * TD_NUM_WIDTH) / 2;
+		x += (TD_LED_WIDTH - am * TD_NUM_WIDTH) / 2;
 		if (num1 > 0) {
-		    write_tdnumber (x + offs, y - TD_PADY, num1);
-		    offs += TD_NUM_WIDTH;
+		    write_tdnumber (x, y - TD_PADY, num1);
+		    x += TD_NUM_WIDTH;
 		}
-	        write_tdnumber (x + offs, y - TD_PADY, num2);
-		write_tdnumber (x + offs + TD_NUM_WIDTH, y - TD_PADY, num3);
+		write_tdnumber (x, y - TD_PADY, num2);
+		x += TD_NUM_WIDTH;
+		write_tdnumber (x, y - TD_PADY, num3);
+		x += TD_NUM_WIDTH;
 		if (num4 > 0)
-		    write_tdnumber (x + offs + 2 * TD_NUM_WIDTH, y - TD_PADY, num4);
+		    write_tdnumber (x, y - TD_PADY, num4);
 	    }
 	}
     }
@@ -1879,7 +1891,7 @@ void finish_drawing_frame (void)
 	    break;
 
 	where = amiga2aspect_line_map[i1];
-	if (where >= gfxvidinfo.height - (currprefs.leds_on_screen ? TD_TOTAL_HEIGHT : 0))
+	if (where >= gfxvidinfo.height)
 	    break;
 	if (where == -1)
 	    continue;

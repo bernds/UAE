@@ -1,8 +1,8 @@
  /*
   * UAE - The Un*x Amiga Emulator
-  * 
+  *
   * Generic thread support doesn't exist.
-  * 
+  *
   * Copyright 1997 Bernd Schmidt
   */
 

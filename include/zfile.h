@@ -7,7 +7,6 @@
   */
 
 struct zfile;
-extern int is_zlib;
 
 typedef int (*zfile_callback)(struct zfile*, void*);
 
@@ -29,6 +28,7 @@ extern int zfile_gettype (struct zfile *z);
 extern int zfile_zopen (const char *name, zfile_callback zc, void *user);
 extern char *zfile_getname (struct zfile *f);
 extern uae_u32 zfile_crc32 (struct zfile *f);
+extern struct zfile *zfile_dup (struct zfile *f);
 
 #define ZFILE_UNKNOWN 0
 #define ZFILE_CONFIGURATION 1

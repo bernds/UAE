@@ -31,6 +31,7 @@
 #include "keyboard.h"
 #include "custom.h"
 #include "dxwrap.h"
+#include "akiko.h"
 
 #ifdef WINDDK
 #include <winioctl.h>
@@ -45,6 +46,11 @@
 #define DID_JOYSTICK 2
 #define DID_KEYBOARD 3
 
+#define DIDC_DX 1
+#define DIDC_RAW 2
+#define DIDC_WIN 3
+#define DIDC_CAT 4
+
 struct didata {
     int type;
     int disabled;
@@ -55,9 +61,11 @@ struct didata {
     char *name;
     char *sortname;
 
+    int connection;
     LPDIRECTINPUTDEVICE8 lpdi;
     HANDLE rawinput;
     int wininput;
+    int catweasel;
 
     int axles;
     int buttons;
@@ -80,7 +88,7 @@ static int num_mouse, num_keyboard, num_joystick;
 static int dd_inited, mouse_inited, keyboard_inited, joystick_inited;
 static int stopoutput;
 static HANDLE kbhandle = INVALID_HANDLE_VALUE;
-static int oldleds, oldusedleds, newleds, usbledmode, oldusbleds;
+static int oldleds, oldusedleds, newleds, oldusbleds;
 static int normalmouse, supermouse, rawmouse, winmouse, winmousenumber, winmousemode;
 static int normalkb, superkb, rawkb;
 
@@ -150,6 +158,79 @@ static int register_rawinput (void)
     return 1;
 }
 
+static void cleardid(struct didata *did)
+{
+    int i;
+    memset (did, 0, sizeof (*did));
+    for (i = 0; i < MAX_MAPPINGS; i++) {
+	did->axismappings[i] = -1;
+	did->buttonmappings[i] = -1;
+    }
+}
+
+static int initialize_catweasel(void)
+{
+    int j, i;
+    char tmp[MAX_DPATH];
+    struct didata *did;
+
+    if (catweasel_ismouse()) {
+	for (i = 0; i < 2 && num_mouse < MAX_INPUT_DEVICES; i++) {
+	    did = di_mouse;
+	    did += num_mouse;
+	    cleardid(did);
+	    did->connection = DIDC_CAT;
+	    did->catweasel = i;
+	    did->name = my_strdup ("Catweasel mouse");
+	    did->sortname = my_strdup (tmp);
+	    did->buttons = 3;
+	    did->axles = 2;
+	    did->axistype[0] = 1;
+	    did->axissort[0] = 0;
+	    did->axisname[0] = my_strdup ("X-Axis");
+	    did->axistype[1] = 1;
+	    did->axissort[1] = 1;
+	    did->axisname[1] = my_strdup ("Y-Axis");
+	    for (j = 0; j < did->buttons; j++) {
+		did->buttonsort[j] = j;
+		sprintf (tmp, "Button %d", j + 1);
+		did->buttonname[j] = my_strdup (tmp);
+	    }
+	    did->priority = -1;
+	    num_mouse++;
+	}
+    }
+    if (catweasel_isjoystick()) {
+	for (i = 0; i < 2 && num_joystick < MAX_INPUT_DEVICES; i++) {
+	    did = di_joystick;
+	    did += num_joystick;
+	    cleardid(did);
+	    did->connection = DIDC_CAT;
+	    did->catweasel = i;
+	    sprintf (tmp, "Catweasel joystick");
+	    did->name = my_strdup (tmp);
+	    did->sortname = my_strdup (tmp);
+	    did->buttons = (catweasel_isjoystick() & 0x80) ? 3 : 1;
+	    did->axles = 2;
+	    did->axistype[0] = 1;
+	    did->axissort[0] = 0;
+	    did->axisname[0] = my_strdup ("X-Axis");
+	    did->axistype[1] = 1;
+	    did->axissort[1] = 1;
+	    did->axisname[1] = my_strdup ("Y-Axis");
+	    for (j = 0; j < did->buttons; j++) {
+		did->buttonsort[j] = j;
+		sprintf (tmp, "Button %d", j + 1);
+		did->buttonname[j] = my_strdup (tmp);
+	    }
+	    did->priority = -1;
+	    num_joystick++;
+	}
+    }
+    return 1;
+}
+
+
 #define RDP_MOUSE "\\??\\Root#RDP_MOU#"
 
 static int initialize_rawinput (void)
@@ -195,8 +276,8 @@ static int initialize_rawinput (void)
     for (i = 0; i < gotnum; i++) {
 	int type = ridl[i].dwType;
 	HANDLE h = ridl[i].hDevice;
-        vtmp = bufsize;
-        pGetRawInputDeviceInfo (h, RIDI_DEVICENAME, buf, &vtmp);
+	vtmp = bufsize;
+	pGetRawInputDeviceInfo (h, RIDI_DEVICENAME, buf, &vtmp);
 
 	if (!memcmp (RDP_MOUSE, buf, strlen (RDP_MOUSE)))
 	    continue;
@@ -241,14 +322,11 @@ static int initialize_rawinput (void)
 	    }
 
 	    rnum_raw++;
-	    memset (did, 0, sizeof (*did));
-	    for (j = 0; j < MAX_MAPPINGS; j++) {
-		did->axismappings[j] = -1;
-		did->buttonmappings[j] = -1;
-	    }
+	    cleardid(did);
 	    sprintf (tmp, "%s", type == RIM_TYPEMOUSE ? "RAW Mouse" : "RAW Keyboard");
 	    did->name = my_strdup (tmp);
 	    did->rawinput = h;
+	    did->connection = DIDC_RAW;
 
 	    write_log ("%p %s: ", h, type == RIM_TYPEMOUSE ? "mouse" : "keyboard");
 	    did->sortname = my_strdup (buf);
@@ -309,10 +387,11 @@ static void initialize_windowsmouse (void)
 
     did += num_mouse;
     for (i = 0; i < 2; i++) {
-        if (num_mouse >= MAX_INPUT_DEVICES)
+	if (num_mouse >= MAX_INPUT_DEVICES)
 	    return;
 	num_mouse++;
 	name = (i == 0) ? "Windows mouse" : "Mousehack mouse";
+	did->connection = DIDC_WIN;
 	did->name = my_strdup (i ? "Mousehack mouse" : "Windows mouse");
 	did->sortname = my_strdup (i ? "Windowsmouse2" : "Windowsmouse1");
 	did->buttons = GetSystemMetrics (SM_CMOUSEBUTTONS);
@@ -352,7 +431,7 @@ static void handle_rawinput_2 (RAWINPUT *raw)
 
     if (raw->header.dwType == RIM_TYPEMOUSE) {
 	PRAWMOUSE rm = &raw->data.mouse;
-        
+	
 	for (num = 0; num < num_mouse; num++) {
 	    did = &di_mouse[num];
 	    if (!did->disabled && did->rawinput == raw->header.hDevice)
@@ -383,13 +462,13 @@ static void handle_rawinput_2 (RAWINPUT *raw)
 		    for (i = 5; i < did->buttons; i++)
 			setmousebuttonstate (num, i, (rm->ulRawButtons & (1 << i)) ? 1 : 0);
 		}
-	        if (did->buttons >= 3 && (rm->usButtonFlags & RI_MOUSE_MIDDLE_BUTTON_DOWN)) {
+		if (did->buttons >= 3 && (rm->usButtonFlags & RI_MOUSE_MIDDLE_BUTTON_DOWN)) {
 		    if (currprefs.win32_middle_mouse) {
-		        if (isfullscreen ())
+			if (isfullscreen ())
 			    minimizewindow ();
 			if (mouseactive)
 			    setmouseactive(0);
-	    	    }
+		    }
 		}
 	    }
 	    if (rm->usButtonFlags & RI_MOUSE_WHEEL)
@@ -520,7 +599,7 @@ static void sortobjects (struct didata *did, int *mappings, int *sort, char **na
     char *tmpc;
 
     for (i = 0; i < num; i++) {
-        for (j = i + 1; j < num; j++) {
+	for (j = i + 1; j < num; j++) {
 	    if (sort[i] > sort[j]) {
 		tmpi = mappings[i]; mappings[i] = mappings[j]; mappings[j] = tmpi;
 		tmpi = sort[i]; sort[i] = sort[j]; sort[j] = tmpi;
@@ -656,9 +735,9 @@ static BOOL CALLBACK di_enumcallback (LPCDIDEVICEINSTANCE lpddi, LPVOID *dd)
 
 #ifdef DI_DEBUG
     write_log ("GUID=%08.8X-%04.8X-%04.8X-%02.2X%02.2X%02.2X%02.2X%02.2X%02.2X%02.2X%02.2X:\n",
-        lpddi->guidInstance.Data1, lpddi->guidInstance.Data2, lpddi->guidInstance.Data3,
-        lpddi->guidInstance.Data4[0], lpddi->guidInstance.Data4[1], lpddi->guidInstance.Data4[2], lpddi->guidInstance.Data4[3],
-        lpddi->guidInstance.Data4[4], lpddi->guidInstance.Data4[5], lpddi->guidInstance.Data4[6], lpddi->guidInstance.Data4[7]);
+	lpddi->guidInstance.Data1, lpddi->guidInstance.Data2, lpddi->guidInstance.Data3,
+	lpddi->guidInstance.Data4[0], lpddi->guidInstance.Data4[1], lpddi->guidInstance.Data4[2], lpddi->guidInstance.Data4[3],
+	lpddi->guidInstance.Data4[4], lpddi->guidInstance.Data4[5], lpddi->guidInstance.Data4[6], lpddi->guidInstance.Data4[7]);
     write_log ("'%s' '%s' %08.8X [%s]\n", lpddi->tszProductName, lpddi->tszInstanceName, lpddi->dwDevType, typetxt);
 #endif
 
@@ -682,14 +761,20 @@ static BOOL CALLBACK di_enumcallback (LPCDIDEVICEINSTANCE lpddi, LPVOID *dd)
 
     memset (did, 0, sizeof (*did));
     for (i = 0; i < MAX_MAPPINGS; i++) {
-        did->axismappings[i] = -1;
-        did->buttonmappings[i] = -1;
+	did->axismappings[i] = -1;
+	did->buttonmappings[i] = -1;
     }
-    len = strlen (lpddi->tszInstanceName) + 3 + 1;
-    did->name = malloc (len);
-    strcpy (did->name, lpddi->tszInstanceName);
+    if (lpddi->tszInstanceName) {
+	len = strlen (lpddi->tszInstanceName) + 5 + 1;
+	did->name = malloc (len);
+	strcpy (did->name, lpddi->tszInstanceName);
+    } else {
+	did->name = malloc (100);
+	sprintf(did->name, "[no name]");
+    }
     did->guid = lpddi->guidInstance;
     did->sortname = my_strdup (did->name);
+    did->connection = DIDC_DX;
 
     if (!memcmp (&did->guid, &GUID_SysKeyboard, sizeof (GUID)) || !memcmp (&did->guid, &GUID_SysMouse, sizeof (GUID))) {
 	did->priority = 2;
@@ -713,14 +798,19 @@ static int di_do_init (void)
 
     hr = DirectInput8Create (hInst, DIRECTINPUT_VERSION, &IID_IDirectInput8A, (LPVOID *)&g_lpdi, NULL); 
     if (FAILED(hr)) {
-	gui_message ("Failed to initialize DirectInput!");
 	write_log ("DirectInput8Create failed, %s\n", DXError (hr));
+	gui_message ("Failed to initialize DirectInput!");
 	return 0;
     }
-
+    write_log("DirectInput enumeration..\n");
     IDirectInput8_EnumDevices (g_lpdi, DI8DEVCLASS_ALL, di_enumcallback, 0, DIEDFL_ATTACHEDONLY);
-    initialize_rawinput ();
-    initialize_windowsmouse ();
+    write_log("RawInput enumeration..\n");
+    initialize_rawinput();
+    write_log("Windowsmouse initialization..\n");
+    initialize_windowsmouse();
+    write_log("Catweasel joymouse initialization..\n");
+    initialize_catweasel();
+    write_log("end\n");
 
     sortdd (di_joystick, num_joystick, DID_JOYSTICK);
     sortdd (di_mouse, num_mouse, DID_MOUSE);
@@ -818,7 +908,7 @@ static int init_mouse (void)
     mouse_inited = 1;
     for (i = 0; i < num_mouse; i++) {
 	did = &di_mouse[i];
-	if (!did->disabled && !did->rawinput && !did->wininput) {
+	if (!did->disabled && did->connection == DIDC_DX) {
 	    hr = IDirectInput8_CreateDevice (g_lpdi, &did->guid, &lpdi, NULL);
 	    if (hr == DI_OK) {
 		hr = IDirectInputDevice8_SetDataFormat(lpdi, &c_dfDIMouse); 
@@ -858,7 +948,7 @@ static int acquire_mouse (int num, int flags)
     HRESULT hr;
 
     unacquire (lpdi, "mouse");
-    if (lpdi) {
+    if (did->connection == DIDC_DX && lpdi) {
 	setcoop (lpdi, flags ? (DISCL_FOREGROUND | DISCL_EXCLUSIVE) : (DISCL_BACKGROUND | DISCL_NONEXCLUSIVE), "mouse");
 	dipdw.diph.dwSize = sizeof(DIPROPDWORD);
 	dipdw.diph.dwHeaderSize = sizeof(DIPROPHEADER);
@@ -916,7 +1006,21 @@ static void read_mouse (void)
     for (i = 0; i < MAX_INPUT_DEVICES; i++) {
 	struct didata *did = &di_mouse[i];
 	LPDIRECTINPUTDEVICE8 lpdi = did->lpdi;
-	if (!lpdi)
+	if (!did->acquired)
+	    continue;
+	if (did->connection == DIDC_CAT) {
+	    int cx, cy, cbuttons;
+	    catweasel_read_mouse(did->catweasel, &cx, &cy, &cbuttons);
+	    if (cx)
+		setmousestate(i, 0, cx, 0);
+	    if (cy)
+		setmousestate(i, 1, cy, 0);
+	    setmousebuttonstate(i, 0, cbuttons & 8);
+	    setmousebuttonstate(i, 1, cbuttons & 4);
+	    setmousebuttonstate(i, 2, cbuttons & 2);
+	    continue;
+	}
+	if (!lpdi || did->connection != DIDC_DX)
 	    continue;
 	elements = DI_BUFFER;
 	hr = IDirectInputDevice8_GetDeviceData (lpdi, sizeof (DIDEVICEOBJECTDATA), didod, &elements, 0);
@@ -964,7 +1068,7 @@ static void read_mouse (void)
 	} else if (did->acquired &&  hr == DIERR_NOTACQUIRED) {
 	    acquire (lpdi, "mouse");
 	}
-        IDirectInputDevice8_Poll (lpdi);
+	IDirectInputDevice8_Poll (lpdi);
     }
 }
 
@@ -1015,15 +1119,15 @@ static uae_u32 get_leds (void)
 
     GetKeyboardState (ledkeystate);
     if (ledkeystate[VK_NUMLOCK] & 1)
-        led |= KBLED_NUMLOCK;
+	led |= KBLED_NUMLOCK;
     if (ledkeystate[VK_CAPITAL] & 1)
-        led |= KBLED_CAPSLOCK;
+	led |= KBLED_CAPSLOCK;
     if (ledkeystate[VK_SCROLL] & 1)
-        led |= KBLED_SCROLLLOCK;
+	led |= KBLED_SCROLLLOCK;
 
-    if (usbledmode && os_winnt) {
+    if (currprefs.win32_kbledmode && os_winnt) {
 	oldusbleds = led;
-    } else if (!usbledmode && os_winnt && kbhandle != INVALID_HANDLE_VALUE) {
+    } else if (!currprefs.win32_kbledmode && os_winnt && kbhandle != INVALID_HANDLE_VALUE) {
 #ifdef WINDDK
 	KEYBOARD_INDICATOR_PARAMETERS InputBuffer;
 	KEYBOARD_INDICATOR_PARAMETERS OutputBuffer;
@@ -1046,7 +1150,7 @@ static uae_u32 get_leds (void)
 
 static void set_leds (uae_u32 led)
 {
-    if (os_winnt && usbledmode) {
+    if (os_winnt && currprefs.win32_kbledmode) {
 	if((oldusbleds & KBLED_NUMLOCK) != (led & KBLED_NUMLOCK)) {
 	    keybd_event (VK_NUMLOCK, 0, KEYEVENTF_EXTENDEDKEY, 0);
 	    keybd_event (VK_NUMLOCK, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0);
@@ -1067,8 +1171,8 @@ static void set_leds (uae_u32 led)
 	ULONG ReturnedLength;
 
 	memset (&InputBuffer, 0, sizeof (InputBuffer));
-   	if (led & KBLED_NUMLOCK)
-   	    InputBuffer.LedFlags |= KEYBOARD_NUM_LOCK_ON;
+	if (led & KBLED_NUMLOCK)
+	    InputBuffer.LedFlags |= KEYBOARD_NUM_LOCK_ON;
 	if (led & KBLED_CAPSLOCK)
 	    InputBuffer.LedFlags |= KEYBOARD_CAPS_LOCK_ON;
 	if (led & KBLED_SCROLLLOCK)
@@ -1129,8 +1233,8 @@ static int init_kb (void)
     oldusedleds = -1;
     keyboard_inited = 1;
     for (i = 0; i < num_keyboard; i++) {
-        struct didata *did = &di_keyboard[i];
-	if (!did->disabled && !did->rawinput && !did->wininput) {
+	struct didata *did = &di_keyboard[i];
+	if (!did->disabled && did->connection == DIDC_DX) {
 	    hr = IDirectInput8_CreateDevice (g_lpdi, &did->guid, &lpdi, NULL);
 	    if (hr == DI_OK) {
 		hr = IDirectInputDevice8_SetDataFormat(lpdi, &c_dfDIKeyboard); 
@@ -1145,7 +1249,7 @@ static int init_kb (void)
 		hr = IDirectInputDevice8_SetProperty (lpdi, DIPROP_BUFFERSIZE, &dipdw.diph);
 		if (hr != DI_OK)
 		    write_log ("keyboard setpropertry failed, %s\n", DXError (hr));
-	        IDirectInputDevice8_EnumObjects (lpdi, EnumObjectsCallback, (void*)did, DIDFT_ALL);
+		IDirectInputDevice8_EnumObjects (lpdi, EnumObjectsCallback, (void*)did, DIDFT_ALL);
 		sortobjects (did, did->axismappings, did->axissort, did->axisname, did->axistype, did->axles);
 		sortobjects (did, did->buttonmappings, did->buttonsort, did->buttonname, 0, did->buttons);
 		did->lpdi = lpdi;
@@ -1175,7 +1279,7 @@ static void close_kb (void)
     di_free ();
 }
 
-#define MAX_KEYCODES 256
+#define	MAX_KEYCODES 256
 static uae_u8 di_keycodes[MAX_INPUT_DEVICES][MAX_KEYCODES];
 static uae_u32 kb_do_refresh;
 
@@ -1212,6 +1316,8 @@ static int refresh_kb (LPDIRECTINPUTDEVICE8 lpdi, int num)
     hr = IDirectInputDevice8_GetDeviceState (lpdi, sizeof (kc), kc);
     if (hr == DI_OK) {
 	for (i = 0; i < sizeof (kc); i++) {
+	    if (i == 0x80) /* USB KB led causes this, better ignore it */
+		continue;
 	    if (kc[i] & 0x80) kc[i] = 1; else kc[i] = 0;
 	    if (kc[i] != di_keycodes[num][i]) {
 		write_log ("%02.2X -> %d\n", i, kc[i]);
@@ -1262,38 +1368,38 @@ static int keyhack (int scancode,int pressed, int num)
     if (scancode == DIK_BACKSLASH) // The # key
     {
 	if (di_keycodes[num][DIK_LSHIFT] || di_keycodes[num][DIK_RSHIFT] || apostrophstate)
-        {   
-            if (pressed)
-            {   apostrophstate=1;
-                inputdevice_translatekeycode (num, DIK_RSHIFT, 0);
-                inputdevice_translatekeycode (num, DIK_LSHIFT, 0);
-                return 13;           // the german ' key
-            }
-            else
-            {
-                //best is add a real keystatecheck here but it still work so
-                apostrophstate = 0;
-                inputdevice_translatekeycode (num, DIK_LALT,0);
-                inputdevice_translatekeycode (num, DIK_LSHIFT,0);
-                inputdevice_translatekeycode (num, 4, 0);  // release also the # key
-                return 13;
-            }
+	{   
+	    if (pressed)
+	    {   apostrophstate=1;
+		inputdevice_translatekeycode (num, DIK_RSHIFT, 0);
+		inputdevice_translatekeycode (num, DIK_LSHIFT, 0);
+		return 13;           // the german ' key
+	    }
+	    else
+	    {
+		//best is add a real keystatecheck here but it still work so
+		apostrophstate = 0;
+		inputdevice_translatekeycode (num, DIK_LALT,0);
+		inputdevice_translatekeycode (num, DIK_LSHIFT,0);
+		inputdevice_translatekeycode (num, 4, 0);  // release also the # key
+		return 13;
+	    }
 
-        }
-        if (pressed)
-        {
-            inputdevice_translatekeycode (num, DIK_LALT, 1);
-            inputdevice_translatekeycode (num, DIK_LSHIFT,1);
-            return 4;           // the german # key        
-        }
-            else
-        {
-            inputdevice_translatekeycode (num, DIK_LALT, 0);
-            inputdevice_translatekeycode (num, DIK_LSHIFT, 0);
-            // Here is the same not nice but do the job
-            return 4;           // the german # key        
-            
-        }    
+	}
+	if (pressed)
+	{
+	    inputdevice_translatekeycode (num, DIK_LALT, 1);
+	    inputdevice_translatekeycode (num, DIK_LSHIFT,1);
+	    return 4;           // the german # key
+	}
+	    else
+	{
+	    inputdevice_translatekeycode (num, DIK_LALT, 0);
+	    inputdevice_translatekeycode (num, DIK_LSHIFT, 0);
+	    // Here is the same not nice but do the job
+	    return 4;           // the german # key
+	    
+	}    
     }
     if ((di_keycodes[num][DIK_RALT]) || (backslashstate)) {
 	switch (scancode)
@@ -1303,7 +1409,7 @@ static int keyhack (int scancode,int pressed, int num)
 	    {   
 		backslashstate=1;
 		inputdevice_translatekeycode (num, DIK_RALT, 0);
-		return DIK_BACKSLASH;      
+		return DIK_BACKSLASH;
 	    }
 	    else
 	    {
@@ -1326,6 +1432,8 @@ static void read_kb (void)
     update_leds ();
     for (i = 0; i < MAX_INPUT_DEVICES; i++) {
 	struct didata *did = &di_keyboard[i];
+	if (!did->acquired)
+	    continue;
 	lpdi = did->lpdi;
 	if (!lpdi)
 	    continue;
@@ -1342,14 +1450,14 @@ static void read_kb (void)
 	    for (j = 0; j < elements; j++) {
 		int scancode = didod[j].dwOfs;
 		int pressed = (didod[j].dwData & 0x80) ? 1 : 0;
-	        scancode = keyhack (scancode, pressed, i);
-	        if (scancode < 0)
+		scancode = keyhack (scancode, pressed, i);
+		if (scancode < 0)
 		    continue;
 		di_keycodes[i][scancode] = pressed;
 		if (stopoutput == 0)
 		    my_kbd_handler (i, scancode, pressed);
 	    }
-        } else if (hr == DIERR_INPUTLOST) {
+	} else if (hr == DIERR_INPUTLOST) {
 	    acquire (lpdi, "keyboard");
 	    kb_do_refresh |= 1 << i;
 	} else if (did->acquired &&  hr == DIERR_NOTACQUIRED) {
@@ -1421,20 +1529,20 @@ static int acquire_kb (int num, int flags)
     unacquire (lpdi, "keyboard");
     if (currprefs.keyboard_leds_in_use) {
 #ifdef WINDDK
-	if (os_winnt && !usbledmode) {
+	if (os_winnt && !currprefs.win32_kbledmode) {
 	    if (DefineDosDevice (DDD_RAW_TARGET_PATH, "Kbd","\\Device\\KeyboardClass0")) {
 		kbhandle = CreateFile("\\\\.\\Kbd", GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
 		if (kbhandle == INVALID_HANDLE_VALUE) {
 		    write_log ("kbled: CreateFile failed, error %d\n", GetLastError());
-		    usbledmode = 1;
+		    currprefs.win32_kbledmode = 1;
 		}
 	    } else {
-		usbledmode = 1;
+		currprefs.win32_kbledmode = 1;
 		write_log ("kbled: DefineDosDevice failed, error %d\n", GetLastError());
 	    }
 	}
 #else
-	usbledmode = 1;
+	currprefs.kbledmode = 1;
 #endif
 	oldleds = get_leds ();
 	if (oldusedleds < 0) 
@@ -1450,7 +1558,7 @@ static int acquire_kb (int num, int flags)
 	    superkb++;
 	else
 	    normalkb++;
-        di_keyboard[num].acquired = 1;
+	di_keyboard[num].acquired = 1;
     }
     return di_keyboard[num].acquired > 0 ? 1 : 0;
 }
@@ -1465,13 +1573,13 @@ static void unacquire_kb (int num)
 	    superkb--;
 	else
 	    normalkb--;
-        di_keyboard[num].acquired = 0;
+	di_keyboard[num].acquired = 0;
     }
     release_keys ();
 
     if (currprefs.keyboard_leds_in_use) {
 	if (oldusedleds >= 0) {
-	    if (!usbledmode)
+	    if (!currprefs.win32_kbledmode)
 		set_leds (oldleds);
 	    oldusedleds = oldleds;
 	}
@@ -1545,13 +1653,27 @@ static void read_joystick (void)
 
     for (i = 0; i < MAX_INPUT_DEVICES; i++) {
 	struct didata *did = &di_joystick[i];
-	lpdi = did->lpdi;
-	if (!lpdi)
-	    continue;
 	if (currprefs.input_selected_setting == 0) {
 	    if (jsem_isjoy (0, &currprefs) != i && jsem_isjoy (1, &currprefs) != i)
 		continue;
 	}
+	if (!did->acquired)
+	    continue;
+	if (did->connection == DIDC_CAT) {
+	    uae_u8 cdir, cbuttons;
+	    catweasel_read_joystick(&cdir, &cbuttons);
+	    cdir >>= did->catweasel * 4;
+	    cbuttons >>= did->catweasel * 4;
+	    setjoystickstate(i, 0, !(cdir & 1) ? 1 : !(cdir & 2) ? -1 : 0, 0);
+	    setjoystickstate(i, 1, !(cdir & 4) ? 1 : !(cdir & 8) ? -1 : 0, 0);
+	    setjoybuttonstate(i, 0, cbuttons & 8);
+	    setjoybuttonstate(i, 1, cbuttons & 4);
+	    setjoybuttonstate(i, 2, cbuttons & 2);
+	    continue;
+	}
+	lpdi = did->lpdi;
+	if (!lpdi || did->connection != DIDC_DX)
+	    continue;
 	elements = DI_BUFFER;
 	hr = IDirectInputDevice8_GetDeviceData (lpdi, sizeof (DIDEVICEOBJECTDATA), didod, &elements, 0);
 	if (hr == DI_OK) {
@@ -1568,8 +1690,8 @@ static void read_joystick (void)
 			write_log ("B:NUM=%d OFF=%d NAME=%s VAL=%d STATE=%d\n",
 			    k, dimofs, did->buttonname[k], data, state);
 #endif
-		        setjoybuttonstate (i, k, state);
-		        break;
+			setjoybuttonstate (i, k, state);
+			break;
 		    }
 		}
 		for (k = 0; k < did->axles; k++) {
@@ -1587,7 +1709,7 @@ static void read_joystick (void)
 #endif
 			    setjoystickstate (i, k, data, 32768);
 			}
-		        break;
+			break;
 		    }
 		}
 	    }
@@ -1596,9 +1718,9 @@ static void read_joystick (void)
 	} else if (did->acquired &&  hr == DIERR_NOTACQUIRED) {
 	    acquire (lpdi, "joystick");
 	}
-        IDirectInputDevice8_Poll (lpdi);
+	IDirectInputDevice8_Poll (lpdi);
     }
-#ifdef CATWEASEL
+#if 0
     {
 	static uae_u8 odir, obut;
 	uae_u8 dir, dir2, but;
@@ -1611,14 +1733,14 @@ static void read_joystick (void)
 	    odir = dir;
 	    obut = but;
 	    if ((dir & 15) != (dir2 & 15)) {
-	        handle_input_event (INPUTEVENT_JOY2_HORIZ, !(dir & 1) ? 1 : !(dir & 2) ? -1 : 0, 1, 0);
-	        handle_input_event (INPUTEVENT_JOY2_VERT, !(dir & 4) ? 1 : !(dir & 8) ? -1 : 0, 1, 0);
+		handle_input_event (INPUTEVENT_JOY2_HORIZ, !(dir & 1) ? 1 : !(dir & 2) ? -1 : 0, 1, 0);
+		handle_input_event (INPUTEVENT_JOY2_VERT, !(dir & 4) ? 1 : !(dir & 8) ? -1 : 0, 1, 0);
 	    }
 	    dir >>= 4;
 	    dir2 >>= 4;
 	    if ((dir & 15) != (dir2 & 15)) {
-	        handle_input_event (INPUTEVENT_JOY1_HORIZ, !(dir & 1) ? 1 : !(dir & 2) ? -1 : 0, 1, 0);
-	        handle_input_event (INPUTEVENT_JOY1_VERT, !(dir & 4) ? 1 : !(dir & 8) ? -1 : 0, 1, 0);
+		handle_input_event (INPUTEVENT_JOY1_HORIZ, !(dir & 1) ? 1 : !(dir & 2) ? -1 : 0, 1, 0);
+		handle_input_event (INPUTEVENT_JOY1_VERT, !(dir & 4) ? 1 : !(dir & 8) ? -1 : 0, 1, 0);
 	    }
 	}
     }
@@ -1638,7 +1760,7 @@ static int init_joystick (void)
     joystick_inited = 1;
     for (i = 0; i < num_joystick; i++) {
 	did = &di_joystick[i];
-	if (!did->disabled) {
+	if (!did->disabled && did->connection == DIDC_DX) {
 	    hr = IDirectInput8_CreateDevice (g_lpdi, &did->guid, &lpdi, NULL);
 	    if (hr == DI_OK) {
 		hr = IDirectInputDevice8_SetDataFormat(lpdi, &c_dfDIJoystick);
@@ -1648,8 +1770,9 @@ static int init_joystick (void)
 		    sortobjects (did, did->axismappings, did->axissort, did->axisname, did->axistype, did->axles);
 		    sortobjects (did, did->buttonmappings, did->buttonsort, did->buttonname, 0, did->buttons);
 		}
-	    } else
+	    } else {
 		write_log ("joystick createdevice failed, %s\n", DXError (hr));
+	    }
 	}
     }
     return 1;
@@ -1677,17 +1800,21 @@ static int acquire_joystick (int num, int flags)
     HRESULT hr;
 
     unacquire (lpdi, "joystick");
-    setcoop (lpdi, flags ? (DISCL_FOREGROUND | DISCL_EXCLUSIVE) : (DISCL_BACKGROUND | DISCL_NONEXCLUSIVE), "joystick");
-    memset (&dipdw, 0, sizeof (dipdw));
-    dipdw.diph.dwSize = sizeof(DIPROPDWORD);
-    dipdw.diph.dwHeaderSize = sizeof(DIPROPHEADER);
-    dipdw.diph.dwObj = 0;
-    dipdw.diph.dwHow = DIPH_DEVICE;
-    dipdw.dwData = DI_BUFFER;
-    hr = IDirectInputDevice8_SetProperty (lpdi, DIPROP_BUFFERSIZE, &dipdw.diph);
-    if (hr != DI_OK)
+    if (di_joystick[num].connection == DIDC_DX && lpdi) {
+	setcoop (lpdi, flags ? (DISCL_FOREGROUND | DISCL_EXCLUSIVE) : (DISCL_BACKGROUND | DISCL_NONEXCLUSIVE), "joystick");
+	memset (&dipdw, 0, sizeof (dipdw));
+	dipdw.diph.dwSize = sizeof(DIPROPDWORD);
+	dipdw.diph.dwHeaderSize = sizeof(DIPROPHEADER);
+	dipdw.diph.dwObj = 0;
+	dipdw.diph.dwHow = DIPH_DEVICE;
+	dipdw.dwData = DI_BUFFER;
+	hr = IDirectInputDevice8_SetProperty (lpdi, DIPROP_BUFFERSIZE, &dipdw.diph);
+	if (hr != DI_OK)
 	write_log ("joystick setproperty failed, %s\n", DXError (hr));
-    di_joystick[num].acquired = acquire (lpdi, "joystick") ? 1 : -1;
+	di_joystick[num].acquired = acquire (lpdi, "joystick") ? 1 : -1;
+    } else {
+	di_joystick[num].acquired = 1;
+    }
     return di_joystick[num].acquired > 0 ? 1 : 0;
 }
 
@@ -1721,14 +1848,14 @@ void input_get_default_mouse (struct uae_input_device *uid)
 	port = i & 1;
 	if (di_mouse[i].wininput)
 	    port = 0;
-        uid[i].eventid[ID_AXIS_OFFSET + 0][0] = port ? INPUTEVENT_MOUSE2_HORIZ : INPUTEVENT_MOUSE1_HORIZ;
+	uid[i].eventid[ID_AXIS_OFFSET + 0][0] = port ? INPUTEVENT_MOUSE2_HORIZ : INPUTEVENT_MOUSE1_HORIZ;
 	uid[i].eventid[ID_AXIS_OFFSET + 1][0] = port ? INPUTEVENT_MOUSE2_VERT : INPUTEVENT_MOUSE1_VERT;
-        uid[i].eventid[ID_AXIS_OFFSET + 2][0] = port ? 0 : INPUTEVENT_MOUSE1_WHEEL;
+	uid[i].eventid[ID_AXIS_OFFSET + 2][0] = port ? 0 : INPUTEVENT_MOUSE1_WHEEL;
 	uid[i].eventid[ID_BUTTON_OFFSET + 0][0] = port ? INPUTEVENT_JOY2_FIRE_BUTTON : INPUTEVENT_JOY1_FIRE_BUTTON;
 	uid[i].eventid[ID_BUTTON_OFFSET + 1][0] = port ? INPUTEVENT_JOY2_2ND_BUTTON : INPUTEVENT_JOY1_2ND_BUTTON;
 	uid[i].eventid[ID_BUTTON_OFFSET + 2][0] = port ? INPUTEVENT_JOY2_3RD_BUTTON : INPUTEVENT_JOY1_3RD_BUTTON;
 	if (port == 0) { /* map back and forward to ALT+LCUR and ALT+RCUR */
-    	    uid[i].eventid[ID_BUTTON_OFFSET + 3][0] = INPUTEVENT_KEY_ALT_LEFT;
+	    uid[i].eventid[ID_BUTTON_OFFSET + 3][0] = INPUTEVENT_KEY_ALT_LEFT;
 	    uid[i].eventid[ID_BUTTON_OFFSET + 3][1] = INPUTEVENT_KEY_CURSOR_LEFT;
 	    uid[i].eventid[ID_BUTTON_OFFSET + 4][0] = INPUTEVENT_KEY_ALT_LEFT;
 	    uid[i].eventid[ID_BUTTON_OFFSET + 4][1] = INPUTEVENT_KEY_CURSOR_RIGHT;
@@ -1741,13 +1868,22 @@ void input_get_default_joystick (struct uae_input_device *uid)
 {
     int i, port;
 
-    for (i = 0; i < num_mouse; i++) {
+    for (i = 0; i < num_joystick; i++) {
 	port = i & 1;
-        uid[i].eventid[ID_AXIS_OFFSET + 0][0] = port ? INPUTEVENT_JOY2_HORIZ : INPUTEVENT_JOY1_HORIZ;
+	uid[i].eventid[ID_AXIS_OFFSET + 0][0] = port ? INPUTEVENT_JOY2_HORIZ : INPUTEVENT_JOY1_HORIZ;
 	uid[i].eventid[ID_AXIS_OFFSET + 1][0] = port ? INPUTEVENT_JOY2_VERT : INPUTEVENT_JOY1_VERT;
 	uid[i].eventid[ID_BUTTON_OFFSET + 0][0] = port ? INPUTEVENT_JOY2_FIRE_BUTTON : INPUTEVENT_JOY1_FIRE_BUTTON;
 	uid[i].eventid[ID_BUTTON_OFFSET + 1][0] = port ? INPUTEVENT_JOY2_2ND_BUTTON : INPUTEVENT_JOY1_2ND_BUTTON;
 	uid[i].eventid[ID_BUTTON_OFFSET + 2][0] = port ? INPUTEVENT_JOY2_3RD_BUTTON : INPUTEVENT_JOY1_3RD_BUTTON;
+	if (cd32_enabled) {
+	    uid[i].eventid[ID_BUTTON_OFFSET + 0][0] = port ? INPUTEVENT_JOY2_CD32_RED : INPUTEVENT_JOY1_CD32_RED;
+	    uid[i].eventid[ID_BUTTON_OFFSET + 1][0] = port ? INPUTEVENT_JOY2_CD32_BLUE : INPUTEVENT_JOY1_CD32_BLUE;
+	    uid[i].eventid[ID_BUTTON_OFFSET + 2][0] = port ? INPUTEVENT_JOY2_CD32_YELLOW : INPUTEVENT_JOY1_CD32_YELLOW;
+	    uid[i].eventid[ID_BUTTON_OFFSET + 3][0] = port ? INPUTEVENT_JOY2_CD32_GREEN : INPUTEVENT_JOY1_CD32_GREEN;
+	    uid[i].eventid[ID_BUTTON_OFFSET + 4][0] = port ? INPUTEVENT_JOY2_CD32_FFW : INPUTEVENT_JOY1_CD32_FFW;
+	    uid[i].eventid[ID_BUTTON_OFFSET + 5][0] = port ? INPUTEVENT_JOY2_CD32_RWD : INPUTEVENT_JOY1_CD32_RWD;
+	    uid[i].eventid[ID_BUTTON_OFFSET + 6][0] = port ? INPUTEVENT_JOY2_CD32_PLAY :  INPUTEVENT_JOY1_CD32_PLAY;
+	}
     }
     uid[0].enabled = 1;
 }

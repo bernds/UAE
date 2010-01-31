@@ -164,7 +164,10 @@
 #define IDS_PRI_LOW                     187
 #define IDI_FOLDER                      188
 #define IDS_OLDRTGLIBRARY               188
+#define IDS_DEFAULT_AF2005              189
 #define IDI_DISPLAY                     190
+#define IDS_DEFAULT_AF                  190
+#define IDS_DEFAULT_WINUAE              191
 #define IDI_ROOT                        192
 #define IDI_ICON2                       194
 #define IDI_MEMORY                      194
@@ -300,6 +303,7 @@
 #define IDC_THEROOTS                    1076
 #define IDC_CAPS                        1077
 #define IDC_ABIME                       1078
+#define IDC_AMIGASYS                    1079
 #define IDC_RICHEDIT1                   1091
 #define IDC_RICHEDIT2                   1092
 #define IDC_CONTRIBUTORS                1124
@@ -348,6 +352,7 @@
 #define IDC_CYCLEEXACT                  1219
 #define IDC_CS_CPU_TEXT2                1219
 #define IDC_CPUIDLE                     1220
+#define IDC_GENLOCK                     1220
 #define IDC_SOUNDSETTINGS               1229
 #define IDC_8BIT                        1230
 #define IDC_16BIT                       1231
@@ -482,6 +487,7 @@
 #define IDC_TEST16BIT                   1506
 #define IDC_MAPDRIVES                   1507
 #define IDC_CPUTEXT                     1508
+#define IDC_MAPDRIVES_NET               1508
 #define IDC_SWAP                        1509
 #define IDC_CACHETEXT                   1509
 #define IDC_SELECTRESTEXT               1510
@@ -529,6 +535,7 @@
 #define IDC_D0                          1532
 #define IDC_STATE_CAPTURE               1532
 #define IDC_D1                          1533
+#define IDC_KBLED_USB                   1533
 #define IDC_D2                          1534
 #define IDC_D3                          1535
 #define IDC_D4                          1536
@@ -698,38 +705,24 @@
 #define IDC_FILTERPRESETSAVE            1633
 #define IDC_FLOPPYSPD_TEXT              1634
 #define IDC_FILTERPRESETDELETE          1634
-#define IDC_KAILLERA                    1635
 #define IDC_HARDDRIVE                   1635
 #define IDC_INACTIVE_PRI                1635
-#define IDC_KAILLERA_CHAT               1636
 #define IDC_SOUNDPRIMARY                1636
 #define IDC_MINIMIZED_PRI               1636
-#define IDC_KAILLERA_CHAT_TEXT          1637
 #define IDC_VOLUME_BOOTPRI_TEXT         1637
-#define IDC_KAILLERA_CHAT_SEND          1638
 #define IDC_VOLUME_BOOTPRI              1638
-#define IDC_KAILLERA_LIST               1639
 #define IDC_KBLED1                      1639
-#define IDC_KAILLERAFELLOW              1640
 #define IDC_KBLED2                      1640
 #define IDC_SOUNDFILTER                 1640
-#define IDC_KAILLERAJOY                 1641
 #define IDC_KBLED3                      1641
 #define IDC_SOUNDCALIBRATE              1641
-#define IDC_KAILLERAJOYKEYBOARD         1642
-#define IDC_ACTIVEPRIORITY              1642
 #define IDC_ACTIVE_PRIORITY             1642
 #define IDC_SOUNDDRIVE                  1642
-#define IDC_KAILLERAOPTIONS             1643
 #define IDC_INACTIVE_PRIORITY           1643
-#define IDC_KAILLERASUPPRESSWARNINGS    1644
 #define IDC_ACTIVE_PRI                  1644
-#define IDC_KAILLERANONE                1645
 #define IDC_MINIMIZED_PRIORITY          1645
 #define IDC_AVIOUTPUT_FRAMELIMITER      1645
-#define IDC_KAILLERACONTROLS            1646
 #define IDC_STATE_RATE                  1646
-#define IDC_KAILLERANOFPSLIMIT          1647
 #define IDC_STATE_BUFFERSIZE            1647
 #define IDC_SOUNDDRIVESELECT            1647
 #define IDC_PANELTREE                   1647
@@ -823,6 +816,8 @@
 #define IDC_FE_INFO                     1701
 #define IDC_FE_INFO2                    1702
 #define IDC_FE_SCREENSHOT               1702
+#define IDC_PATHS_DEFAULTTYPE           1704
+#define IDC_SCSIMODE                    1705
 #define ID__FLOPPYDRIVES                40004
 #define ID_FLOPPYDRIVES_DF0             40005
 #define ID_ST_CONFIGURATION             40010
@@ -843,7 +838,7 @@
 #define _APS_3D_CONTROLS                     1
 #define _APS_NEXT_RESOURCE_VALUE        249
 #define _APS_NEXT_COMMAND_VALUE         40021
-#define _APS_NEXT_CONTROL_VALUE         1704
+#define _APS_NEXT_CONTROL_VALUE         1705
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

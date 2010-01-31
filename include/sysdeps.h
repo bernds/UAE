@@ -116,7 +116,7 @@ struct utimbuf
 
 /* sam: some definitions so that SAS/C can compile UAE */
 #if defined(__SASC) && defined(AMIGA)
-#define REGPARAM2 
+#define REGPARAM2
 #define REGPARAM
 #define S_IRUSR S_IREAD
 #define S_IWUSR S_IWRITE
@@ -295,7 +295,7 @@ extern void gettimeofday( struct timeval *tv, void *blah );
 #define FILEFLAG_SCRIPT  0x20
 #define FILEFLAG_PURE    0x40
 
-#define REGPARAM 
+#define REGPARAM
 
 #include <io.h>
 #define O_BINARY _O_BINARY
@@ -352,7 +352,7 @@ extern void posixemu_closedir (DIR *);
 
 #endif
 
-#endif /* _WIN32 */ 
+#endif /* _WIN32 */
 
 #ifdef DONT_HAVE_POSIX
 
@@ -454,13 +454,26 @@ extern void f_out (void *, const char *, ...);
 extern void gui_message (const char *,...);
 extern int gui_message_multibutton (int flags, const char *format,...);
 #define write_log_err write_log
+extern void logging_init(void);
 
 #ifndef O_BINARY
 #define O_BINARY 0
 #endif
 
 #ifndef STATIC_INLINE
+#if __GNUC__ - 1 > 1 && __GNUC_MINOR__ - 1 >= 0
+#define STATIC_INLINE static __inline__ __attribute__ ((always_inline))
+#define NOINLINE __attribute__ ((noinline))
+#define NORETURN __attribute__ ((noreturn))
+#elif _MSC_VER
+#define STATIC_INLINE static __forceinline
+#define NOINLINE __declspec(noinline)
+#define NORETURN __declspec(noreturn)
+#else
 #define STATIC_INLINE static __inline__
+#define NOINLINE
+#define NORETURN
+#endif
 #endif
 
 /* Every Amiga hardware clock cycle takes this many "virtual" cycles.  This

@@ -1107,7 +1107,7 @@ static int kc_decode (KeySym ks)
      case XK_Page_Up: return AK_RAMI;          /* PgUp mapped to right amiga */
      case XK_Page_Down: return AK_LAMI;        /* PgDn mapped to left amiga */
 #endif
-       
+
 #ifdef XK_Super_L
      case XK_Super_L: return AK_LAMI;
      case XK_Super_R: return AK_RAMI;
@@ -1140,7 +1140,7 @@ static int decode_fr (KeySym ks)
 #else
      /* not sure for this one: my X 3.3 server doesn't handle this key always
       * correctly... But anyway, on new french keyboards, no more bracket key
-      * at this place. 
+      * at this place.
       */
      case XK_dead_circumflex:
      case XK_dead_diaeresis: return AK_LBRACKET;
@@ -1421,7 +1421,7 @@ void handle_events (void)
 
     for (;;) {
 	XEvent event;
-        int buttonno;
+	int buttonno;
 #if 0
 	if (! XCheckMaskEvent (display, eventmask, &event))
 	    break;
@@ -1470,7 +1470,7 @@ void handle_events (void)
 		case 3:  buttonno = 1; break;
 		default: buttonno = -1;
 	    }
-            if (buttonno >=0)
+	    if (buttonno >=0)
 		setmousebuttonstate(0, buttonno, event.type == ButtonPress ? 1:0);
 
 	    break;
@@ -1552,11 +1552,11 @@ void handle_events (void)
 	 case Expose:
 	    refresh_necessary = 1;
 	    break;
-         case ClientMessage:
-            if (event.xclient.data.l[0]==delete_win) {
+	 case ClientMessage:
+	    if (event.xclient.data.l[0]==delete_win) {
 		uae_quit ();
-            }
-            break;
+	    }
+	    break;
 	}
     }
 
@@ -1732,7 +1732,7 @@ void DX_SetPalette_real (int start, int count)
 	}
 	return;
     }
-    
+
     while (count-- > 0) {
 	XColor col = parsed_xcolors[start];
 	col.red = picasso96_state.CLUT[start].Red * 0x0101;
@@ -1916,7 +1916,7 @@ static void handle_mousegrab (void)
 	XUngrabPointer (display, CurrentTime);
 //	XUndefineCursor (display, mywin);
 	grabbed = 0;
-        printf("Ungrabbed mouse\n");
+	printf("Ungrabbed mouse\n");
     } else if (! dgamode) {
 	XGrabPointer (display, mywin, 1, 0, GrabModeAsync, GrabModeAsync,
 		      mywin, blankCursor, CurrentTime);
@@ -1924,7 +1924,7 @@ static void handle_mousegrab (void)
 	oldy = current_height / 2;
 	XWarpPointer (display, None, mywin, 0, 0, 0, 0, oldx, oldy);
 	printf("Grabbed mouse\n");
-        grabbed = 1;       
+	grabbed = 1;
     }
 }
 
@@ -1950,7 +1950,7 @@ static void handle_interpol (void)
     else {
 	currprefs.sound_interpol = 0;
 	printf ("Interpol off\n");
-    }    
+    }
 }
 
 static void framerate_up (void)

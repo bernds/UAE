@@ -21,7 +21,7 @@
 
 #define TRACING_ENABLED 0
 #if TRACING_ENABLED
-#define TRACE(x)	do { write_log x; } while(0)
+#define TRACE(x) do { write_log x; } while(0)
 #else
 #define TRACE(x)
 #endif
@@ -86,23 +86,28 @@ static int write_uaefsdb (const char *dir, uae_u8 *fsdb)
 {
     char *p;
     HANDLE h;
-    DWORD written, attr = INVALID_FILE_ATTRIBUTES;
+    DWORD written, dirflag, dirattr;
+    DWORD attr = INVALID_FILE_ATTRIBUTES;
     FILETIME t1, t2, t3;
     int time_valid = FALSE;
     int ret = 0;
     
     p = make_uaefsdbpath (dir, NULL);
+    dirattr = GetFileAttributes (dir);
+    dirflag = FILE_ATTRIBUTE_NORMAL;
+    if (dirattr != INVALID_FILE_ATTRIBUTES && (dirattr & FILE_ATTRIBUTE_DIRECTORY))
+	dirflag = FILE_FLAG_BACKUP_SEMANTICS; /* argh... */
     h = CreateFile (dir, GENERIC_READ, 0,
-        NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	NULL, OPEN_EXISTING, dirflag, NULL);
     if (h != INVALID_HANDLE_VALUE) {    
 	if (GetFileTime (h, &t1, &t2, &t3))
 	    time_valid = TRUE;
 	CloseHandle (h);
     }
     h = CreateFile (p, GENERIC_WRITE, 0,
-        NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE && GetLastError () == ERROR_ACCESS_DENIED) {
-	attr = GetFileAttributes (p);
+        attr = GetFileAttributes (p);
 	if (attr != INVALID_FILE_ATTRIBUTES) {
 	    if (attr & (FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_HIDDEN)) {
 		SetFileAttributes (p, attr & ~(FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_HIDDEN));
@@ -125,7 +130,7 @@ end:
 	SetFileAttributes (p, attr);
     if (time_valid) {
 	h = CreateFile (dir, GENERIC_WRITE, 0,
-	    NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	    NULL, OPEN_EXISTING, dirflag, NULL);
 	if (h != INVALID_HANDLE_VALUE) {	
 	    SetFileTime (h, &t1, &t2, &t3);
 	    CloseHandle (h);
@@ -183,11 +188,11 @@ int fsdb_name_invalid (const char *n)
     int l = strlen (n), ll;
 
     if (a >= 'a' && a <= 'z')
-        a -= 32;
+	a -= 32;
     if (b >= 'a' && b <= 'z')
-        b -= 32;
+	b -= 32;
     if (c >= 'a' && c <= 'z')
-        c -= 32;
+	c -= 32;
 
     /* reserved dos devices */
     ll = 0;
@@ -208,8 +213,8 @@ int fsdb_name_invalid (const char *n)
 
     /* these characters are *never* allowed */
     for (i = 0; i < NUM_EVILCHARS; i++) {
-        if (strchr (n, evilchars[i]) != 0)
-            return 1;
+	if (strchr (n, evilchars[i]) != 0)
+	    return 1;
     }
 
     /* the reserved fsdb filename */
@@ -349,13 +354,13 @@ char *fsdb_create_unique_nname (a_inode *base, const char *suggestion)
 	
     /* replace the evil ones... */
     for (i=0; i < NUM_EVILCHARS; i++)
-        while ((c = strchr (tmp, evilchars[i])) != 0)
-            *c = '_';
+	while ((c = strchr (tmp, evilchars[i])) != 0)
+	    *c = '_';
 
     while ((c = strchr (tmp, '.')) != 0)
-        *c = '_';
+	*c = '_';
     while ((c = strchr (tmp, ' ')) != 0)
-        *c = '_';
+	*c = '_';
 
     for (;;) {
 	char *p = build_nname (base->nname, tmp);
@@ -658,15 +663,15 @@ int my_truncate (const char *name, long int len)
     if ((hFile = CreateFile (name, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
 	OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL ) ) != INVALID_HANDLE_VALUE )
     {
-        if (SetFilePointer (hFile, len, NULL, FILE_BEGIN) == (DWORD)len) {
-            if (SetEndOfFile (hFile) == TRUE)
-                result = 0;
-        } else {
-            write_log ("truncate: SetFilePointer() failure for %s to posn %d\n", name, len);
-        }
-        CloseHandle( hFile );
+	if (SetFilePointer (hFile, len, NULL, FILE_BEGIN) == (DWORD)len) {
+	    if (SetEndOfFile (hFile) == TRUE)
+		result = 0;
+	} else {
+	    write_log ("truncate: SetFilePointer() failure for %s to posn %d\n", name, len);
+	}
+	CloseHandle( hFile );
     } else {
-        write_log ("truncate: CreateFile() failed to open %s\n", name);
+	write_log ("truncate: CreateFile() failed to open %s\n", name);
     }
     return result;
 }
@@ -708,8 +713,8 @@ int dos_errno (void)
 	return ERROR_SEEK_ERROR;
 
      default:
-        write_log ("Unimplemented error %d\n", e);
-        return ERROR_NOT_IMPLEMENTED;
+	write_log ("Unimplemented error %d\n", e);
+	return ERROR_NOT_IMPLEMENTED;
     }
 }
 

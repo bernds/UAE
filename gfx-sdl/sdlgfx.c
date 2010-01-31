@@ -278,15 +278,15 @@ static int get_display_depth (void)
     DEBUG_LOG ("Function: get_display_depth()\n");
 
     if ((vid_info = SDL_GetVideoInfo())) {
-        depth = vid_info->vfmt->BitsPerPixel;
+	depth = vid_info->vfmt->BitsPerPixel;
 
 	/* Don't trust the answer if it's 16 bits; the display
 	 * could actually be 15 bits deep. We'll count the bits
 	 * ourselves */
 	if (depth == 16)
 	    depth = bitsInMask (vid_info->vfmt->Rmask) +
-	            bitsInMask (vid_info->vfmt->Gmask) +
-	            bitsInMask (vid_info->vfmt->Bmask);
+		    bitsInMask (vid_info->vfmt->Gmask) +
+		    bitsInMask (vid_info->vfmt->Bmask);
 
 	    DEBUG_LOG ("Display is %d bits deep\n", depth);
     }
@@ -312,8 +312,8 @@ static int find_best_mode (int *width, int *height, int depth)
 	 * a standard resolution which best matches it.
 	 * Note: this should rarely be necessary.
 	 */
-        int i;
-        DEBUG_LOG ("Requested mode not available\n");
+	int i;
+	DEBUG_LOG ("Requested mode not available\n");
 
 	for (i = 0; i < MAX_SCREEN_MODES && !found; i++) {
 	    if (x_size_table[i] < *width || y_size_table[i] < *height)
@@ -424,13 +424,13 @@ int graphics_init (void)
     bitdepth       = get_display_depth();
 
     if (find_best_mode (&current_width, &current_height, bitdepth)) {
-        gfxvidinfo.width  = current_width;
-        gfxvidinfo.height = current_height;
+	gfxvidinfo.width  = current_width;
+	gfxvidinfo.height = current_height;
 
 	if (graphics_subinit ()) {
 	    if (init_colors ()) {
 		int i;
-        	for (i = 0; i < 256; i++)
+		for (i = 0; i < 256; i++)
 		    keystate[i] = 0;
 
 		success = 1;
@@ -844,10 +844,10 @@ void handle_events (void)
 			record_key ((iAmigaKeyCode << 1) | 1);
 		    }
 		}
-	        break;
+		break;
 
 	    case SDL_MOUSEBUTTONDOWN:
-            case SDL_MOUSEBUTTONUP:
+	    case SDL_MOUSEBUTTONUP:
 		if (rEvent.type == SDL_MOUSEBUTTONDOWN)
 		    DEBUG_LOG ("Event: mouse button down\n");
 		else
@@ -1016,7 +1016,7 @@ void DX_SetPalette (int start, int count)
 	    int g = picasso96_state.CLUT[start].Green;
 	    int b = picasso96_state.CLUT[start].Blue;
 	    picasso_vidinfo.clut[start++] =
-	    			 (doMask256 (r, red_bits, red_shift)
+				 (doMask256 (r, red_bits, red_shift)
 				| doMask256 (g, green_bits, green_shift)
 				| doMask256 (b, blue_bits, blue_shift));
 	}
@@ -1094,7 +1094,7 @@ int DX_FillResolutions (uae_u16 *ppixel_format)
 		DisplayModes[count].depth = j == 1 ? 1 : bit_unit >> 3;
 		DisplayModes[count].refresh = 75;
 
- 		DEBUG_LOG ("Picasso resolution %d x %d @ %d allowed\n",
+		DEBUG_LOG ("Picasso resolution %d x %d @ %d allowed\n",
 			DisplayModes[count].res.width,
 			DisplayModes[count].res.height,
 			DisplayModes[count].depth);
@@ -1205,7 +1205,7 @@ static void togglefullscreen (void)
 	 * hard way. Close down the window/screen and open a new one */
 	graphics_subshutdown ();
 	graphics_subinit ();
-        if (!screen_is_picasso)
+	if (!screen_is_picasso)
 	  reset_drawing();
 	notice_screen_contents_lost ();
     }
@@ -1217,10 +1217,10 @@ static void handle_mousegrab (void)
     if (SDL_WM_GrabInput (SDL_GRAB_QUERY) == SDL_GRAB_OFF) {
 	SDL_WM_GrabInput (SDL_GRAB_ON);
 	SDL_WarpMouse (0, 0);
-        mousegrab = 1;
+	mousegrab = 1;
     } else {
 	SDL_WM_GrabInput (SDL_GRAB_OFF);
-        mousegrab = 0;
+	mousegrab = 0;
     }
 }
 

@@ -13,9 +13,10 @@ extern void a1000_reset (void);
 extern int special_mem;
 #define S_READ 1
 #define S_WRITE 2
+#endif
+
 extern void *cache_alloc (int);
 extern void cache_free (void*);
-#endif
 
 #ifdef ADDRESS_SPACE_24BIT
 #define MEMORY_BANKS 256
@@ -115,9 +116,9 @@ extern uae_u8 *baseaddr[MEMORY_BANKS];
 #define put_mem_bank(addr, b, realstart) do { \
     (mem_banks[bankindex(addr)] = (b)); \
     if ((b)->baseaddr) \
-        baseaddr[bankindex(addr)] = (b)->baseaddr - (realstart); \
+	baseaddr[bankindex(addr)] = (b)->baseaddr - (realstart); \
     else \
-        baseaddr[bankindex(addr)] = (uae_u8*)(((long)b)+1); \
+	baseaddr[bankindex(addr)] = (uae_u8*)(((long)b)+1); \
 } while (0)
 
 extern void memory_init (void);
@@ -243,6 +244,7 @@ extern void clearexec (void);
 extern void mapkick (void);
 extern int read_kickstart (struct zfile *f, uae_u8 *mem, int size, int dochecksum, int *cloanto_rom);
 extern void decode_cloanto_rom_do (uae_u8 *mem, int size, int real_size, uae_u8 *key, int keysize);
+extern void init_shm(void);
 
 #define ROMTYPE_KICK 1
 #define ROMTYPE_KICKCD32 2
@@ -254,7 +256,9 @@ extern void decode_cloanto_rom_do (uae_u8 *mem, int size, int real_size, uae_u8 
 
 struct romdata {
     char *name;
-    int version, revision;
+    int ver, rev;
+    int subver, subrev;
+    char *model;
     uae_u32 crc32;
     uae_u32 size;
     int id;
@@ -263,11 +267,17 @@ struct romdata {
     int type;
 };
 
+struct romlist {
+    char *path;
+    struct romdata *rd;
+};
+
 extern struct romdata *getromdatabycrc (uae_u32 crc32);
 extern struct romdata *getromdatabydata (uae_u8 *rom, int size);
 extern struct romdata *getromdatabyid (int id);
 extern struct romdata *getromdatabyzfile (struct zfile *f);
 extern struct romdata *getarcadiarombyname (char *name);
+extern struct romlist **getrombyident(int ver, int rev, int subver, int subrev, char *model, int all);
 extern void getromname (struct romdata*, char*);
 extern struct romdata *getromdatabyname (char*);
 extern void romlist_add (char *path, struct romdata *rd);
@@ -275,4 +285,5 @@ extern char *romlist_get (struct romdata *rd);
 extern void romlist_clear (void);
 
 extern uae_u8 *load_keyfile (struct uae_prefs *p, char *path, int *size);
+extern uae_u8 *target_load_keyfile (struct uae_prefs *p, char *path, int *size);
 extern void free_keyfile (uae_u8 *key);

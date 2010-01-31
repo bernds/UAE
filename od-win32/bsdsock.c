@@ -12,6 +12,8 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 
+#if defined(BSDSOCKET)
+
 #include <winsock.h>
 #include <stddef.h>
 #include <process.h>
@@ -34,20 +36,20 @@
 #include "mmsystem.h"
 #include "win32.h"
 
-
-
 static HWND hSockWnd;
-static long FAR PASCAL SocketWindowProc( HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam );
+static LRESULT CALLBACK SocketWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 
 extern HWND hAmigaWnd;
-int hWndSelector = 0; /* Set this to zero to get hSockWnd */
-CRITICAL_SECTION csSigQueueLock;
+static int hWndSelector = 0; /* Set this to zero to get hSockWnd */
+static CRITICAL_SECTION csSigQueueLock;
 
-DWORD threadid;
+static DWORD threadid;
 #ifdef __GNUC__
 #define THREAD(func,arg) CreateThread(NULL,0,(LPTHREAD_START_ROUTINE)func,(LPVOID)arg,0,&threadid)
+#define THREADEND()
 #else
-#define THREAD(func,arg) _beginthreadex( NULL, 0, func, (void *)arg, 0, (unsigned *)&threadid )
+#define THREAD(func,arg) (HANDLE)_beginthreadex(NULL, 0, func, arg, 0, &threadid)
+#define THREADEND(result) _endthreadex(result)
 #endif
 
 #define SETERRNO seterrno(sb,WSAGetLastError()-WSABASEERR)
@@ -57,32 +59,51 @@ DWORD threadid;
 #define SETSIGNAL addtosigqueue(sb,0)
 #define CANCELSIGNAL cancelsig(sb)
 
-#define FIOSETOWN _IOW('f', 124, long)    /* set owner (struct Task *) */
-#define FIOGETOWN _IOR('f', 123, long)    /* get owner (struct Task *) */
+#define FIOSETOWN _IOW('f', 124, long)   /* set owner (struct Task *) */
+#define FIOGETOWN _IOR('f', 123, long)   /* get owner (struct Task *) */
 
 #define BEGINBLOCKING if (sb->ftable[sd-1] & SF_BLOCKING) sb->ftable[sd-1] |= SF_BLOCKINGINPROGRESS
 #define ENDBLOCKING sb->ftable[sd-1] &= ~SF_BLOCKINGINPROGRESS
 
 static WSADATA wsbData;
 
-int PASCAL WSAEventSelect(SOCKET,HANDLE,long);
+static int PASCAL WSAEventSelect(SOCKET,HANDLE,long);
 
 #define MAX_SELECT_THREADS 64
 static HANDLE hThreads[MAX_SELECT_THREADS];
-uae_u32 *threadargs[MAX_SELECT_THREADS];
+static struct threadargsw *threadargsw[MAX_SELECT_THREADS];
 static HANDLE hEvents[MAX_SELECT_THREADS];
 
 #define MAX_GET_THREADS 64
 static HANDLE hGetThreads[MAX_GET_THREADS];
-uae_u32 *threadGetargs[MAX_GET_THREADS];
-static HANDLE hGetEvents[MAX_GET_THREADS];
 
+struct threadargs {
+    struct socketbase *sb;
+    uae_u32 args1;
+    uae_u32 args2;
+    int args3;
+    long args4;
+    char *args5;
+};
+
+struct threadargsw {
+	struct socketbase *sb;
+	uae_u32 nfds;
+	uae_u32 readfds;
+	uae_u32 writefds;
+	uae_u32 exceptfds;
+	uae_u32 timeout;
+};
+
+static struct threadargs *threadGetargs[MAX_GET_THREADS];
+static int threadGetargs_inuse[MAX_GET_THREADS];
+static HANDLE hGetEvents[MAX_GET_THREADS];
 
 static HANDLE hSockThread;
 static HANDLE hSockReq, hSockReqHandled;
 static unsigned int __stdcall sock_thread(void *);
 
-CRITICAL_SECTION SockThreadCS;
+static CRITICAL_SECTION SockThreadCS;
 #define PREPARE_THREAD EnterCriticalSection( &SockThreadCS )
 #define TRIGGER_THREAD { SetEvent( hSockReq ); WaitForSingleObject( hSockReqHandled, INFINITE ); LeaveCriticalSection( &SockThreadCS ); }
 
@@ -94,7 +115,7 @@ CRITICAL_SECTION SockThreadCS;
 #define SF_RAW_RUDP 0x08000000
 #define SF_RAW_RICMP 0x04000000
 
-typedef struct ip_option_information {
+typedef	struct ip_option_information {
     u_char Ttl;		/* Time To Live (used for traceroute) */
     u_char Tos; 	/* Type Of Service (usually 0) */
     u_char Flags; 	/* IP header flags (usually 0) */
@@ -120,38 +141,39 @@ static int mySockStartup( void )
 	    
 	    if( lasterror == WSAVERNOTSUPPORTED )
 	    {
-		char szMessage[ MAX_DPATH ];
-		WIN32GUI_LoadUIString( IDS_WSOCK2NEEDED, szMessage, MAX_DPATH );
-                gui_message( szMessage );
+			char szMessage[ MAX_DPATH ];
+			WIN32GUI_LoadUIString( IDS_WSOCK2NEEDED, szMessage, MAX_DPATH );
+					gui_message( szMessage );
 	    }
 	    else
-                write_log( "BSDSOCK: ERROR - Unable to initialize Windows socket layer! Error code: %d\n", lasterror );
+			write_log( "BSDSOCK: ERROR - Unable to initialize Windows socket layer! Error code: %d\n", lasterror );
 	    return 0;
     }
 
     if (LOBYTE (wsbData.wVersion) != SOCKVER_MAJOR || HIBYTE (wsbData.wVersion) != SOCKVER_MINOR )
     {
-	char szMessage[ MAX_DPATH ];
-	WIN32GUI_LoadUIString( IDS_WSOCK2NEEDED, szMessage, MAX_DPATH );
-        gui_message( szMessage );
+		char szMessage[ MAX_DPATH ];
+		WIN32GUI_LoadUIString( IDS_WSOCK2NEEDED, szMessage, MAX_DPATH );
+		gui_message( szMessage );
 
-        return 0;
+		return 0;
     }
     else
     {
-        write_log( "BSDSOCK: using %s\n", wsbData.szDescription );
-	// make sure WSP/NSPStartup gets called from within the regular stack
-	// (Windows 95/98 need this)
-	if( ( dummy = socket( AF_INET,SOCK_STREAM,IPPROTO_TCP ) ) != INVALID_SOCKET ) 
-	{
-	    closesocket( dummy );
-	    result = 1;
-	}
-	else
-	{
-	    write_log( "BSDSOCK: ERROR - WSPStartup/NSPStartup failed! Error code: %d\n",WSAGetLastError() );
-	    result = 0;
-	}
+	write_log( "BSDSOCK: using %s\n", wsbData.szDescription );
+		// make sure WSP/NSPStartup gets called from within the regular stack
+		// (Windows 95/98 need this)
+		if((dummy = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP)) != INVALID_SOCKET) 
+		{
+			closesocket(dummy);
+			result = 1;
+		}
+		else
+		{
+			write_log( "BSDSOCK: ERROR - WSPStartup/NSPStartup failed! Error code: %d\n",
+				WSAGetLastError() );
+			result = 0;
+		}
     }
 
     return result;
@@ -166,44 +188,43 @@ int init_socket_layer(void)
 #ifndef CAN_DO_STACK_MAGIC
     currprefs.socket_emu = 0;
 #endif
-    if( currprefs.socket_emu )
+    if(currprefs.socket_emu)
     {
-	if( ( result = mySockStartup() ) )
-	{
-		InitializeCriticalSection(&csSigQueueLock);
+		if((result = mySockStartup()))
+		{
+			InitializeCriticalSection(&csSigQueueLock);
 
-	    if( hSockThread == NULL )
-	    {
-	    WNDCLASS wc;    // Set up an invisible window and dummy wndproc
-		
-		InitializeCriticalSection( &SockThreadCS );
-		hSockReq = CreateEvent( NULL, FALSE, FALSE, NULL );
-		hSockReqHandled = CreateEvent( NULL, FALSE, FALSE, NULL );
-
-		wc.style = CS_BYTEALIGNCLIENT | CS_BYTEALIGNWINDOW;
-		wc.lpfnWndProc = SocketWindowProc;
-		wc.cbClsExtra = 0;
-		wc.cbWndExtra = 0;
-		wc.hInstance = 0;
-		wc.hIcon = LoadIcon (GetModuleHandle (NULL), MAKEINTRESOURCE (IDI_APPICON));
-		wc.hCursor = LoadCursor (NULL, IDC_ARROW);
-		wc.hbrBackground = GetStockObject (BLACK_BRUSH);
-		wc.lpszMenuName = 0;
-		wc.lpszClassName = "SocketFun";
-		if( RegisterClass (&wc) )
+			if(hSockThread == NULL)
 			{
-			hSockWnd = CreateWindowEx ( 0,
-				    "SocketFun", "WinUAE Socket Window",
-				    WS_POPUP,
-				    0, 0,
-				    1, 1, 
-				    NULL, NULL, 0, NULL);
-			hSockThread = (void *)THREAD(sock_thread,NULL);
-			}
-	    }
-	}
-    }
+				WNDCLASS wc;    // Set up an invisible window and dummy wndproc
+				
+				InitializeCriticalSection( &SockThreadCS );
+				hSockReq = CreateEvent( NULL, FALSE, FALSE, NULL );
+				hSockReqHandled = CreateEvent( NULL, FALSE, FALSE, NULL );
 
+				wc.style = CS_BYTEALIGNCLIENT | CS_BYTEALIGNWINDOW;
+				wc.lpfnWndProc = SocketWindowProc;
+				wc.cbClsExtra = 0;
+				wc.cbWndExtra = 0;
+				wc.hInstance = 0;
+				wc.hIcon = LoadIcon (GetModuleHandle (NULL), MAKEINTRESOURCE (IDI_APPICON));
+				wc.hCursor = LoadCursor (NULL, IDC_ARROW);
+				wc.hbrBackground = GetStockObject (BLACK_BRUSH);
+				wc.lpszMenuName = 0;
+				wc.lpszClassName = "SocketFun";
+				if(RegisterClass(&wc))
+				{
+					hSockWnd = CreateWindowEx ( 0,
+							"SocketFun", "WinUAE Socket Window",
+							WS_POPUP,
+							0, 0,
+							1, 1, 
+							NULL, NULL, 0, NULL);
+					hSockThread = THREAD(sock_thread, NULL);
+				}
+			}
+		}
+    }
     socket_layer_initialized = result;
 
     return result;
@@ -212,29 +233,30 @@ int init_socket_layer(void)
 void deinit_socket_layer(void)
 {
     int i;
-    if( currprefs.socket_emu )
+    if(currprefs.socket_emu)
     {
-	WSACleanup();
-	if( socket_layer_initialized )
-	{
-	    DeleteCriticalSection( &csSigQueueLock );
-	    if( hSockThread )
-	    {
-		DeleteCriticalSection( &SockThreadCS );
-		CloseHandle( hSockReq );
-		hSockReq = NULL;
-		CloseHandle( hSockReqHandled );
-		WaitForSingleObject( hSockThread, INFINITE );
-		CloseHandle( hSockThread );
-	    }
-	    for (i = 0; i < MAX_SELECT_THREADS; i++)
-	    {
-		if (hThreads[i])
+		WSACleanup();
+		if(socket_layer_initialized)
 		{
-		    CloseHandle( hThreads[i] );
+			DeleteCriticalSection(&csSigQueueLock);
+			if(hSockThread)
+			{
+				DeleteCriticalSection(&SockThreadCS);
+				CloseHandle(hSockReq);
+				hSockReq = NULL;
+				CloseHandle(hSockReqHandled);
+				WaitForSingleObject(hSockThread, INFINITE);
+				CloseHandle(hSockThread);
+			}
+			for (i = 0; i < MAX_SELECT_THREADS; i++)
+			{
+				if (hThreads[i])
+				{
+					CloseHandle(hThreads[i]);
+					hThreads[i] = NULL;
+				}
+			}
 		}
-	    }
-	}
     }
 }
 
@@ -265,32 +287,34 @@ void unlocksigqueue(void)
 
 // Blocking sockets with asynchronous event notification are currently not safe to use.
 
-struct socketbase *asyncsb[MAXPENDINGASYNC];
-SOCKET asyncsock[MAXPENDINGASYNC];
-uae_u32 asyncsd[MAXPENDINGASYNC];
-int asyncindex;
+static struct socketbase *asyncsb[MAXPENDINGASYNC];
+static SOCKET asyncsock[MAXPENDINGASYNC];
+static uae_u32 asyncsd[MAXPENDINGASYNC];
+static int asyncindex;
 
 int host_sbinit(SB)
 {
 	sb->sockAbort = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
 	
-	if (sb->sockAbort == INVALID_SOCKET) return 0;
-	if ((sb->hEvent = CreateEvent(NULL,FALSE,FALSE,NULL)) == NULL) return 0;
+	if (sb->sockAbort == INVALID_SOCKET)
+		return 0;
+	if ((sb->hEvent = CreateEvent(NULL,FALSE,FALSE,NULL)) == NULL)
+		return 0;
 
 	sb->mtable = calloc(sb->dtablesize,sizeof(*sb->mtable));
 	
 	return 1;
 }
 
-void host_closesocketquick(int s)
+void host_closesocketquick(SOCKET s)
 {
 	BOOL true = 1;
 
 	if( s )
 	{
-	    setsockopt((SOCKET)s,SOL_SOCKET,SO_DONTLINGER,(char *)&true,sizeof(true));
+	    setsockopt(s,SOL_SOCKET,SO_DONTLINGER,(char *)&true,sizeof(true));
 	    shutdown(s,1);
-	    closesocket((SOCKET)s);
+	    closesocket(s);
 	}
 }
 
@@ -304,12 +328,12 @@ void host_sbcleanup(SB)
 	
 	for (i = sb->dtablesize; i--; )
 	{
-		if (sb->dtable[i] != (int)INVALID_SOCKET) host_closesocketquick(sb->dtable[i]);
+		if (sb->dtable[i] != INVALID_SOCKET) host_closesocketquick(sb->dtable[i]);
 		
 		if (sb->mtable[i]) asyncsb[(sb->mtable[i]-0xb000)/2] = NULL;
 	}
 
-        shutdown(sb->sockAbort,1);
+	shutdown(sb->sockAbort,1);
 	closesocket(sb->sockAbort);
 
 	free(sb->mtable);
@@ -320,10 +344,10 @@ void host_sbreset(void)
 	memset(asyncsb,0,sizeof asyncsb);
 	memset(asyncsock,0,sizeof asyncsock);
 	memset(asyncsd,0,sizeof asyncsd);
-	memset(threadargs,0,sizeof threadargs);
+	memset(threadargsw,0,sizeof threadargsw);
 }
 
-void sockmsg(unsigned int msg, unsigned long wParam, unsigned long lParam)
+void sockmsg(unsigned int msg, WPARAM wParam, LPARAM lParam)
 {
 	SB;
 	unsigned int index;
@@ -393,7 +417,7 @@ void sockmsg(unsigned int msg, unsigned long wParam, unsigned long lParam)
 	unlocksigqueue();
 }
 
-static unsigned int allocasyncmsg(SB,uae_u32 sd,SOCKET s)
+static unsigned	int allocasyncmsg(SB,uae_u32 sd,SOCKET s)
 {
 	int i;
 	locksigqueue();
@@ -445,16 +469,16 @@ static void cancelasyncmsg(unsigned int wMsg)
 }
 
 void sockabort(SB)
-{	
+{
     locksigqueue();
 
     unlocksigqueue();
 }
 
 void setWSAAsyncSelect(SB, uae_u32 sd, SOCKET s, long lEvent )
-	{
+{
 	if (sb->mtable[sd-1])
-		{
+	{
 		long wsbevents = 0;
 		long eventflags;
 		int i;
@@ -477,9 +501,8 @@ void setWSAAsyncSelect(SB, uae_u32 sd, SOCKET s, long lEvent )
 		WSAAsyncSelect(s,hWndSelector ? hAmigaWnd : hSockWnd,sb->mtable[sd-1],wsbevents);
 
 		unlocksigqueue();
-		}
 	}
-
+}
 
 // address cleaning
 static void prephostaddr(SOCKADDR_IN *addr)
@@ -498,7 +521,7 @@ static void prepamigaaddr(struct sockaddr *realpt, int len)
 
 
 int host_dup2socket(SB, int fd1, int fd2)
-	{
+{
     SOCKET s1,s2;
 
     TRACE(("dup2socket(%d,%d) -> ",fd1,fd2));
@@ -506,36 +529,36 @@ int host_dup2socket(SB, int fd1, int fd2)
 
     s1 = getsock(sb, fd1);
     if (s1 != INVALID_SOCKET)
-		{
+	{
 		if (fd2 != -1)
-			{
+		{
 		    if ((unsigned int) (fd2) >= (unsigned int) sb->dtablesize) 
-				{
+			{
 				TRACE (("Bad file descriptor (%d)\n", fd2));
 				seterrno (sb, 9);	/* EBADF */
-				}
+			}
 			fd2++;
 			s2 = getsock(sb,fd2);
 			if (s2 != INVALID_SOCKET)
-				{
-	            shutdown(s2,1);
+			{
+		    shutdown(s2,1);
 			    closesocket(s2);
-				}
+			}
 			setsd(sb,fd2,s1);
 		    TRACE(("0\n"));
 			return 0;
-			}
+		}
 		else
-			{
+		{
 			fd2 = getsd(sb, 1);
 			setsd(sb,fd2,s1);
 		    TRACE(("%d\n",fd2));
 			return (fd2 - 1);
-			}
 		}
-    TRACE(("-1\n"));
-	return -1;
 	}
+    TRACE(("-1\n"));
+    return -1;
+}
 
 int host_socket(SB, int af, int type, int protocol)
 {
@@ -547,36 +570,36 @@ int host_socket(SB, int af, int type, int protocol)
 
     if ((s = socket(af,type,protocol)) == INVALID_SOCKET)
     {
-	SETERRNO;
-	TRACE(("failed (%d)\n",sb->sb_errno));
-	return -1;
+		SETERRNO;
+		TRACE(("failed (%d)\n",sb->sb_errno));
+		return -1;
     }
     else
-        sd = getsd(sb,(int)s);
+	sd = getsd(sb,(int)s);
 
-  	sb->ftable[sd-1] = SF_BLOCKING;
+	sb->ftable[sd-1] = SF_BLOCKING;
     ioctlsocket(s,FIONBIO,&nonblocking);
     TRACE(("%d\n",sd));
 
 	if (type == SOCK_RAW)
-		{
+	{
 		if (protocol==IPPROTO_UDP)
-			{
-	 		sb->ftable[sd-1] |= SF_RAW_UDP;
-			}
+		{
+			sb->ftable[sd-1] |= SF_RAW_UDP;
+		}
 		if (protocol==IPPROTO_ICMP)
-			{
+		{
 			struct sockaddr_in sin;
 
 			sin.sin_family = AF_INET;
 			sin.sin_addr.s_addr = INADDR_ANY;
 			bind(s,(struct sockaddr *)&sin,sizeof(sin)) ;
-			}
- 		if (protocol==IPPROTO_RAW)
-			{
-	 		sb->ftable[sd-1] |= SF_RAW_RAW;
-			}
 		}
+		if (protocol==IPPROTO_RAW)
+		{
+			sb->ftable[sd-1] |= SF_RAW_RAW;
+		}
+	}
 	return sd-1;
 }
 
@@ -592,23 +615,23 @@ uae_u32 host_bind(SB, uae_u32 sd, uae_u32 name, uae_u32 namelen)
 
     if (s != INVALID_SOCKET)
     {
-	if (namelen <= sizeof buf)
-	{
-	    memcpy(buf,get_real_address(name),namelen);
-	    
-	    // some Amiga programs set this field to bogus values
-	    prephostaddr((SOCKADDR_IN *)buf);
+		if (namelen <= sizeof buf)
+		{
+			memcpy(buf,get_real_address(name),namelen);
+		    
+			// some Amiga programs set this field to bogus values
+			prephostaddr((SOCKADDR_IN *)buf);
 
-	    if ((success = bind(s,(struct sockaddr *)buf,namelen)) != 0)
-	    {
-		SETERRNO;
-		TRACE(("failed (%d)\n",sb->sb_errno));
-	    }
-	    else
-                TRACE(("OK\n"));
-	}
-	else
-            write_log("BSDSOCK: ERROR - Excessive namelen (%d) in bind()!\n",namelen);
+			if ((success = bind(s,(struct sockaddr *)buf,namelen)) != 0)
+			{
+				SETERRNO;
+				TRACE(("failed (%d)\n",sb->sb_errno));
+			}
+			else
+				TRACE(("OK\n"));
+		}
+		else
+			write_log("BSDSOCK: ERROR - Excessive namelen (%d) in bind()!\n",namelen);
     }
 
     return success;
@@ -618,29 +641,28 @@ uae_u32 host_listen(SB, uae_u32 sd, uae_u32 backlog)
 {
     SOCKET s;
     uae_u32 success = -1;
-	
+
 	sd++;
     TRACE(("listen(%d,%d) -> ",sd,backlog));
     s = getsock(sb, sd);
 
     if (s != INVALID_SOCKET)
     {
-	if ((success = listen(s,backlog)) != 0)
-	{
-	    SETERRNO;
-	    TRACE(("failed (%d)\n",sb->sb_errno));
-	}
-	else 
-            TRACE(("OK\n"));
+		if ((success = listen(s,backlog)) != 0)
+		{
+			SETERRNO;
+			TRACE(("failed (%d)\n",sb->sb_errno));
+		}
+		else 
+			TRACE(("OK\n"));
     }
-		    
     return success;
 }
 
 void host_accept(SB, uae_u32 sd, uae_u32 name, uae_u32 namelen)
 {
     struct sockaddr *rp_name,*rp_nameuae;
-	struct sockaddr sockaddr;
+    struct sockaddr sockaddr;
     int hlen,hlenuae=0;
     SOCKET s, s2;
     int success = 0;
@@ -648,114 +670,115 @@ void host_accept(SB, uae_u32 sd, uae_u32 name, uae_u32 namelen)
     
     sd++;
 	if (name != 0 )
-		{
+	{
 		rp_nameuae = rp_name = (struct sockaddr *)get_real_address(name);
 	    hlenuae = hlen = get_long(namelen);
 		if (hlenuae < sizeof(sockaddr))
-			{ // Fix for CNET BBS Windows must have 16 Bytes (sizeof(sockaddr)) otherwise Error WSAEFAULT
+		{ // Fix for CNET BBS Windows must have 16 Bytes (sizeof(sockaddr)) otherwise Error WSAEFAULT
 			rp_name = &sockaddr; 
 			hlen = sizeof(sockaddr);
-			}
 		}
+	}
 	else
-		{
+	{
 		rp_name = &sockaddr; 
 		hlen = sizeof(sockaddr);
-		}
+	}
     TRACE(("accept(%d,%d,%d) -> ",sd,name,hlenuae));
 
     s = (SOCKET)getsock(sb,(int)sd);
     
     if (s != INVALID_SOCKET)
     {
-	BEGINBLOCKING;
-	
-	s2 = accept(s,rp_name,&hlen);
+		BEGINBLOCKING;
+		
+		s2 = accept(s,rp_name,&hlen);
 
-	if (s2 == INVALID_SOCKET)
-	{
-	    SETERRNO;
-
-	    if (sb->ftable[sd-1] & SF_BLOCKING && sb->sb_errno == WSAEWOULDBLOCK-WSABASEERR)
-	    {
-		if (sb->mtable[sd-1] || (wMsg = allocasyncmsg(sb,sd,s)) != 0)
+		if (s2 == INVALID_SOCKET)
 		{
-			if (sb->mtable[sd-1] == 0)
-				{
-			    WSAAsyncSelect(s,hWndSelector ? hAmigaWnd : hSockWnd,wMsg,FD_ACCEPT);
-				}
-			else
-				{
-				setWSAAsyncSelect(sb,sd,s,FD_ACCEPT);
-				}
-
-		    WAITSIGNAL;
-
-			if (sb->mtable[sd-1] == 0)
-				{
-				cancelasyncmsg(wMsg);
-				}
-			else
-				{
-				setWSAAsyncSelect(sb,sd,s,0);
-				}
-		    
-		    if (sb->eintr)
-		    {
-			TRACE(("[interrupted]\n"));
-			ENDBLOCKING;
-			return;
-		    }
-
-		    s2 = accept(s,rp_name,&hlen);
-
-		    if (s2 == INVALID_SOCKET)
-		    {
 			SETERRNO;
 
-			if (sb->sb_errno == WSAEWOULDBLOCK-WSABASEERR) write_log("BSDSOCK: ERRRO - accept() would block despite FD_ACCEPT message\n");
-		    }
-		}
-	    }
-	}
-			
-	if (s2 == INVALID_SOCKET)
-	{
-	    sb->resultval = -1;
-	    TRACE(("failed (%d)\n",sb->sb_errno));
-	}
-	else
-	{
-	    sb->resultval = getsd(sb, s2);
-	    sb->ftable[sb->resultval-1] = sb->ftable[sd-1];	// new socket inherits the old socket's properties
-		sb->resultval--;
-	    if (rp_name != 0)
-			{ // 1.11.2002 XXX
-			if (hlen <= hlenuae)
-				{ // Fix for CNET BBS Part 2
-				prepamigaaddr(rp_name,hlen);
-				if (namelen != 0)
+			if (sb->ftable[sd-1] & SF_BLOCKING && sb->sb_errno == WSAEWOULDBLOCK-WSABASEERR)
+			{
+				if (sb->mtable[sd-1] || (wMsg = allocasyncmsg(sb,sd,s)) != 0)
+				{
+					if (sb->mtable[sd-1] == 0)
 					{
-					put_long(namelen,hlen);
+						WSAAsyncSelect(s,hWndSelector ? hAmigaWnd : hSockWnd,wMsg,FD_ACCEPT);
 					}
-				}
-			else
-				{ // Copy only the number of bytes requested
-				if (hlenuae != 0)
-					{	
-					prepamigaaddr(rp_name,hlenuae);
-					memcpy(rp_nameuae,rp_name,hlenuae);
-					put_long(namelen,hlenuae);
+					else
+					{
+						setWSAAsyncSelect(sb,sd,s,FD_ACCEPT);
+					}
+
+					WAITSIGNAL;
+
+					if (sb->mtable[sd-1] == 0)
+					{
+						cancelasyncmsg(wMsg);
+					}
+					else
+					{
+						setWSAAsyncSelect(sb,sd,s,0);
+					}
+				    
+					if (sb->eintr)
+					{
+						TRACE(("[interrupted]\n"));
+						ENDBLOCKING;
+						return;
+					}
+
+					s2 = accept(s,rp_name,&hlen);
+
+					if (s2 == INVALID_SOCKET)
+					{
+						SETERRNO;
+
+						if (sb->sb_errno == WSAEWOULDBLOCK-WSABASEERR)
+							write_log("BSDSOCK: ERRRO - accept() would block despite FD_ACCEPT message\n");
 					}
 				}
 			}
-	    TRACE(("%d/%d\n",sb->resultval,hlen));
+		}
+				
+		if (s2 == INVALID_SOCKET)
+		{
+			sb->resultval = -1;
+			TRACE(("failed (%d)\n",sb->sb_errno));
+		}
+		else
+		{
+			sb->resultval = getsd(sb, s2);
+			sb->ftable[sb->resultval-1] = sb->ftable[sd-1];	// new socket inherits the old socket's properties
+			sb->resultval--;
+			if (rp_name != 0)
+			{ // 1.11.2002 XXX
+				if (hlen <= hlenuae)
+				{ // Fix for CNET BBS Part 2
+					prepamigaaddr(rp_name,hlen);
+					if (namelen != 0)
+					{
+						put_long(namelen,hlen);
+					}
+				}
+				else
+				{ // Copy only the number of bytes requested
+					if (hlenuae != 0)
+					{	
+						prepamigaaddr(rp_name,hlenuae);
+						memcpy(rp_nameuae,rp_name,hlenuae);
+						put_long(namelen,hlenuae);
+					}
+				}
+			}
+			TRACE(("%d/%d\n",sb->resultval,hlen));
+		}
+
+		ENDBLOCKING;
 	}
 
-	ENDBLOCKING;
-    }
-
-	}
+}
 
 typedef enum
 {
@@ -771,35 +794,35 @@ struct threadsock_packet
     threadsock_e packet_type;
     union
     {
-        struct sendto_params
-        {
-            char *buf;
-            char *realpt;
-            uae_u32 sd;
-            uae_u32 msg;
-            uae_u32 len;
-            uae_u32 flags;
-            uae_u32 to;
-            uae_u32 tolen;
-        } sendto_s;
-        struct recvfrom_params
-        {
-            char *realpt;
-            uae_u32 addr;
-            uae_u32 len;
-            uae_u32 flags;
-            struct sockaddr *rp_addr;
-            int *hlen;
-        } recvfrom_s;
-        struct connect_params
-        {
-            char *buf;
-            uae_u32 namelen;
-        } connect_s;
-        struct abort_params
-        {
-            SOCKET *newsock;
-        } abort_s;
+	struct sendto_params
+	{
+	    char *buf;
+	    char *realpt;
+	    uae_u32 sd;
+	    uae_u32 msg;
+	    uae_u32 len;
+	    uae_u32 flags;
+	    uae_u32 to;
+	    uae_u32 tolen;
+	} sendto_s;
+	struct recvfrom_params
+	{
+	    char *realpt;
+	    uae_u32 addr;
+	    uae_u32 len;
+	    uae_u32 flags;
+	    struct sockaddr *rp_addr;
+	    int *hlen;
+	} recvfrom_s;
+	struct connect_params
+	{
+	    char *buf;
+	    uae_u32 namelen;
+	} connect_s;
+	struct abort_params
+	{
+	    SOCKET *newsock;
+	} abort_s;
     } params;
     SOCKET s;
     SB;
@@ -814,62 +837,61 @@ BOOL HandleStuff( void )
     {
 	// 100ms sleepiness might need some tuning...
 	//if(WaitForSingleObject( hSockReq, 100 ) == WAIT_OBJECT_0 )
-	{
-	    switch( sockreq.packet_type )
-	    {
-		case connect_req:
-    		    sockreq.sb->resultval = connect(sockreq.s,(struct sockaddr *)(sockreq.params.connect_s.buf),sockreq.params.connect_s.namelen);
-		break;
-		case sendto_req:
-		    if( sockreq.params.sendto_s.to )
-		    {
-			sockreq.sb->resultval = sendto(sockreq.s,sockreq.params.sendto_s.realpt,sockreq.params.sendto_s.len,sockreq.params.sendto_s.flags,(struct sockaddr *)(sockreq.params.sendto_s.buf),sockreq.params.sendto_s.tolen);
-		    }
-		    else
-		    {
-			sockreq.sb->resultval = send(sockreq.s,sockreq.params.sendto_s.realpt,sockreq.params.sendto_s.len,sockreq.params.sendto_s.flags);
-		    }
-		break;
-		case recvfrom_req:
-		    if( sockreq.params.recvfrom_s.addr )
-		    {
-			sockreq.sb->resultval = recvfrom( sockreq.s, sockreq.params.recvfrom_s.realpt, sockreq.params.recvfrom_s.len,
-							  sockreq.params.recvfrom_s.flags, sockreq.params.recvfrom_s.rp_addr,
-							  sockreq.params.recvfrom_s.hlen );
-
-		    }
-		    else
-		    {
-			sockreq.sb->resultval = recv( sockreq.s, sockreq.params.recvfrom_s.realpt, sockreq.params.recvfrom_s.len,
-						      sockreq.params.recvfrom_s.flags );
-		    }
-		break;
-		case abort_req:
-		    *(sockreq.params.abort_s.newsock) = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
-			if (*(sockreq.params.abort_s.newsock) != sb->sockAbort)
-				{
-				shutdown( sb->sockAbort, 1 );
-				closesocket(sb->sockAbort);
-				}
-		    handled = FALSE; /* Don't bother the SETERRNO section after the switch() */
-		break;
-		case last_req:
-		default:
-		    write_log( "BSDSOCK: Invalid sock-thread request!\n" );
-		    handled = FALSE;
-		break;
-	    }
-	    if( handled )
-	    {
-		if( sockreq.sb->resultval == SOCKET_ERROR )
 		{
-		    sb = sockreq.sb;
-			
-		    SETERRNO;
+			switch( sockreq.packet_type )
+			{
+			case connect_req:
+			sockreq.sb->resultval = connect(sockreq.s,(struct sockaddr *)(sockreq.params.connect_s.buf),sockreq.params.connect_s.namelen);
+			break;
+			case sendto_req:
+				if( sockreq.params.sendto_s.to )
+				{
+					sockreq.sb->resultval = sendto(sockreq.s,sockreq.params.sendto_s.realpt,sockreq.params.sendto_s.len,sockreq.params.sendto_s.flags,(struct sockaddr *)(sockreq.params.sendto_s.buf),sockreq.params.sendto_s.tolen);
+				}
+				else
+				{
+					sockreq.sb->resultval = send(sockreq.s,sockreq.params.sendto_s.realpt,sockreq.params.sendto_s.len,sockreq.params.sendto_s.flags);
+				}
+			break;
+			case recvfrom_req:
+				if( sockreq.params.recvfrom_s.addr )
+				{
+					sockreq.sb->resultval = recvfrom( sockreq.s, sockreq.params.recvfrom_s.realpt, sockreq.params.recvfrom_s.len,
+						sockreq.params.recvfrom_s.flags, sockreq.params.recvfrom_s.rp_addr,
+						sockreq.params.recvfrom_s.hlen );
+
+				}
+				else
+				{
+					sockreq.sb->resultval = recv( sockreq.s, sockreq.params.recvfrom_s.realpt, sockreq.params.recvfrom_s.len,
+						sockreq.params.recvfrom_s.flags );
+				}
+			break;
+			case abort_req:
+				*(sockreq.params.abort_s.newsock) = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
+				if (*(sockreq.params.abort_s.newsock) != sb->sockAbort)
+				{
+					shutdown( sb->sockAbort, 1 );
+					closesocket(sb->sockAbort);
+				}
+				handled = FALSE; /* Don't bother the SETERRNO section after the switch() */
+			break;
+			case last_req:
+			default:
+				write_log( "BSDSOCK: Invalid sock-thread request!\n" );
+				handled = FALSE;
+			break;
+			}
+			if( handled )
+			{
+				if( sockreq.sb->resultval == SOCKET_ERROR )
+				{
+					sb = sockreq.sb;
+					SETERRNO;
+				}
+			}
+			SetEvent( hSockReqHandled );
 		}
-	    }
-	    SetEvent( hSockReqHandled );
-	}
     }
     else
     {
@@ -878,15 +900,15 @@ BOOL HandleStuff( void )
     return quit;
 }
 
-static long FAR PASCAL SocketWindowProc( HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam )
+static LRESULT CALLBACK SocketWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     if( message >= 0xB000 && message < 0xB000+MAXPENDINGASYNC*2 )
     {
 #if DEBUG_SOCKETS
-        write_log( "sockmsg(0x%x, 0x%x, 0x%x)\n", message, wParam, lParam );
+	write_log( "sockmsg(0x%x, 0x%x, 0x%x)\n", message, wParam, lParam );
 #endif
-        sockmsg( message, wParam, lParam );
-        return 0;
+	sockmsg( message, wParam, lParam );
+	return 0;
     }
     return DefWindowProc( hwnd, message, wParam, lParam );
 }
@@ -896,7 +918,7 @@ static long FAR PASCAL SocketWindowProc( HWND hwnd, UINT message, WPARAM wParam,
 static unsigned int __stdcall sock_thread(void *blah)
 {
     unsigned int result = 0;
-	HANDLE WaitHandle;
+    HANDLE WaitHandle;
     MSG msg;
 
 	if( hSockWnd )
@@ -904,42 +926,40 @@ static unsigned int __stdcall sock_thread(void *blah)
 	    // Make sure we're outrunning the wolves
 	    int pri = THREAD_PRIORITY_ABOVE_NORMAL;
 	    if (!os_winnt) {
-		pri = priorities[currprefs.win32_active_priority].value;
-		if (pri == THREAD_PRIORITY_HIGHEST)
-	    	    pri = THREAD_PRIORITY_TIME_CRITICAL;
-		else
-		    pri++;
+			pri = priorities[currprefs.win32_active_priority].value;
+			if (pri == THREAD_PRIORITY_HIGHEST)
+		    pri = THREAD_PRIORITY_TIME_CRITICAL;
+			else
+				pri++;
 	    }
 	    SetThreadPriority( GetCurrentThread(), pri );
 	    
 	    while( TRUE )
 	    {
-	    if( hSockReq )
+			if( hSockReq )
 			{
-			DWORD wait;
-			WaitHandle = hSockReq;
-			wait = MsgWaitForMultipleObjects (1, &WaitHandle, FALSE,INFINITE, QS_POSTMESSAGE);
-			if (wait == WAIT_OBJECT_0)
+				DWORD wait;
+				WaitHandle = hSockReq;
+				wait = MsgWaitForMultipleObjects (1, &WaitHandle, FALSE,INFINITE, QS_POSTMESSAGE);
+				if (wait == WAIT_OBJECT_0)
 				{
-				if( HandleStuff() ) // See if its time to quit...
-					break;
+					if( HandleStuff() ) // See if its time to quit...
+						break;
 				}
-			if (wait == WAIT_OBJECT_0 +1)
+				if (wait == WAIT_OBJECT_0 +1)
 				{
-				Sleep(10);
-				while( PeekMessage( &msg, NULL, WM_USER, 0xB000+MAXPENDINGASYNC*2, PM_REMOVE ) > 0 )
+					Sleep(10);
+					while( PeekMessage( &msg, NULL, WM_USER, 0xB000+MAXPENDINGASYNC*2, PM_REMOVE ) > 0 )
 					{
-					TranslateMessage( &msg );
-					DispatchMessage( &msg );
+						TranslateMessage( &msg );
+						DispatchMessage( &msg );
 					}
 				}
 			}
 	    }
 	}
     write_log( "BSDSOCK: We have exited our sock_thread()\n" );
-#ifndef __GNUC__
-    _endthreadex( result );
-#endif
+    THREADEND(result);
     return result;
 }
 
@@ -959,82 +979,76 @@ void host_connect(SB, uae_u32 sd, uae_u32 name, uae_u32 namelen)
     
     if (s != INVALID_SOCKET)
     {
-	if (namelen <= MAXADDRLEN)
-	{
-	    if (sb->mtable[sd-1] || (wMsg = allocasyncmsg(sb,sd,s)) != 0)
-	    {
-		if (sb->mtable[sd-1] == 0)
-			{
-			WSAAsyncSelect(s,hWndSelector ? hAmigaWnd : hSockWnd,wMsg,FD_CONNECT);
-			}
-		else
-			{
-			setWSAAsyncSelect(sb,sd,s,FD_CONNECT);
-			}
-
-	
-		BEGINBLOCKING;
-                PREPARE_THREAD;
-
-		memcpy(buf,get_real_address(name),namelen);
-		prephostaddr((SOCKADDR_IN *)buf);
-		
-                sockreq.packet_type = connect_req;
-                sockreq.s = s;
-                sockreq.sb = sb;
-                sockreq.params.connect_s.buf = buf;
-                sockreq.params.connect_s.namelen = namelen;
-
-                TRIGGER_THREAD;
-
-
-		if (sb->resultval)
+		if (namelen <= MAXADDRLEN)
 		{
-		    if (sb->sb_errno == WSAEWOULDBLOCK-WSABASEERR)
-		    {
-			if (sb->ftable[sd-1] & SF_BLOCKING)
+			if (sb->mtable[sd-1] || (wMsg = allocasyncmsg(sb,sd,s)) != 0)
 			{
-			    seterrno(sb,0);
-			
-	
-				WAITSIGNAL;
+				if (sb->mtable[sd-1] == 0)
+				{
+					WSAAsyncSelect(s,hWndSelector ? hAmigaWnd : hSockWnd,wMsg,FD_CONNECT);
+				}
+				else
+				{
+					setWSAAsyncSelect(sb,sd,s,FD_CONNECT);
+				}
 
-			    if (sb->eintr)
-			    {
-				// Destroy socket to cancel abort, replace it with fake socket to enable proper closing.
-				// This is in accordance with BSD behaviour.
-                                shutdown(s,1);
-				closesocket(s);
-				sb->dtable[sd-1] = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
-			    }
-			}
-		        else
+				BEGINBLOCKING;
+				PREPARE_THREAD;
+
+				memcpy(buf,get_real_address(name),namelen);
+				prephostaddr((SOCKADDR_IN *)buf);
+				
+				sockreq.packet_type = connect_req;
+				sockreq.s = s;
+				sockreq.sb = sb;
+				sockreq.params.connect_s.buf = buf;
+				sockreq.params.connect_s.namelen = namelen;
+
+				TRIGGER_THREAD;
+
+				if (sb->resultval)
+				{
+					if (sb->sb_errno == WSAEWOULDBLOCK-WSABASEERR)
 					{
-                    seterrno(sb,36);	// EINPROGRESS
+						if (sb->ftable[sd-1] & SF_BLOCKING)
+						{
+							seterrno(sb,0);
+						
+							WAITSIGNAL;
 
+							if (sb->eintr)
+							{
+								// Destroy socket to cancel abort, replace it with fake socket to enable proper closing.
+								// This is in accordance with BSD behaviour.
+												shutdown(s,1);
+								closesocket(s);
+								sb->dtable[sd-1] = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
+							}
+						}
+						else
+						{
+							seterrno(sb,36);	// EINPROGRESS
+						}
 					}
-		    }
-		else
-			{
-			CANCELSIGNAL; // Cancel pending signal
-
-			}
-			}
-
-			ENDBLOCKING;
-			if (sb->mtable[sd-1] == 0)
-				{
-				cancelasyncmsg(wMsg);
+					else
+					{
+						CANCELSIGNAL; // Cancel pending signal
+					}
 				}
-			else
+
+				ENDBLOCKING;
+				if (sb->mtable[sd-1] == 0)
 				{
-				setWSAAsyncSelect(sb,sd,s,0);
+					cancelasyncmsg(wMsg);
+				}
+				else
+				{
+					setWSAAsyncSelect(sb,sd,s,0);
 				}
 			}
-
-        }
-        else
-            write_log("BSDSOCK: WARNING - Excessive namelen (%d) in connect()!\n",namelen);
+	}
+	else
+	    write_log("BSDSOCK: WARNING - Excessive namelen (%d) in connect()!\n",namelen);
     }
     TRACE(("%d\n",sb->sb_errno));
 }
@@ -1045,7 +1059,7 @@ void host_sendto(SB, uae_u32 sd, uae_u32 msg, uae_u32 len, uae_u32 flags, uae_u3
     char *realpt;
     unsigned int wMsg;
     char buf[MAXADDRLEN];
-	int iCut;
+    int iCut;
 
 #ifdef TRACING_ENABLED
     if (to)
@@ -1058,155 +1072,156 @@ void host_sendto(SB, uae_u32 sd, uae_u32 msg, uae_u32 len, uae_u32 flags, uae_u3
 
     if (s != INVALID_SOCKET)
     {
-        realpt = get_real_address(msg);
+	realpt = get_real_address(msg);
 		
-	if (to)
-	{
-	    if (tolen > sizeof buf) write_log("BSDSOCK: WARNING - Target address in sendto() too large (%d)!\n",tolen);
-	    else
-	    {
-		memcpy(buf,get_real_address(to),tolen);
-		// some Amiga software sets this field to bogus values
-		prephostaddr((SOCKADDR_IN *)buf);
-	    }
-	}
-	if (sb->ftable[sd-1]&SF_RAW_RAW)
+		if (to)
 		{
-		if (*(realpt+9) == 0x1)
-			{ // ICMP
-			struct sockaddr_in sin;
-			shutdown(s,1);
-			closesocket(s);
-			s = socket(AF_INET,SOCK_RAW,IPPROTO_ICMP);
-
-			sin.sin_family = AF_INET;
-			sin.sin_addr.s_addr = INADDR_ANY;
-			sin.sin_port = (unsigned short) (*(realpt+21)&0xff)*256 + (unsigned short) (*(realpt+20)&0xff);
-			bind(s,(struct sockaddr *)&sin,sizeof(sin)) ;
-
-			sb->dtable[sd-1] = s;
-			sb->ftable[sd-1]&= ~SF_RAW_RAW;
-			sb->ftable[sd-1]|= SF_RAW_RICMP;
-			}
-		if (*(realpt+9) == 0x11)
-			{ // UDP
-			struct sockaddr_in sin;
-			shutdown(s,1);
-			closesocket(s);
-			s = socket(AF_INET,SOCK_RAW,IPPROTO_UDP);
-
-			sin.sin_family = AF_INET;
-			sin.sin_addr.s_addr = INADDR_ANY;
-			sin.sin_port = (unsigned short) (*(realpt+21)&0xff)*256 + (unsigned short) (*(realpt+20)&0xff);
-			bind(s,(struct sockaddr *)&sin,sizeof(sin)) ;
-
-			sb->dtable[sd-1] = s;
-			sb->ftable[sd-1]&= ~SF_RAW_RAW;
-			sb->ftable[sd-1]|= SF_RAW_RUDP;
+			if (tolen > sizeof buf) write_log("BSDSOCK: WARNING - Target address in sendto() too large (%d)!\n",tolen);
+			else
+			{
+				memcpy(buf,get_real_address(to),tolen);
+				// some Amiga software sets this field to bogus values
+				prephostaddr((SOCKADDR_IN *)buf);
 			}
 		}
-		
-	BEGINBLOCKING;
+		if (sb->ftable[sd-1]&SF_RAW_RAW)
+		{
+			if (*(realpt+9) == 0x1)
+			{ // ICMP
+				struct sockaddr_in sin;
+				shutdown(s,1);
+				closesocket(s);
+				s = socket(AF_INET,SOCK_RAW,IPPROTO_ICMP);
 
-	for (;;)
-	{
-            PREPARE_THREAD;
+				sin.sin_family = AF_INET;
+				sin.sin_addr.s_addr = INADDR_ANY;
+				sin.sin_port = (unsigned short) (*(realpt+21)&0xff)*256 + (unsigned short) (*(realpt+20)&0xff);
+				bind(s,(struct sockaddr *)&sin,sizeof(sin)) ;
 
-            sockreq.packet_type = sendto_req;
-            sockreq.s = s;
-            sockreq.sb = sb;
-            sockreq.params.sendto_s.realpt = realpt;
-            sockreq.params.sendto_s.buf = buf;
-            sockreq.params.sendto_s.sd = sd;
-            sockreq.params.sendto_s.msg = msg;
-            sockreq.params.sendto_s.len = len;
-            sockreq.params.sendto_s.flags = flags;
-            sockreq.params.sendto_s.to = to;
-            sockreq.params.sendto_s.tolen = tolen;
+				sb->dtable[sd-1] = s;
+				sb->ftable[sd-1]&= ~SF_RAW_RAW;
+				sb->ftable[sd-1]|= SF_RAW_RICMP;
+			}
+			if (*(realpt+9) == 0x11)
+			{ // UDP
+				struct sockaddr_in sin;
+				shutdown(s,1);
+				closesocket(s);
+				s = socket(AF_INET,SOCK_RAW,IPPROTO_UDP);
+
+				sin.sin_family = AF_INET;
+				sin.sin_addr.s_addr = INADDR_ANY;
+				sin.sin_port = (unsigned short) (*(realpt+21)&0xff)*256 + (unsigned short) (*(realpt+20)&0xff);
+				bind(s,(struct sockaddr *)&sin,sizeof(sin)) ;
+
+				sb->dtable[sd-1] = s;
+				sb->ftable[sd-1]&= ~SF_RAW_RAW;
+				sb->ftable[sd-1]|= SF_RAW_RUDP;
+			}
+		}
+			
+		BEGINBLOCKING;
+
+		for (;;)
+		{
+			PREPARE_THREAD;
+
+			sockreq.packet_type = sendto_req;
+			sockreq.s = s;
+			sockreq.sb = sb;
+			sockreq.params.sendto_s.realpt = realpt;
+			sockreq.params.sendto_s.buf = buf;
+			sockreq.params.sendto_s.sd = sd;
+			sockreq.params.sendto_s.msg = msg;
+			sockreq.params.sendto_s.len = len;
+			sockreq.params.sendto_s.flags = flags;
+			sockreq.params.sendto_s.to = to;
+			sockreq.params.sendto_s.tolen = tolen;
 
 			if (sb->ftable[sd-1]&SF_RAW_UDP)
-				{
+			{
 				*(buf+2) = *(realpt+2);
- 				*(buf+3) = *(realpt+3);
+				*(buf+3) = *(realpt+3);
 				// Copy DST-Port
 				iCut = 8;
 				sockreq.params.sendto_s.realpt += iCut;
 				sockreq.params.sendto_s.len -= iCut;
-				}
+			}
 			if (sb->ftable[sd-1]&SF_RAW_RUDP)
-				{
+			{
 				int iTTL;
 				iTTL = (int) *(realpt+8)&0xff;
 				setsockopt(s,IPPROTO_IP,4,(char*) &iTTL,sizeof(iTTL));
 				*(buf+2) = *(realpt+22);
- 				*(buf+3) = *(realpt+23);
+				*(buf+3) = *(realpt+23);
 				// Copy DST-Port
 				iCut = 28;
 				sockreq.params.sendto_s.realpt += iCut;
 				sockreq.params.sendto_s.len -= iCut;
-				}
+			}
 			if (sb->ftable[sd-1]&SF_RAW_RICMP)
-				{
+			{
 				int iTTL;
 				iTTL = (int) *(realpt+8)&0xff;
 				setsockopt(s,IPPROTO_IP,4,(char*) &iTTL,sizeof(iTTL));
 				iCut = 20;
 				sockreq.params.sendto_s.realpt += iCut;
 				sockreq.params.sendto_s.len -= iCut;
+			}
+
+			TRIGGER_THREAD;
+			if (sb->ftable[sd-1]&SF_RAW_UDP||sb->ftable[sd-1]&SF_RAW_RUDP||sb->ftable[sd-1]&SF_RAW_RICMP)
+			{
+				sb->resultval += iCut;
+			}
+			if (sb->resultval == -1)
+			{
+				if (sb->sb_errno != WSAEWOULDBLOCK-WSABASEERR || !(sb->ftable[sd-1] & SF_BLOCKING))
+					break;
+			}
+			else
+			{
+				realpt += sb->resultval;
+				len -= sb->resultval;
+			
+				if (len <= 0)
+					break;
+				else
+					continue;
+			}
+
+			if (sb->mtable[sd-1] || (wMsg = allocasyncmsg(sb,sd,s)) != 0)
+			{
+				if (sb->mtable[sd-1] == 0)
+				{
+					WSAAsyncSelect(s,hWndSelector ? hAmigaWnd : hSockWnd,wMsg,FD_WRITE);
 				}
-
-			
-
-            TRIGGER_THREAD;
-		if (sb->ftable[sd-1]&SF_RAW_UDP||sb->ftable[sd-1]&SF_RAW_RUDP||sb->ftable[sd-1]&SF_RAW_RICMP)
-			{
-			sb->resultval += iCut;
+				else
+				{
+					setWSAAsyncSelect(sb,sd,s,FD_WRITE);
+				}
+					
+				WAITSIGNAL;
+				
+				if (sb->mtable[sd-1] == 0)
+				{
+					cancelasyncmsg(wMsg);
+				}
+				else
+				{
+					setWSAAsyncSelect(sb,sd,s,0);
+				}
+				
+				if (sb->eintr)
+				{
+					TRACE(("[interrupted]\n"));
+					return;
+				}
 			}
-	    if (sb->resultval == -1)
-	    {
-		if (sb->sb_errno != WSAEWOULDBLOCK-WSABASEERR || !(sb->ftable[sd-1] & SF_BLOCKING)) break;
-	    }
-	    else
-	    {
-		realpt += sb->resultval;
-		len -= sb->resultval;
-		
-		if (len <= 0) break;
-		else continue;
-	    }
-
-	    if (sb->mtable[sd-1] || (wMsg = allocasyncmsg(sb,sd,s)) != 0)
-	    {
-		if (sb->mtable[sd-1] == 0)
-			{
-			WSAAsyncSelect(s,hWndSelector ? hAmigaWnd : hSockWnd,wMsg,FD_WRITE);
-			}
-		else
-			{
-			setWSAAsyncSelect(sb,sd,s,FD_WRITE);
-			}
-			
-		WAITSIGNAL;
-		
-		if (sb->mtable[sd-1] == 0)
-			{
-			cancelasyncmsg(wMsg);
-			}
-		else
-			{
-			setWSAAsyncSelect(sb,sd,s,0);
-			}
-		
-		if (sb->eintr)
-		{
-		    TRACE(("[interrupted]\n"));
-		    return;
+			else break;
 		}
-	    }
-	    else break;
-	}
 
-	ENDBLOCKING;
+		ENDBLOCKING;
     }
     else sb->resultval = -1;
 
@@ -1250,19 +1265,19 @@ void host_recvfrom(SB, uae_u32 sd, uae_u32 msg, uae_u32 len, uae_u32 flags, uae_
 
 	for (;;)
 	{
-            PREPARE_THREAD;
+	    PREPARE_THREAD;
 
-            sockreq.packet_type = recvfrom_req;
-            sockreq.s = s;
-            sockreq.sb = sb;
-            sockreq.params.recvfrom_s.addr = addr;
-            sockreq.params.recvfrom_s.flags = flags;
-            sockreq.params.recvfrom_s.hlen = &hlen;
-            sockreq.params.recvfrom_s.len = len;
-            sockreq.params.recvfrom_s.realpt = realpt;
-            sockreq.params.recvfrom_s.rp_addr = rp_addr;
+	    sockreq.packet_type = recvfrom_req;
+	    sockreq.s = s;
+	    sockreq.sb = sb;
+	    sockreq.params.recvfrom_s.addr = addr;
+	    sockreq.params.recvfrom_s.flags = flags;
+	    sockreq.params.recvfrom_s.hlen = &hlen;
+	    sockreq.params.recvfrom_s.len = len;
+	    sockreq.params.recvfrom_s.realpt = realpt;
+	    sockreq.params.recvfrom_s.rp_addr = rp_addr;
 
-            TRIGGER_THREAD;
+	    TRIGGER_THREAD;
 	    if (sb->resultval == -1)
 	    {
 		if (sb->sb_errno == WSAEWOULDBLOCK-WSABASEERR && sb->ftable[sd-1] & SF_BLOCKING)
@@ -1343,7 +1358,7 @@ uae_u32 host_shutdown(SB, uae_u32 sd, uae_u32 how)
 	    return 0;
 	}
     }
-	
+
     return -1;
 }
 
@@ -1353,7 +1368,7 @@ void host_setsockopt(SB, uae_u32 sd, uae_u32 level, uae_u32 optname, uae_u32 opt
     char buf[MAXADDRLEN];
 
     TRACE(("setsockopt(%d,%d,0x%lx,0x%lx,%d) -> ",sd,(short)level,optname,optval,len));
-	sd++;
+    sd++;
     s = getsock(sb,sd);
 
     if (s != INVALID_SOCKET)
@@ -1441,7 +1456,7 @@ uae_u32 host_getsockopt(SB, uae_u32 sd, uae_u32 level, uae_u32 optname, uae_u32 
 				else write_log("BSDSOCK: ERROR - Unknown optlen (%d) in setsockopt(%d,%d)\n",level,optname);
 			}
 
-//			put_long(optlen,len); // some programs pass the actual ength instead of a pointer to the length, so...
+//			put_long(optlen,len); // some programs pass the	actual ength instead of	a pointer to the length, so...
 			TRACE(("OK (%d,%d)\n",len,*(long *)buf));
 			return 0;
 		}
@@ -1537,7 +1552,7 @@ uae_u32 host_IoctlSocket(SB, uae_u32 sd, uae_u32 request, uae_u32 arg)
 	{
 		switch (request)
 		{
-	                case FIOSETOWN:
+			case FIOSETOWN:
 			    sb->ownertask = get_long(arg);
 			    success = 0;
 			break;
@@ -1595,7 +1610,7 @@ int host_CloseSocket(SB, int sd)
 {
     unsigned int wMsg;
     SOCKET s;
-	
+
     TRACE(("CloseSocket(%d) -> ",sd));
 	sd++;
 
@@ -1617,7 +1632,7 @@ int host_CloseSocket(SB, int sd)
 
 	for (;;)
 	{
-            shutdown(s,1);
+	    shutdown(s,1);
 	    if (!closesocket(s))
 	    {
 		releasesock(sb,sd);
@@ -1648,9 +1663,9 @@ int host_CloseSocket(SB, int sd)
 	    else break;
 	}
 
-        ENDBLOCKING;
+	ENDBLOCKING;
     }
-	
+
     TRACE(("failed (%d)\n",sb->sb_errno));
   
     return -1;
@@ -1750,21 +1765,20 @@ static void makesockbitfield(SB, uae_u32 fd_set_amiga, struct fd_set *fd_set_win
 static void fd_zero(uae_u32 fdset, uae_u32 nfds)
 {
 	unsigned int i;
-	
 	for (i = 0; i < nfds; i += 32, fdset += 4) put_long(fdset,0);
 }
 
 // This seems to be the only way of implementing a cancelable WinSock2 select() call... sigh.
-static unsigned int __stdcall thread_WaitSelect(void *index2)
+static unsigned int __stdcall thread_WaitSelect(void *indexp)
 {
-    uae_u32 index = (uae_u32)index2;
+    uae_u32 index = *((uae_u32*)indexp);
     unsigned int result = 0;
     long nfds;
     uae_u32 readfds, writefds, exceptfds;
     uae_u32 timeout;
     struct fd_set readsocks, writesocks, exceptsocks;
     struct timeval tv;
-    uae_u32 *args;
+    struct threadargsw *args;
 
     SB;
 
@@ -1772,14 +1786,14 @@ static unsigned int __stdcall thread_WaitSelect(void *index2)
     {
 	    WaitForSingleObject(hEvents[index],INFINITE);
 
-	    if ((args = threadargs[index]) != NULL)
+	    if ((args = threadargsw[index]) != NULL)
 	    {
-		    sb = (struct socketbase *)*args;
-		    nfds = args[1];
-		    readfds = args[2];
-		    writefds = args[3];
-		    exceptfds = args[4];
-		    timeout = args[5];
+			sb = args->sb;
+		    nfds = args->nfds;
+		    readfds = args->readfds;
+		    writefds = args->writefds;
+		    exceptfds = args->exceptfds;
+		    timeout = args->timeout;
 	    
 		    // construct descriptor tables
 		    makesocktable(sb,readfds,&readsocks,nfds,sb->sockAbort);
@@ -1825,7 +1839,7 @@ static unsigned int __stdcall thread_WaitSelect(void *index2)
 				}
 			else
 				{
-	       		sb->needAbort = 0;
+			sb->needAbort = 0;
 				}
 		    if (sb->resultval == SOCKET_ERROR)
 		    {
@@ -1844,13 +1858,11 @@ static unsigned int __stdcall thread_WaitSelect(void *index2)
 	    
 		    SETSIGNAL;
 
-		    threadargs[index] = NULL;
+		    threadargsw[index] = NULL;
 		    SetEvent(sb->hEvent);
 	    }
     }
-#ifndef __GNUC__
-    _endthreadex( result );
-#endif
+    THREADEND(result);
     return result;
 }
 
@@ -1858,6 +1870,7 @@ void host_WaitSelect(SB, uae_u32 nfds, uae_u32 readfds, uae_u32 writefds, uae_u3
 {
 	uae_u32 sigs, wssigs;
 	int i;
+	struct threadargsw taw;
 
 	wssigs = sigmp ? get_long(sigmp) : 0;
 
@@ -1883,13 +1896,13 @@ void host_WaitSelect(SB, uae_u32 nfds, uae_u32 readfds, uae_u32 writefds, uae_u3
 			if (readfds) fd_zero(readfds,nfds);
 			if (writefds) fd_zero(writefds,nfds);
 			if (exceptfds) fd_zero(exceptfds,nfds);
- 			sb->resultval = 0;
+			sb->resultval = 0;
 			seterrno(sb,0);
 			return;
 		}
 	}
 	if (nfds == 0)
-		{ // No sockets to check, only wait for signals
+	{ // No sockets to check, only wait for signals
 		m68k_dreg(regs,0) = wssigs;
 		sigs = CallLib(get_long(4),-0x13e);	// Wait()
 
@@ -1900,33 +1913,39 @@ void host_WaitSelect(SB, uae_u32 nfds, uae_u32 readfds, uae_u32 writefds, uae_u3
 		if (exceptfds) fd_zero(exceptfds,nfds);
 		sb->resultval = 0;
 		return;
-		}
+	}
 
 	ResetEvent(sb->hEvent);
 
 	sb->needAbort = 1;
 
-	for (i = 0; i < MAX_SELECT_THREADS; i++) if (hThreads[i] && !threadargs[i]) break;
+	for (i = 0; i < MAX_SELECT_THREADS; i++) {
+		if (hThreads[i] && !threadargsw[i])
+			break;
+	}
 
 	if (i >= MAX_SELECT_THREADS)
 	{
 	    for (i = 0; i < MAX_SELECT_THREADS; i++)
 	    {
-		if (!hThreads[i])
-		{
-		    if ((hEvents[i] = CreateEvent(NULL,FALSE,FALSE,NULL)) == NULL || (hThreads[i] = (void *)THREAD(thread_WaitSelect,i)) == NULL)
-		    {
-			hThreads[i] = 0;
-			write_log("BSDSOCK: ERROR - Thread/Event creation failed - error code: %d\n",GetLastError());
-			seterrno(sb,12);	// ENOMEM
-			sb->resultval = -1;
-			return;
-		    }
-		    
-		    // this should improve responsiveness
-		    SetThreadPriority(hThreads[i],THREAD_PRIORITY_TIME_CRITICAL);
-		    break;
-		}
+			if (!hThreads[i])
+			{
+				hEvents[i] = CreateEvent(NULL,FALSE,FALSE,NULL);
+				hThreads[i] = THREAD(thread_WaitSelect,&i);
+				if (hEvents[i] == NULL || hThreads[i] == NULL)
+				{
+					hThreads[i] = 0;
+					write_log("BSDSOCK: ERROR - Thread/Event creation failed - error code: %d\n",
+						GetLastError());
+					seterrno(sb,12);	// ENOMEM
+					sb->resultval = -1;
+					return;
+				}
+			    
+				// this should improve responsiveness
+				SetThreadPriority(hThreads[i],THREAD_PRIORITY_TIME_CRITICAL);
+				break;
+			}
 	    }
 	}
 	
@@ -1935,7 +1954,14 @@ void host_WaitSelect(SB, uae_u32 nfds, uae_u32 readfds, uae_u32 writefds, uae_u3
 	{
 		SOCKET newsock = INVALID_SOCKET;
 
-		threadargs[i] = (uae_u32 *)&sb;
+		taw.sb = sb;
+		taw.nfds = nfds;
+		taw.readfds = readfds;
+		taw.writefds = writefds;
+		taw.exceptfds = exceptfds;
+		taw.timeout = timeout;
+
+		threadargsw[i] = &taw;
 
 		SetEvent(hEvents[i]);
 
@@ -1951,12 +1977,12 @@ void host_WaitSelect(SB, uae_u32 nfds, uae_u32 readfds, uae_u32 writefds, uae_u3
 		{
 			if ((newsock = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP)) == INVALID_SOCKET)
 				write_log("BSDSOCK: ERROR - Cannot create socket: %d\n",WSAGetLastError());
-                        shutdown(sb->sockAbort,1);
+			shutdown(sb->sockAbort,1);
 			if (newsock != sb->sockAbort)
-				{
+			{
 				shutdown(sb->sockAbort,1);
 				closesocket(sb->sockAbort);
-				}
+			}
 		}
 
 		WaitForSingleObject(sb->hEvent,INFINITE);
@@ -1965,14 +1991,14 @@ void host_WaitSelect(SB, uae_u32 nfds, uae_u32 readfds, uae_u32 writefds, uae_u3
 
 		if (newsock != INVALID_SOCKET) sb->sockAbort = newsock;
 
-        if( sigmp )
-        {
+	if( sigmp )
+	{
 		    put_long(sigmp,sigs & wssigs);
 
 		    if (sigs & sb->eintrsigs)
 		    {
 			    TRACE(("[interrupted]\n"));
- 			    sb->resultval = -1;
+			    sb->resultval = -1;
 			    seterrno(sb,4);	// EINTR
 		    }
 		    else if (sigs & wssigs)
@@ -1982,18 +2008,17 @@ void host_WaitSelect(SB, uae_u32 nfds, uae_u32 readfds, uae_u32 writefds, uae_u3
 				if (writefds) fd_zero(writefds,nfds);
 				if (exceptfds) fd_zero(exceptfds,nfds);
 			    seterrno(sb,0);
- 			    sb->resultval = 0;
+			    sb->resultval = 0;
 		    }
-		if (sb->resultval >= 0)
+			if (sb->resultval >= 0)
 			{
-			TRACE(("%d\n",sb->resultval));
+				TRACE(("%d\n",sb->resultval));
 			}
-		else
+			else
 			{
-			TRACE(("%d errno %d\n",sb->resultval,sb->sb_errno));
+				TRACE(("%d errno %d\n",sb->resultval,sb->sb_errno));
 			}
-		
-        }
+	}
 		else TRACE(("%d\n",sb->resultval));
 	}
 }
@@ -2038,167 +2063,161 @@ uae_u32 host_inet_addr(uae_u32 cp)
 
 int isfullscreen (void);
 BOOL CheckOnline(SB)
-	{
+{
 	DWORD dwFlags;
 	BOOL bReturn = TRUE;
 	if (InternetGetConnectedState(&dwFlags,0) == FALSE)
-		{ // Internet is offline
+	{ // Internet is offline
 		if (InternetAttemptConnect(0) != ERROR_SUCCESS)
-			{ // Show Dialer window
+		{ // Show Dialer window
 			sb->sb_errno = 10001;
 			sb->sb_herrno = 1;
 			bReturn = FALSE;
 			// No success or aborted
-			}
+		}
 		if (isfullscreen())
-			{
+		{
 			ShowWindow (hAmigaWnd, SW_RESTORE);
 			SetActiveWindow(hAmigaWnd);
-			}
 		}
-	return(bReturn);
 	}
+	return(bReturn);
+}
 
-static unsigned int __stdcall thread_get(void *index2)
+static unsigned int __stdcall thread_get(void *indexp)
 {
-    uae_u32 index = (uae_u32)index2;
+    uae_u32 index = *((uae_u32*)indexp);
     unsigned int result = 0;
-    uae_u32 *args;
-	uae_u32 name;
-	uae_u32 namelen;
-	long addrtype;
-	char *name_rp;
-	char *buf;
-	
-	
-	SB;
+    struct threadargs *args;
+    uae_u32 name;
+    uae_u32 namelen;
+    long addrtype;
+    char *name_rp;
+    char *buf;
+    SB;
 
     for (;;)
     {
 	    WaitForSingleObject(hGetEvents[index],INFINITE);
-		if (threadGetargs[index] == -1)
-			{
+		if (threadGetargs_inuse[index] == -1)
+		{
+			threadGetargs_inuse[index] = 0;
 			threadGetargs[index] = NULL;
-			}
+		}
 	    if ((args = threadGetargs[index]) != NULL )
 	    {
-			sb = (struct socketbase *)*args;
-			if (args[1] == 0)
-				{ // gethostbyname or gethostbyaddr
+			sb = args->sb;
+			if (args->args1 == 0)
+			{ // gethostbyname or gethostbyaddr
 				struct hostent *host;
-				name = args[2];
-				namelen = args[3];
-				addrtype = args[4];
-				buf = (char*) args[5];
+				name = args->args2;
+				namelen = args->args3;
+				addrtype = args->args4;
+				buf = args->args5;
 				name_rp = get_real_address(name);
 
 				if (strchr(name_rp,'.') == 0 || CheckOnline(sb) == TRUE)
-					{ // Local Address or Internet Online ?
+				{ // Local Address or Internet Online ?
 					if (addrtype == -1)
-						{
+					{
 						host = gethostbyname(name_rp);
-						}
+					}
 					else
-						{
+					{
 						host = gethostbyaddr(name_rp,namelen,addrtype);
-						}
-					if (threadGetargs[index] != -1)
-						{ // No CTRL-C Signal
+					}
+					if (threadGetargs_inuse[index] != -1)
+					{ // No CTRL-C Signal
 						if (host == 0)
-							{
+						{
 							// Error occured 
 							SETERRNO;
 							TRACE(("failed (%d) - ",sb->sb_errno));
-							}
+						}
 						else
-							{
+						{
 							seterrno(sb,0);
 							memcpy(buf,host,sizeof(HOSTENT));
-							}
 						}
 					}
 				}
-			if (args[1] == 1)
-				{ // getprotobyname
+			}
+			if (args->args1 == 1)
+			{ // getprotobyname
 				struct protoent  *proto;
 
-				name = args[2];
-				buf = (char*) args[5];
+				name = args->args2;
+				buf = args->args5;
 				name_rp = get_real_address(name);
 				proto = getprotobyname (name_rp);
-				if (threadGetargs[index] != -1)
-					{ // No CTRL-C Signal
+				if (threadGetargs_inuse[index] != -1)
+				{ // No CTRL-C Signal
 					if (proto == 0)
-						{
+					{
 						// Error occured 
 						SETERRNO;
 						TRACE(("failed (%d) - ",sb->sb_errno));
-						}
+					}
 					else
-						{
+					{
 						seterrno(sb,0);
 						memcpy(buf,proto,sizeof(struct protoent));
-						}
 					}
 				}
-			if (args[1] == 2)
-				{ // getservbyport and getservbyname
+			}
+			if (args->args1 == 2)
+			{ // getservbyport and getservbyname
 				uae_u32 nameport;
 				uae_u32 proto;
 				uae_u32 type;
 				char *proto_rp = 0;
 				struct servent *serv;
 
-				nameport = args[2];
-				proto = args[3];
-				type = args[4];
-				buf = (char*) args[5];
+				nameport = args->args2;
+				proto = args->args3;
+				type = args->args4;
+				buf = args->args5;
 	
 				if (proto) proto_rp = get_real_address(proto);
 
 				if (type)
-					{
+				{
 					serv = getservbyport(nameport,proto_rp);
-					}
+				}
 				else
-					{
+				{
 					name_rp = get_real_address(nameport);
 					serv = getservbyname(name_rp,proto_rp);
-					}
-				if (threadGetargs[index] != -1)
-					{ // No CTRL-C Signal
+				}
+				if (threadGetargs_inuse[index] != -1)
+				{ // No CTRL-C Signal
 					if (serv == 0)
-						{
+					{
 						// Error occured 
 						SETERRNO;
 						TRACE(("failed (%d) - ",sb->sb_errno));
-						}
+					}
 					else
-						{
+					{
 						seterrno(sb,0);
 						memcpy(buf,serv,sizeof(struct servent));
-						}
 					}
 				}
-
-
-
+			}
 
 		    TRACE(("-> "));
 	    
-			if (threadGetargs[index] != -1)
+			if (threadGetargs_inuse[index] != -1)
 				SETSIGNAL;
 
-		    threadGetargs[index] = NULL;
+		    threadGetargs_inuse[index] = 0;
+			threadGetargs[index] = NULL;
 
-			}
+		}
     }
-#ifndef __GNUC__
-    _endthreadex( result );
-#endif
+    THREADEND(result);
     return result;
 }
-
 
 void host_gethostbynameaddr(SB, uae_u32 name, uae_u32 namelen, long addrtype)
 {
@@ -2208,7 +2227,7 @@ void host_gethostbynameaddr(SB, uae_u32 name, uae_u32 namelen, long addrtype)
 	char *name_rp;
 	int i;
 
-	uae_u32 args[6];
+	struct threadargs args;
 
 	uae_u32 addr;
 	uae_u32 *addr_list[2];
@@ -2216,12 +2235,9 @@ void host_gethostbynameaddr(SB, uae_u32 name, uae_u32 namelen, long addrtype)
 	char buf[MAXGETHOSTSTRUCT];
 	unsigned int wMsg = 0;
 
-		
-
-
-//	char on = 1;
+//	char on	= 1;
 //	InternetSetOption(0,INTERNET_OPTION_SETTINGS_CHANGED,&on,strlen(&on));
-//  Do not use: Causes locks with some machines
+//  Do not use:	Causes locks with some machines
 
 	name_rp = get_real_address(name);
 
@@ -2250,38 +2266,42 @@ void host_gethostbynameaddr(SB, uae_u32 name, uae_u32 namelen, long addrtype)
 		TRACE(("gethostbyaddr(0x%lx,0x%lx,%ld) -> ",name,namelen,addrtype));
 	}
 
-	args[0] = (uae_u32) sb;
-	args[1] = 0;
-	args[2] = name;
-	args[3] = namelen;
-	args[4] = addrtype;
-	args[5] = (uae_u32) &buf[0];
+	args.sb = sb;
+	args.args1 = 0;
+	args.args2 = name;
+	args.args3 = namelen;
+	args.args4 = addrtype;
+	args.args5 = buf;
 
 	for (i = 0; i < MAX_GET_THREADS; i++) 
+	{
+		if (threadGetargs_inuse[i] == -1)
 		{
-		if (threadGetargs[i] == -1)
-			{
-			threadGetargs[i] = 0;
-			}
-		if (hGetThreads[i] && !threadGetargs[i]) break;
+			threadGetargs_inuse[i] = 0;
+			threadGetargs[i] = NULL;
 		}
+		if (hGetThreads[i] && !threadGetargs_inuse[i]) break;
+	}
 
 	if (i >= MAX_GET_THREADS)
 	{
 	    for (i = 0; i < MAX_GET_THREADS; i++)
 	    {
-		if (!hGetThreads[i])
-		{
-		    if ((hGetEvents[i] = CreateEvent(NULL,FALSE,FALSE,NULL)) == NULL || (hGetThreads[i] = (void *)THREAD(thread_get,i)) == NULL)
-		    {
-			hGetThreads[i] = 0;
-			write_log("BSDSOCK: ERROR - Thread/Event creation failed - error code: %d\n",GetLastError());
-			seterrno(sb,12);	// ENOMEM
-			sb->resultval = -1;
-			return;
-		    }
-		    break;
-		}
+			if (hGetThreads[i] == NULL)
+			{
+				hGetEvents[i] = CreateEvent(NULL,FALSE,FALSE,NULL);
+				hGetThreads[i] = THREAD(thread_get, &i);
+				if (hGetEvents[i] == NULL || hGetThreads[i] == NULL)
+				{
+					hGetThreads[i] = NULL;
+					write_log("BSDSOCK: ERROR - Thread/Event creation failed - error code: %d\n",
+						GetLastError());
+					seterrno(sb,12);	// ENOMEM
+					sb->resultval = -1;
+					return;
+				}
+				break;
+			}
 	    }
 	}
 	
@@ -2289,17 +2309,18 @@ void host_gethostbynameaddr(SB, uae_u32 name, uae_u32 namelen, long addrtype)
 	else
 	{
 		bsdsetpriority (hGetThreads[i]);
-		threadGetargs[i] = (uae_u32 *)&args[0];
+		threadGetargs[i] = &args;
+		threadGetargs_inuse[i] = 1;
 
 		SetEvent(hGetEvents[i]);
 		}
 	sb->eintr = 0;
-	while ( threadGetargs[i] != 0 && sb->eintr == 0) 
-		{	
+	while ( threadGetargs_inuse[i] != 0 && sb->eintr == 0) 
+	{	
 		WAITSIGNAL;
 		if (sb->eintr == 1)
-			threadGetargs[i] = -1;
-		}
+			threadGetargs_inuse[i] = -1;
+	}
 	
 	CANCELSIGNAL;
 	
@@ -2310,10 +2331,12 @@ kludge:
 		
 		// compute total size of hostent
 		size = 28;
-		if (h->h_name != NULL) size += strlen(h->h_name)+1;
+		if (h->h_name != NULL)
+			size += strlen(h->h_name)+1;
 
 		if (h->h_aliases != NULL)
-			while (h->h_aliases[numaliases]) size += strlen(h->h_aliases[numaliases++])+5;
+			while (h->h_aliases[numaliases])
+				size += strlen(h->h_aliases[numaliases++])+5;
 
 		if (h->h_addr_list != NULL)
 		{
@@ -2323,14 +2346,16 @@ kludge:
 
 		if (sb->hostent)
 		{
-            uae_FreeMem( sb->hostent, sb->hostentsize );
+	    uae_FreeMem( sb->hostent, sb->hostentsize );
 		}
 
-        sb->hostent = uae_AllocMem( size, 0 );
+	sb->hostent = uae_AllocMem( size, 0 );
 
 		if (!sb->hostent)
 		{
-			write_log("BSDSOCK: WARNING - gethostby%s() ran out of Amiga memory (couldn't allocate %ld bytes) while returning result of lookup for '%s'\n",addrtype == -1 ? "name" : "addr",size,(char *)name);
+			write_log("BSDSOCK: WARNING - gethostby%s() ran out of Amiga memory "
+				"(couldn't allocate %ld bytes) while returning result of lookup for '%s'\n",
+				addrtype == -1 ? "name" : "addr", size, name_rp);
 			seterrno(sb,12); // ENOMEM
 			return;
 		}
@@ -2370,7 +2395,7 @@ void host_getprotobyname(SB, uae_u32 name)
 	char *name_rp;
 	int i;
 
-	uae_u32 args[6];
+	struct threadargs args;
 
 
 	char buf[MAXGETHOSTSTRUCT];
@@ -2379,35 +2404,38 @@ void host_getprotobyname(SB, uae_u32 name)
 
 	TRACE(("getprotobyname(%s) -> ",name_rp));
 
-	args[0] = (uae_u32) sb;
-	args[1] = 1;
-	args[2] = name;
-	args[5] = (uae_u32) &buf[0];
+	args.sb = sb;
+	args.args1 = 1;
+	args.args2 = name;
+	args.args5 = buf;
 
 	for (i = 0; i < MAX_GET_THREADS; i++) 
+	{
+		if (threadGetargs_inuse[i] == -1)
 		{
-		if (threadGetargs[i] == -1)
-			{
-			threadGetargs[i] = 0;
-			}
-		if (hGetThreads[i] && !threadGetargs[i]) break;
+			threadGetargs_inuse[i] = 0;
+			threadGetargs[i] = NULL;
 		}
+		if (hGetThreads[i] && !threadGetargs_inuse[i]) break;
+	}
 	if (i >= MAX_GET_THREADS)
 	{
 	    for (i = 0; i < MAX_GET_THREADS; i++)
 	    {
-		if (!hGetThreads[i])
-		{
-		    if ((hGetEvents[i] = CreateEvent(NULL,FALSE,FALSE,NULL)) == NULL || (hGetThreads[i] = (void *)THREAD(thread_get,i)) == NULL)
-		    {
-			hGetThreads[i] = 0;
-			write_log("BSDSOCK: ERROR - Thread/Event creation failed - error code: %d\n",GetLastError());
-			seterrno(sb,12);	// ENOMEM
-			sb->resultval = -1;
-			return;
-		    }
-		    break;
-		}
+			if (!hGetThreads[i])
+			{
+				hEvents[i] = CreateEvent(NULL,FALSE,FALSE,NULL);
+				hGetThreads[i] = THREAD(thread_get,&i);
+				if (hGetEvents[i] == NULL || hGetThreads[i] == NULL)
+				{
+					hGetThreads[i] = 0;
+					write_log("BSDSOCK: ERROR - Thread/Event creation failed - error code: %d\n",GetLastError());
+					seterrno(sb,12);	// ENOMEM
+					sb->resultval = -1;
+					return;
+				}
+				break;
+			}
 	    }
 	}
 	
@@ -2416,17 +2444,18 @@ void host_getprotobyname(SB, uae_u32 name)
 	{
 		bsdsetpriority (hGetThreads[i]);
 
-		threadGetargs[i] = (uae_u32 *)&args[0];
+		threadGetargs[i] = &args;
+		threadGetargs_inuse[i] = 1;
 
 		SetEvent(hGetEvents[i]);
 		}
 
 	sb->eintr = 0;
-	while ( threadGetargs[i] != 0 && sb->eintr == 0) 
+	while ( threadGetargs_inuse[i] != 0 && sb->eintr == 0) 
 		{	
 		WAITSIGNAL;
 		if (sb->eintr == 1)
-			threadGetargs[i] = -1;
+			threadGetargs_inuse[i] = -1;
 		}
 
 	CANCELSIGNAL;
@@ -2445,14 +2474,16 @@ void host_getprotobyname(SB, uae_u32 name)
 
 		if (sb->protoent)
 		{
-            uae_FreeMem( sb->protoent, sb->protoentsize );
+	    uae_FreeMem( sb->protoent, sb->protoentsize );
 		}
 
 		sb->protoent = uae_AllocMem( size, 0 );
 
 		if (!sb->protoent)
 		{
-			write_log("BSDSOCK: WARNING - getprotobyname() ran out of Amiga memory (couldn't allocate %ld bytes) while returning result of lookup for '%s'\n",size,(char *)name);
+			write_log("BSDSOCK: WARNING - getprotobyname() ran out of Amiga memory "
+				"(couldn't allocate %ld bytes) while returning result of lookup for '%s'\n",
+				size, name_rp);
 			seterrno(sb,12); // ENOMEM
 			return;
 		}
@@ -2489,7 +2520,7 @@ void host_getservbynameport(SB, uae_u32 nameport, uae_u32 proto, uae_u32 type)
 	int i;
 
 	char buf[MAXGETHOSTSTRUCT];
-	uae_u32 args[6];
+	struct threadargs args;
 
 	if (proto) proto_rp = get_real_address(proto);
 
@@ -2503,38 +2534,41 @@ void host_getservbynameport(SB, uae_u32 nameport, uae_u32 proto, uae_u32 type)
 		TRACE(("getservbyname(%s,%s) -> ",name_rp,proto_rp ? proto_rp : "NULL"));
 	}
 
-	args[0] = (uae_u32) sb;
-	args[1] = 2;
-	args[2] = nameport;
-	args[3] = proto;
-	args[4] = type;
-	args[5] = (uae_u32) &buf[0];
+	args.sb = sb;
+	args.args1 = 2;
+	args.args2 = nameport;
+	args.args3 = proto;
+	args.args4 = type;
+	args.args5 = buf;
 
 	for (i = 0; i < MAX_GET_THREADS; i++) 
+	{
+		if (threadGetargs_inuse[i] == -1)
 		{
-		if (threadGetargs[i] == -1)
-			{
-			threadGetargs[i] = 0;
-			}
-		if (hGetThreads[i] && !threadGetargs[i]) break;
+			threadGetargs_inuse[i] = 0;
+			threadGetargs[i] = NULL;
 		}
+		if (hGetThreads[i] && !threadGetargs_inuse[i]) break;
+	}
 	if (i >= MAX_GET_THREADS)
 	{
 	    for (i = 0; i < MAX_GET_THREADS; i++)
 	    {
-		if (!hGetThreads[i])
-		{
-		    if ((hGetEvents[i] = CreateEvent(NULL,FALSE,FALSE,NULL)) == NULL || (hGetThreads[i] = (void *)THREAD(thread_get,i)) == NULL)
-		    {
-			hGetThreads[i] = 0;
-			write_log("BSDSOCK: ERROR - Thread/Event creation failed - error code: %d\n",GetLastError());
-			seterrno(sb,12);	// ENOMEM
-			sb->resultval = -1;
-			return;
-		    }
-		    
-		    break;
-		}
+			if (!hGetThreads[i])
+			{
+				hGetEvents[i] = CreateEvent(NULL,FALSE,FALSE,NULL);
+				hGetThreads[i] = THREAD(thread_get,&i);
+				if (hGetEvents[i] == NULL || hGetThreads[i] == NULL)
+				{
+					hGetThreads[i] = 0;
+					write_log("BSDSOCK: ERROR - Thread/Event creation failed - error code: %d\n",GetLastError());
+					seterrno(sb,12);	// ENOMEM
+					sb->resultval = -1;
+					return;
+				}
+			    
+				break;
+			}
 	    }
 	}
 	
@@ -2543,18 +2577,19 @@ void host_getservbynameport(SB, uae_u32 nameport, uae_u32 proto, uae_u32 type)
 	{
 		bsdsetpriority (hGetThreads[i]);
 
-		threadGetargs[i] = (uae_u32 *)&args[0];
+		threadGetargs[i] = &args;
+		threadGetargs_inuse[i] = 1;
 
 		SetEvent(hGetEvents[i]);
 		}
 
 	sb->eintr = 0;
-	while ( threadGetargs[i] != 0 && sb->eintr == 0) 
-		{	
+	while ( threadGetargs_inuse[i] != 0 && sb->eintr == 0) 
+	{	
 		WAITSIGNAL;
 		if (sb->eintr == 1)
-			threadGetargs[i] = -1;
-		}
+			threadGetargs_inuse[i] = -1;
+	}
 
 	CANCELSIGNAL;
 
@@ -2572,10 +2607,10 @@ void host_getservbynameport(SB, uae_u32 nameport, uae_u32 proto, uae_u32 type)
 
 		if (sb->servent)
 		{
-            uae_FreeMem( sb->servent, sb->serventsize );
+	    uae_FreeMem( sb->servent, sb->serventsize );
 		}
 
-        sb->servent = uae_AllocMem( size, 0 );
+	sb->servent = uae_AllocMem( size, 0 );
 
 		if (!sb->servent)
 		{
@@ -2592,7 +2627,8 @@ void host_getservbynameport(SB, uae_u32 nameport, uae_u32 proto, uae_u32 type)
 		put_long(sb->servent+4,sb->servent+16);
 		put_long(sb->servent+8,(unsigned short)htons(s->s_port));
 		
-		for (i = 0; i < numaliases; i++) put_long(sb->servent+16+i*4,addstr(&aptr,s->s_aliases[i]));
+		for (i = 0; i < numaliases; i++)
+			put_long(sb->servent+16+i*4,addstr(&aptr,s->s_aliases[i]));
 		put_long(sb->servent+16+numaliases*4,0);
 		put_long(sb->servent,aptr);
 		addstr(&aptr,s->s_name);
@@ -2609,11 +2645,11 @@ void host_getservbynameport(SB, uae_u32 nameport, uae_u32 proto, uae_u32 type)
 
 }
 
-
-
 uae_u32 host_gethostname(uae_u32 name, uae_u32 namelen)
 {
 	return gethostname(get_real_address(name),namelen);
 }
+
+#endif
 
 #endif

@@ -11,9 +11,9 @@
 #include "custom.h"
 #include "xwin.h"
 
-#define	RED 	0
-#define	GRN	1
-#define	BLU	2
+#define RED	0
+#define GRN	1
+#define BLU	2
 
 /*
  * dither matrix
@@ -110,9 +110,9 @@ void alloc_colors64k (int rw, int gw, int bw, int rs, int gs, int bs, int aw, in
     int i;
 
     for (i = 0; i < 4096; i++) {
-	int r = (i >> 8) << 4;
-	int g = ((i >> 4) & 0xF) << 4;
-	int b = (i & 0xF) << 4;
+	int r = ((i >> 8) << 4) | (i >> 8);
+	int g = (((i >> 4) & 0xf) << 4) | ((i >> 4) & 0x0f);
+	int b = ((i & 0xf) << 4) | (i & 0x0f);
 	//colormodify (&r, &g, &b);
 	xcolors[i] = doMask(r, rw, rs) | doMask(g, gw, gs) | doMask(b, bw, bs) | doAlpha (alpha, aw, as);
     }
@@ -312,7 +312,7 @@ void setup_greydither_maxcol (int maxcol, allocfunc_type allocfunc)
 			p = (c * k) / 256;
 			q = (c * k) % 256;
 			if (q /*/ k*/> d /*/ k*/ && p < k) ++p;
-/* sam:                      ^^^^^^^ */
+/* sam:			     ^^^^^^^ */
 /*  It seems that produces better output */
 			cidx[i][rgb + (j+4)*4096] =
 			    cidx[i][rgb + j*4096] = (uae_u8)map[p];
