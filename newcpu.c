@@ -27,6 +27,7 @@
 #include "ar.h"
 
 #ifdef JIT
+extern uae_u8* compiled_code;
 #include "compemu.h"
 #include <signal.h>
 extern void vec(int x, struct siginfo* si, struct sigcontext* sc);
@@ -124,8 +125,6 @@ void dump_counts (void)
 #endif
 
 
-int broken_in;
-
 static unsigned long op_illg_1 (uae_u32 opcode) REGPARAM;
 
 static unsigned long REGPARAM2 op_illg_1 (uae_u32 opcode)
@@ -143,6 +142,7 @@ static void build_cpufunctbl (void)
    switch (currprefs.cpu_level)
     {
 #ifdef CPUEMU_0
+#ifndef CPUEMU_68000_ONLY
 	case 4:
 	case 6:
 	tbl = op_smalltbl_0_ff;
@@ -156,6 +156,7 @@ static void build_cpufunctbl (void)
 	case 1:
 	tbl = op_smalltbl_3_ff;
 	break;
+#endif
 #endif
 	case 0:
 	tbl = op_smalltbl_4_ff;
@@ -178,8 +179,10 @@ static void build_cpufunctbl (void)
     for (opcode = 0; opcode < 65536; opcode++)
 	cpufunctbl[opcode] = op_illg_1;
     for (i = 0; tbl[i].handler != NULL; i++) {
-	if (! tbl[i].specific)
-	    cpufunctbl[tbl[i].opcode] = tbl[i].handler;
+#ifdef JIT
+	tbl[i].specific = 0;
+#endif
+        cpufunctbl[tbl[i].opcode] = tbl[i].handler;
     }
     opcnt = 0;
     for (opcode = 0; opcode < 65536; opcode++) {
@@ -196,11 +199,7 @@ static void build_cpufunctbl (void)
 	    opcnt++;
 	}
     }
-    for (i = 0; tbl[i].handler != NULL; i++) {
-	if (tbl[i].specific)
-	    cpufunctbl[tbl[i].opcode] = tbl[i].handler;
-    }
-    write_log ("Building CPU function table, %d instructions (%d %d %d).\n",
+    write_log ("Building CPU function table, %d opcodes (%d %d %d).\n",
 	opcnt, currprefs.cpu_level,
 	currprefs.cpu_cycle_exact ? -1 : currprefs.cpu_compatible ? 1 : 0,
 	currprefs.address_space_24);
@@ -357,8 +356,6 @@ void init_m68k (void)
 void init_m68k_full (void)
 {
     init_m68k ();
-    build_cpufunctbl ();
-    update_68k_cycles ();
 }
 
 struct regstruct regs, lastint_regs;
@@ -1519,6 +1516,7 @@ unsigned long REGPARAM2 op_illg (uae_u32 opcode)
 {
     uaecptr pc = m68k_getpc ();
     static int warned;
+    static int cpu68020;
 
     if (cloanto_rom && (opcode & 0xF100) == 0x7100) {
 	m68k_dreg (regs, (opcode >> 9) & 7) = (uae_s8)(opcode & 0xFF);
@@ -1528,11 +1526,9 @@ unsigned long REGPARAM2 op_illg (uae_u32 opcode)
     }
 
     compiler_flush_jsr_stack ();
-    if (opcode == 0x4E7B && get_long (0x10) == 0 && in_rom (pc)) {
-	gui_message ("Your Kickstart requires a 68020 CPU. Giving up.\n");
-	broken_in = 1;
-	set_special (SPCFLAG_BRK);
-	quit_program = 1;
+    if (opcode == 0x4E7B && get_long (0x10) == 0 && in_rom (pc) && !cpu68020) {
+	gui_message ("Your Kickstart requires a 68020 CPU");
+	cpu68020 = 1;
     }
 
 #ifdef AUTOCONFIG
@@ -1714,8 +1710,12 @@ static int do_specialties (int cycles)
  	do_cycles (4 * CYCLE_UNIT);
 	if (regs.spcflags & SPCFLAG_COPPER)
 	    do_copper ();
-	if (regs.spcflags & SPCFLAG_INT) {
+	if (regs.spcflags & (SPCFLAG_INT | SPCFLAG_DOINT)) {
 	    int intr = intlev ();
+#ifdef JIT
+	    if (currprefs.cachesize)
+		unset_special (SPCFLAG_INT | SPCFLAG_DOINT);
+#endif
 	    if (intr != -1 && intr > regs.intmask)
 	        Interrupt (intr);
 	}
@@ -1727,7 +1727,6 @@ static int do_specialties (int cycles)
 	if (currprefs.cpu_idle && currprefs.m68k_speed != 0 && ((regs.spcflags & SPCFLAG_STOP)) == SPCFLAG_STOP) {
 	    /* sleep 1ms if STOP-instruction is executed */
 	    if (1) {
-		extern uae_u8* compiled_code;
 		static int sleepcnt, lvpos, zerocnt;
 		if (vpos != lvpos) {
 		    sleepcnt--;
@@ -1751,11 +1750,26 @@ static int do_specialties (int cycles)
     /* interrupt takes at least 2 cycles (maybe 4) to reach the CPU and
      * there are programs that require this delay (which is not too surprising..)
      */
-    if (regs.spcflags & SPCFLAG_INT) {
+    if ((regs.spcflags & SPCFLAG_DOINT) 
+#ifdef JIT	
+	|| (!currprefs.cachesize && (regs.spcflags & SPCFLAG_INT))
+#endif
+	) {
         int intr = intlev ();
+#ifdef JIT
+	if (currprefs.cachesize)
+	    unset_special (SPCFLAG_DOINT);
+#endif
  	if (intr != -1 && intr > regs.intmask)
 	    Interrupt (intr);
     }
+
+#ifdef JIT
+    if ((regs.spcflags & SPCFLAG_INT) && currprefs.cachesize) {
+	unset_special (SPCFLAG_INT);
+	set_special (SPCFLAG_DOINT);
+    }
+#endif
 
     if ((regs.spcflags & (SPCFLAG_BRK | SPCFLAG_MODE_CHANGE))) {
 	unset_special (SPCFLAG_BRK | SPCFLAG_MODE_CHANGE);

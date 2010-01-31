@@ -106,7 +106,7 @@ static int timermode, timeon;
 static HANDLE timehandle;
 
 char *start_path;
-char help_file[ MAX_PATH ];
+char help_file[ MAX_DPATH ];
 extern int harddrive_dangerous, do_rdbdump, aspi_allow_all, dsound_hardware_mixing, no_rawinput;
 int log_scsi;
 
@@ -411,12 +411,9 @@ static int avioutput_video = 0;
 
 void setpriority (int pri)
 {
-    static int priwarn;
+    if (pri >= 2)
+	pri = 1;
     SetThreadPriority ( GetCurrentThread(), pri);
-    if (pri == 2 && priwarn == 0) {
-	priwarn = 1;
-	gui_message("Priority = 2!");
-    }
     write_log ("priority set to %d\n", pri);
 }
 
@@ -435,7 +432,7 @@ static void winuae_active (HWND hWnd, int minimized)
 	timeend();  
 
     focus = 1;
-    write_log( "WinUAE now active via WM_ACTIVATE\n" );
+    write_log ("WinUAE now active via WM_ACTIVATE\n");
     pri = priorities[currprefs.win32_inactive_priority].value;
 #ifndef _DEBUG
     if (!minimized)
@@ -445,7 +442,7 @@ static void winuae_active (HWND hWnd, int minimized)
 
     if (!minimized) {
         if (!avioutput_video) {
-	    clear_inhibit_frame( IHF_WINDOWHIDDEN );
+	    clear_inhibit_frame (IHF_WINDOWHIDDEN);
 	}
     }
     if (emulation_paused > 0)
@@ -498,7 +495,7 @@ static void winuae_inactive (HWND hWnd, int minimized)
     #endif
 	    }
 	    if (!avioutput_video) {
-		set_inhibit_frame( IHF_WINDOWHIDDEN );
+		set_inhibit_frame (IHF_WINDOWHIDDEN);
 	    }
 	    if (currprefs.win32_iconified_pause) {
 		close_sound ();
@@ -545,6 +542,7 @@ void disablecapture (void)
 
 static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+    static int ignorenextactivateapp;
     PAINTSTRUCT ps;
     HDC hDC;
     BOOL minimized;
@@ -563,17 +561,25 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
     {
     case WM_ACTIVATE:
     	minimized = HIWORD( wParam );
-	if (LOWORD (wParam) != WA_INACTIVE)
+	if (LOWORD (wParam) != WA_INACTIVE) {
       	    winuae_active (hWnd, minimized);
-        else
+	    if (ignorenextactivateapp > 0)
+		ignorenextactivateapp--;
+	} else
 	    winuae_inactive (hWnd, minimized);
     break;
 
     case WM_ACTIVATEAPP:
-	if (!wParam)
+	if (!wParam) {
 	    setmouseactive (0);
-	else if (gui_active && isfullscreen())
-	    exit_gui (0);
+	} else {
+	    if (!ignorenextactivateapp && isfullscreen () && is3dmode ()) {
+	        WIN32GFX_DisplayChangeRequested ();
+	        ignorenextactivateapp = 2;
+	    }
+	    if (gui_active && isfullscreen())
+	        exit_gui (0);
+	}
         manual_palette_refresh_needed = 1;
     break;
 
@@ -802,19 +808,19 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 		disk_eject (3);
 	    break;
 	    case ID_ST_DF0:
-		DiskSelection (hWnd, IDC_DF0, 0, &changed_prefs, 0);
+		DiskSelection (isfullscreen() ? NULL : hWnd, IDC_DF0, 0, &changed_prefs, 0);
 		disk_insert (0, changed_prefs.df[0]);
 	    break;
 	    case ID_ST_DF1:
-		DiskSelection (hWnd, IDC_DF1, 0, &changed_prefs, 0);
+		DiskSelection (isfullscreen() ? NULL : hWnd, IDC_DF1, 0, &changed_prefs, 0);
 		disk_insert (1, changed_prefs.df[0]);
 	    break;
 	    case ID_ST_DF2:
-		DiskSelection (hWnd, IDC_DF2, 0, &changed_prefs, 0);
+		DiskSelection (isfullscreen() ? NULL : hWnd, IDC_DF2, 0, &changed_prefs, 0);
 		disk_insert (2, changed_prefs.df[0]);
 	    break;
 	    case ID_ST_DF3:
-		DiskSelection (hWnd, IDC_DF3, 0, &changed_prefs, 0);
+		DiskSelection (isfullscreen() ? NULL : hWnd, IDC_DF3, 0, &changed_prefs, 0);
 		disk_insert (3, changed_prefs.df[0]);
 	    break;
 	}
@@ -963,6 +969,7 @@ void handle_events (void)
 	inputdevicefunc_keyboard.read();
 	inputdevicefunc_mouse.read();
 	inputdevicefunc_joystick.read();
+        inputdevice_handle_inputcode ();
     }
     while (PeekMessage (&msg, 0, 0, 0, PM_REMOVE)) {
         TranslateMessage (&msg);
@@ -1059,21 +1066,11 @@ int WIN32_InitHtmlHelp( void )
     return result;
 }
 
-#if 0
-#define TESTING_LANGUAGES
-#define TEST_LANGID LANG_GERMAN
-//#define TEST_LANGID LANG_FRENCH
-//#define TEST_LANGID LANG_TURKISH
-#endif
-
 static HMODULE LoadGUI( void )
 {
     HMODULE result = NULL;
     LPCTSTR dllname = NULL;
     LANGID language = GetUserDefaultLangID() & 0x3FF; // low 9-bits form the primary-language ID
-#ifdef TESTING_LANGUAGES
-    language = TEST_LANGID;
-#endif
 
     switch( language )
     {
@@ -1285,12 +1282,12 @@ static HMODULE LoadGUI( void )
 
     if( dllname )
     {
-	TCHAR  szFilename[ MAX_PATH ];
+	TCHAR  szFilename[ MAX_DPATH ];
 	DWORD  dwVersionHandle, dwFileVersionInfoSize;
 	LPVOID lpFileVersionData = NULL;
 	BOOL   success = FALSE;
 	result = LoadLibrary( dllname );
-	if( result && GetModuleFileName( result, (LPTSTR)&szFilename, MAX_PATH ) )
+	if( result && GetModuleFileName( result, (LPTSTR)&szFilename, MAX_DPATH ) )
 	{
 	    dwFileVersionInfoSize = GetFileVersionInfoSize( szFilename, &dwVersionHandle );
 	    if( dwFileVersionInfoSize )
@@ -1304,18 +1301,17 @@ static HMODULE LoadGUI( void )
 			if( VerQueryValue( lpFileVersionData, TEXT("\\"), (void **)&vsFileInfo, &uLen ) )
 			{
 			    if( vsFileInfo &&
-				( HIWORD(vsFileInfo->dwProductVersionMS) == UAEMAJOR ) 
-				&& ( LOWORD(vsFileInfo->dwProductVersionMS) == UAEMINOR ) 
-				&& ( HIWORD(vsFileInfo->dwProductVersionLS) == UAESUBREV )
-// Change this to an #if 1 when the WinUAE Release version (as opposed to UAE-core version) 
-// requires a GUI-DLL change...
-#if 0
-				&& ( LOWORD(vsFileInfo->dwProductVersionLS) == WINUAERELEASE) 
-#endif
-				)
+				HIWORD(vsFileInfo->dwProductVersionMS) == UAEMAJOR
+				&& LOWORD(vsFileInfo->dwProductVersionMS) == UAEMINOR
+				&& HIWORD(vsFileInfo->dwProductVersionLS) == UAESUBREV)
 			    {
 				success = TRUE;
 				write_log ("Translation DLL '%s' loaded and used\n", dllname);
+			    } else {
+				write_log ("Translation DLL '%s' version mismatch (%d.%d.%d)\n", dllname,
+				    HIWORD(vsFileInfo->dwProductVersionMS),
+				    LOWORD(vsFileInfo->dwProductVersionMS),
+				    HIWORD(vsFileInfo->dwProductVersionLS));
 			    }
 			}
 		    }
@@ -1370,7 +1366,7 @@ void logging_init( void )
 {
     static int started;
     static int first;
-    char debugfilename[MAX_PATH];
+    char debugfilename[MAX_DPATH];
 
     if (first > 1) {
 	write_log ("** RESTART **\n");
@@ -1427,6 +1423,8 @@ void target_default_options (struct uae_prefs *p)
     p->win32_active_priority = 1;
     p->win32_inactive_priority = 2;
     p->win32_iconified_priority = 3;
+    p->win32_midioutdev = 0;
+    p->win32_midiindev = -2;
 }
 
 void target_save_options (FILE *f, struct uae_prefs *p)
@@ -1496,26 +1494,20 @@ int target_parse_option (struct uae_prefs *p, char *option, char *value)
 	    || cfgfile_intval  (option, value, "cpu_idle", &p->cpu_idle, 1));
 
     if (cfgfile_intval (option, value, "active_priority", &v, 1)) {
-	p->win32_active_priority = fetchpri (v, 1);
+	p->win32_active_priority = fetchpri (v, 0);
 	return 1;
     }
     if (cfgfile_intval (option, value, "activepriority", &v, 1)) {
-	p->win32_active_priority = fetchpri (v, 1);
+	p->win32_active_priority = fetchpri (v, 0);
 	return 1;
     }
     if (cfgfile_intval (option, value, "inactive_priority", &v, 1)) {
-	p->win32_inactive_priority = fetchpri (v, 2);
+	p->win32_inactive_priority = fetchpri (v, 1);
 	return 1;
     }
     if (cfgfile_intval (option, value, "iconified_priority", &v, 1)) {
-	p->win32_iconified_priority = fetchpri (v, 3);
+	p->win32_iconified_priority = fetchpri (v, 2);
 	return 1;
-    }
-
-    v = -1;
-    if (cfgfile_yesno (option, value, "cpu_idle", &v)) {
-	if (v == 1)
-	     p->cpu_idle = 60;
     }
 
     if (p->sername[0] == 'n')
@@ -1541,8 +1533,9 @@ static void WIN32_HandleRegistryStuff( void )
     DWORD dwType            = REG_DWORD;
     DWORD dwDisplayInfoSize = sizeof( colortype );
     DWORD disposition;
-    char path[MAX_PATH] = "";
+    char path[MAX_DPATH] = "";
     HKEY hWinUAEKeyLocal = NULL;
+    HKEY fkey;
 
     /* Create/Open the hWinUAEKey which points to our config-info */
     if( RegCreateKeyEx( HKEY_CLASSES_ROOT, ".uae", 0, "", REG_OPTION_NON_VOLATILE,
@@ -1598,9 +1591,9 @@ static void WIN32_HandleRegistryStuff( void )
 		if( colortype == 0 ) /* No color information stored in the registry yet */
 		{
 			char szMessage[ 4096 ];
-			char szTitle[ MAX_PATH ];
+			char szTitle[ MAX_DPATH ];
 			WIN32GUI_LoadUIString( IDS_GFXCARDCHECK, szMessage, 4096 );
-			WIN32GUI_LoadUIString( IDS_GFXCARDTITLE, szTitle, MAX_PATH );
+			WIN32GUI_LoadUIString( IDS_GFXCARDTITLE, szTitle, MAX_DPATH );
 		    
 			if( MessageBox( NULL, szMessage, szTitle, 
 			MB_YESNO | MB_ICONWARNING | MB_TASKMODAL | MB_SETFOREGROUND ) == IDYES )
@@ -1616,7 +1609,9 @@ static void WIN32_HandleRegistryStuff( void )
 			WIN32GFX_FigurePixelFormats( colortype );
 		}
 	}
-    read_disk_history ();
+    fkey = read_disk_history ();
+    if (fkey)
+	RegCloseKey (fkey);
 }
 
 static void betamessage (void)
@@ -1638,12 +1633,12 @@ static int dxdetect (void)
 {
     /* believe or not but this is MS supported way of detecting DX8+ */
     HMODULE h = LoadLibrary("D3D8.DLL");
-    char szWrongDXVersion[ MAX_PATH ];
+    char szWrongDXVersion[ MAX_DPATH ];
     if (h) {
 	FreeLibrary (h);
 	return 1;
     }
-    WIN32GUI_LoadUIString( IDS_WRONGDXVERSION, szWrongDXVersion, MAX_PATH );
+    WIN32GUI_LoadUIString( IDS_WRONGDXVERSION, szWrongDXVersion, MAX_DPATH );
     pre_gui_message( szWrongDXVersion );
     return 0;
 }
@@ -1671,8 +1666,8 @@ static int osdetect (void)
 	    ( osVersion.dwMajorVersion <= 4 ) )
 	{
 	    /* WinUAE not supported on this version of Windows... */
-	    char szWrongOSVersion[ MAX_PATH ];
-	    WIN32GUI_LoadUIString( IDS_WRONGOSVERSION, szWrongOSVersion, MAX_PATH );
+	    char szWrongOSVersion[ MAX_DPATH ];
+	    WIN32GUI_LoadUIString( IDS_WRONGOSVERSION, szWrongOSVersion, MAX_DPATH );
 	    pre_gui_message( szWrongOSVersion );
 	    return FALSE;
 	}
@@ -1737,7 +1732,8 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
     char **argv;
     int argc;
     int i;
-    char tmp[2000];
+    int multi_display = 1;
+    char tmp[MAX_DPATH];
 
 #ifdef __GNUC__
     __asm__ ("leal -2300*1024(%%esp),%0" : "=r" (win32_stackbase) :);
@@ -1788,15 +1784,16 @@ __asm{
 	if (!strcmp (arg, "-forcerdtsc")) no_rdtsc = -1;
 	if (!strcmp (arg, "-norawinput")) no_rawinput = 1;
 	if (!strcmp (arg, "-scsilog")) log_scsi = 1;
+	if (!strcmp (arg, "-nomultidisplay")) multi_display = 0;
     }
 #if 0
     argv = 0;
     argv[0] = 0;
 #endif
     /* Get our executable's root-path */
-    if( ( start_path = xmalloc( MAX_PATH ) ) )
+    if( ( start_path = xmalloc( MAX_DPATH ) ) )
     {
-	GetModuleFileName( NULL, start_path, MAX_PATH );
+	GetModuleFileName( NULL, start_path, MAX_DPATH );
 	if((posn = strrchr (start_path, '\\')))
 	    posn[1] = 0;
 	sprintf (help_file, "%sWinUAE.chm", start_path );
@@ -1825,7 +1822,7 @@ __asm{
 
 	    DirectDraw_Release ();
 	    write_log ("Enumerating display devices.. \n");
-	    DirectDraw_EnumDisplays (displaysCallback);
+	    enumeratedisplays (multi_display);
 	    write_log ("Sorting devices and modes..\n");
 	    sortdisplays ();
 	    write_log ("done\n");
@@ -1899,7 +1896,6 @@ int execute_command (char *cmd)
 }
 
 struct threadpriorities priorities[] = {
-    { "Highest", THREAD_PRIORITY_HIGHEST },
     { "Above Normal", THREAD_PRIORITY_ABOVE_NORMAL },
     { "Normal", THREAD_PRIORITY_NORMAL },
     { "Below Normal", THREAD_PRIORITY_BELOW_NORMAL },
@@ -1990,8 +1986,8 @@ static LONG WINAPI ExceptionFilter( struct _EXCEPTION_POINTERS * pExceptionPoint
     }
 #ifndef _DEBUG
     if (lRet == EXCEPTION_CONTINUE_SEARCH) {
-	char path[_MAX_PATH];
-	char path2[_MAX_PATH];
+	char path[MAX_DPATH];
+	char path2[MAX_DPATH];
 	char msg[1024];
 	char *p;
 	HMODULE dll = NULL;
@@ -2000,7 +1996,7 @@ static LONG WINAPI ExceptionFilter( struct _EXCEPTION_POINTERS * pExceptionPoint
 	
 	_time64(&now);
 	when = *_localtime64(&now);
-	if (GetModuleFileName(NULL, path, _MAX_PATH)) {
+	if (GetModuleFileName(NULL, path, MAX_DPATH)) {
 	    char *slash = strrchr (path, '\\');
 	    strcpy (path2, path);
 	    if (slash) {
@@ -2027,8 +2023,10 @@ static LONG WINAPI ExceptionFilter( struct _EXCEPTION_POINTERS * pExceptionPoint
 			exinfo.ClientPointers = 0;
 			dump (GetCurrentProcess(), GetCurrentProcessId(), f, MiniDumpNormal, &exinfo, NULL, NULL);
 			CloseHandle (f);
-			sprintf (msg, "Crash detected. MiniDump saved as:\n%s\n", path2);
-			MessageBox( NULL, msg, "Crash", MB_OK | MB_ICONWARNING | MB_TASKMODAL | MB_SETFOREGROUND );
+			if (!isfullscreen ()) {
+			    sprintf (msg, "Crash detected. MiniDump saved as:\n%s\n", path2);
+			    MessageBox( NULL, msg, "Crash", MB_OK | MB_ICONWARNING | MB_TASKMODAL | MB_SETFOREGROUND );
+			}
 		    }
 		}
 	    }
@@ -2089,7 +2087,7 @@ void systraymenu (HWND hwnd)
     EnableMenuItem (menu2, ID_ST_HELP, pHtmlHelp ? MF_ENABLED : MF_GRAYED);
     i = 0;
     while (drvs[i] >= 0) {
-	char s[MAX_PATH];
+	char s[MAX_DPATH];
 	if (currprefs.df[i][0])
 	    sprintf (s, "DF%d: [%s]", i, currprefs.df[i]);
 	else

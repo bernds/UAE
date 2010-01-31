@@ -81,16 +81,15 @@ extern HWND (WINAPI *pHtmlHelp)(HWND, LPCSTR, UINT, LPDWORD );
 #define HH_DISPLAY_TOPIC 0
 #endif
 #define HtmlHelp(a,b,c,d) if( pHtmlHelp ) (*pHtmlHelp)(a,b,c,(LPDWORD)d); else \
-{ char szMessage[MAX_PATH]; WIN32GUI_LoadUIString( IDS_NOHELP, szMessage, MAX_PATH ); gui_message( szMessage ); }
+{ char szMessage[MAX_DPATH]; WIN32GUI_LoadUIString( IDS_NOHELP, szMessage, MAX_DPATH ); gui_message( szMessage ); }
 
 extern HWND hAmigaWnd;
-extern char help_file[ MAX_PATH ];
+extern char help_file[ MAX_DPATH ];
 
 extern int mouseactive;
 extern char *start_path;
 
-extern char configname[256];
-static char config_filename[ MAX_PATH ] = "";
+static char config_filename[ MAX_DPATH ] = "";
 
 static drive_specs blankdrive =
 {"", "", 1, 32, 1, 2, 0, 0};
@@ -141,7 +140,7 @@ static HWND cachedlist = NULL;
 #define MIN_SOUND_MEM 0
 #define MAX_SOUND_MEM 6
 
-static char szNone[ MAX_PATH ] = "None";
+static char szNone[ MAX_DPATH ] = "None";
 
 static int cfgfile_doload (struct uae_prefs *p, const char *filename, int type)
 {
@@ -188,22 +187,21 @@ void gui_display( int shortcut )
     ) {
         flipflop = 1;
     }
+
     WIN32GFX_ClearPalette();
     manual_painting_needed++; /* So that WM_PAINT will refresh the display */
 
     hr = DirectDraw_FlipToGDISurface();
-    if (hr != DD_OK) {
+    if (hr != DD_OK)
 	write_log ("FlipToGDISurface failed, %s\n", DXError (hr));
-	flipflop = 0;
-    }
 
     if( shortcut == -1 ) {
 	int ret;
-        if( flipflop )
-            ShowWindow( hAmigaWnd, SW_MINIMIZE );
+	if (flipflop)
+	    ShowWindow (hAmigaWnd, SW_MINIMIZE);
 	ret = GetSettings (0, flipflop ? GetDesktopWindow () : hAmigaWnd);
-        if( flipflop )
-            ShowWindow( hAmigaWnd, SW_RESTORE );
+	if (flipflop > 0)
+	    ShowWindow (hAmigaWnd, SW_RESTORE);
 	if (!ret) {
 	    savestate_state = 0;
 	}
@@ -229,7 +227,8 @@ void gui_display( int shortcut )
 #ifdef CD32
     akiko_exitgui ();
 #endif
-    setmouseactive (1);
+    if (flipflop >= 0)
+        setmouseactive (1);
 #ifdef D3D
     D3D_guimode (FALSE);
 #endif
@@ -282,26 +281,26 @@ static void gui_to_prefs (void)
 int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, char *path_out)
 {
     OPENFILENAME openFileName;
-    char regfloppypath[MAX_PATH] = "";
-    char regrompath[MAX_PATH] = "";
-    char reghdfpath[MAX_PATH] = "";
+    char regfloppypath[MAX_DPATH] = "";
+    char regrompath[MAX_DPATH] = "";
+    char reghdfpath[MAX_DPATH] = "";
     DWORD dwType = REG_SZ;
-    DWORD dwRFPsize = MAX_PATH;
-    DWORD dwRRPsize = MAX_PATH;
-    DWORD dwRHPsize = MAX_PATH;
+    DWORD dwRFPsize = MAX_DPATH;
+    DWORD dwRRPsize = MAX_DPATH;
+    DWORD dwRHPsize = MAX_DPATH;
     
-    char full_path[MAX_PATH] = "";
-    char file_name[MAX_PATH] = "";
-    char init_path[MAX_PATH] = "";
+    char full_path[MAX_DPATH] = "";
+    char file_name[MAX_DPATH] = "";
+    char init_path[MAX_DPATH] = "";
     BOOL result = FALSE;
     char *amiga_path = NULL;
     char description[ CFG_DESCRIPTION_LENGTH ] = "";
     char *p;
     int all = 1;
 
-    char szTitle[ MAX_PATH ];
-    char szFormat[ MAX_PATH ];
-    char szFilter[ MAX_PATH ] = { 0 };
+    char szTitle[ MAX_DPATH ];
+    char szFormat[ MAX_DPATH ];
+    char szFilter[ MAX_DPATH ] = { 0 };
     
     memset (&openFileName, 0, sizeof (OPENFILENAME));
     if( hWinUAEKey )
@@ -311,39 +310,39 @@ int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, 
         RegQueryValueEx( hWinUAEKey, "hdfPath", 0, &dwType, (LPBYTE)reghdfpath, &dwRHPsize );
     }
     
-    strncpy( init_path, start_path, MAX_PATH );
+    strncpy( init_path, start_path, MAX_DPATH );
     switch( flag )
     {
 	case 0:
 	case 1:
 	    if( regfloppypath[0] )
-		strncpy( init_path, regfloppypath, MAX_PATH );
+		strncpy( init_path, regfloppypath, MAX_DPATH );
 	    else
-		strncat( init_path, "..\\shared\\adf\\", MAX_PATH );
+		strncat( init_path, "..\\shared\\adf\\", MAX_DPATH );
 	break;
 	case 2:
 	case 3:
 	    if( reghdfpath[0] )
-		strncpy( init_path, reghdfpath, MAX_PATH );
+		strncpy( init_path, reghdfpath, MAX_DPATH );
 	    else
-		strncat( init_path, "..\\shared\\hdf\\", MAX_PATH );
+		strncat( init_path, "..\\shared\\hdf\\", MAX_DPATH );
 	break;
 	case 6:
 	case 7:
 	case 11:
 	    if( regrompath[0] )
-		strncpy( init_path, regrompath, MAX_PATH );
+		strncpy( init_path, regrompath, MAX_DPATH );
 	    else
-		strncat( init_path, "..\\shared\\rom\\", MAX_PATH );
+		strncat( init_path, "..\\shared\\rom\\", MAX_DPATH );
 	break;
 	case 4:
 	case 5:
 	case 8:
-	    strncat( init_path, "Configurations\\", MAX_PATH );
+	    strncat( init_path, "Configurations\\", MAX_DPATH );
 	break;
 	case 9:
 	case 10:
-	    strncat( init_path, "SaveStates\\", MAX_PATH );
+	    strncat( init_path, "SaveStates\\", MAX_DPATH );
 	break;
 	
     }
@@ -354,8 +353,8 @@ int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, 
     
     switch (flag) {
     case 0:
-	WIN32GUI_LoadUIString( IDS_SELECTADF, szTitle, MAX_PATH );
-	WIN32GUI_LoadUIString( IDS_ADF, szFormat, MAX_PATH );
+	WIN32GUI_LoadUIString( IDS_SELECTADF, szTitle, MAX_DPATH );
+	WIN32GUI_LoadUIString( IDS_ADF, szFormat, MAX_DPATH );
 	sprintf( szFilter, "%s ", szFormat );
 	memcpy( szFilter + strlen( szFilter ), DISK_FORMAT_STRING, sizeof( DISK_FORMAT_STRING ) + 1 );
 
@@ -364,8 +363,8 @@ int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, 
 	openFileName.lpstrFilter = szFilter;
 	break;
     case 1:
-	WIN32GUI_LoadUIString( IDS_CHOOSEBLANK, szTitle, MAX_PATH );
-	WIN32GUI_LoadUIString( IDS_ADF, szFormat, MAX_PATH );
+	WIN32GUI_LoadUIString( IDS_CHOOSEBLANK, szTitle, MAX_DPATH );
+	WIN32GUI_LoadUIString( IDS_ADF, szFormat, MAX_DPATH );
 	sprintf( szFilter, "%s ", szFormat );
 	memcpy( szFilter + strlen( szFilter ), "(*.adf)\0*.adf\0", 15 );
 
@@ -375,8 +374,8 @@ int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, 
 	break;
     case 2:
     case 3:
-	WIN32GUI_LoadUIString( IDS_SELECTHDF, szTitle, MAX_PATH );
-	WIN32GUI_LoadUIString( IDS_HDF, szFormat, MAX_PATH );
+	WIN32GUI_LoadUIString( IDS_SELECTHDF, szTitle, MAX_DPATH );
+	WIN32GUI_LoadUIString( IDS_HDF, szFormat, MAX_DPATH );
 	sprintf( szFilter, "%s ", szFormat );
 	memcpy( szFilter + strlen( szFilter ), "(*.hdf;*.rdf)\0*.hdf;*.rdf\0", 26 );
 
@@ -386,8 +385,8 @@ int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, 
 	break;
     case 4:
     case 5:
-	WIN32GUI_LoadUIString( IDS_SELECTUAE, szTitle, MAX_PATH );
-	WIN32GUI_LoadUIString( IDS_UAE, szFormat, MAX_PATH );
+	WIN32GUI_LoadUIString( IDS_SELECTUAE, szTitle, MAX_DPATH );
+	WIN32GUI_LoadUIString( IDS_UAE, szFormat, MAX_DPATH );
 	sprintf( szFilter, "%s ", szFormat );
 	memcpy( szFilter + strlen( szFilter ), "(*.uae)\0*.uae\0", 15 );
 
@@ -396,8 +395,8 @@ int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, 
 	openFileName.lpstrFilter = szFilter;
 	break;
     case 6:
-	WIN32GUI_LoadUIString( IDS_SELECTROM, szTitle, MAX_PATH );
-	WIN32GUI_LoadUIString( IDS_ROM, szFormat, MAX_PATH );
+	WIN32GUI_LoadUIString( IDS_SELECTROM, szTitle, MAX_DPATH );
+	WIN32GUI_LoadUIString( IDS_ROM, szFormat, MAX_DPATH );
 	sprintf( szFilter, "%s ", szFormat );
 	memcpy( szFilter + strlen( szFilter ), ROM_FORMAT_STRING, sizeof (ROM_FORMAT_STRING) + 1);
 
@@ -406,8 +405,8 @@ int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, 
         openFileName.lpstrFilter = szFilter;
         break;
     case 7:
-	WIN32GUI_LoadUIString( IDS_SELECTKEY, szTitle, MAX_PATH );
-	WIN32GUI_LoadUIString( IDS_KEY, szFormat, MAX_PATH );
+	WIN32GUI_LoadUIString( IDS_SELECTKEY, szTitle, MAX_DPATH );
+	WIN32GUI_LoadUIString( IDS_KEY, szFormat, MAX_DPATH );
 	sprintf( szFilter, "%s ", szFormat );
 	memcpy( szFilter + strlen( szFilter ), "(*.key)\0*.key\0", 15 );
 
@@ -417,8 +416,8 @@ int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, 
         break;
     case 9:
     case 10:
-	WIN32GUI_LoadUIString( flag == 10 ? IDS_RESTOREUSS : IDS_SAVEUSS, szTitle, MAX_PATH );
-	WIN32GUI_LoadUIString( IDS_USS, szFormat, MAX_PATH );
+	WIN32GUI_LoadUIString( flag == 10 ? IDS_RESTOREUSS : IDS_SAVEUSS, szTitle, MAX_DPATH );
+	WIN32GUI_LoadUIString( IDS_USS, szFormat, MAX_DPATH );
 	sprintf( szFilter, "%s ", szFormat );
 	if (flag == 10) {
 	    memcpy( szFilter + strlen( szFilter ), USS_FORMAT_STRING_RESTORE, sizeof (USS_FORMAT_STRING_RESTORE) + 1);
@@ -444,8 +443,8 @@ int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, 
 	openFileName.lpstrFilter = szFilter;
 	break;
     case 11:
-	WIN32GUI_LoadUIString( IDS_SELECTFLASH, szTitle, MAX_PATH );
-	WIN32GUI_LoadUIString( IDS_FLASH, szFormat, MAX_PATH );
+	WIN32GUI_LoadUIString( IDS_SELECTFLASH, szTitle, MAX_DPATH );
+	WIN32GUI_LoadUIString( IDS_FLASH, szFormat, MAX_DPATH );
 	sprintf( szFilter, "%s ", szFormat );
 	memcpy( szFilter + strlen( szFilter ), "(*.nvr)\0*.nvr\0", 15 );
 
@@ -455,7 +454,7 @@ int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, 
 	break;
     case 8:
     default:
-	WIN32GUI_LoadUIString( IDS_SELECTINFO, szTitle, MAX_PATH );
+	WIN32GUI_LoadUIString( IDS_SELECTINFO, szTitle, MAX_DPATH );
 
 	openFileName.lpstrTitle = szTitle;
 	openFileName.lpstrFilter = NULL;
@@ -477,9 +476,9 @@ int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, 
     openFileName.nMaxCustFilter = 0;
     openFileName.nFilterIndex = 0;
     openFileName.lpstrFile = full_path;
-    openFileName.nMaxFile = MAX_PATH;
+    openFileName.nMaxFile = MAX_DPATH;
     openFileName.lpstrFileTitle = file_name;
-    openFileName.nMaxFileTitle = MAX_PATH;
+    openFileName.nMaxFileTitle = MAX_DPATH;
     openFileName.lpstrInitialDir = init_path;
     openFileName.lpfnHook = NULL;
     openFileName.lpTemplateName = NULL;
@@ -494,7 +493,6 @@ int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, 
 	if( !(result = GetOpenFileName (&openFileName)) )
 	    write_log ("GetOpenFileName() failed.\n");
     }
-
     if (result)
     {
 	switch (wParam) 
@@ -544,8 +542,8 @@ int DiskSelection( HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs, 
 	case IDC_LOAD:
 	    if (cfgfile_doload(&workprefs, full_path, 0) == 0)
 	    {
-		char szMessage[MAX_PATH];
-		WIN32GUI_LoadUIString (IDS_COULDNOTLOADCONFIG, szMessage, MAX_PATH);
+		char szMessage[MAX_DPATH];
+		WIN32GUI_LoadUIString (IDS_COULDNOTLOADCONFIG, szMessage, MAX_DPATH);
 		gui_message (szMessage);
 	    }
 	    else
@@ -624,12 +622,12 @@ static BOOL CreateHardFile (HWND hDlg, UINT hfsizem)
     BOOL result = FALSE;
     LONG highword = 0;
     DWORD ret;
-    char init_path[MAX_PATH] = "";
+    char init_path[MAX_DPATH] = "";
     uae_u64 hfsize;
 
     hfsize = (uae_u64)hfsizem * 1024 * 1024;
     DiskSelection (hDlg, IDC_PATH_NAME, 3, &workprefs, 0);
-    GetDlgItemText (hDlg, IDC_PATH_NAME, init_path, MAX_PATH);
+    GetDlgItemText (hDlg, IDC_PATH_NAME, init_path, MAX_DPATH);
     if (*init_path && hfsize) {
 	SetCursor (LoadCursor(NULL, IDC_WAIT));
 	if ((hf = CreateFile (init_path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL) ) != INVALID_HANDLE_VALUE) {
@@ -712,9 +710,9 @@ static const char *nth[] = {
 };
 
 struct ConfigStruct {
-    char Name[MAX_PATH];
-    char Path[MAX_PATH];
-    char Fullpath[MAX_PATH];
+    char Name[MAX_DPATH];
+    char Path[MAX_DPATH];
+    char Fullpath[MAX_DPATH];
     char Description[CFG_DESCRIPTION_LENGTH];
     int Type, Directory;
     struct ConfigStruct *Parent, *Child;
@@ -734,8 +732,8 @@ static void GetConfigPath (char *path, struct ConfigStruct *parent, int noroot)
     }
     if (parent) {
 	GetConfigPath (path, parent->Parent, noroot);
-	strncat (path, parent->Name, MAX_PATH);
-	strncat (path, "\\", MAX_PATH);
+	strncat (path, parent->Name, MAX_DPATH);
+	strncat (path, "\\", MAX_DPATH);
     }
 }
 
@@ -757,9 +755,9 @@ static int configstoresize, configstoreallocated;
 static struct ConfigStruct *GetConfigs (struct ConfigStruct *configparent, int usedirs)
 {
     DWORD num_bytes = 0;
-    char path[MAX_PATH];
-    char path2[MAX_PATH];
-    char shortpath[MAX_PATH];
+    char path[MAX_DPATH];
+    char path2[MAX_DPATH];
+    char shortpath[MAX_DPATH];
     WIN32_FIND_DATA find_data;
     struct ConfigStruct *config, *first;
     HANDLE handle;
@@ -768,7 +766,7 @@ static struct ConfigStruct *GetConfigs (struct ConfigStruct *configparent, int u
     GetConfigPath (path, configparent, FALSE);
     GetConfigPath (shortpath, configparent, TRUE);
     strcpy (path2, path);
-    strncat (path2, "*.*", MAX_PATH);
+    strncat (path2, "*.*", MAX_DPATH);
     handle = FindFirstFile(path2, &find_data );
     if (handle == INVALID_HANDLE_VALUE) {
 #ifndef SINGLEFILE
@@ -794,12 +792,17 @@ static struct ConfigStruct *GetConfigs (struct ConfigStruct *configparent, int u
 		if (child)
 		    config->Child = child;
 	    } else if (!(find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-		char path3[MAX_PATH];
-		strcpy (path3, path);
-		strncat (path3, find_data.cFileName, MAX_PATH);
-		if (cfgfile_get_description (path3, config->Description, &config->Type)) {
-		    strcpy (config->Name, find_data.cFileName);
-		} else {
+		char path3[MAX_DPATH];
+		int ok = 0;
+		if (strlen (find_data.cFileName) > 4 && !strcasecmp (find_data.cFileName + strlen (find_data.cFileName) - 4, ".uae")) {
+    		    strcpy (path3, path);
+		    strncat (path3, find_data.cFileName, MAX_DPATH);
+		    if (cfgfile_get_description (path3, config->Description, &config->Type)) {
+			strcpy (config->Name, find_data.cFileName);
+			ok = 1;
+		    }
+		}
+		if (!ok) {
 		    FreeConfigStruct (config);
 		    config = NULL;
 		}
@@ -842,24 +845,30 @@ static void CreateConfigStore (void)
 
 static char *HandleConfiguration (HWND hDlg, int flag, struct ConfigStruct *config)
 {
-    char name[MAX_PATH], desc[MAX_PATH];
-    char path[MAX_PATH];
-    static char full_path[MAX_PATH];
+    char name[MAX_DPATH], desc[MAX_DPATH];
+    char path[MAX_DPATH];
+    static char full_path[MAX_DPATH];
     int type;
 
     type = SendDlgItemMessage (hDlg, IDC_CONFIGTYPE, CB_GETCURSEL, 0, 0);
     if (type == CB_ERR)
 	type = 0;
     full_path[0] = 0;
-    GetDlgItemText (hDlg, IDC_EDITNAME, name, MAX_PATH);
-    GetDlgItemText (hDlg, IDC_EDITDESCRIPTION, desc, MAX_PATH);
+    GetDlgItemText (hDlg, IDC_EDITNAME, name, MAX_DPATH);
+    if (flag == CONFIG_SAVE_FULL || flag == CONFIG_SAVE) {
+	if (strlen (name) < 4 || strcasecmp (name + strlen (name) - 4, ".uae")) {
+	    strcat (name, ".uae");
+	    SetDlgItemText (hDlg, IDC_EDITNAME, name);
+	}
+    }
+    GetDlgItemText (hDlg, IDC_EDITDESCRIPTION, desc, MAX_DPATH);
     if (config) {
         strcpy (path, config->Fullpath);
     } else {
-        strncpy (path, start_path, MAX_PATH);
-        strncat (path, "Configurations\\", MAX_PATH);
+        strncpy (path, start_path, MAX_DPATH);
+        strncat (path, "Configurations\\", MAX_DPATH);
     }
-    strncat (path, name, MAX_PATH);
+    strncat (path, name, MAX_DPATH);
     strcpy (full_path, path);
     switch (flag)
     {
@@ -874,8 +883,8 @@ static char *HandleConfiguration (HWND hDlg, int flag, struct ConfigStruct *conf
 		
 	case CONFIG_SAVE:
 	    if (strlen (name) == 0) {
-		char szMessage[ MAX_PATH ];
-		WIN32GUI_LoadUIString( IDS_MUSTENTERNAME, szMessage, MAX_PATH );
+		char szMessage[ MAX_DPATH ];
+		WIN32GUI_LoadUIString( IDS_MUSTENTERNAME, szMessage, MAX_DPATH );
 		gui_message( szMessage );
 	    } else {
 		strcpy (workprefs.description, desc);
@@ -885,13 +894,13 @@ static char *HandleConfiguration (HWND hDlg, int flag, struct ConfigStruct *conf
         
 	case CONFIG_LOAD:
 	    if (strlen (name) == 0) {
-		char szMessage[ MAX_PATH ];
-		WIN32GUI_LoadUIString( IDS_MUSTSELECTCONFIG, szMessage, MAX_PATH );
+		char szMessage[ MAX_DPATH ];
+		WIN32GUI_LoadUIString( IDS_MUSTSELECTCONFIG, szMessage, MAX_DPATH );
 		gui_message( szMessage );
 	    } else {
 		if (cfgfile_doload (&workprefs, path, type) == 0) {
-		    char szMessage[ MAX_PATH ];
-		    WIN32GUI_LoadUIString( IDS_COULDNOTLOADCONFIG, szMessage, MAX_PATH );
+		    char szMessage[ MAX_DPATH ];
+		    WIN32GUI_LoadUIString( IDS_COULDNOTLOADCONFIG, szMessage, MAX_DPATH );
 		    gui_message( szMessage );
 		} else {
 		    EnableWindow (GetDlgItem (hDlg, IDC_VIEWINFO), workprefs.info[0]);
@@ -900,14 +909,14 @@ static char *HandleConfiguration (HWND hDlg, int flag, struct ConfigStruct *conf
 
 	    case CONFIG_DELETE:
                 if (strlen (name) == 0) {
-		    char szMessage[ MAX_PATH ];
-		    WIN32GUI_LoadUIString( IDS_MUSTSELECTCONFIGFORDELETE, szMessage, MAX_PATH );
+		    char szMessage[ MAX_DPATH ];
+		    WIN32GUI_LoadUIString( IDS_MUSTSELECTCONFIGFORDELETE, szMessage, MAX_DPATH );
 		    gui_message( szMessage );
                 } else {
-		    char szMessage[ MAX_PATH ];
-		    char szTitle[ MAX_PATH ];
-		    WIN32GUI_LoadUIString( IDS_DELETECONFIGCONFIRMATION, szMessage, MAX_PATH );
-		    WIN32GUI_LoadUIString( IDS_DELETECONFIGTITLE, szTitle, MAX_PATH );
+		    char szMessage[ MAX_DPATH ];
+		    char szTitle[ MAX_DPATH ];
+		    WIN32GUI_LoadUIString( IDS_DELETECONFIGCONFIRMATION, szMessage, MAX_DPATH );
+		    WIN32GUI_LoadUIString( IDS_DELETECONFIGTITLE, szTitle, MAX_DPATH );
                     if( MessageBox( hDlg, szMessage, szTitle,
 			MB_YESNO | MB_ICONWARNING | MB_APPLMODAL | MB_SETFOREGROUND ) == IDYES ) {
 			DeleteFile (path);
@@ -941,26 +950,33 @@ static int disk_swap (int entry, int col)
 	    drvs[drv] = i;
     }
     if ((drv = disk_in_drive (entry)) >= 0) {
-	if (strcmp (workprefs.df[drv], currprefs.df[drv]))
+	if (strcmp (workprefs.df[drv], currprefs.df[drv])) {
 	    strcpy (workprefs.df[drv], currprefs.df[drv]);
-	else
+	    disk_insert (drv, workprefs.df[drv]);
+	} else {
 	    workprefs.df[drv][0] = 0;
+	    disk_eject (drv);
+	}
 	if (drvs[0] < 0 || drvs[1] < 0 || drvs[2] < 0 || drvs[3] < 0) {
 	    drv++;
 	    while (drv < 4 && drvs[drv] >= 0)
 		drv++;
-	    if (drv < 4 && workprefs.dfxtype[drv] >= 0)
+	    if (drv < 4 && workprefs.dfxtype[drv] >= 0) {
 		strcpy (workprefs.df[drv], workprefs.dfxlist[entry]);
+		disk_insert (drv, workprefs.df[drv]);
+	    }
 	}
 	return 1;
     }
     for (i = 0; i < 4; i++) {
 	if (drvs[i] < 0 && workprefs.dfxtype[i] >= 0) {
 	    strcpy (workprefs.df[i], workprefs.dfxlist[entry]);
+	    disk_insert (i, workprefs.df[i]);
 	    return 1;
 	}
     }
     strcpy (workprefs.df[0], workprefs.dfxlist[entry]);
+    disk_insert (0, workprefs.df[0]);
     return 1;
 }
 
@@ -1024,12 +1040,12 @@ void InitializeListView( HWND hDlg )
     char blocksize_str[6] = "";
     char readwrite_str[4] = "";
     char size_str[32] = "";
-    char volname_str[ MAX_PATH ] = "";
-    char devname_str[ MAX_PATH ] = "";
+    char volname_str[ MAX_DPATH ] = "";
+    char devname_str[ MAX_DPATH ] = "";
     char bootpri_str[6] = "";
     int width = 0;
     int items = 0, result = 0, i, j, entry = 0, temp = 0;
-    char tmp[10], tmp2[MAX_PATH];
+    char tmp[10], tmp2[MAX_DPATH];
 
     if (hDlg == pages[HARDDISK_ID]) {
 	listview_num_columns = HARDDISK_COLUMNS;
@@ -1339,11 +1355,11 @@ static HTREEITEM AddConfigNode (HWND hDlg, struct ConfigStruct *config, char *na
 {
     TVINSERTSTRUCT is;
     HWND TVhDlg;
-    char s[MAX_PATH] = "";
-    char file_name[MAX_PATH], file_path[MAX_PATH];
+    char s[MAX_DPATH] = "";
+    char file_name[MAX_DPATH], file_path[MAX_DPATH];
 
-    GetDlgItemText (hDlg, IDC_EDITNAME, file_name, MAX_PATH);
-    GetDlgItemText (hDlg, IDC_EDITPATH, file_path, MAX_PATH);
+    GetDlgItemText (hDlg, IDC_EDITNAME, file_name, MAX_DPATH);
+    GetDlgItemText (hDlg, IDC_EDITPATH, file_path, MAX_DPATH);
     TVhDlg = GetDlgItem(hDlg, IDC_CONFIGTREE);
     memset (&is, 0, sizeof (is));
     is.hInsertAfter = isdir < 0 ? TVI_ROOT : TVI_SORT;
@@ -1424,7 +1440,7 @@ static HTREEITEM InitializeConfigTreeView (HWND hDlg)
     HIMAGELIST himl = ImageList_Create (16, 16, ILC_COLOR8 | ILC_MASK, 3, 0);
     HWND TVhDlg = GetDlgItem(hDlg, IDC_CONFIGTREE);
     HTREEITEM parent;
-    char path[MAX_PATH];
+    char path[MAX_DPATH];
     int i;
 
     if (himl) {
@@ -1448,17 +1464,17 @@ static HTREEITEM InitializeConfigTreeView (HWND hDlg)
 
 static void ConfigToRegistry (struct ConfigStruct *config)
 {
-    if (hWinUAEKey) {
-	char path[MAX_PATH];
+    if (hWinUAEKey && config) {
+	char path[MAX_DPATH];
 	strcpy (path, config->Path);
-	strncat (path, config->Name, MAX_PATH);
+	strncat (path, config->Name, MAX_DPATH);
 	RegSetValueEx (hWinUAEKey, "ConfigFile", 0, REG_SZ, (CONST BYTE *)path, strlen(path));
     }
 }
 
 static BOOL CALLBACK LoadSaveDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-    char name_buf[MAX_PATH];
+    char name_buf[MAX_DPATH];
     char *cfgfile;
     static int recursive;
     HTREEITEM root;
@@ -1479,11 +1495,11 @@ static BOOL CALLBACK LoadSaveDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 	if (hWinUAEKey) {
 	    DWORD dwType = REG_SZ;
 	    DWORD dwRFPsize = sizeof (name_buf);
-	    char path[MAX_PATH];
+	    char path[MAX_DPATH];
 	    if (RegQueryValueEx (hWinUAEKey, "ConfigFile", 0, &dwType, (LPBYTE)name_buf, &dwRFPsize) == ERROR_SUCCESS) {
 		for (i = 0; i < configstoresize; i++) {
 		    strcpy (path, configstore[i]->Path);
-		    strncat (path, configstore[i]->Name, MAX_PATH);
+		    strncat (path, configstore[i]->Name, MAX_DPATH);
 		    if (!strcmp (name_buf, path)) {
 			config = configstore[i];
 			break;
@@ -2342,9 +2358,9 @@ static BOOL CALLBACK DisplayDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM 
 	    if( RegOpenKeyEx( HKEY_CURRENT_USER, "Software\\Arabuusimiehet\\WinUAE", 0, KEY_ALL_ACCESS, &hPixelFormatKey ) == ERROR_SUCCESS )
 	    {
 		char szMessage[ 4096 ];
-		char szTitle[ MAX_PATH ];
+		char szTitle[ MAX_DPATH ];
 		WIN32GUI_LoadUIString( IDS_GFXCARDCHECK, szMessage, 4096 );
-		WIN32GUI_LoadUIString( IDS_GFXCARDTITLE, szTitle, MAX_PATH );
+		WIN32GUI_LoadUIString( IDS_GFXCARDTITLE, szTitle, MAX_DPATH );
 		    
 		if( MessageBox( NULL, szMessage, szTitle, 
 				MB_YESNO | MB_ICONWARNING | MB_TASKMODAL | MB_SETFOREGROUND ) == IDYES )
@@ -3625,11 +3641,11 @@ static int CALLBACK VolumeSettingsProc (HWND hDlg, UINT msg, WPARAM wParam, LPAR
 {
     static int recursive = 0;
     BROWSEINFO browse_info;
-    char directory_path[MAX_PATH] = "";
+    char directory_path[MAX_DPATH] = "";
     LPITEMIDLIST browse;
-    char szTitle[ MAX_PATH ];
+    char szTitle[ MAX_DPATH ];
 
-    WIN32GUI_LoadUIString( IDS_SELECTFILESYSROOT, szTitle, MAX_PATH );
+    WIN32GUI_LoadUIString( IDS_SELECTFILESYSROOT, szTitle, MAX_DPATH );
 
     browse_info.hwndOwner = hDlg;
     browse_info.pidlRoot = NULL;
@@ -3665,10 +3681,10 @@ static int CALLBACK VolumeSettingsProc (HWND hDlg, UINT msg, WPARAM wParam, LPAR
 	     case IDOK:
 		    if( strlen( current_fsvdlg.rootdir ) == 0 ) 
 		    {
-			char szMessage[ MAX_PATH ];
-			char szTitle[ MAX_PATH ];
-			WIN32GUI_LoadUIString( IDS_MUSTSELECTPATH, szMessage, MAX_PATH );
-			WIN32GUI_LoadUIString( IDS_SETTINGSERROR, szTitle, MAX_PATH );
+			char szMessage[ MAX_DPATH ];
+			char szTitle[ MAX_DPATH ];
+			WIN32GUI_LoadUIString( IDS_MUSTSELECTPATH, szMessage, MAX_DPATH );
+			WIN32GUI_LoadUIString( IDS_SETTINGSERROR, szTitle, MAX_DPATH );
 
 			MessageBox( hDlg, szMessage, szTitle,
 				MB_OK | MB_ICONERROR | MB_APPLMODAL | MB_SETFOREGROUND);
@@ -3676,10 +3692,10 @@ static int CALLBACK VolumeSettingsProc (HWND hDlg, UINT msg, WPARAM wParam, LPAR
 		    }
 		    if( strlen( current_fsvdlg.volume ) == 0 )
 		    {
-			char szMessage[ MAX_PATH ];
-			char szTitle[ MAX_PATH ];
-			WIN32GUI_LoadUIString( IDS_MUSTSELECTNAME, szMessage, MAX_PATH );
-			WIN32GUI_LoadUIString( IDS_SETTINGSERROR, szTitle, MAX_PATH );
+			char szMessage[ MAX_DPATH ];
+			char szTitle[ MAX_DPATH ];
+			WIN32GUI_LoadUIString( IDS_MUSTSELECTNAME, szMessage, MAX_DPATH );
+			WIN32GUI_LoadUIString( IDS_SETTINGSERROR, szTitle, MAX_DPATH );
 
 			MessageBox( hDlg, szMessage, szTitle,
 				MB_OK | MB_ICONERROR | MB_APPLMODAL | MB_SETFOREGROUND);
@@ -3759,10 +3775,10 @@ static int CALLBACK HardfileSettingsProc (HWND hDlg, UINT msg, WPARAM wParam, LP
 		setting = CalculateHardfileSize (hDlg);
 		if( !CreateHardFile(hDlg, setting) )
 		{
-		    char szMessage[ MAX_PATH ];
-		    char szTitle[ MAX_PATH ];
-		    WIN32GUI_LoadUIString( IDS_FAILEDHARDFILECREATION, szMessage, MAX_PATH );
-		    WIN32GUI_LoadUIString( IDS_CREATIONERROR, szTitle, MAX_PATH );
+		    char szMessage[ MAX_DPATH ];
+		    char szTitle[ MAX_DPATH ];
+		    WIN32GUI_LoadUIString( IDS_FAILEDHARDFILECREATION, szMessage, MAX_DPATH );
+		    WIN32GUI_LoadUIString( IDS_CREATIONERROR, szTitle, MAX_DPATH );
 
 		    MessageBox( hDlg, szMessage, szTitle,
 				MB_OK | MB_ICONERROR | MB_APPLMODAL | MB_SETFOREGROUND);
@@ -3779,10 +3795,10 @@ static int CALLBACK HardfileSettingsProc (HWND hDlg, UINT msg, WPARAM wParam, LP
 	    case IDOK:
 		if( strlen( current_hfdlg.filename ) == 0 ) 
 		{
-		    char szMessage[ MAX_PATH ];
-		    char szTitle[ MAX_PATH ];
-		    WIN32GUI_LoadUIString( IDS_MUSTSELECTFILE, szMessage, MAX_PATH );
-		    WIN32GUI_LoadUIString( IDS_SETTINGSERROR, szTitle, MAX_PATH );
+		    char szMessage[ MAX_DPATH ];
+		    char szTitle[ MAX_DPATH ];
+		    WIN32GUI_LoadUIString( IDS_MUSTSELECTFILE, szMessage, MAX_DPATH );
+		    WIN32GUI_LoadUIString( IDS_SETTINGSERROR, szTitle, MAX_DPATH );
 
 		    MessageBox( hDlg, szMessage, szTitle,
 				MB_OK | MB_ICONERROR | MB_APPLMODAL | MB_SETFOREGROUND);
@@ -4212,6 +4228,8 @@ static void addfloppytype (HWND hDlg, int n)
 	}
 	if (!strcmp (workprefs.df[n], s))
 	    SendDlgItemMessage (hDlg, f_text, CB_SETCURSEL, i - 1, 0);
+	if (nn <= 0)
+	    break;
     }
     if (fkey)
 	RegCloseKey (fkey);
@@ -4246,8 +4264,8 @@ static void getfloppyname (HWND hDlg, int n)
 	    DISK_history_add (tmp, -1);
 	}
     }
+    disk_insert (n, tmp);
     strcpy (workprefs.df[n], tmp);
-    strcpy (changed_prefs.df[n], tmp);
 }
 
 static void addallfloppies (HWND hDlg)
@@ -4317,7 +4335,7 @@ static BOOL CALLBACK FloppyDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 	if (recursive > 0)
 	    break;
 	recursive++;
-	if (HIWORD (wParam) == CBN_SELCHANGE)  {
+	if (HIWORD (wParam) == CBN_SELCHANGE || HIWORD (wParam) == CBN_KILLFOCUS)  {
 	    switch (LOWORD (wParam))
 	    {
 		case IDC_DF0TEXT:
@@ -4440,7 +4458,7 @@ static BOOL CALLBACK DiskDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lPa
 {
     static int recursive = 0;
     static int entry;
-    char tmp[MAX_PATH];
+    char tmp[MAX_DPATH];
 
     switch (msg) 
     {
@@ -4507,7 +4525,7 @@ static BOOL CALLBACK DiskDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lPa
 			if (disk_swap (entry, col))
 			    InitializeListView (hDlg);
 		    } else if (col == 1) {
-			char path[MAX_PATH];
+			char path[MAX_DPATH];
 			if (dblclick && DiskSelection (hDlg, -1, 0, &changed_prefs, path)) {
 			    strcpy (workprefs.dfxlist[entry], path);
 			    InitializeListView (hDlg);
@@ -4662,7 +4680,7 @@ static void values_from_portsdlg (HWND hDlg)
     }
 
     workprefs.win32_midioutdev = SendDlgItemMessage( hDlg, IDC_MIDIOUTLIST, CB_GETCURSEL, 0, 0 );
-    workprefs.win32_midioutdev--; /* selection zero is always 'default midi device', so we make it -1 */
+    workprefs.win32_midioutdev -= 2;
 
     if( bNoMidiIn )
     {
@@ -4672,6 +4690,7 @@ static void values_from_portsdlg (HWND hDlg)
     {
 	workprefs.win32_midiindev = SendDlgItemMessage( hDlg, IDC_MIDIINLIST, CB_GETCURSEL, 0, 0 );
     }
+    EnableWindow( GetDlgItem( hDlg, IDC_MIDIINLIST ), workprefs.win32_midioutdev < -1 ? FALSE : TRUE);
 
     item = SendDlgItemMessage (hDlg, IDC_SERIAL, CB_GETCURSEL, 0, 0L);
     switch( item ) 
@@ -4686,15 +4705,11 @@ static void values_from_portsdlg (HWND hDlg)
 	case 8:
 	    workprefs.use_serial = 1;
 	    strcpy (workprefs.sername, comports[item - 1]);
-	    EnableWindow( GetDlgItem( hDlg, IDC_MIDIOUTLIST ), TRUE );
-	    EnableWindow( GetDlgItem( hDlg, IDC_MIDIINLIST ), TRUE );
 	break;
 
 	default:
 	    workprefs.use_serial = 0;
 	    strcpy( workprefs.sername, "none" );
-	    EnableWindow( GetDlgItem( hDlg, IDC_MIDIOUTLIST ), FALSE );
-	    EnableWindow( GetDlgItem( hDlg, IDC_MIDIINLIST ), FALSE );
 	break;
     }
     workprefs.serial_demand = 0;
@@ -4710,8 +4725,7 @@ static void values_from_portsdlg (HWND hDlg)
 
 static void values_to_portsdlg (HWND hDlg)
 {
-    LONG item_height, result = 0;
-    RECT rect;
+    LONG result = 0;
 
     if( strcmp (workprefs.prtname, "none"))
     {
@@ -4730,8 +4744,8 @@ static void values_to_portsdlg (HWND hDlg)
 	if( result < 0 || got == 0)
 	{
 	    // Warn the user that their printer-port selection is not valid on this machine
-	    char szMessage[ MAX_PATH ];
-	    WIN32GUI_LoadUIString( IDS_INVALIDPRTPORT, szMessage, MAX_PATH );
+	    char szMessage[ MAX_DPATH ];
+	    WIN32GUI_LoadUIString( IDS_INVALIDPRTPORT, szMessage, MAX_DPATH );
 	    gui_message( szMessage );
 	    
 	    // Disable the invalid parallel-port selection
@@ -4741,11 +4755,12 @@ static void values_to_portsdlg (HWND hDlg)
 	}
     }
     SendDlgItemMessage( hDlg, IDC_PRINTERLIST, CB_SETCURSEL, result, 0 );
-    SendDlgItemMessage( hDlg, IDC_MIDIOUTLIST, CB_SETCURSEL, workprefs.win32_midioutdev + 1, 0 ); /* we +1 here because 1st entry is 'default' */
-    if( !bNoMidiIn && ( workprefs.win32_midiindev >= 0 ) )
+    SendDlgItemMessage( hDlg, IDC_MIDIOUTLIST, CB_SETCURSEL, workprefs.win32_midioutdev + 2, 0 );
+    if (!bNoMidiIn && workprefs.win32_midiindev >= 0)
 	SendDlgItemMessage( hDlg, IDC_MIDIINLIST, CB_SETCURSEL, workprefs.win32_midiindev, 0 );
     else
 	SendDlgItemMessage( hDlg, IDC_MIDIINLIST, CB_SETCURSEL, 0, 0 );
+    EnableWindow( GetDlgItem( hDlg, IDC_MIDIINLIST ), workprefs.win32_midioutdev < -1 ? FALSE : TRUE);
     
     CheckDlgButton( hDlg, IDC_SHARED, workprefs.serial_demand );
     CheckDlgButton( hDlg, IDC_SER_CTSRTS, workprefs.serial_hwctsrts );
@@ -4770,8 +4785,8 @@ static void values_to_portsdlg (HWND hDlg)
 	{
 	    if (t > 0) {
 		// Warn the user that their COM-port selection is not valid on this machine
-		char szMessage[ MAX_PATH ];
-		WIN32GUI_LoadUIString( IDS_INVALIDCOMPORT, szMessage, MAX_PATH );
+		char szMessage[ MAX_DPATH ];
+		WIN32GUI_LoadUIString( IDS_INVALIDCOMPORT, szMessage, MAX_DPATH );
 		gui_message( szMessage );
 
 		// Select "none" as the COM-port
@@ -4785,29 +4800,6 @@ static void values_to_portsdlg (HWND hDlg)
 	{
 	    workprefs.use_serial = 1;
 	}
-    }
-
-    if( workprefs.use_serial )
-    {
-	EnableWindow( GetDlgItem( hDlg, IDC_MIDIOUTLIST ), TRUE );
-	if( !bNoMidiIn )
-	    EnableWindow( GetDlgItem( hDlg, IDC_MIDIINLIST ), TRUE );
-    }
-    else
-    {
-	EnableWindow( GetDlgItem( hDlg, IDC_MIDIOUTLIST ), FALSE );
-	EnableWindow( GetDlgItem( hDlg, IDC_MIDIINLIST ), FALSE );
-    }
-    /* Retrieve the height, in pixels, of a list item. */
-    item_height = SendDlgItemMessage (hDlg, IDC_SERIAL, CB_GETITEMHEIGHT, 0, 0L);
-    if (item_height != CB_ERR) {
-	/* Get actual box position and size. */
-	GetWindowRect (GetDlgItem (hDlg, IDC_SERIAL), &rect);
-	rect.bottom = (rect.top + item_height * 5
-	    + SendDlgItemMessage (hDlg, IDC_SERIAL, CB_GETITEMHEIGHT, (WPARAM) - 1, 0L)
-	    + item_height);
-	SetWindowPos (GetDlgItem (hDlg, IDC_SERIAL), 0, 0, 0, rect.right - rect.left,
-	    rect.bottom - rect.top, SWP_NOMOVE | SWP_NOZORDER);
     }
 }
 
@@ -4869,15 +4861,16 @@ static void init_portsdlg( HWND hDlg )
 	}
     }
 
+    SendDlgItemMessage( hDlg, IDC_MIDIOUTLIST, CB_RESETCONTENT, 0, 0L );
+    SendDlgItemMessage (hDlg, IDC_MIDIOUTLIST, CB_ADDSTRING, 0, (LPARAM)szNone );
     if( ( numdevs = midiOutGetNumDevs() ) == 0 )
     {
 	EnableWindow( GetDlgItem( hDlg, IDC_MIDIOUTLIST ), FALSE );
     }
     else
     {
-	char szMidiOut[ MAX_PATH ];
-	WIN32GUI_LoadUIString( IDS_DEFAULTMIDIOUT, szMidiOut, MAX_PATH );
-        SendDlgItemMessage( hDlg, IDC_MIDIOUTLIST, CB_RESETCONTENT, 0, 0L );
+	char szMidiOut[ MAX_DPATH ];
+	WIN32GUI_LoadUIString( IDS_DEFAULTMIDIOUT, szMidiOut, MAX_DPATH );
         SendDlgItemMessage( hDlg, IDC_MIDIOUTLIST, CB_ADDSTRING, 0, (LPARAM)szMidiOut );
 
         for( port = 0; port < numdevs; port++ )
@@ -4887,8 +4880,10 @@ static void init_portsdlg( HWND hDlg )
                 SendDlgItemMessage( hDlg, IDC_MIDIOUTLIST, CB_ADDSTRING, 0, (LPARAM)midiOutCaps.szPname );
             }
         }
+	EnableWindow( GetDlgItem( hDlg, IDC_MIDIOUTLIST ), TRUE );
     }
 
+    SendDlgItemMessage( hDlg, IDC_MIDIINLIST, CB_RESETCONTENT, 0, 0L );
     if( ( numdevs = midiInGetNumDevs() ) == 0 )
     {
 	EnableWindow( GetDlgItem( hDlg, IDC_MIDIINLIST ), FALSE );
@@ -4896,8 +4891,6 @@ static void init_portsdlg( HWND hDlg )
     }
     else
     {
-        SendDlgItemMessage( hDlg, IDC_MIDIINLIST, CB_RESETCONTENT, 0, 0L );
-
         for( port = 0; port < numdevs; port++ )
         {
             if( midiInGetDevCaps( port, &midiInCaps, sizeof( midiInCaps ) ) == MMSYSERR_NOERROR )
@@ -4922,6 +4915,7 @@ static BOOL CALLBACK PortsDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lP
 	init_portsdlg( hDlg );
 	enable_for_portsdlg( hDlg );
 	values_to_portsdlg ( hDlg);
+	UpdatePortRadioButtons( hDlg );
 	break;	    
     case WM_USER:
 	recursive++;
@@ -5175,7 +5169,7 @@ static void input_toggleautofire (void)
 
 static BOOL CALLBACK InputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-    char name_buf[MAX_PATH] = "", desc_buf[128] = "";
+    char name_buf[MAX_DPATH] = "", desc_buf[128] = "";
     char *posn = NULL;
     HWND list;
     int dblclick = 0;
@@ -5547,9 +5541,9 @@ static void enable_for_avioutputdlg(HWND hDlg)
 {
 #if defined (PROWIZARD)
 	EnableWindow( GetDlgItem( hDlg, IDC_PROWIZARD ), TRUE );
-#endif
 	if (full_property_sheet)
 	    EnableWindow( GetDlgItem( hDlg, IDC_PROWIZARD ), FALSE );
+#endif
 
 	EnableWindow(GetDlgItem(hDlg, IDC_SCREENSHOT), full_property_sheet ? FALSE : TRUE);
 
@@ -5585,6 +5579,7 @@ static void enable_for_avioutputdlg(HWND hDlg)
 		WIN32GUI_LoadUIString (IDS_AVIOUTPUT_NOCODEC, aviout_videoc, sizeof (aviout_videoc));
 	}
 	SetWindowText(GetDlgItem(hDlg, IDC_AVIOUTPUT_VIDEO_STATIC), aviout_videoc);
+	EnableWindow(GetDlgItem(hDlg, IDC_AVIOUTPUT_ACTIVATED), (!avioutput_audio && !avioutput_video) ? FALSE : TRUE);
 }
 
 static BOOL CALLBACK AVIOutputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -5695,6 +5690,10 @@ static BOOL CALLBACK AVIOutputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 						avioutput_video = 1;
 						strcpy (aviout_videoc, string);
 						SetWindowText(GetDlgItem(hDlg, IDC_AVIOUTPUT_VIDEO_STATIC), string);
+						if (avioutput_audio == AVIAUDIO_WAV) {
+						    avioutput_audio = 0;
+						    aviout_audioc[0] = 0;
+						}
 					}
 					else
 						avioutput_video = 0;
@@ -5718,7 +5717,7 @@ static BOOL CALLBACK AVIOutputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 				ofn.nMaxCustFilter = 0;
 				ofn.nFilterIndex = 0;
 				ofn.lpstrFile = avioutput_filename;
-				ofn.nMaxFile = MAX_PATH;
+				ofn.nMaxFile = MAX_DPATH;
 				ofn.lpstrFileTitle = NULL;
 				ofn.nMaxFileTitle = 0;
 				ofn.lpstrInitialDir = NULL;
@@ -5731,7 +5730,9 @@ static BOOL CALLBACK AVIOutputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 					break;
 				if (ofn.nFilterIndex == 2) {
 				    avioutput_audio = AVIAUDIO_WAV;
-				    SetWindowText(GetDlgItem(hDlg, IDC_AVIOUTPUT_AUDIO_STATIC), "Wave (internal)");
+				    avioutput_video = 0;
+				    aviout_videoc[0] = 0;
+				    strcpy (aviout_audioc, "Wave (internal)");
 				    if (strlen (avioutput_filename) > 4 && !stricmp (avioutput_filename + strlen (avioutput_filename) - 4, ".avi"))
 					strcpy (avioutput_filename + strlen (avioutput_filename) - 4, ".wav");
 				}
@@ -5794,7 +5795,7 @@ static HWND updatePanel (HWND hDlg, int id)
     GetClientRect (hDlg, &r2c);
     gui_width = r2c.right;
     gui_height = r2c.bottom;
-    chwnd = CreateDialogParam (hInst, ppage[id].pp.pszTemplate, hDlg, ppage[id].pp.pfnDlgProc, id);
+    chwnd = CreateDialogParam (hUIDLL ? hUIDLL : hInst, ppage[id].pp.pszTemplate, hDlg, ppage[id].pp.pfnDlgProc, id);
     GetWindowRect (hDlg, &r3w);
     GetClientRect (chwnd, &r3c);
     x = r1w.left - r2w.left;
@@ -5933,7 +5934,7 @@ static void centerWindow (HWND hDlg)
 int dragdrop (HWND hDlg, HDROP hd, struct uae_prefs *prefs, int currentpage)
 {
     int cnt, i, drv, list;
-    char file[MAX_PATH];
+    char file[MAX_DPATH];
     POINT pt;
     int ret = 0;
 
@@ -6049,11 +6050,11 @@ static BOOL CALLBACK DialogProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lPara
 		case IDC_RESETAMIGA:
 		    uae_reset (0);
 		    SendMessage (hDlg, WM_COMMAND, IDOK, 0);
-		    break;
+		    return TRUE;
 		case IDC_QUITEMU:
 		    uae_quit ();
 		    SendMessage (hDlg, WM_COMMAND, IDCANCEL, 0);
-		    break;
+		    return TRUE;
 		case IDHELP:
 		    if (pHtmlHelp && ppage[currentpage].help)
 			HtmlHelp (NULL, help_file, HH_DISPLAY_TOPIC, ppage[currentpage].help);
@@ -6088,8 +6089,8 @@ static int init_page (int tmpl, int icon, int title,
     LPTSTR lpstrTitle;
     ppage[id].pp.pszTemplate = MAKEINTRESOURCE (tmpl);
     ppage[id].pp.pszIcon = MAKEINTRESOURCE (icon);
-    lpstrTitle = calloc (1, MAX_PATH);
-    LoadString( hUIDLL, title, lpstrTitle, MAX_PATH );
+    lpstrTitle = calloc (1, MAX_DPATH);
+    LoadString( hUIDLL, title, lpstrTitle, MAX_DPATH );
     ppage[id].pp.pszTitle = lpstrTitle;
     ppage[id].pp.pfnDlgProc = func;
     ppage[id].help = help;
@@ -6108,7 +6109,7 @@ static int GetSettings (int all_options, HWND hwnd)
     pguiprefs = &currprefs;
     default_prefs (&workprefs, 0);
 
-    WIN32GUI_LoadUIString( IDS_NONE, szNone, MAX_PATH );
+    WIN32GUI_LoadUIString( IDS_NONE, szNone, MAX_DPATH );
 
     prefs_to_gui (&changed_prefs);
 
@@ -6146,7 +6147,7 @@ static int GetSettings (int all_options, HWND hwnd)
 
     if (all_options || !configstore)
 	CreateConfigStore ();
-    psresult = DialogBox (hInst, MAKEINTRESOURCE (IDD_PANEL), hwnd, DialogProc);
+    psresult = DialogBox (hUIDLL ? hUIDLL : hInst, MAKEINTRESOURCE (IDD_PANEL), hwnd, DialogProc);
 
     if (quit_program)
         psresult = -2;
@@ -6294,7 +6295,7 @@ static int fsdialog (HWND *hwnd)
 int gui_message_multibutton (int flags, const char *format,...)
 {
     char msg[2048];
-    char szTitle[ MAX_PATH ];
+    char szTitle[ MAX_DPATH ];
     va_list parms;
     int flipflop = 0;
     int fullscreen = 0;
@@ -6314,7 +6315,7 @@ int gui_message_multibutton (int flags, const char *format,...)
     if (msg[strlen(msg)-1]!='\n')
 	write_log("\n");
 
-    WIN32GUI_LoadUIString( IDS_ERRORTITLE, szTitle, MAX_PATH );
+    WIN32GUI_LoadUIString( IDS_ERRORTITLE, szTitle, MAX_DPATH );
 
     mbflags = MB_ICONWARNING | MB_TASKMODAL | MB_SETFOREGROUND;
     if (flags == 0)
@@ -6344,7 +6345,7 @@ int gui_message_multibutton (int flags, const char *format,...)
 void gui_message (const char *format,...)
 {
     char msg[2048];
-    char szTitle[ MAX_PATH ];
+    char szTitle[ MAX_DPATH ];
     va_list parms;
     int flipflop = 0;
     int fullscreen = 0;
@@ -6363,7 +6364,7 @@ void gui_message (const char *format,...)
     if (msg[strlen(msg)-1]!='\n')
 	write_log("\n");
 
-    WIN32GUI_LoadUIString( IDS_ERRORTITLE, szTitle, MAX_PATH );
+    WIN32GUI_LoadUIString( IDS_ERRORTITLE, szTitle, MAX_DPATH );
 
     MessageBox (hwnd, msg, szTitle, MB_OK | MB_ICONWARNING | MB_TASKMODAL | MB_SETFOREGROUND);
 
@@ -6376,7 +6377,7 @@ void gui_message (const char *format,...)
 void pre_gui_message (const char *format,...)
 {
     char msg[2048];
-    char szTitle[ MAX_PATH ];
+    char szTitle[ MAX_DPATH ];
     va_list parms;
 
     va_start (parms, format);
@@ -6384,7 +6385,7 @@ void pre_gui_message (const char *format,...)
     va_end (parms);
     write_log( msg );
 
-    WIN32GUI_LoadUIString( IDS_ERRORTITLE, szTitle, MAX_PATH );
+    WIN32GUI_LoadUIString( IDS_ERRORTITLE, szTitle, MAX_DPATH );
 
     MessageBox( NULL, msg, szTitle, MB_OK | MB_ICONWARNING | MB_TASKMODAL | MB_SETFOREGROUND );
 

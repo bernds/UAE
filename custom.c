@@ -177,7 +177,10 @@ static int sprite_width, sprres, sprite_buffer_res;
 uae_u8 cycle_line[256];
 #endif
 
-static uae_u32 bpl1dat, bpl2dat, bpl3dat, bpl4dat, bpl5dat, bpl6dat, bpl7dat, bpl8dat;
+static uae_u32 bpl1dat;
+#if 0 /* useless */
+static uae_u32 bpl2dat, bpl3dat, bpl4dat, bpl5dat, bpl6dat, bpl7dat, bpl8dat;
+#endif
 static uae_s16 bpl1mod, bpl2mod;
 
 static uaecptr bplpt[8];
@@ -191,7 +194,7 @@ static struct color_entry current_colors;
 static unsigned int bplcon0, bplcon1, bplcon2, bplcon3, bplcon4;
 static unsigned int diwstrt, diwstop, diwhigh;
 static int diwhigh_written;
-static unsigned int ddfstrt, ddfstop, ddfstrt_old, ddfstrt_old_hpos, ddfstrt_old_vpos;
+static unsigned int ddfstrt, ddfstop, ddfstrt_old_hpos, ddfstrt_old_vpos;
 static int ddf_change;
 static unsigned int bplcon0_at_start;
 
@@ -1566,7 +1569,7 @@ STATIC_INLINE void decide_line (int hpos)
 	    ok = 1;
 	    /* hack warning.. Writing to DDFSTRT when DMA should start must be ignored
 	     * (correct fix would be emulate this delay for every custom register, but why bother..) */
-	    if (ddfstrt_old != ddfstrt && hpos - 2 == ddfstrt_old_hpos && ddfstrt_old_vpos == vpos)
+	    if (hpos - 2 == ddfstrt_old_hpos && ddfstrt_old_vpos == vpos)
 		ok = 0;
 	    if (ok) {
 	        start_bpl_dma (hpos, plfstrt);
@@ -1621,38 +1624,72 @@ static void record_color_change (int hpos, int regno, unsigned long value)
 
 typedef int sprbuf_res_t, cclockres_t, hwres_t, bplres_t;
 
+/* handle very rarely needed playfield collision (CLXDAT bit 0) */
 static void do_playfield_collisions (void)
 {
-    uae_u8 *ld = line_data[next_lineno];
-    int i;
+    int bplres = GET_RES (bplcon0);
+    hwres_t ddf_left = thisline_decision.plfleft * 2 << bplres;
+    hwres_t hw_diwlast = coord_window_to_diw_x (thisline_decision.diwlastword);
+    hwres_t hw_diwfirst = coord_window_to_diw_x (thisline_decision.diwfirstword);
+    int i, collided, minpos, maxpos;
+#ifdef AGA
+    int planes = (currprefs.chipset_mask & CSMASK_AGA) ? 8 : 6;
+#else
+    int planes = 6;
+#endif
 
     if (clxcon_bpl_enable == 0) {
 	clxdat |= 1;
 	return;
     }
-	
-    for (i = thisline_decision.plfleft; i < thisline_decision.plfright; i += 2) {
+    if (clxdat & 1)
+	return;
+
+    collided = 0;
+    minpos = thisline_decision.plfleft * 2;
+    if (minpos < hw_diwfirst)
+	minpos = hw_diwfirst;
+    maxpos = thisline_decision.plfright * 2;
+    if (maxpos > hw_diwlast)
+	maxpos = hw_diwlast;
+    for (i = minpos; i < maxpos && !collided; i+= 32) {
+	int offs = ((i << bplres) - ddf_left) >> 3;
 	int j;
-	uae_u32 total = 0xFFFFFFFF;
-	for (j = 0; j < 8; j++) {
-	    uae_u32 t = 0;
-	    if ((clxcon_bpl_enable & (1 << j)) == 0)
-		t = 0xFFFFFFFF;
-	    else if (j < thisline_decision.nr_planes) {
-		t = *(uae_u32 *)(line_data[next_lineno] + 2 * i + 2 * j * MAX_WORDS_PER_LINE);
-		t ^= ~(((clxcon_bpl_match >> j) & 1) - 1);
+	uae_u32 total = 0xffffffff;
+	for (j = 0; j < planes; j++) {
+	    int ena = (clxcon_bpl_enable >> j) & 1;
+	    int match = (clxcon_bpl_match >> j) & 1;
+	    uae_u32 t = 0xffffffff;
+	    if (ena) {
+		if (j < thisline_decision.nr_planes) {
+		    t = *(uae_u32 *)(line_data[next_lineno] + offs + 2 * j * MAX_WORDS_PER_LINE);
+		    t ^= (match & 1) - 1;
+		} else {
+		    t = (match & 1) - 1;
+		}
 	    }
 	    total &= t;
 	}
-	if (total)
-	    clxdat |= 1;	
+	if (total) {
+	    collided = 1;
+#if 0
+	    {
+		int k;
+		for (k = 0; k < 1; k++) {
+		    uae_u32 *ldata = (uae_u32 *)(line_data[next_lineno] + offs + 2 * k * MAX_WORDS_PER_LINE);
+		    *ldata ^= 0x5555555555;
+		}
+	    }
+#endif
+
+	}
     }
+    if (collided)
+	clxdat |= 1;
 }
 
 /* Sprite-to-sprite collisions are taken care of in record_sprite.  This one does
-   playfield/sprite collisions.
-   That's the theory.  In practice this doesn't work yet.  I also suspect this code
-   is way too slow.  */
+   playfield/sprite collisions. */
 static void do_sprite_collisions (void)
 {
     int nr_sprites = curr_drawinfo[next_lineno].nr_sprites;
@@ -2034,7 +2071,7 @@ static void finish_decisions (void)
     changed = thisline_changed;
 
     if (thisline_decision.plfleft != -1) {
-	record_diw_line (thisline_decision.diwfirstword, thisline_decision.diwlastword);
+	record_diw_line (diwfirstword, diwlastword);
 
 	decide_sprites (hpos);
     }
@@ -2347,7 +2384,9 @@ static void VPOSW (uae_u16 v)
 
 STATIC_INLINE uae_u16 VHPOSR (void)
 {
-    uae_u16 v = (vpos << 8) | current_hpos ();
+    uae_u16 v = vpos << 8;
+    uae_u16 hp = current_hpos ();
+    v |= hp;
     return v;
 }
 
@@ -2453,11 +2492,7 @@ static int intlev_2 (void)
     for (i = 14; i >= 0; i--) {
 	if (imask & (1 << i)) {
 #ifdef INTDELAY
-	    if (
-#ifdef JIT
-	    compiled_code ||
-#endif
-	    !(irqdelay[i] && (cycles - irqcycles[i]) < c * CYCLE_UNIT)) {
+	    if (!(irqdelay[i] && (cycles - irqcycles[i]) < c * CYCLE_UNIT)) {
 #endif
 		irqdelay[i] = 0;
 		if (i == 13 || i == 14)
@@ -2482,18 +2517,46 @@ static int intlev_2 (void)
 
 int intlev (void)
 {
-    int il = intlev_2 ();
-    if (il >= 0 && il <= regs.intmask)
-	unset_special (SPCFLAG_INT);
+    int il = -1;
+#ifdef JIT
+    if (currprefs.cachesize) {
+	uae_u16 imask = intreq & intena;
+	if (imask && (intena & 0x4000)) {
+	    if (imask & 0x2000)
+		il = 6;
+	    if (imask & 0x1800)
+		il = 5;
+	    if (imask & 0x0780)
+		il = 4;
+	    if (imask & 0x0070)
+		il = 3;
+	    if (imask & 0x0008)
+		il = 2;
+	    if (imask & 0x0007)
+		il = 1;
+	}
+    } else {
+#endif
+	il = intlev_2 ();
+	if (il >= 0 && il <= regs.intmask)
+	    unset_special (SPCFLAG_INT);
+#ifdef JIT
+    }
+#endif
     return il;
 }
 
 static void doint (void)
 {
     int i;
-    uae_u16 imask = intreq & intena;
+    uae_u16 imask;
 
     set_special (SPCFLAG_INT);
+#ifdef JIT
+    if (currprefs.cachesize)
+	return;
+#endif
+    imask = intreq & intena;
     if (imask && (intena & 0x4000)) {
 	for (i = 0; i < 14; i++) {
 	    if ((imask & (1 << i)) && irqdelay[i] == 0) {
@@ -2527,8 +2590,8 @@ void INTREQ (uae_u16 v)
     serial_check_irq ();
     rethink_cias ();
 #if 0
-    if (1 || (v & 0x100))
-	write_log("INTREQ %04.4X (%04.4X) %p\n", intreq, v, m68k_getpc());
+    if (1 || (v & (0x10)))
+	write_log("%d INTREQ %04.4X (%04.4X) %x %x %x\n", vpos, intreq, v, m68k_getpc(), cop1lc, cop2lc);
 #endif
 }
 
@@ -2544,16 +2607,6 @@ static void ADKCON (int hpos, uae_u16 v)
 	serial_uartbreak ((adkcon >> 11) & 1);
 }
 
-static void dumpsync (void)
-{
-#if 0
-    write_log ("BEAMCON0 = %04.4X VTOTAL=%04.4X HTOTAL=%04.4X\n", new_beamcon0, vtotal, htotal);
-    write_log ("HSSTOP=%04.4X HBSTRT=%04.4X HBSTOP=%04.4X\n", hsstop, hbstrt, hbstop);
-    write_log ("VSSTOP=%04.4X VBSTRT=%04.4X VBSTOP=%04.4X\n", vsstop, vbstrt, vbstop);
-    write_log ("HSSTRT=%04.4X VSSTRT=%04.4X HCENTER=%04.4X\n", hsstrt, vsstrt, hcenter);
-#endif
-}
-
 static void BEAMCON0 (uae_u16 v)
 {
     if (currprefs.chipset_mask & CSMASK_ECS_AGNUS) {
@@ -2565,6 +2618,18 @@ static void BEAMCON0 (uae_u16 v)
 	        write_log ("warning: %04.4X written to BEAMCON0\n", v);
 	}
     }
+}
+
+#ifndef CUSTOM_SIMPLE
+
+static void dumpsync (void)
+{
+#if 0
+    write_log ("BEAMCON0 = %04.4X VTOTAL=%04.4X HTOTAL=%04.4X\n", new_beamcon0, vtotal, htotal);
+    write_log ("HSSTOP=%04.4X HBSTRT=%04.4X HBSTOP=%04.4X\n", hsstop, hbstrt, hbstop);
+    write_log ("VSSTOP=%04.4X VBSTRT=%04.4X VBSTOP=%04.4X\n", vsstop, vbstrt, vbstop);
+    write_log ("HSSTRT=%04.4X VSSTRT=%04.4X HCENTER=%04.4X\n", hsstrt, vsstrt, hcenter);
+#endif
 }
 
 static void varsync (void)
@@ -2588,7 +2653,7 @@ static void varsync (void)
     hack_vpos = -1;
     dumpsync ();
 }
-
+#endif
 
 static void BPLxPTH (int hpos, uae_u16 v, int num)
 {
@@ -2710,6 +2775,8 @@ STATIC_INLINE void BPL1DAT (int hpos, uae_u16 v)
 
     maybe_first_bpl1dat (hpos);
 }
+
+#if 0
 /* We could do as well without those... */
 STATIC_INLINE void BPL2DAT (uae_u16 v) { bpl2dat = v; }
 STATIC_INLINE void BPL3DAT (uae_u16 v) { bpl3dat = v; }
@@ -2718,6 +2785,7 @@ STATIC_INLINE void BPL5DAT (uae_u16 v) { bpl5dat = v; }
 STATIC_INLINE void BPL6DAT (uae_u16 v) { bpl6dat = v; }
 STATIC_INLINE void BPL7DAT (uae_u16 v) { bpl7dat = v; }
 STATIC_INLINE void BPL8DAT (uae_u16 v) { bpl8dat = v; }
+#endif
 
 static void DIWSTRT (int hpos, uae_u16 v)
 {
@@ -2756,11 +2824,10 @@ static void DDFSTRT (int hpos, uae_u16 v)
     v &= 0xfe;
     if (!(currprefs.chipset_mask & CSMASK_ECS_AGNUS))
 	v &= 0xfc;
-    if (ddfstrt == v)
+    if (ddfstrt == v && hpos != plfstrt - 2)
 	return;
     ddf_change = vpos;
     decide_line (hpos);
-    ddfstrt_old = ddfstrt;
     ddfstrt_old_hpos = hpos;
     ddfstrt_old_vpos = vpos;
     ddfstrt = v;
@@ -3473,7 +3540,7 @@ static void update_copper (int until_hpos)
 	    cop_state.state = COP_skip_in2;
 	    break;
         case COP_strobe_delay:
-	    cop_state.state = COP_read1;
+	    cop_state.state = COP_read1_in2;
 	    break;
 
 	default:
@@ -4921,6 +4988,7 @@ int REGPARAM2 custom_wput_1 (int hpos, uaecptr addr, uae_u32 value, int noget)
 #endif
 
      case 0x110: BPL1DAT (hpos, value); break;
+#if 0 /* no point */
      case 0x112: BPL2DAT (value); break;
      case 0x114: BPL3DAT (value); break;
      case 0x116: BPL4DAT (value); break;
@@ -4928,6 +4996,7 @@ int REGPARAM2 custom_wput_1 (int hpos, uaecptr addr, uae_u32 value, int noget)
      case 0x11A: BPL6DAT (value); break;
      case 0x11C: BPL7DAT (value); break;
      case 0x11E: BPL8DAT (value); break;
+#endif
 
      case 0x180: case 0x182: case 0x184: case 0x186: case 0x188: case 0x18A:
      case 0x18C: case 0x18E: case 0x190: case 0x192: case 0x194: case 0x196:
@@ -4971,6 +5040,7 @@ int REGPARAM2 custom_wput_1 (int hpos, uaecptr addr, uae_u32 value, int noget)
      case 0x10C: BPLCON4 (hpos, value); break;
 #endif
 
+#ifndef CUSTOM_SIMPLE
      case 0x1DC: BEAMCON0 (value); break;
      case 0x1C0: if (htotal != value) { htotal = value; varsync (); } break;
      case 0x1C2: if (hsstop != value) { hsstop = value; varsync (); } break;
@@ -4983,6 +5053,7 @@ int REGPARAM2 custom_wput_1 (int hpos, uaecptr addr, uae_u32 value, int noget)
      case 0x1DE: if (hsstrt != value) { hsstrt = value; varsync (); } break;
      case 0x1E0: if (vsstrt != value) { vsstrt = value; varsync (); } break;
      case 0x1E2: if (hcenter != value) { hcenter = value; varsync (); } break;
+#endif
 
 #ifdef AGA
      case 0x1FC: FMODE (value); break;

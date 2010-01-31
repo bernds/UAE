@@ -47,14 +47,16 @@ extern int fpp_movem_index2[256];
 extern int fpp_movem_next[256];
 #endif
 
-extern int broken_in;
-
 typedef unsigned long cpuop_func (uae_u32) REGPARAM;
 
 struct cputbl {
     cpuop_func *handler;
-    int specific;
+#ifndef JIT
+    uae_u16 opcode;
+#else
     uae_u32 opcode;
+    int specific;
+#endif
 };
 
 extern unsigned long op_illg (uae_u32) REGPARAM;

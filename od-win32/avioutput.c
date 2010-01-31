@@ -55,8 +55,8 @@ int avioutput_width = 320, avioutput_height = 256, avioutput_bits = 24;
 int avioutput_fps = VBLANK_HZ_PAL;
 int avioutput_framelimiter = 0;
 
-char avioutput_filename[MAX_PATH] = "output.avi";
-static char avioutput_filename_tmp[MAX_PATH];
+char avioutput_filename[MAX_DPATH] = "output.avi";
+static char avioutput_filename_tmp[MAX_DPATH];
 
 extern struct uae_prefs workprefs;
 extern char config_filename[256];
@@ -322,7 +322,7 @@ static void checkAVIsize (int force)
     int tmp_partcnt = partcnt + 1;
     int tmp_avioutput_video = avioutput_video;
     int tmp_avioutput_audio = avioutput_audio;
-    char fn[MAX_PATH];
+    char fn[MAX_DPATH];
 
     if (!force && total_avi_size < MAX_AVI_SIZE)
 	return;
@@ -651,10 +651,8 @@ void AVIOutput_Restart(void)
 void AVIOutput_End(void)
 {
 	EnterCriticalSection(&AVIOutput_CriticalSection);
-	
-	avioutput_audio = avioutput_video = 0;
+
 	avioutput_enabled = 0;
-	
 	if(has)
 	{
 		acmStreamUnprepareHeader(has, &ash, 0);
@@ -720,7 +718,7 @@ void AVIOutput_Begin(void)
 	} else {
 	    ext1 = ".avi"; ext2 = ".wav";
 	}
-	if (strlen (avioutput_filename) >= 4 && strcmpi (avioutput_filename + strlen (avioutput_filename) - 4, ext2))
+	if (strlen (avioutput_filename) >= 4 && !strcmpi (avioutput_filename + strlen (avioutput_filename) - 4, ext2))
 	    avioutput_filename[strlen (avioutput_filename) - 4] = 0;
 	if (strlen (avioutput_filename) >= 4 && strcmpi (avioutput_filename + strlen (avioutput_filename) - 4, ext1))
 	    strcat (avioutput_filename, ext1);

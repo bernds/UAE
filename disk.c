@@ -40,12 +40,22 @@
 #include "caps/caps_win32.h"
 #endif
 
+/* support HD floppies */
+#define FLOPPY_DRIVE_HD
 /* writable track length with normal 2us bitcell/300RPM motor (PAL) */
 #define FLOPPY_WRITE_LEN (currprefs.ntscmode ? (12798 / 2) : (12668 / 2)) /* 12667 PAL, 12797 NTSC */
 /* This works out to 350 */
 #define FLOPPY_GAP_LEN (FLOPPY_WRITE_LEN - 11 * 544)
 /* (cycles/bitcell) << 8, normal = ((2us/280ns)<<8) = ~1830 */
 #define NORMAL_FLOPPY_SPEED (currprefs.ntscmode ? 1810 : 1829)
+/* max supported floppy drives, for small memory systems */
+#define MAX_FLOPPY_DRIVES 4
+
+#ifdef FLOPPY_DRIVE_HD
+#define DDHDMULT 2
+#else
+#define DDHDMULT 1
+#endif
 
 #define DISK_DEBUG
 #define DISK_DEBUG2
@@ -66,7 +76,7 @@
 static int side, direction, writing;
 static uae_u8 selected = 15, disabled;
 
-static uae_u8 *writebuffer[544 * 22];
+static uae_u8 *writebuffer[544 * 11 * DDHDMULT];
 
 #define DISK_INDEXSYNC 1
 #define DISK_WORDSYNC 2
@@ -100,7 +110,7 @@ typedef struct {
     image_tracktype type;
 } trackid;
 
-#define MAX_TRACKS 328
+#define MAX_TRACKS (2 * 83)
 
 /* We have three kinds of Amiga floppy drives
  * - internal A500/A2000 drive:
@@ -129,8 +139,8 @@ typedef struct {
     int motoroff;
     int state;
     int wrprot;
-    uae_u16 bigmfmbuf[0x8000];
-    uae_u16 tracktiming[0x8000];
+    uae_u16 bigmfmbuf[0x4000 * DDHDMULT];
+    uae_u16 tracktiming[0x4000 * DDHDMULT];
     int multi_revolution;
     int skipoffset;
     int mfmpos;
@@ -164,10 +174,10 @@ typedef struct {
 #endif
 } drive;
 
-static uae_u16 bigmfmbufw[0x8000];
-static drive floppy[4];
+static uae_u16 bigmfmbufw[0x4000 * DDHDMULT];
+static drive floppy[MAX_FLOPPY_DRIVES];
 #define MAX_PREVIOUS_FLOPPIES 99
-static char dfxhistory[MAX_PREVIOUS_FLOPPIES][256];
+static char dfxhistory[MAX_PREVIOUS_FLOPPIES][MAX_DPATH];
 
 static uae_u8 exeheader[]={0x00,0x00,0x03,0xf3,0x00,0x00,0x00,0x00};
 static uae_u8 bootblock[]={
@@ -479,10 +489,14 @@ static void drive_settype_id(drive *drv)
     switch (t)
     {
 	case DRV_35_HD:
+#ifdef FLOPPY_DRIVE_HD
 	if (!drv->diskfile || drv->ddhd <= 1)
 	    drv->drive_id = DRIVE_ID_35DD;
 	else
 	    drv->drive_id = DRIVE_ID_35HD;
+#else
+        drv->drive_id = DRIVE_ID_35DD;
+#endif
 	break;
 	case DRV_35_DD:
 	default:
@@ -1563,7 +1577,7 @@ static void setdskchangetime(drive *drv, int dsktime)
     /* prevent multiple disk insertions at the same time */
     if (drv->dskchange_time > 0)
 	return;
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < MAX_FLOPPY_DRIVES; i++) {
 	if (&floppy[i] != drv && floppy[i].dskchange_time > 0 && floppy[i].dskchange_time + 5 >= dsktime) {
 	    dsktime = floppy[i].dskchange_time + 5;
 	}
@@ -1590,7 +1604,7 @@ int disk_setwriteprotect (int num, const char *name, int protect)
 	disk_creatediskfile (name2, 1, drvtype);
     zfile_fclose (zf2);
     if (protect && iswritefileempty (name)) {
-	for (i = 0; i < 4; i++) {
+	for (i = 0; i < MAX_FLOPPY_DRIVES; i++) {
 	    if (!strcmp (name, floppy[i].newname))
 		drive_eject (&floppy[i]);
 	}
@@ -1652,6 +1666,8 @@ char *DISK_history_get (int idx)
 void disk_insert (int num, const char *name)
 {
     drive *drv = floppy + num;
+    if (!strcmp (currprefs.df[num], name))
+	return;
     strcpy (drv->newname, name);
     strcpy (currprefs.df[num], name);
     DISK_history_add (name, -1);
@@ -1675,17 +1691,15 @@ void DISK_check_change (void)
 
     if (currprefs.floppy_speed != changed_prefs.floppy_speed)
 	currprefs.floppy_speed = changed_prefs.floppy_speed;
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < MAX_FLOPPY_DRIVES; i++) {
 	drive *drv = floppy + i;
 	gui_lock ();
 	if (currprefs.dfxtype[i] != changed_prefs.dfxtype[i]) {
 	    currprefs.dfxtype[i] = changed_prefs.dfxtype[i];
 	    reset_drive (i);
 	}
-	if (strcmp (currprefs.df[i], changed_prefs.df[i])) {
-	    strcpy (currprefs.df[i], changed_prefs.df[i]);
-	    disk_insert (i, currprefs.df[i]);
-	}
+	if (strcmp (currprefs.df[i], changed_prefs.df[i]))
+	    disk_insert (i, changed_prefs.df[i]);
 	gui_unlock ();
 	if (drv->dskready_down_time > 0)
 	    drv->dskready_down_time--;
@@ -1760,7 +1774,7 @@ void DISK_select (uae_u8 data)
 #endif
 	step = step_pulse;
 	if (step && !savestate_state) {
-	    for (dr = 0; dr < 4; dr++) {
+	    for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
 		if (!(selected & (1 << dr))) {
 		    drive_step (floppy + dr);
 		}
@@ -1768,7 +1782,7 @@ void DISK_select (uae_u8 data)
 	}
     }
     if (!savestate_state) {
-	for (dr = 0; dr < 4; dr++) {
+	for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
 	    drive *drv = floppy + dr;
 	    /* motor on/off workings tested with small assembler code on real Amiga 1200. */
 	    /* motor/id flipflop is set only when drive select goes from high to low */ 
@@ -1797,7 +1811,7 @@ void DISK_select (uae_u8 data)
 	    }
 	}
     }
-    for (dr = 0; dr < 4; dr++) {
+    for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
 	floppy[dr].state = (!(selected & (1 << dr))) | !floppy[dr].motoroff;
 	update_drive_gui (dr);
     }
@@ -1812,7 +1826,7 @@ uae_u8 DISK_status (void)
     uae_u8 st = 0x3c;
     int dr;
 
-    for (dr = 0; dr < 4; dr++) {
+    for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
 	drive *drv = floppy + dr;
 	if (!(selected & (1 << dr))) {
 	    if (drive_running (drv)) {
@@ -1876,7 +1890,7 @@ void dumpdisk (void)
     int i, j, k;
     uae_u16 w;
 
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < MAX_FLOPPY_DRIVES; i++) {
 	drive *drv = &floppy[i];
 	if (!(disabled & (1 << i))) {
 	    write_log ("Drive %d: motor %s cylinder %2d sel %s %s mfmpos %d/%d\n",
@@ -1949,7 +1963,7 @@ void DISK_handler (void)
     if (flag & DISK_INDEXSYNC) {
 	cia_diskindex ();
 #if 0
-	for (i = 0; i < 4; i++) {
+	for (i = 0; i < MAX_FLOPPY_DRIVES; i++) {
 	    drive *drv = &floppy[i];
 	    if (drv->dskready_time) {
 		drv->dskready_time--;
@@ -1970,7 +1984,7 @@ static void disk_doupdate_write (drive * drv, int floppybits)
     int dr;
     int drives[4];
     
-    for (dr = 0; dr < 4 ; dr++) {
+    for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
         drive *drv2 = &floppy[dr];
         drives[dr] = 0;
         if (drv2->motoroff)
@@ -1981,7 +1995,7 @@ static void disk_doupdate_write (drive * drv, int floppybits)
     }
 
     while (floppybits >= drv->trackspeed) {
-	for (dr = 0; dr < 4; dr++) {
+	for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
 	    if (drives[dr]) {
 		floppy[dr].mfmpos++;
 		floppy[dr].mfmpos %= drv->tracklen;
@@ -1991,7 +2005,7 @@ static void disk_doupdate_write (drive * drv, int floppybits)
 	    bitoffset++;
 	    bitoffset &= 15;
 	    if (!bitoffset) {
-		for (dr = 0; dr < 4 ; dr++) {
+		for (dr = 0; dr < MAX_FLOPPY_DRIVES ; dr++) {
 		    drive *drv2 = &floppy[dr];
 		    if (drives[dr])
 			drv2->bigmfmbuf[drv2->mfmpos >> 4] = get_word (dskpt);
@@ -2205,7 +2219,7 @@ static void DISK_start (void)
 {
     int dr;
 
-    for (dr = 0; dr < 4; dr++) {
+    for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
 	drive *drv = &floppy[dr];
 	if (!(selected & (1 << dr))) {
 	    int tr = drv->cyl * 2 + side;
@@ -2245,7 +2259,7 @@ void DISK_update (int tohpos)
     if (disk_hpos >= (maxhpos << 8))
 	disk_hpos -= maxhpos << 8;
 
-    for (dr = 0; dr < 4; dr++) {
+    for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
 	drive *drv = &floppy[dr];
 	if (drv->steplimit)
 	    drv->steplimit--;
@@ -2261,7 +2275,7 @@ void DISK_update (int tohpos)
     dodmafetch ();
 #endif
 
-    for (dr = 0; dr < 4; dr++) {
+    for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
 	drive *drv = &floppy[dr];
 	
 	if (drv->motoroff)
@@ -2276,7 +2290,7 @@ void DISK_update (int tohpos)
 	drive_fill_bigbuf (drv, 0);
 	drv->mfmpos %= drv->tracklen;
     }
-    for (dr = 0; dr < 4; dr++) {
+    for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
 	drive *drv = &floppy[dr];
 	if (drv->motoroff)
 	    continue;
@@ -2329,7 +2343,7 @@ void DSKLEN (uae_u16 v, int hpos)
     }
 
 #ifdef DISK_DEBUG
-    for (dr = 0; dr < 4; dr++) {
+    for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
         drive *drv = &floppy[dr];
         if (drv->motoroff)
 	    continue;
@@ -2350,18 +2364,18 @@ void DSKLEN (uae_u16 v, int hpos)
     /* Try to make floppy access from Kickstart faster.  */
     if (dskdmaen != 2 && dskdmaen != 3)
 	return;
-    for (dr = 0; dr < 4; dr++) {
+    for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
         drive *drv = &floppy[dr];
         if (selected & (1 << dr))
 	    continue;
 	if (drv->filetype != ADF_NORMAL)
 	    break;
     }
-    if (dr < 4) /* no turbo mode if any selected drive has non-standard ADF */
+    if (dr < MAX_FLOPPY_DRIVES) /* no turbo mode if any selected drive has non-standard ADF */
 	return;
     {
 	int done = 0;
-	for (dr = 0; dr < 4; dr++) {
+	for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
 	    drive *drv = &floppy[dr];
 	    int pos, i;
 
@@ -2452,7 +2466,7 @@ void DSKPTL (uae_u16 v)
 void DISK_free (void)
 {
     int dr;
-    for (dr = 0; dr < 4; dr++) {
+    for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
 	drive *drv = &floppy[dr];
 	drive_image_free (drv);
     }
@@ -2465,7 +2479,7 @@ void DISK_init (void)
 #if 0
     dma_tab[0] = 0xffffffff;
 #endif
-    for (dr = 0; dr < 4; dr++) {
+    for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
 	drive *drv = &floppy[dr];
 	/* reset all drive types to 3.5 DD */
 	drive_settype_id (drv);
@@ -2487,7 +2501,7 @@ void DISK_reset (void)
     disk_hpos = 0;
     dskdmaen = 0;
     disabled = 0;
-    for (i = 0; i < 4; i++)
+    for (i = 0; i < MAX_FLOPPY_DRIVES; i++)
 	reset_drive (i);
 }
 

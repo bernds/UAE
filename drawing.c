@@ -141,12 +141,12 @@ static char linestate[(MAXVPOS + 1)*2 + 1];
 uae_u8 line_data[(MAXVPOS + 1) * 2][MAX_PLANES * MAX_WORDS_PER_LINE * 2];
 
 /* Centering variables.  */
-static int min_diwstart, max_diwstop, prev_x_adjust;
+static int min_diwstart, max_diwstop;
 /* The visible window: VISIBLE_LEFT_BORDER contains the left border of the visible
    area, VISIBLE_RIGHT_BORDER the right border.  These are in window coordinates.  */
 static int visible_left_border, visible_right_border;
 static int linetoscr_x_adjust_bytes;
-static int thisframe_y_adjust, prev_y_adjust;
+static int thisframe_y_adjust;
 static int thisframe_y_adjust_real, max_ypos_thisframe, min_ypos_for_screen;
 static int extra_y_adjust;
 int thisframe_first_drawn_line, thisframe_last_drawn_line;
@@ -1526,24 +1526,21 @@ STATIC_INLINE void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
 
 static void center_image (void)
 {
-    prev_x_adjust = visible_left_border;
-    prev_y_adjust = thisframe_y_adjust;
+    int prev_x_adjust = visible_left_border;
+    int prev_y_adjust = thisframe_y_adjust;
 
     if (currprefs.gfx_xcenter) {
-#if 0
-	if (min_diwstart && (max_diwstop - min_diwstart < gfxvidinfo.width) && (currprefs.gfx_xcenter == 2))
-	    visible_left_border = ((max_diwstop - min_diwstart - gfxvidinfo.width) / 2 + min_diwstart) & ~1;
-#endif
+
 	if (max_diwstop - min_diwstart < gfxvidinfo.width && currprefs.gfx_xcenter == 2)
 	    /* Try to center. */
 	    visible_left_border = ((max_diwstop - min_diwstart - gfxvidinfo.width) / 2 + min_diwstart) & ~1;
 	else
-	    visible_left_border = max_diwstop - gfxvidinfo.width;
+	    visible_left_border = max_diwstop - gfxvidinfo.width -  ((max_diwstop - min_diwstart) - gfxvidinfo.width) / 2;
 
 	/* Would the old value be good enough? If so, leave it as it is if we want to
 	 * be clever. */
 	if (currprefs.gfx_xcenter == 2) {
-	    if (visible_left_border < prev_x_adjust && prev_x_adjust < min_diwstart)
+	    if (visible_left_border < prev_x_adjust && prev_x_adjust < min_diwstart && min_diwstart - visible_left_border <= 32)
 		visible_left_border = prev_x_adjust;
 	}
     } else
@@ -1561,15 +1558,11 @@ static void center_image (void)
 
     thisframe_y_adjust = minfirstline;
     if (currprefs.gfx_ycenter && thisframe_first_drawn_line != -1) {
-#if 0
-	if (thisframe_first_drawn_line && (thisframe_last_drawn_line - thisframe_first_drawn_line < max_drawn_amiga_line) && currprefs.gfx_ycenter == 2)
-	    thisframe_y_adjust = (thisframe_last_drawn_line - thisframe_first_drawn_line - max_drawn_amiga_line) / 2 + thisframe_first_drawn_line;
-#endif
 
 	if (thisframe_last_drawn_line - thisframe_first_drawn_line < max_drawn_amiga_line && currprefs.gfx_ycenter == 2)
 	    thisframe_y_adjust = (thisframe_last_drawn_line - thisframe_first_drawn_line - max_drawn_amiga_line) / 2 + thisframe_first_drawn_line;
 	else
-	    thisframe_y_adjust = thisframe_first_drawn_line;
+	    thisframe_y_adjust = thisframe_first_drawn_line + ((thisframe_last_drawn_line - thisframe_first_drawn_line) - max_drawn_amiga_line) / 2;
 
 	/* Would the old value be good enough? If so, leave it as it is if we want to
 	 * be clever. */

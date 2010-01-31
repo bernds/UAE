@@ -3,8 +3,8 @@
 
 #include <ddraw.h>
 
-BOOL CALLBACK displaysCallback (GUID *guid, LPSTR desc, LPSTR name, LPVOID ctx, HMONITOR hm);
 extern void sortdisplays (void);
+extern void enumeratedisplays (int);
 
 int WIN32GFX_IsPicassoScreen( void );
 int WIN32GFX_GetWidth( void );
@@ -35,5 +35,6 @@ extern HDC gethdc (void);
 extern void releasehdc (HDC hdc);
 extern void close_windows (void);
 extern void updatewinfsmode (struct uae_prefs *p);
+extern int is3dmode (void);
 
 #endif

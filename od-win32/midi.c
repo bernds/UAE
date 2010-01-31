@@ -549,8 +549,8 @@ LONG getmidibyte(void) //return midibyte or -1 if none
     EnterCriticalSection (&cs_proc);
     if (overflow == 1)
     {
-	char szMessage[ MAX_PATH ];
-	WIN32GUI_LoadUIString(IDS_MIDIOVERFLOW, szMessage, MAX_PATH );
+	char szMessage[ MAX_DPATH ];
+	WIN32GUI_LoadUIString(IDS_MIDIOVERFLOW, szMessage, MAX_DPATH );
 	gui_message( szMessage );
 	overflow = 0;
     }
