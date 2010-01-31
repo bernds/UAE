@@ -218,9 +218,7 @@ int getcapslock (void)
 {
     int newstate;
 
-    BYTE keyState[256];
-    GetKeyboardState (keyState);
-    newstate = keyState[VK_CAPITAL] & 1;
+    newstate = GetKeyState (VK_CAPITAL) & 1; // this returns bogus state if caps change when in exclusive mode..
     if (newstate != capslockstate)
 	inputdevice_translatekeycode (0, DIK_CAPITAL, newstate);
     capslockstate = newstate;
@@ -356,9 +354,8 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 
     //write_log ( "keyboard = %d scancode = 0x%02x state = %d\n", keyboard, scancode, newstate );
     if (newstate) {
-	switch (scancode)
-	{
-	    case DIK_F12:
+
+	if (scancode == DIK_F12 || scancode == currprefs.win32_guikey) {
 	    if (ctrlpressed ()) {
 		code = AKS_TOGGLEFULLSCREEN;
 	    } else if (shiftpressed () || specialpressed ()) {
@@ -369,7 +366,10 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 	    } else {
 		code = AKS_ENTERGUI;
 	    }
-	    break;
+	}
+
+	switch (scancode)
+	{
 	    case DIK_F11:
 	    if (currprefs.win32_ctrl_F11_is_quit) {
 		if (ctrlpressed ())
@@ -419,10 +419,10 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 		} else {
 		    int i;
 		    for (i = 0; i < 4; i++) {
-			if (!strcmp (currprefs.df[i], currprefs.dfxlist[num]))
+			if (!_tcscmp (currprefs.df[i], currprefs.dfxlist[num]))
 			    changed_prefs.df[i][0] = 0;
 		    }
-		    strcpy (changed_prefs.df[swapperdrive], currprefs.dfxlist[num]);
+		    _tcscpy (changed_prefs.df[swapperdrive], currprefs.dfxlist[num]);
 		}
 	    }
 	    break;

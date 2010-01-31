@@ -17,25 +17,27 @@
 
 #define WINUAEPUBLICBETA 0
 
-#define WINUAEBETA ""
-#define WINUAEDATE MAKEBD(2008, 11, 9)
-#define WINUAEEXTRA ""
-#define WINUAEREV ""
+#define WINUAEBETA L""
+#define WINUAEDATE MAKEBD(2009, 5, 21)
+#define WINUAEEXTRA L""
+#define WINUAEREV L""
 
 #define IHF_WINDOWHIDDEN 6
 #define NORMAL_WINDOW_STYLE (WS_BORDER | WS_CAPTION | WS_MINIMIZEBOX | WS_SYSMENU | WS_SIZEBOX)
 
+#define WINUAEAPPNAME L"Arabuusimiehet.WinUAE"
 extern HMODULE hUIDLL;
 extern HWND hAmigaWnd, hMainWnd, hHiddenWnd, hGUIWnd;
 extern RECT amigawin_rect;
 extern int in_sizemove;
 extern int manual_painting_needed;
 extern int manual_palette_refresh_needed;
-extern int mouseactive, focus;
+extern int mouseactive;
 extern int ignore_messages_all;
+extern void *globalipc, *serialipc;
 
-extern char start_path_exe[MAX_DPATH];
-extern char start_path_data[MAX_DPATH];
+extern TCHAR start_path_exe[MAX_DPATH];
+extern TCHAR start_path_data[MAX_DPATH];
 
 extern void my_kbd_handler (int, int, int);
 extern void clearallkeys (void);
@@ -52,6 +54,7 @@ extern void setup_brkhandler (void);
 extern void remove_brkhandler (void);
 extern void disablecapture (void);
 extern void fullscreentoggle (void);
+extern int isfocus (void);
 
 extern void setmouseactive (int active);
 extern void minimizewindow (void);
@@ -67,10 +70,11 @@ void init_colors (void);
 extern int pause_emulation;
 extern int sound_available;
 extern int framecnt;
-extern char prtname[];
-extern char VersionStr[256];
-extern char BetaStr[64];
-extern int os_winnt_admin, os_64bit, os_vista, os_winxp;
+extern TCHAR prtname[];
+extern TCHAR VersionStr[256];
+extern TCHAR BetaStr[64];
+extern int os_winnt_admin, os_64bit, os_vista, os_winxp, os_win7;
+extern OSVERSIONINFO osVersion;
 extern int paraport_mask;
 extern int gui_active;
 extern DWORD quickstart, configurationcache;
@@ -81,7 +85,7 @@ extern HINSTANCE hInst;
 extern int win_x_diff, win_y_diff;
 extern int window_extra_width, window_extra_height;
 extern int af_path_2005, af_path_old;
-extern char start_path_af[MAX_DPATH], start_path_new1[MAX_DPATH], start_path_new2[MAX_DPATH];
+extern TCHAR start_path_af[MAX_DPATH], start_path_new1[MAX_DPATH], start_path_new2[MAX_DPATH];
 #define PATH_TYPE_WINUAE 0
 #define PATH_TYPE_NEWWINUAE 1
 #define PATH_TYPE_OLDAF 2
@@ -97,7 +101,7 @@ extern void handle_rawinput (LPARAM lParam);
 
 #define DEFAULT_PRIORITY 2
 struct threadpriorities {
-    char *name;
+    TCHAR *name;
     int value;
     int classvalue;
     int id;
@@ -110,20 +114,24 @@ extern int dinput_winmouse (void);
 extern int dinput_wheelbuttonstart (void);
 extern int dinput_winmousemode (void);
 extern void dinput_window (void);
+extern void *open_tablet (HWND hwnd);
+extern int close_tablet (void*);
+extern void send_tablet (int x, int y, int z, int pres, uae_u32 buttons, int flags, int ax, int ay, int az, int rx, int ry, int rz, RECT *r);
+extern void send_tablet_proximity (int);
 
 void addnotifications (HWND hwnd, int remove);
-int win32_hardfile_media_change (const char *drvname, int inserted);
-extern int CheckRM (char *DriveName);
+int win32_hardfile_media_change (const TCHAR *drvname, int inserted);
+extern int CheckRM (TCHAR *DriveName);
 void systray (HWND hwnd, int remove);
 void systraymenu (HWND hwnd);
 void exit_gui (int);
-void fetch_path (char *name, char *out, int size);
-void set_path (char *name, char *path);
+void fetch_path (TCHAR *name, TCHAR *out, int size);
+void set_path (TCHAR *name, TCHAR *path);
 void read_rom_list (void);
 void associate_file_extensions (void);
 
-#define WIN32_PLUGINDIR "plugins\\"
-HMODULE WIN32_LoadLibrary (const char *);
+#define WIN32_PLUGINDIR L"plugins\\"
+HMODULE WIN32_LoadLibrary (const TCHAR *);
 
 extern int screenshot_prepare (void);
 extern void screenshot_free (void);
@@ -131,7 +139,7 @@ extern void screenshot_free (void);
 struct winuae_lang
 {
     WORD id;
-    char *name;
+    TCHAR *name;
 };
 extern struct winuae_lang langs[];
 extern HMODULE language_load (WORD language);
@@ -141,23 +149,27 @@ extern void logging_cleanup (void);
 
 extern LONG WINAPI WIN32_ExceptionFilter (struct _EXCEPTION_POINTERS *pExceptionPointers, DWORD ec);
 
-#define MAX_SOUND_DEVICES 20
+#define MAX_SOUND_DEVICES 32
 #define SOUND_DEVICE_DS 1
 #define SOUND_DEVICE_AL 2
+#define SOUND_DEVICE_PA 3
+
 struct sound_device
 {
     GUID guid;
-    char *name;
-    char *alname;
+    TCHAR *name;
+    TCHAR *alname;
+    TCHAR *cfgname;
+    int panum;
     int type;
 };
 extern struct sound_device sound_devices[MAX_SOUND_DEVICES];
 extern struct sound_device record_devices[MAX_SOUND_DEVICES];
 
 struct assext {
-    char *ext;
-    char *cmd;
-    char *desc;
+    TCHAR *ext;
+    TCHAR *cmd;
+    TCHAR *desc;
     int enabled;
 };
 struct assext exts[];

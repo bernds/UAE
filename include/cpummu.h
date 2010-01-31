@@ -26,12 +26,16 @@
 #ifndef CPUMMU_H
 #define CPUMMU_H
 
+#ifndef FULLMMU
+#define FULLMMU
+#endif
+
 #define ALWAYS_INLINE __forceinline
 #define bool int
 #define DUNUSED(x)
 #define D
 #define bug write_log
-#define MMUEX 0x12345678
+#define MMUEX 0x4d4d5520
 #define TRY(x) __try
 #define CATCH(x) __except(GetExceptionCode() == MMUEX) 
 #define THROW(x) RaiseException(MMUEX,EXCEPTION_NONCONTINUABLE,0,NULL)
@@ -45,7 +49,7 @@
 static ALWAYS_INLINE bool test_ram_boundary (uaecptr addr, int size, bool super, bool write) { return false; }
 static ALWAYS_INLINE void flush_internals (void) { }
 
-typedef char flagtype;
+typedef uae_u8 flagtype;
 
 struct xttrx {
     uae_u32 log_addr_base : 8;

@@ -1,8 +1,9 @@
 cd c:\projects\winuae_bak
 rm -rf bak
 mkdir bak
-cp -r c:\projects\winuae\src\. c:\projects\winuae_bak\bak\
+copy /s c:\projects\winuae\src\* c:\projects\winuae_bak\bak\
 copy d:\amiga\text\winuaechangelog.txt c:\projects\winuae_bak\bak\od-win32
+copy d:\amiga\amiga\filesys.asm c:\projects\winuae_bak\bak
 
 cd bak
 del *.obj *.ilk *.exe *.pdb *.pch *.idb /s
@@ -34,41 +35,48 @@ cd od-win32
 cd ipctester
 rm -rf debug
 rm -rf release
+rm -rf fullrelease
 cd ..
 
 cd spsutil
 rm -rf debug
 rm -rf release
+rm -rf fullrelease
 cd ..
 
 cd genlinetoscr_msvc
 rm -f genlinetoscr.exe
 rm -rf debug
 rm -rf release
+rm -rf fullrelease
 cd ..
 
 cd build68k_msvc
 rm -f build68k.exe
 rm -rf debug
 rm -rf release
+rm -rf fullrelease
 cd ..
 
 cd genblitter_msvc
 rm -f genblitter.exe 
 rm -rf debug
 rm -rf release
+rm -rf fullrelease
 cd ..
 
 cd gencomp_msvc
 rm -f gencomp.exe
 rm -rf debug
 rm -rf release
+rm -rf fullrelease
 cd ..
 
 cd gencpu_msvc
 rm -f gencpu.exe
 rm -rf debug
 rm -rf release
+rm -rf fullrelease
 cd ..
 
 cd winuae_msvc
@@ -85,24 +93,42 @@ rm -rf fullrelease
 rm -rf _UpgradeReport_Files
 cd ..
 
+rm -rf winuae_msvc10
+
 cd soundcheck
 rm -rf debug
 rm -rf release
+rm -rf fullrelease
 cd ..
 
 cd singlefilehelper
 rm -rf debug
 rm -rf release
+rm -rf fullrelease
 cd ..
 
 cd resourcedll
 rm -rf debug
 rm -rf release
+rm -rf fullrelease
 cd ..
 
 cd fdrawcmd
 rm -rf debug
 rm -rf release
+rm -rf fullrelease
+cd ..
+
+cd uaeunp
+rm -rf debug
+rm -rf release
+rm -rf fullrelease
+cd ..
+
+cd decompress
+rm -rf debug
+rm -rf release
+rm -rf fullrelease
 cd ..
 
 cd ..

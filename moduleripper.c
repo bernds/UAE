@@ -15,6 +15,7 @@
 #include "memory.h"
 #include "moduleripper.h"
 #include "gui.h"
+#include "uae.h"
 
 static int got, canceled;
 
@@ -27,7 +28,7 @@ static void mc (uae_u8 *d, uaecptr s, int size)
 }
 
 #ifdef _WIN32
-static LONG WINAPI ExceptionFilter( struct _EXCEPTION_POINTERS * pExceptionPointers, DWORD ec)
+static LONG WINAPI ExceptionFilter (struct _EXCEPTION_POINTERS * pExceptionPointers, DWORD ec)
 {
     return EXCEPTION_EXECUTE_HANDLER;
 }
@@ -45,7 +46,7 @@ void moduleripper (void)
     size += currprefs.mbresmem_high_size;
     size += currprefs.z3fastmem_size;
     size += currprefs.z3fastmem2_size;
-    buf = p = (uae_u8*)xmalloc (size);
+    buf = p = xmalloc (size);
     if (!buf)
 	return;
     memcpy (p, chipmemory, currprefs.chipmem_size);
@@ -70,8 +71,8 @@ void moduleripper (void)
 #endif
 	prowizard_search (buf, size);
 #ifdef _WIN32
-    } __except(ExceptionFilter(GetExceptionInformation(), GetExceptionCode())) {
-	write_log ("prowizard scan crashed\n");
+    } __except(ExceptionFilter (GetExceptionInformation (), GetExceptionCode ())) {
+	write_log (L"prowizard scan crashed\n");
     }
 #endif
     if (!got)
@@ -81,27 +82,42 @@ void moduleripper (void)
     xfree (buf);
 }
 
-FILE *moduleripper_fopen (const char *name, const char *mode)
+FILE *moduleripper_fopen (const char *aname, const char *amode)
 {
-    return fopen (name, mode);
+    TCHAR tmp2[MAX_DPATH];
+    TCHAR tmp[MAX_DPATH];
+    TCHAR *name, *mode;
+    FILE *f;
+
+    fetch_ripperpath (tmp, sizeof tmp);
+    name = au (aname);
+    mode = au (amode);
+    _stprintf (tmp2, L"%s%s", tmp, name);
+    f = _tfopen (tmp2, mode);
+    xfree (mode);
+    xfree (name);
+    return f;
 }
 
-FILE *moduleripper2_fopen (const char *name, const char *mode, const char *id, int addr, int size)
+FILE *moduleripper2_fopen (const char *name, const char *mode, const char *aid, int addr, int size)
 {
-    char msg[MAX_DPATH], msg2[MAX_DPATH];
+    TCHAR msg[MAX_DPATH], msg2[MAX_DPATH];
+    TCHAR *id;
     int ret;
 
     if (canceled)
 	return NULL;
     got++;
     translate_message (NUMSG_MODRIP_SAVE, msg);
-    sprintf (msg2, msg, id, addr, size);
+    id = au (aid);
+    _stprintf (msg2, msg, id, addr, size);
     ret = gui_message_multibutton (2, msg2);
+    xfree (id);
     if (ret < 0)
 	canceled = 1;
     if (ret < 0 || ret != 1)
 	return NULL;
-    return fopen (name, mode);
+    return moduleripper_fopen (name, mode);
 }
 
 #else

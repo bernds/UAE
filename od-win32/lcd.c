@@ -4,7 +4,7 @@
 
 #if defined(LOGITECHLCD)
 
-#include "resource.h"
+#include "resource"
 #include "gui.h"
 #include "lcd.h"
 
@@ -14,7 +14,7 @@ extern HINSTANCE hInst;
 
 static int inited;
 static lgLcdConnectContext cctx;
-static lgLcdDeviceDesc desc;
+static lgLcdDeviceDescEx desc;
 static int device;
 static lgLcdBitmapHeader *lbh;
 static uae_u8 *bitmap, *origbitmap;
@@ -22,7 +22,7 @@ static uae_u8 *numbers;
 static int numbers_width = 7, numbers_height = 10;
 static int old_pri;
 
-void lcd_close(void)
+void lcd_close (void)
 {
     lgLcdDeInit ();
     xfree (lbh);
@@ -31,7 +31,7 @@ void lcd_close(void)
     inited = 0;
 }
 
-static int lcd_init(void)
+static int lcd_init (void)
 {
     DWORD ret;
     lgLcdOpenContext octx;
@@ -44,26 +44,26 @@ static int lcd_init(void)
     ret = lgLcdInit ();
     if (ret != ERROR_SUCCESS) {
 	if (ret == RPC_S_SERVER_UNAVAILABLE || ret == ERROR_OLD_WIN_VERSION) {
-	    write_log ("LCD: Logitech LCD system not detected\n");
+	    write_log (L"LCD: Logitech LCD system not detected\n");
 	    return 0;
 	}
-	write_log ("LCD: lgLcdInit() returned %d\n", ret);
+	write_log (L"LCD: lgLcdInit() returned %d\n", ret);
 	return 0;
     }
     memset (&cctx, 0, sizeof (cctx));
-    cctx.appFriendlyName = "WinUAE";
+    cctx.appFriendlyName = L"WinUAE";
     cctx.isPersistent = TRUE;
     cctx.isAutostartable = FALSE;
     ret = lgLcdConnect (&cctx);
     if (ret != ERROR_SUCCESS) {
-	write_log ("LCD: lgLcdConnect() returned %d\n", ret);
-	lcd_close();
+	write_log (L"LCD: lgLcdConnect() returned %d\n", ret);
+	lcd_close ();
 	return 0;
     }
-    ret = lgLcdEnumerate (cctx.connection, 0, &desc);
+    ret = lgLcdEnumerateEx (cctx.connection, 0, &desc);
     if (ret != ERROR_SUCCESS) {
-	write_log ("LCD: lgLcdEnumerate() returned %d\n", ret);
-	lcd_close();
+	write_log (L"LCD: lgLcdEnumerateEx() returned %d\n", ret);
+	lcd_close ();
 	return 0;
     }
     lbh = xcalloc (1, sizeof (lgLcdBitmapHeader) + desc.Width * (desc.Height + 20));
@@ -75,15 +75,15 @@ static int lcd_init(void)
     octx.index = 0;
     ret = lgLcdOpen (&octx);
     if (ret != ERROR_SUCCESS) {
-	write_log ("LCD: lgLcdOpen() returned %d\n", ret);
-	lcd_close();
+	write_log (L"LCD: lgLcdOpen() returned %d\n", ret);
+	lcd_close ();
 	return 0;
     }
     device = octx.device;
 
     bmp = LoadBitmap (hInst, MAKEINTRESOURCE(IDB_LCD160X43));
     dc = CreateCompatibleDC (NULL);
-    SelectObject(dc, bmp);
+    SelectObject (dc, bmp);
     GetObject (bmp, sizeof (binfo), &binfo);
     for (y = 0; y < binfo.bmHeight; y++) {
 	for (x = 0; x < binfo.bmWidth; x++) {
@@ -94,11 +94,11 @@ static int lcd_init(void)
     memcpy (origbitmap, bitmap, desc.Width * desc.Height);
     DeleteDC (dc);
 
-    write_log ("LCD: Logitech LCD system initialized\n");
+    write_log (L"LCD: '%s' enabled\n", desc.deviceDisplayName);
     return 1;
 }
 
-static void dorect(int *crd, int inv)
+static void dorect (int *crd, int inv)
 {
     int yy, xx;
     int x = crd[0], y = crd[1], w = crd[2], h = crd[3];
@@ -112,7 +112,7 @@ static void dorect(int *crd, int inv)
     }
 }
 
-static void putnumber(int x, int y, int n, int inv)
+static void putnumber (int x, int y, int n, int inv)
 {
     int xx, yy;
     uae_u8 *dst, *src;
@@ -135,7 +135,7 @@ static void putnumber(int x, int y, int n, int inv)
     }
 }
 
-static void putnumbers(int x, int y, int num, int inv)
+static void putnumbers (int x, int y, int num, int inv)
 {
     putnumber (x, y, num < 0 ? num : ((num / 10) > 0 ? num / 10 : -1), inv);
     putnumber (x + numbers_width, y, num < 0 ? num : num % 10, inv);
@@ -157,7 +157,7 @@ void lcd_priority (int priority)
 	old_pri = priority;
 }
 
-void lcd_update(int led, int on)
+void lcd_update (int led, int on)
 {
     int track, x, y;
 
@@ -196,7 +196,7 @@ void lcd_update(int led, int on)
     lgLcdUpdateBitmap (device, lbh, LGLCD_ASYNC_UPDATE (LGLCD_PRIORITY_NORMAL + 1));
 }
 
-int lcd_open(void)
+int lcd_open (void)
 {
     if (!inited) {
 	if (!lcd_init ())

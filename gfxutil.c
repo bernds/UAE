@@ -289,7 +289,15 @@ void alloc_colors_rgb (int rw, int gw, int bw, int rs, int gs, int bs, int aw, i
     int bpp = rw + gw + bw + aw;
     int i;
     for(i = 0; i < 256; i++) {
-	int j = i + 256;
+	int j;
+
+	if (currprefs.gfx_blackerthanblack) {
+	    j = i * 15 / 16 + 16;
+	} else {  
+	    j = i;
+	}
+	j += 256;
+
 	rc[i] = doColor (gamma[j], rw, rs) | doAlpha (alpha, aw, as);
 	gc[i] = doColor (gamma[j], gw, gs) | doAlpha (alpha, aw, as);
 	bc[i] = doColor (gamma[j], bw, bs) | doAlpha (alpha, aw, as);
@@ -436,7 +444,7 @@ void alloc_colors256 (allocfunc_type allocfunc)
 
     map = (xcolnr *)malloc (sizeof(xcolnr) * maxcol);
     if (!map) {
-	write_log ("Not enough mem for colormap!\n");
+	write_log (L"Not enough mem for colormap!\n");
 	abort ();
     }
 
@@ -567,7 +575,7 @@ void setup_greydither_maxcol (int maxcol, allocfunc_type allocfunc)
 
     map = (xcolnr *)malloc (sizeof(xcolnr) * maxcol);
     if (!map) {
-	write_log ("Not enough mem for colormap!\n");
+	write_log (L"Not enough mem for colormap!\n");
 	abort();
     }
 
@@ -631,7 +639,7 @@ void setup_dither (int bits, allocfunc_type allocfunc)
 
     map = (xcolnr *)malloc (sizeof(xcolnr) * maxcol);
     if (!map) {
-	write_log ("Not enough mem for colormap!\n");
+	write_log (L"Not enough mem for colormap!\n");
 	abort();
     }
 
@@ -677,7 +685,7 @@ void setup_dither (int bits, allocfunc_type allocfunc)
 	    }
 	}
     }
-/*    write_log ("%d color(s) lost\n",maxcol - l);*/
+/*    write_log (L"%d color(s) lost\n",maxcol - l);*/
 
     /*
      * for each component compute the mapping

@@ -559,12 +559,13 @@ extern void init_hz_p96 (void);
 extern void picasso_handle_hsync (void);
 extern int picasso_palette (void);
 extern void picasso_reset (void);
+extern int picasso_setwincursor (void);
 
 /* This structure describes the UAE-side framebuffer for the Picasso
  * screen.  */
 struct picasso_vidbuf_description {
     int width, height, depth;
-    int rowbytes, pixbytes;
+    int rowbytes, pixbytes, offset;
     int extra_mem; /* nonzero if there's a second buffer that must be updated */
     uae_u32 rgbformat;
     uae_u32 selected_rgbformat;
@@ -582,6 +583,7 @@ extern void gfx_unlock_picasso (void);
 extern void picasso_clip_mouse (int *, int *);
 extern void picasso_putcursor (int,int,int,int);
 extern void picasso_clearcursor (void);
+extern int createwindowscursor (uaecptr src, int w, int h, int hiressprite, int doubledsprite, int chipset);
 
 extern int p96refresh_active;
 extern int p96hsync_counter;
@@ -597,9 +599,11 @@ extern int p96hsync_counter;
 #define CARD_RESLISTSIZE (CARD_RESLIST + 4)
 #define CARD_BOARDINFO (CARD_RESLISTSIZE + 4)
 #define CARD_VBLANKIRQ (CARD_BOARDINFO + 4)
-#define CARD_VBLANKFLAG (CARD_VBLANKIRQ + 22)
-#define CARD_VBLANKCODE (CARD_VBLANKFLAG + 4)
-#define CARD_END (CARD_VBLANKCODE + 16 * 2)
+#define CARD_PORTSIRQ (CARD_VBLANKIRQ + 22)
+#define CARD_IRQFLAG (CARD_PORTSIRQ + 22)
+#define CARD_IRQPTR (CARD_IRQFLAG + 4)
+#define CARD_IRQCODE (CARD_IRQPTR + 4)
+#define CARD_END (CARD_IRQCODE + 11 * 2)
 #define CARD_SIZEOF CARD_END
 
 #endif

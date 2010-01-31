@@ -58,7 +58,7 @@ void gettimeofday (struct timeval *tv, void *blah)
 #define secs_per_day (24 * 60 * 60)
 #define diff ((8 * 365 + 2) * secs_per_day)
 
-static void get_time(time_t t, long *days, long *mins, long *ticks)
+static void get_time (time_t t, long *days, long *mins, long *ticks)
 {
     /* time_t is secs since 1-1-1970 */
     /* days since 1-1-1978 */
@@ -73,12 +73,12 @@ static void get_time(time_t t, long *days, long *mins, long *ticks)
     *ticks = t * 50;
 }
 
-static DWORD getattr(const char *name, LPFILETIME lpft, size_t *size)
+static DWORD getattr (const TCHAR *name, LPFILETIME lpft, uae_u64 *size)
 {
     HANDLE hFind;
     WIN32_FIND_DATA fd;
 
-    if ((hFind = FindFirstFile (name,&fd)) == INVALID_HANDLE_VALUE) {
+    if ((hFind = FindFirstFile (name, &fd)) == INVALID_HANDLE_VALUE) {
 	fd.dwFileAttributes = GetFileAttributes (name);
 	return fd.dwFileAttributes;
     }
@@ -87,17 +87,17 @@ static DWORD getattr(const char *name, LPFILETIME lpft, size_t *size)
     if (lpft)
 	*lpft = fd.ftLastWriteTime;
     if (size)
-	*size = fd.nFileSizeLow;
+	*size = (((uae_u64)fd.nFileSizeHigh) << 32) | fd.nFileSizeLow;
 
     return fd.dwFileAttributes;
 }
 
-int posixemu_stat(const char *name, struct stat *statbuf)
+int posixemu_stat (const TCHAR *name, struct _stat64 *statbuf)
 {
     DWORD attr;
     FILETIME ft, lft;
 
-    if ((attr = getattr (name,&ft,(size_t*)&statbuf->st_size)) == (DWORD)~0) {
+    if ((attr = getattr (name, &ft, &statbuf->st_size)) == (DWORD)~0) {
 	return -1;
     } else {
 	statbuf->st_mode = (attr & FILE_ATTRIBUTE_READONLY) ? FILEFLAG_READ : FILEFLAG_READ | FILEFLAG_WRITE;
@@ -111,19 +111,19 @@ int posixemu_stat(const char *name, struct stat *statbuf)
     return 0;
 }
 
-int posixemu_chmod(const char *name, int mode)
+int posixemu_chmod (const TCHAR *name, int mode)
 {
     DWORD attr = FILE_ATTRIBUTE_NORMAL;
     if (!(mode & FILEFLAG_WRITE))
 	attr |= FILE_ATTRIBUTE_READONLY;
     if (mode & FILEFLAG_ARCHIVE)
 	attr |= FILE_ATTRIBUTE_ARCHIVE;
-    if (SetFileAttributes(name,attr))
+    if (SetFileAttributes (name,attr))
 	return 1;
     return -1;
 }
 
-static void tmToSystemTime(struct tm *tmtime, LPSYSTEMTIME systime)
+static void tmToSystemTime (struct tm *tmtime, LPSYSTEMTIME systime)
 {
     if (tmtime == NULL) {
 	GetSystemTime (systime);
@@ -139,30 +139,45 @@ static void tmToSystemTime(struct tm *tmtime, LPSYSTEMTIME systime)
     }
 }
 
-static int setfiletime (const char *name, unsigned int days, int minute, int tick, int tolocal)
+static int setfiletime (const TCHAR *name, unsigned int days, int minute, int tick, int tolocal)
 {
     FILETIME LocalFileTime, FileTime;
     HANDLE hFile;
-    int success;
+
     if ((hFile = CreateFile (name, GENERIC_WRITE,FILE_SHARE_READ | FILE_SHARE_WRITE,NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, NULL)) == INVALID_HANDLE_VALUE)
 	return 0;
 
-    *(__int64 *)&LocalFileTime = (((__int64)(377*365+91+days)*(__int64)1440+(__int64)minute)*(__int64)(60*50)+(__int64)tick)*(__int64)200000;
+    for (;;) {
+	ULARGE_INTEGER lft;
 
-    if (tolocal) {
-	if (!LocalFileTimeToFileTime (&LocalFileTime,&FileTime))
+	lft.QuadPart = (((uae_u64)(377*365+91+days)*(uae_u64)1440+(uae_u64)minute)*(uae_u64)(60*50)+(uae_u64)tick)*(uae_u64)200000;
+	LocalFileTime.dwHighDateTime = lft.HighPart;
+	LocalFileTime.dwLowDateTime = lft.LowPart;
+        if (tolocal) {
+	    if (!LocalFileTimeToFileTime (&LocalFileTime, &FileTime))
+		FileTime = LocalFileTime;
+	} else {
 	    FileTime = LocalFileTime;
-    } else {
-	FileTime = LocalFileTime;
+	}
+	if (!SetFileTime (hFile, &FileTime, &FileTime, &FileTime)) {
+	    if (days > 47846) { // > 2108-12-31 (fat limit)
+		days = 47846;
+		continue;
+	    }
+	    if (days < 730) { // < 1980-01-01 (fat limit)
+		days = 730;
+		continue;
+	    }
+	}
+	break;
     }
 
-    success = SetFileTime (hFile,&FileTime,&FileTime,&FileTime);
     CloseHandle (hFile);
 
-    return success;
+    return 1;
 }
 
-int posixemu_utime (const char *name, struct utimbuf *ttime)
+int posixemu_utime (const TCHAR *name, struct utimbuf *ttime)
 {
     int result = -1, tolocal;
     long days, mins, ticks;
@@ -180,7 +195,7 @@ int posixemu_utime (const char *name, struct utimbuf *ttime)
     if (setfiletime (name, days, mins, ticks, tolocal))
 	result = 0;
 
-	return result;
+    return result;
 }
 
 void uae_sem_init (uae_sem_t * event, int manual_reset, int initial_state)
@@ -233,10 +248,15 @@ static unsigned __stdcall thread_init (void *f)
     void *arg = thp->arg;
 
     xfree (f);
+
+#ifndef _CONSOLE
     __try {
 	fp (arg);
+#endif
+#ifndef _CONSOLE
     } __except (WIN32_ExceptionFilter (GetExceptionInformation (), GetExceptionCode ())) {
     }
+#endif
     return 0;
 }
 
@@ -248,7 +268,7 @@ void uae_end_thread (uae_thread_id *tid)
     }
 }
 
-int uae_start_thread (char *name, void *(*f)(void *), void *arg, uae_thread_id *tid)
+int uae_start_thread (TCHAR *name, void *(*f)(void *), void *arg, uae_thread_id *tid)
 {
     HANDLE hThread;
     int result = 1;
@@ -262,10 +282,10 @@ int uae_start_thread (char *name, void *(*f)(void *), void *arg, uae_thread_id *
     if (hThread) {
 	SetThreadPriority (hThread, THREAD_PRIORITY_ABOVE_NORMAL);
 	if (name)
-	    write_log ("Thread '%s' started (%d)\n", name, hThread);
+	    write_log (L"Thread '%s' started (%d)\n", name, hThread);
     } else {
 	result = 0;
-	write_log ("Thread '%s' failed to start!?\n", name ? name : "<unknown>");
+	write_log (L"Thread '%s' failed to start!?\n", name ? name : L"<unknown>");
     }
     if (tid)
 	*tid = hThread;

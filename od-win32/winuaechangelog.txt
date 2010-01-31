@@ -1,4 +1,694 @@
 
+Final 1.6.0
+
+- filter mode PAL aspect ratio corrected (~5% difference) if keep
+  aspect ratio checked. (it includes now non-square pixel ratio)
+  Does basically same as long time ago removed aspect ratio option.
+  Because it can look ugly and it isn't exactly required feature,
+  it is only enabled in FS or autoscale modes (they need scaling
+  even without aspect ratio correction)
+- ASPI SCSI unicode conversion bugs fixed (random crashes..)
+- "Ignore modes that have larger resolution than largest supported
+  mode". Now it really does this.
+- D3D fall back to non-filtered if IDirect3DDevice9_Reset failed
+  (instead of closing and reopening the screen and trying again)
+- filter scaling sliders didn't work in normal (1x+ mode)
+
+Beta 29: (RC2, beta dialog removed)
+
+- Pang hack side-effects fixed
+- autoscale/keep aspect ratio combination fixed
+- NTSC hardware in PAL mode: shrink display (fit PAL display in NTSC
+  space) Previously NTSC was always stretched but I think it is better
+  to make "base" hardware PAL/NTSC mode non-scaled. Note that PAL/NTSC
+  vertical streching/shrinking is only supported in filter modes
+- screenshots never worked in windowed D3D modes
+- screenshot size was wrong in full-window mode
+- 100% stereo separation was only about 95% stereo separation
+
+Beta 28: (RC1)
+
+- re-added CD32 emulation hack that was removed in b4, fixes unreliable
+  booting in non-JIT modes (do not return TOC until "turn led on/off"
+  command is received. At that time led command was unknown command,
+  now I am quite sure this can't be the correct way to do it..)
+- Rainbow Islands one missing horizontal line fixed ("Ode to Ramon"
+  scanline fix broke this, OCS-only)
+- printer GUI changed, checkboxes replaced with select menu.
+  Passthrough: no changes, original printing method.
+  ASCII-only: prints only basic ASCII text.
+  Epson matrix printer emulation: you do not need to know. yet.
+  PostScript options: no changes.
+- list also supposedly unsupported modes/refresh rates in resolution
+  list, marked with '*'. Ignore modes that have larger resolution
+  than largest supported mode and modes that have 75Hz or higher
+  refresh rate (just to be in safe side..) Some display drivers
+  don't return custom resolutions in "monitor supported" list..
+- loaded configuration files, disk images and statefiles are added to
+  recent list (includes Windows 7 jump list support)
+- more accurate audio Paula/native rate conversion (from UADE, I was
+  supposed to merge this fix long long time ago..), this fix and some
+  sound sync code updates mean much improved sound sync (SND% should
+  be much more stable now, including vsync modes)
+- filter-panel aspect ratio works as expected, aspect ratio selected
+  is monitor's aspect ratio and automatic = aspect ratio calculated
+  from desktop resolution (if fullscreen) or window size (if windowed)
+- added hack that fixes Pang (and perhaps others) graphics problem,
+  real fix coming (much) later..
+
+Beta 27:
+
+- on screen led was always enabled (b26)
+- scaling in NTSC mode really fixed (b26)
+- enabling autoscaling and no filters enabled: select Direct3D if
+  at least 2.0 shaders supported (=fast enough), only select Null
+  filter if older. (D3D9 scaling is "free" on modern hardware)
+- Logitech LCD SDK updated (currently waiting for G19..)
+- autoscale found sprites outside of bitplanes when BRDSPRT was
+  enabled without ECSENA
+- vertical positioning in autoscale was wrong in some cases
+- AHI works again
+- always enable Picasso96 BIF_INDISPLAYCHAIN (not enabled means
+  RTG mode display size of 0x0 pixels = crash)
+- delayed printer open, do not open until enough data received, also
+  ignore data completely if less than 10 bytes received
+- added "ASCII Printer" option. Select this option if you use programs
+  that print directly to emulated parallel port (bypassing Amiga
+  printer drivers) and they expect old-style printers that directly
+  accept ascii text (Action Replay, demo scene disk magazines etc..)
+  In future this will also include emulation of old Epson matrix
+  printer control codes (de-facto control codes that most printers
+  supported at that time)
+- added missing "Automatic" aspect ratio setting in Filter panel
+- selecting "Full Window" mode when no filters enabled = also enable
+  Direct3D + FS. (this is what users apparently expect, not confusing
+  tiny image on the middle of screen)
+- development PC updated to Windows 7 RC
+
+Beta 26:
+
+- added transparent support for ICD AdIDE "bit swapped" disks and
+  hardfiles. Each 16-bit data word has bits swapped, bit 0 = 15,
+  bit 1 = 0, bit 2 = 14, bit 3 = 1 and so on (reason is most likely
+  PCB cost) Listed as "CPRM" in "Add Harddrive" list because first
+  (which is normally hidden) block starts with ascii string "CPRM"
+- wrong sound device was selected if configuration was loaded and
+  DS, OpenAL or PortAudio had 100% identical device names
+- bsdsocket not too common connection issue fixed (b15)
+- sound card index in config file > number of sound devices = very
+  slow emulation
+- added "All" option to RTG RGB format selection menus (make sure
+  "ENV:Picasso96/ShowModes" contains "All" or only single format per
+  color depth is available in screen mode dialogs)
+- autoscale: show blank display using previous scaling instead of
+  defaulting to non-scaling
+- NTSC vertical centering fixed in scaled modes
+- D3D and OGL mode was not properly closed when switching to
+  windowed/fullwindow RTG mode (old graphics was visible depending
+  on screen/scaling etc..)
+- AHI is broken in this version. Do not use
+
+Beta 25:
+
+- Picasso96 crash in some specific cases when 8bit->16/32 or 16->32
+  conversion is used (bug since new Picasso96 emulation was introduced)
+- "yes/no"-style dialogs in fullscreen with active GUI: mouse was
+  (incorrectly) captured when exiting the dialog
+- switching between ce and non-ce mode in some blitter heavy programs
+  could have frozen the blitter (workaround was to switch back to
+  original mode)
+- input was disabled when in "mouse driver" mode and focus was lost
+  and regained
+- DXSDK update, D3D support requires March 2009 DX runtime or newer
+- D3D fullscreen "border" flickering fixed
+
+Beta 24:
+
+- debugger T command fixed (b15)
+- JIT FPU bug, one addressing mode was wrong (b15)
+- reset clears "native2amiga" command queue (it was possible to have
+  command queued just before reset which would have been executed
+  after reset -> random errors and crashes)
+- do not include mice in parallel port joystick select menus
+- add new empty adf files to disk history list
+- added simple list devices, libraries and resources command to
+  debugger (Td Tl Tr)
+- log file long datestamps fixed
+
+Beta 23:
+
+- archives (zip etc) didn't unpack (b22)
+- directinput keyboard was not always unacquired when focus was lost
+- hq2x/3x/4x crash in specific situations (old random bug)
+- clipboard initialization changed again, now initialized after all
+  other residents (previously it was after dos)
+
+Beta 22:
+
+- do not change priority if current priority is HIGH or REALTIME
+- command line parameter parsing crash fixed
+- added 5:4 aspect ratio to rtg and filter settings
+- archiveaccess filename encoding fixed (b15)
+- recursive archive support fixed (b15)
+- added adf, rdb and hdf "archive" support. It is now possible to
+  browse adf/hdf/dms/ipf/fdi/extended adf inside zip/lha/whatever
+  archives when mounted as a harddrive :) (uaeunp.exe feature mainly)
+- clipboard initialization should really be after dos initialization,
+  should fix random "UAE clipboard sharing" crashes when booting
+- debugger crash fixes (b15)
+- lha non-extended file/dir timestamps fixed
+- 7z SDK updated to newer version, timestamps supported
+- diskspare (12/24 sector) disk images supported, also includes "plain"
+  adf files that have exact diskspare format size
+- dragging to windowed mode HD-"led" forces harddrive mount (for
+  example adf is mounted as a harddrive, normally dragging autodetects
+  type and inserts adfs to disk drive)
+- dragging file to harddrive panel also automounts it immediately if
+  emulation is already running
+
+Beta 21:
+
+- registry subsystem wasn't initialized in b20 (broke lots of things)
+- postscript printing crash fixed (old bug that didn't crash so
+  easily in older versions..)
+- slowdown introduced in b13 should be fixed (inverted comparison
+  when testing if current scan line can be emulated in "fast" mode)
+
+Beta 20: (feature complete now. I think..)
+
+- added controller type to gameports panel, easier way to enable
+  more complex standard controller configurations without need for
+  input panel (analog joystick, lightpen, joystick mouse emulation..)
+  Note that impossible configurations like emulating joystick with
+  mouse aren't supported even if GUI seems to allow it, also
+  non-mouse lightpen isn't really supported, it works but moves
+  badly (not worth the trouble really, maybe)
+- added "CDTV Mouse" which is CDTV remote controller mouse emulation,
+  only difference between normal and CDTV mouse is speed setting,
+  normal mouse speed is adjustable in input-panel, CDTV mouse speed
+  is not adjustable and is same as real CDTV mouse emulation (there
+  are CDTV programs that expect CDTV remote controller -like mouse
+  speed and they do not work very well with normal mouse)
+  NOTE: speed not yet calibrated!
+- added CD32 controller type to gameports GUI, enables CD32 controller
+  emulation. Now it is possible to emulate normal joysticks in CD32
+  emulation mode (without using input panel)
+- parallel port joystick adapter configuration added to gameports panel
+  (GUI lists all devices but only joystick/keyboard supported)
+- light pen cursor is centered when used for the first time
+- added more compatible default analog joystick parameters
+- digital joystick/buttons mapped to analog stick axis work correctly
+- state restore rom detection fixed (b15), added logging
+- support "0x402 An unknown error occurred" when deleting non-existing
+  directory with recycle bin enabled
+- drives 1 to 3 config load didn't work (b15)
+- added possibly pointless command line image conversion option,
+  "winuae -convert <src> <dst>" where src can be any supported archive
+  and/or disk image (even archive.lha\fileinsidearchive.dms should
+  unpack to adf) Separate command line unpacker maybe in future..
+
+Beta 19:
+
+- missing command line unicode support added
+- added support for winuae.exe <paths> [<other params>] command line.
+  <Paths> can be path to a configuration file, any supported floppy
+  disk image file or statefile, multiple paths supported, path
+  parsing stops when first parameter beginning with '-' or '/' is
+  detected. Automatically disables "show gui on startup".
+- improved configuration parsing, now for example something="path"
+  and command line -something="path" works, previously " (or ')
+  was not parsed properly
+- clear dsound buffer when sound autodeactivates, it was possible to
+  have some old sound data left in buffer if buffer size is really big
+- gui debugger clipboard and enter address option fixed (b15)
+- autoscaled screen was off center if display size was too small
+- directory filesystem "unimplemented error 3" fix
+- directory filesystem "unimplemented error 87" when setting file/dir
+  datestamp and drive is in FAT partition (FAT date range is not as
+  large as Amiga supported date range, AmigaDOS minimum date is
+  1978-01-01, FAT minimum is 1980-01-01)
+- directory filesystem date underflow fixed, host-side date earlier
+  than 1978-01-01 caused underflow, result usually was date in
+  far future.. (bug since the beginning most likely)
+- updated directory filesystem date calculations to 64-bit
+- directory filesystem ERROR_COMMENT_TOO_BIG implemented
+- PortAudio works again, also accept only v1899 or newer library
+- clear D3D filter screen when autoscale settings change
+- added F13-F16 to rawkeyboard keycode array
+
+Beta 18:
+
+- gui debugger unicode conversion fixes (b15)
+- native dll call fixed (b15)
+- already existing _UAEFSDB.___ was not updated properly on NTFS
+  volumes, "dirty" _UAEFSDB.___ data was not flushed when emulator
+  was exited (old bug)
+- non-ascii configuration strings are duplicated in UTF-8 as
+  <entry name>.utf8. Now even japanese file names and paths work in
+  configuration files :) (backwards compatible, old versions will
+  ignore it)
+- clipboard sharing: accept only v37 or newer clipboard.device
+- added DD (720k) and HD (1440k) PC floppy image type to create disk
+  option (image will be unformatted)
+
+Beta 17: (even more fixes. do not use b15 or b16)
+
+- module ripper text conversion fixed
+- winuae.ini UTF-8 support (only new ones are created in UTF-8)
+- ACTION_READ with "illegal" length or address crashed (b15)
+- catweasel log information string wrong encoding fixed
+- ACTION_SEEK 2G limit and 64-bit filesystem packet fixes
+- configuration file handling bugs fixed (b15)
+- directory filesystem date field ignored timezone (b15)
+- crash dump file naming fixed (old bug)
+
+Beta 16:
+
+- multiple unicode conversion issues fixed, hardfile/drive issues,
+  clipboard text conversion, statefiles etc..
+- automatically add KS rom "footer" if rom is too short (for my own
+  rom project, more information later...)
+- unrar.dll support fixed and uses now unicode functions
+- all text file reading routines now automatically support UTF-8 and
+  UTF-16LE formats if BOM is included (plain files only, not inside
+  archives yet)
+- directory filesystem seek 2G test added, 64-bit seek function return
+  code fix
+
+Beta 15:
+
+- WinUAE is now native unicode application (internally all strings are
+  NT native UTF16-LE format instead of 8-bit "ANSI")
+  What does this mean?
+  - lots of breakage possible, size of one byte = size of one character
+  isn't true anymore and finding all cases is difficult. Report all
+  mysterious crashes (they are usually easily duplicated)
+  - Windows<>Amiga directory filesystem character set conversion can
+  be configured (Windows "code page" may not match Amiga charset =
+  "special" characters should work better now. Default is CP 1252 which
+  is functionally identical to Amiga standard ISO-8859-1)
+  - logs and configuration.cache are UTF-8 formatted (UTF-8 is more
+  human readable than UTF-16), "old" charset supported
+  - log window supports unicode now, no more weird characters in
+  (for example) device names containing national characters
+  - configuration files are still in old format (would cause too many
+  problems with old versions and front ends..)
+  - I simply wanted to do this when I dropped 98/ME support but I wasn't
+  ready until now. (also most new Vista+ APIs are unicode only,
+  converting between ansi<>unicode was getting too annoying)
+
+- ACTION_EXAMINE_ALL was quite broken, it always returned full directory
+  entry data (wrong variable used..) Most (all) programs didn't care.
+- "not implemented error" filesystem warning is now shown to user
+  (nobody apparently noticed it in the log = I can never fix it..)
+- directory filesystem >2G files are shown as 2G minus 1 byte (instead
+  of truncating to 32-bit and showing negative or other random sizes),
+  >4G files internally supported
+- directory filesystem ACTION_CHANGE_FILE_POSITION64,
+  ACTION_GET_FILE_POSITION64, ACTION_CHANGE_FILE_SIZE64 and
+  ACTION_GET_FILE_SIZE64 implemented (OS4+ packets but also supported
+  by 68k SFS2)
+- ignore all input events (except activation events or if mousehack
+  is enabled) if no focus and not active (previously only focus was
+  required)
+
+Beta 14:
+
+- filter out PortAudio DS and MME drivers (useless duplication only)
+- portaudio WDM-KS freeze fixed (ancient bug in portaudio library
+  and nobody hasn't fixed it yet.. Why do I have to do everything..)
+- folder selection dialog updated to larger Vista/W7 version
+- new Vista/W7 style file dialog was always in "open" mode, it was not
+  possible to select non-existing file when saving
+
+Beta 13:
+
+- mousehack mouse sync works in filter modes
+- D3D filter display positioning should be correct. maybe.
+- full window RTG scaling changes or RTG<>native switches didn't clear
+  old graphics completely
+- unofficial/experimental PortAudio audio library support, copy dll
+  (portaudio_x86.dll) to plugins-directory. Main point is very low
+  latency sound API (ASIO, WDM-KS, WASAPI) support. WDM-KS (XP) not
+  tested, WASAPI (VistaSP1/W7 only) confirmed working. Generally
+  can be ignored, do not ask :)
+- file selection dialog uses new IFileDialog interface (if available,
+  Vista or newer only) Dialogs still should look same, shout if
+  something looks weird. (currently this is my workaround for
+  Windows 7b feature/bug of remembering old directory, even if
+  OPENFILENAME structure has lpstrInitialDir set)
+- automatic scaling update, very large DIWSTRT/DIWSTOP values are
+  clipped to max overscan size when calculating display size
+  (some demos had really wide autoscaling)
+- fixed autoscaling + aspect ratio set + resolution/linedoubling ratio
+  not 1:1 (for example lores + doubling) = wrong aspect ratio.
+- clipboard Amiga->PC conversion crashed if clipboard contained no
+  text data (empty FORM FTXT structure without data content)
+
+Beta 12:
+
+- file comment was not reset when file already existed and file was
+  opened mode = MODE_NEWFILE, also caused lost file comment if file
+  was opened and old comment was set again (probably another "since
+  the beginning bug") Thanks to TC for finding easy test case.
+- mousehack/tablet support "mouse sync" updates (still not fixed)
+- "Magic mouse cursor" mode configuration added.
+  - Both = show standard Windows and Amiga cursors
+  - Native = show Amiga cursor only
+  - Host = show Windows cursor only (with colors and shape copied
+    from real hidden Amiga cursor) This mode fakes really smooth
+    looking cursor movement (as long as positioning is correct..)
+- 'e' debugger command OCS/ECS color register contents are shown
+  correctly in AGA mode
+- sprite garbage in some rare situations (reason not fully known..)
+- floppy drives were emptied if quickstart was enabled, show gui on
+  startup was not enabled and GUI was entered for the first time
+- sprite attachment fixed. Surprisingly it works as documented :)
+
+Beta 11:
+
+- fix for graphics corruption introduced in 1.5.3 when bitplane DMA
+  fetch happened while bitplane pointer was updated
+- AGA 6 plane mode (non-EHB) was not always enabled properly (b3)
+- added -clipboarddebug command line parameter that writes clipboard
+  contents to file in winuae directory. (clipboard_p2a.xxx.dat
+  and clipboard_a2p.xxx.dat)
+- added ripper path to Paths panel, used by prowizard and sample
+  ripper (previously sample ripper used screenshot directory and
+  prowizard used winuae root directory)
+- directory filesystem ACTION_CHANGE_MODE was completely broken in
+  CHANGE_FH mode, returned error and "Error: couldn't find key
+  x / y!" was logged. Bug since the beginning
+- clipboard: multiple CHRS chunk merging fixed (again), less stupid
+  clipboard.device detection
+- blitter line mode (only if linedraw code was "weird") broke in b3
+- file selection dialog (adf, hdf etc..) remembers previous filter
+  mode ("*.adf", "all files" etc..)
+
+Beta 10: clipboard stuff.
+
+- clipboard: multiple CHRS chunks inside FTXT supported
+- clipboard: IFF ILBM Amiga to PC support implemented. EHB supported,
+  HAM6/8 automatically converted to 24-bit, 24-bit IFF supported
+- clipboard: PC to Amiga IFF conversion. Counts the number of colors,
+  if 256 or less, creates normal paletted IFF image, if more, creates
+  24 bit IFF.
+- clipboard: Windows clipboard is only updated when there is new data
+  in Amiga clipboard and WinUAE loses focus. Same with Amiga clipboard,
+  do not copy contents of Windows clipboard until WinUAE gains focus.
+- switching from "artifact fixed" interlace mode to non-laced now
+  force updates the screen completely, fixes possible glitches
+
+Beta 9:
+
+- flickerfixer improved, also first and last line glitch fixed, sprite
+  positioning fixed. Now interlaced WB is rock solid.
+- "Flicker fixer" renamed to "Remove interlace artifacts" (it really
+  isn't same as flickerfixer or scandoubler)
+- led transparency removed, it read from display ram which caused huge
+  slow down
+- artifact removal broke autoscaling
+- am and sm debugger commands merged to single M<sub command> command
+- bitplane disable debugger command added, Mb <enabled planes>
+  [<if disabled plane, show it as all zeros or as all ones>]
+- automatic, transparent clipboard sharing! Data in Windows clipboard
+  is automatically copied to Amiga clipboard.device unit 0 and vice
+  versa. Only text-based content currently supported. OS2+ only.
+- REPEAT NOTE: D3D/OGL filter is still broken. Do not use.
+
+Beta 8:
+
+- UAE boot rom was enabled when it should not have been (b7)
+- little blitter tweak, writing to bltcon1 while blitter was
+  enabled confused blitter emulation in some cases
+- filter multiplier select boxes now support manually entered
+  multipliers, for example 2.5 = 2.5x.
+- "Commandline" registry (or ini) string entry will be parsed as a
+  command line (separate step after normal command line parsing)
+- built-in hrtmon cycle-exact mode issue fixed
+- non-interlace to interlace switch issue fixed (another one,
+  they never end..)
+- do not autoresize unless display parameters are stable for next 50
+  frames
+- added "Include removable drives.." option. Now "Add PC drives" only
+  adds nonremovable drives. USB etc. will be only mounted at startup
+  if new option is ticked. "Workaround" for case when "Automount
+  removable drives" is ticked but USB (or whatever) drive is already
+  inserted.
+- removable drive insert/eject used unallocated signal bit, it did not
+  cause problems but fixed now
+- experimental "flicker fixer" implemented (Display panel). Works
+  perfectly in WB, not so perfect in games yet (and impossible to get
+  perfect in all cases, as usual..) No more interlace artifacts when
+  any graphics object or mouse pointer moves.
+  NOTE: first and last line will flicker or show garbage.
+  
+  Technical details: normal interlaced display goes like this: draw
+  even lines (0, 2, 4, etc..), next frame draws odd lines (1, 3, 5..)
+  This makes 25Hz refresh rate and also causes interlace artifacts when
+  objects move. UAE flickerfixer draws both fields simultaneously,
+  even lines = 0,1*,2,3*,4,5* and odd lines (0*,1,2*,3..).
+  * = draw display using bitplane pointers stored during previous frame
+  
+Beta 7:
+
+- version number bumped to 1.6.0
+- added "resize" autoscale method. Resizes windowed mode window
+  to current detected Amiga display size. (1:1 pixel mapping, no
+  blurriness)
+- PAL/NTSC switching in KS3.x early boot screen was ignored until
+  following reboot (old bug)
+- do not report no_cd-status when loading CD32 statefile without CD
+  inserted
+- doublescan modes autoscale/resize better
+- improved Amiga display size detection
+- autoscale option saved to configuration file
+- do not capture mouse if mouse pointer is not in normal mode, prevents
+  annoying accidental capture when dragging/resizing
+- very large overscanned modes are centered in autoscale modes,
+  previously right border was simply clipped
+- tablet+magic mouse cursor positioning will be even more broken now
+- do not create registry key if ini mode is enabled (release versions
+  only)
+- renamed "Drawing tablet support" to "Install virtual mouse driver"
+  (which is not much better but at least a bit less confusing..)
+- mouse autocaptures in "sync mode" if native side mouse driver does
+  not get "heartbeat" signal from Amiga-side driver (for example
+  when running game that takes over the system). Current timeout is
+  2 seconds.
+- native mode mouse cursor shape copied to Windows cursor (yes, I am
+  going really too far now..) in mousesync mode. Just experimenting..
+- left mousebutton didn't always work in mouse sync modes
+- fullscreen and full window should work correctly again
+  (hint: full window + autoscale + correct aspect = useful if you
+  don't mind blurriness, scale2x/pal filter may also help)
+- on screen leds' background is translucent (32-bit screen + filtered
+  only)
+- NOTE: D3D/OGL filters do not yet work correctly in autoscale,
+  autoresize or mouse sync modes (=mouse driver + magic mouse)
+- NOTE2: screen dragging does weird things with autoscale/mouse sync
+  (mouse sync issue when two different screens are visible should be
+  fixable)
+- NOTE3: both real and "fake" cursor is temporarily visible in mouse
+  sync modes. They should always be in 100% sync and have identical
+  shape. (but aren't, still much work to do..)
+
+Beta 6:
+
+- Spheris Legacy top/bottom border autoscaling fixed
+- screen width checking only stored final display size before vblank
+  (game with wide gamescreen and narrow scoreboard at the bottom would
+  have used scoreboard's width)
+- autoscale saved to config file
+- non-filtered mode is back but enabling autoscale will automatically
+  enable null filter if current selection was no filter
+- filter aspect ratio setting in autoscale mode was wrong
+- filter aspect ratio now set by default
+- detected screen size logged
+- loading new statefile didn't always trigger scale update
+
+Beta 5: WARNING: big changes. 1.6 version change expected.
+
+- KS loader 16-bit odd/even rom image to 32-bit merging fixed
+- A1000 bootstrap rom in even/odd format wasn't loaded correctly
+- added "Blacker than black" display configuration parameter.
+  Ticked = borderblank is full black, color register RGB range is
+  0F0F0F to FFFFFF (instead of 000000 to FFFFFF) "Fixes" missing
+  "widescreen effect" in Nexus 7 galaxy effect. (blanked border is
+  "blacker than black" on real hardware, at least on TV-style
+  display devices)
+- useless correct aspect setting is gone (use null filter instead)
+- do not try to decrypt broken non-encrypted DMS files
+- added new panel "Gameports", moved joystick configuration from
+  io ports. (more space for future "easy" input configuration mode)
+- moved mouse related settings to new gameports panel
+- added tablet settings to new gameports panel
+- CD32 mode onscreen CD led now emulates real CD32 CD led behavior :)
+- some CD32 CD command and status code updates (did some logic
+  analyzer stuff, more to do later), now updated cd.device that comes
+  with FMV cartridge works. Also CD command 2 now returns full
+  firmware string, "CHINON  O-658-2 24" (useless but fun, same with
+  CDTV CD ROM firmware versions..)
+- F12+CTRL was same as F11+CTRL (partial copypaste error)
+- renamed motherboard RAM expansion areas
+- Wings of Death "fake" NTSC works correctly
+- Null filter is default and non-filter mode is not anymore possible.
+  Finally I can use filters for other things than just simple
+  filtering . See below!
+- filter FS multiplier + keep aspect works as expected
+- pal/ntsc vertical size change emulated (using filter scaling, try
+  KS3.x early boot screen)
+
+- mouse and tablet/"absolute mouse" support completely rewritten
+  * mousehack mouse removed (not needed anymore)
+  * mousehack interrupt and task renamed to "UAE tablet driver"
+  * do not select any "tablet mouse" in ports-panel. Use normal mouse.
+  * tablet automatically detected (currently needs to be wintab32.dll
+    compatible. Really confusing Tablet PC support maybe later..)
+    Tablet properties in log file.
+  * tablet and mouse are separate devices, like real Amiga tablets.
+  * if tablet is detected (and "UAE boot rom" is installed), "UAE
+    tablet driver" will be automatically enabled:
+    KS1.x: uses old-style mousehack mode
+    KS2.x: creates IECLASS_NEWPOINTERPOS/IESUBCLASS_TABLET messages
+    (position, range and pressure. Note that pressure variable is
+    documented as "not used" in 2.x documentation..)
+    KS3.x: creates IECLASS_NEWPOINTERPOS/IESUBCLASS_NEWTABLET messages
+    ("lots of stuff")
+  * stylus inverted = right button (if supported by tablet)
+  * proximity detection (if supported by tablet)
+  * reported tilt angles are 99.9% surely totally wrong
+  * Tested only with old USB Wacom Graphire.
+  * No tablet.library emulation because no information available.
+    (Deluxe Paint requires it for pressure support)
+  * TODO: configuration (left button sensitivity, margins etc..)
+  * New gameports panel settings:
+    - "Drawing tablet support" = install "tablet driver", mousehack
+      or real tablet. Same as mouse in "mousehack" mode. (bad label,
+      will be renamed later..)
+    - "Full tablet emulation" = use wintab32.dll for all tablet
+      parameters (x, y, pressure etc..). Real mouse still works in
+      mousehack mode.
+  * "Magic Mouse" updated.
+    - without tablet mode enabled: like previously but more accurate
+    - mousehack/tablet mode: RTG mode perfectly smooth and seamless
+      mouse cursor movement inside and outside of emulation window.
+      (Changes Windows mouse cursor shape, hides real RTG cursor,
+      works only if RTG hardware mouse cursor enabled)
+    - native mode cursor sync should be always perfect. (this took
+      long and was really difficult to do properly..) Does not work
+      with screen dragging (yet?)
+    
+  * NOTE: real table support can't be improved until I get more
+  information (tilt range etc..) Official documentation is non-existing.
+  (short comments in includes aren't really considered documentation..)
+
+  And finally extremely long awaited feature that was not supposed to
+  ever happen: automatic display scaling!
+  - enable checkbox is "autoscale" in filter panel
+  - supports all filters (maybe?)
+  - scaling sliders change extra border size (middle = no borders)
+  - keep aspect ratio does just that
+  - ignores possible sprites outside of display area (Banshee, Spheris
+  Legacy etc..) Will be updated later..
+  - enabled by default, aspect ratio disabled, at least during beta
+  phase. Perhaps there should be button in quickstart panel to disable
+  or enable autoscaling because not everyone likes blurry display to
+  become the default..
+  - to prevent very small displays scaled to fullscreen (like Guru
+  meditation boxes), minimum allowed internal display size is 256*192.
+  Max size is 344*272 (in lores, nonlaced pixels)
+  - the better this gets the more comments I get.. (which means
+  screenshot and complete name and/or CRC32)
+  
+  Does not (cannot) work with all programs. Why did I finally do this?
+  Because "magic mouse" sync mode required position of display start
+  and end and it was more or less the same was required for automatic
+  scaling.. And also because filter internal algorithms are finally
+  good enough.
+  
+Beta 4:
+
+- removable real harddrives (or other memory devices) work again
+  (broke in b2)
+- OCS/ECS "7-planes" mode didn't enable EHB mode
+- 320x256, 640x512, 800x600, 1024x768 and 1280x1024 are always
+  available in Picasso96 resolution selection, even if host does not
+  support the mode (in fullscreen mode automatically selects next
+  higher available mode + black borders) 320x200 and 320x240 was
+  already "faked" previously
+- ECS Agnus 0.5M+0.5M "1M chip" mirror works again (Move Any Mountain)
+- copper disassembler uses Agnus bank instead of direct memory access,
+  works now with above configuration
+- blitter writes work to "chip mirror" (Move Any Mountain missing gfx)
+- mouse counter emulation rewrite, now works with programs that read
+  counters hundreds of times/frame. (Oil Imperium pipelining minigame,
+  some weird lag can be noticed but it is much better than previously)
+- added support for 81 and 82 cylinder PC/Atari ST image formats
+- memwatch breakpoints work after reset/memory bank changes
+
+Beta 3:
+
+- HAM errors if left border was not fully visible (it seems this bug
+  has been there since the beginning of UAE, code that was supposed
+  to handle this case has never worked correctly..)
+- mid horizontal line HAM/EHB/DPF change fixed (Cover Girl Strip
+  Poker) broke in 1.5.3
+- added win32.guikey to configuration file, keycode that opens GUI
+  (raw directinput keycode, for example F10 = 0x44) -1 = default.
+- game & io-ports <none>-setting works properly
+- vhd creator didn't create fully compatible images (larger images
+  were incompatible with official vhd tools, did not cause data
+  corruption)
+- 1st Anniversary by Lazy Bones OCS/ECS "7-planes" trick emulated
+  (missing black vertical lines)
+- Disposable Hero title screen is now perfect. Take screenshots
+  before it gets broken again :)
+- added some more sanity tests to DirectDraw surface handling
+
+Beta 2:
+
+- fixed b1 slowdown when lots of sprites are visible
+- CD32 mode CD32.TM detection added (log only)
+- RTG vblank interrupt changes, use INTB_VERTB if RTG vblank is set
+  to "Chipset". (very compatible, no extra interrupts happening) Uses
+  INTB_PORTS if different than Chipset. (Previously used INTB_EXTER but
+  some games didn't like it, Ports seems to be more compatible) Added
+  "Disabled" option which disables RTG vblank support.
+- fixed possible crash when closing fullscreen mode
+- uaeserial.device unit 10+ open failure fix
+- hardfile os-specific and common stuff separated more logically, more
+  portable (and easier to add new image types, see below)
+
+- VHD (VirtualPC) fixed and dynamic harddrive images supported. Reading
+  and writing supported, image creation supported. HDF->VHD conversion
+  is not built-in but you can use for example VHDTool or any other tool
+  that supports raw to vhd conversion (hdf is a basic raw harddrive
+  image type) "Differencing" image type may be supported in future
+  (differencing = all written data goes to another image, like adf
+  "saveimages")
+  
+  WARNING: vhd support may not be bug free yet. Remember backups!
+  
+  Why YetAnotherImageFormat? Main point is dynamic images. New empty
+  dynamic image is always very small (even if virtual size is multiple
+  gigabytes) and image grows automatically when needed.
+
+Beta 1:
+
+- DXSDK updated, D3D filters again require updated DX runtime
+- some CD32 pad reading routines returned phantom buttons in JIT
+  modes if pad was not "connected"
+- another partial sprite rendering update, fixes sprite size problems
+  in screen modes that have multiple resolutions in single horizontal
+  line (for example Innovation Part 2 by Axxis is 100% correct now)
+- also fixes wrong sized sprites in some lores resolution modes
+- superhires in lores mode supported (show only every 4th pixel)
+- superhires in filtered lores supported (visible pixel is average
+  color of 4 internal shres pixels. This may be slow..)
+- ECS SHRES in lores supported (both non-filtered and filtered)
+- 10 sectors per track PC floppy images (800k) supported
+
 1.5.3
 
 Beta 8:
@@ -100,7 +790,7 @@ Beta 2:
 - configuration cache loader missed most configuration files inside
   directories (parent was set to wrong entry..)
 - some midline resolution change updates. Disposable Hero looks better
-  but not perfect yet.. Innovation Part 2 by Axis also looks better
+  but not perfect yet.. Innovation Part 2 by Axxis also looks better
   (sprite resolution issue still remaining). Brian the Lion "message
   dialog" corruption fixed.
 

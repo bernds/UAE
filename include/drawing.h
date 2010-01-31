@@ -228,8 +228,8 @@ struct decision {
 #endif
     uae_u8 nr_planes;
     uae_u8 bplres;
-    unsigned int ham_seen:1;
-    unsigned int ham_at_start:1;
+    unsigned int ham_seen;
+    unsigned int ham_at_start;
 };
 
 /* Anything related to changes in hw registers during the DDF for one
@@ -276,6 +276,7 @@ extern void drawing_init (void);
 extern void notice_interlace_seen (void);
 extern void frame_drawn (void);
 extern void redraw_frame (void);
+extern int get_custom_limits (int *pw, int *ph, int *pdx, int *pdy);
 
 /* Finally, stuff that shouldn't really be shared.  */
 

@@ -667,7 +667,7 @@ struct zfile *archive_access_lzx (struct znode *zn)
 		unpsize -= decrunch_length;
 		crc_calc (pdest, decrunch_length);
 	    } else {
-		write_log ("LZX corrupt compressed data %s\n", zn->name);
+		write_log (L"LZX corrupt compressed data %s\n", zn->name);
 		goto end;
 	    }
 	}
@@ -675,7 +675,7 @@ struct zfile *archive_access_lzx (struct znode *zn)
     /* pre-cache all files we just decompressed */
     for (;;) {
 	if (znfirst->size && !znfirst->f) {
-	    dstf = zfile_fopen_empty (znfirst->name, znfirst->size);
+	    dstf = zfile_fopen_empty (zf, znfirst->name, znfirst->size);
 	    zfile_fwrite(dbuf + znfirst->offset2, znfirst->size, 1, dstf);
 	    znfirst->f = dstf;
 	    if (znfirst == zn)
@@ -716,7 +716,7 @@ struct zvolume *archive_directory_lzx (struct zfile *in_file)
      return 0;
  if (memcmp(archive_header, "LZX", 3))
      return 0;
- zv = zvolume_alloc(in_file, ArchiveFormatLZX, NULL);
+ zv = zvolume_alloc (in_file, ArchiveFormatLZX, NULL, NULL);
 
  do
  {
@@ -768,9 +768,9 @@ struct zvolume *archive_directory_lzx (struct zfile *in_file)
 	  second = temp & 63;
 
 	  memset(&zai, 0, sizeof zai);
-	  zai.name = header_filename;
+	  zai.name = au (header_filename);
 	  if (header_comment[0])
-	   zai.comment = header_comment;
+	   zai.comment = au (header_comment);
 	  zai.flags |= (attributes & 32) ? 0x80 : 0;
 	  zai.flags |= (attributes & 64) ? 0x40 : 0;
 	  zai.flags |= (attributes & 128) ? 0x20 : 0;
@@ -791,6 +791,8 @@ struct zvolume *archive_directory_lzx (struct zfile *in_file)
 	  zai.size = unpack_size;
 	  zn = zvolume_addfile_abs(zv, &zai);
 	  zn->offset2 = merge_size;
+	  xfree (zai.name);
+	  xfree (zai.comment);
 
 	  total_pack += pack_size;
 	  total_unpack += unpack_size;
@@ -810,7 +812,7 @@ struct zvolume *archive_directory_lzx (struct zfile *in_file)
 	  else
 	   abort = 0; /* continue */
 
-	  //write_log ("unp=%6d mrg=%6d pack=%6d off=%6d %s\n", unpack_size, merge_size, pack_size, zn->offset, zai.name);
+	  //write_log (L"unp=%6d mrg=%6d pack=%6d off=%6d %s\n", unpack_size, merge_size, pack_size, zn->offset, zai.name);
 
 
 	 }

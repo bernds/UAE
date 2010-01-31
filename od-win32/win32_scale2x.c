@@ -13,35 +13,106 @@
 #include "gfxfilter.h"
 #include "dxwrap.h"
 #include "statusline.h"
+#include "drawing.h"
 
 struct uae_filter uaefilters[] =
 {
-    { UAE_FILTER_NULL, 0, 1, "Null filter", "null", 0, UAE_FILTER_MODE_16_16 | UAE_FILTER_MODE_32_32, 0, 0, 0 },
+    { UAE_FILTER_NULL, 0, 1, L"Null filter", L"null", 0, UAE_FILTER_MODE_16_16 | UAE_FILTER_MODE_32_32, 0, 0, 0 },
 
-    { UAE_FILTER_DIRECT3D, 0, 1, "Direct3D", "direct3d", 1, 0, 0, 0, 0 },
+    { UAE_FILTER_DIRECT3D, 0, 1, L"Direct3D", L"direct3d", 1, 0, 0, 0, 0 },
 
-    { UAE_FILTER_OPENGL, 0, 1, "OpenGL", "opengl", 1, 0, 0, 0, 0 },
+    { UAE_FILTER_OPENGL, 0, 1, L"OpenGL (unsupported)", L"opengl", 1, 0, 0, 0, 0 },
 
-    { UAE_FILTER_SCALE2X, 0, 2, "Scale2X", "scale2x", 0, 0, UAE_FILTER_MODE_16_16 | UAE_FILTER_MODE_32_32, 0, 0 },
+    { UAE_FILTER_SCALE2X, 0, 2, L"Scale2X", L"scale2x", 0, 0, UAE_FILTER_MODE_16_16 | UAE_FILTER_MODE_32_32, 0, 0 },
 
-    { UAE_FILTER_HQ, 0, 2, "hq2x/3x/4x", "hqx", 0, 0, UAE_FILTER_MODE_16_16 | UAE_FILTER_MODE_16_32, UAE_FILTER_MODE_16_16 | UAE_FILTER_MODE_16_32, UAE_FILTER_MODE_16_16 | UAE_FILTER_MODE_16_32 },
+    { UAE_FILTER_HQ, 0, 2, L"hq2x/3x/4x", L"hqx", 0, 0, UAE_FILTER_MODE_16_16 | UAE_FILTER_MODE_16_32, UAE_FILTER_MODE_16_16 | UAE_FILTER_MODE_16_32, UAE_FILTER_MODE_16_16 | UAE_FILTER_MODE_16_32 },
 
-    { UAE_FILTER_SUPEREAGLE, 0, 2, "SuperEagle", "supereagle", 0, 0, UAE_FILTER_MODE_16_16 | UAE_FILTER_MODE_16_32, 0, 0 },
+    { UAE_FILTER_SUPEREAGLE, 0, 2, L"SuperEagle", L"supereagle", 0, 0, UAE_FILTER_MODE_16_16 | UAE_FILTER_MODE_16_32, 0, 0 },
 
-    { UAE_FILTER_SUPER2XSAI, 0, 2, "Super2xSaI", "super2xsai", 0, 0, UAE_FILTER_MODE_16_16 | UAE_FILTER_MODE_16_32, 0, 0 },
+    { UAE_FILTER_SUPER2XSAI, 0, 2, L"Super2xSaI", L"super2xsai", 0, 0, UAE_FILTER_MODE_16_16 | UAE_FILTER_MODE_16_32, 0, 0 },
 
-    { UAE_FILTER_2XSAI, 0, 2, "2xSaI", "2xsai", 0, 0, UAE_FILTER_MODE_16_16 | UAE_FILTER_MODE_16_32, 0, 0 },
+    { UAE_FILTER_2XSAI, 0, 2, L"2xSaI", L"2xsai", 0, 0, UAE_FILTER_MODE_16_16 | UAE_FILTER_MODE_16_32, 0, 0 },
 
-    { UAE_FILTER_PAL, 1, 1, "PAL", "pal", 0, UAE_FILTER_MODE_16_16 | UAE_FILTER_MODE_32_32, 0, 0, 0 },
+    { UAE_FILTER_PAL, 1, 1, L"PAL", L"pal", 0, UAE_FILTER_MODE_16_16 | UAE_FILTER_MODE_32_32, 0, 0, 0 },
 
     { 0 }
 };
 
+static int filteroffsetx, filteroffsety, filterxmult = 1000, filterymult = 1000;
+static int dst_width, dst_height, amiga_width, amiga_height, amiga_depth, dst_depth, scale;
+static int temp_width, temp_height;
+uae_u8 *bufmem_ptr;
+static LPDIRECTDRAWSURFACE7 tempsurf;
+static uae_u8 *tempsurf2, *tempsurf3;
+static int cleartemp;
+static uae_u32 rc[256], gc[256], bc[256];
+static int deskw, deskh;
+
+void getfilteroffset (int *dx, int *dy, int *mx, int *my)
+{
+    *dx = filteroffsetx;
+    *dy = filteroffsety;
+    *mx = filterxmult;
+    *my = filterymult;
+}
+
+static void getinit (void)
+{
+    if (isfullscreen ()) {
+	struct MultiDisplay *md = getdisplay (&currprefs);
+
+	deskw = md->rect.right - md->rect.left;
+	deskh = md->rect.bottom - md->rect.top;
+    } else {
+	deskw = dst_width;
+	deskh = dst_height;
+    }
+}
+
+static int vblscale (int v)
+{
+    static int o;
+    int n;
+
+    n = (beamcon0 & 0x80) + maxvpos;
+    if (n != o)
+	cleartemp = 1;
+    o = n;
+    if (beamcon0 & 0x80)
+	return v;
+    if (currprefs.ntscmode)
+	v = v * maxvpos / MAXVPOS_NTSC;
+    else
+	v = v * maxvpos / MAXVPOS_PAL;
+    return v;
+}
+static int vblscale2 (int v)
+{
+    static int o;
+    int n;
+
+    n = (beamcon0 & 0x80) + maxvpos;
+    if (n != o)
+	cleartemp = 1;
+    o = n;
+    if (beamcon0 & 0x80)
+	return v;
+    v = v * maxvpos / MAXVPOS_PAL;
+    return v;
+}
+static int ispal (void)
+{
+    if (beamcon0 & 0x80)
+	return currprefs.ntscmode == 0;
+    return maxvpos >= MAXVPOS_NTSC + (MAXVPOS_PAL - MAXVPOS_NTSC) / 2;
+}
 
 uae_u8 *getfilterrect1 (RECT *sr, RECT *dr, int dst_depth, int aw, int ah, int scale, int temp_width, int temp_height, uae_u8 *dptr, int pitch)
 {
-    int aws = aw * scale;
-    int ahs = ah * scale;
+    int aws, ahs;
+    
+    aws = aw * scale;
+    ahs = ah * scale;
     
     SetRect (sr, 0, 0, 0, 0);
     dr->left = sr->left + (temp_width - aws) /2;
@@ -51,15 +122,43 @@ uae_u8 *getfilterrect1 (RECT *sr, RECT *dr, int dst_depth, int aw, int ah, int s
     return dptr;
 }
 
-void getfilterrect2 (RECT *sr, RECT *dr, int dst_width, int dst_height, int aw, int ah, int scale, int temp_width, int temp_height)
+static void sizeoffset (RECT *dr, RECT *zr, int w, int h)
 {
-    int aws = aw * scale;
-    int ahs = ah * scale;
+    dr->right -= w;
+    dr->bottom -= h;
+    OffsetRect (zr, w / 2, h / 2);
+}
+
+static void xymult (int *x, int *y)
+{
+    int mult = currprefs.gfx_resolution - (currprefs.gfx_linedbl ? 1 : 0);
+    if (mult < 0)
+	*x *= 1 << (-mult);
+    else
+	*y *= 1 << mult;
+}
+
+static int ppp = 320;
+
+void getfilterrect2 (RECT *sr, RECT *dr, RECT *zr, int dst_width, int dst_height, int aw, int ah, int scale, int temp_width, int temp_height)
+{
+    float srcratio, dstratio;
+    int aws, ahs, ahs2;
     int xs, ys;
-    int xmult, ymult;
+    float xmult, ymult;
     int v;
+    int extraw, extrah;
+    
+    getinit ();
+    ahs2 = vblscale (ah) * scale;
+    aws = aw * scale;
+    ahs = ah * scale;
+
+    extraw = -aws * currprefs.gfx_filter_horiz_zoom / 2000;
+    extrah = -ahs * currprefs.gfx_filter_vert_zoom / 2000;
 
     SetRect (sr, 0, 0, dst_width, dst_height);
+    SetRect (zr, 0, 0, 0, 0);
     dr->left = (temp_width - aws) /2;
     dr->top =  (temp_height - ahs) / 2;
     dr->left -= (dst_width - aws) / 2;
@@ -67,48 +166,228 @@ void getfilterrect2 (RECT *sr, RECT *dr, int dst_width, int dst_height, int aw, 
     dr->right = dr->left + dst_width;
     dr->bottom = dr->top + dst_height;
 
-    v = currprefs.gfx_filter ? currprefs.gfx_filter_horiz_offset : 0;
-    OffsetRect (dr, (int)(-v * aws / 1000.0), 0);
-    v = currprefs.gfx_filter ? currprefs.gfx_filter_vert_offset : 0;
-    OffsetRect (dr, 0, (int)(-v * ahs / 1000.0));
+    filteroffsetx = 0;
+    filteroffsety = 0;
 
     xmult = currprefs.gfx_filter_horiz_zoom_mult;
-    if (xmult <= 0)
+    ymult = currprefs.gfx_filter_vert_zoom_mult;
+
+    srcratio = 4.0 / 3.0;
+    if (currprefs.gfx_filter_aspect > 0) {
+        dstratio = (currprefs.gfx_filter_aspect >> 8) * 1.0 / (currprefs.gfx_filter_aspect & 0xff);
+    } else if (currprefs.gfx_filter_aspect < 0) {
+	if (isfullscreen () && deskw > 0 && deskh > 0)
+	    dstratio = 1.0 * deskw / deskh;
+	else
+	    dstratio = 1.0 * dst_width / dst_height;
+    } else {
+        dstratio = srcratio;
+    }
+
+    if (currprefs.gfx_filter_autoscale) {
+	int cw, ch, cx, cy, cv;
+	static int oxmult, oymult;
+
+	filterxmult = 1000 / scale;
+	filterymult = 1000 / scale;
+
+        cv = get_custom_limits (&cw, &ch, &cx, &cy);
+	if (cv) {
+	    int diff;
+	
+	    if (currprefs.gfx_filter_autoscale == 2 && isfullscreen () == 0) {
+		int ww;
+		static int lastresize = 0;
+		static int lastdelay = 1;
+		static int ocw, och, ocx, ocy, lcw, lch, lcx, lcy;
+		int useold = 0;
+
+		lastresize--;
+		if (lastresize > 0) {
+		    if (cw != lcw || ch != lch || cx != lcx || cy != lcy)
+			lastresize = 50;
+		    useold = 1;
+		} else if (lastdelay == 0) {
+		    lastdelay = 2;
+		    useold = 1;
+		} else if (lastdelay > 0) {
+		    lastdelay--;
+		    useold = 1;
+		    if (lastdelay == 0) {
+			lastdelay = -1;
+			useold = 0;
+		    }
+		}
+
+		lcw = cw;
+		lch = ch;
+		lcx = cx;
+		lcy = cy;
+		if (useold) {
+		    cw = ocw;
+		    ch = och;
+		    cx = ocx;
+		    cy = ocy;
+		} else {
+		    ocw = cw;
+		    och = ch;
+		    ocx = cx;
+		    ocy = cy;
+		    lastresize = 50;
+		    lastdelay = 0;
+		}
+
+		SetRect (sr, 0, 0, cw * scale, ch * scale);
+		dr->left = (temp_width - aws) /2;
+		dr->top = (temp_height - ahs) / 2;
+		dr->right = dr->left + cw * scale;
+		dr->bottom = dr->top + ch * scale;
+		OffsetRect (zr, cx * scale, cy * scale);
+		ww = dr->right - dr->left;
+	        changed_prefs.gfx_size_win.width = ww;
+	        changed_prefs.gfx_size_win.height = dr->bottom - dr->top;
+		fixup_prefs_dimensions (&changed_prefs);
+		OffsetRect (zr, -(changed_prefs.gfx_size_win.width - ww + 1) / 2, 0);
+		filteroffsetx = -zr->left / scale;
+		filteroffsety = -zr->top / scale;
+		return;
+	    }
+
+	    dr->left = (temp_width - aws) /2;
+	    dr->top =  (temp_height - ahs) / 2;
+	    dr->right = dr->left + dst_width * scale;
+	    dr->bottom = dr->top + dst_height * scale;
+
+	    OffsetRect (zr, cx * scale, cy * scale);
+	    
+	    sizeoffset (dr, zr, extraw, extrah);
+
+	    dr->right -= (dst_width - cw) * scale;
+	    dr->bottom -= (dst_height - ch) * scale;
+
+	    filteroffsetx = -zr->left / scale;
+	    filteroffsety = -zr->top / scale;
+
+	    if (currprefs.gfx_filter_keep_aspect || currprefs.gfx_filter_aspect != 0) {
+		int diffx = dr->right - dr->left;
+		int diffy = dr->bottom - dr->top;
+		float xmult = 1.0;
+		float ymult = 1.0;
+
+	        if (currprefs.gfx_filter_keep_aspect) {
+		    dstratio = dstratio * (aws * 1.0 / ahs2) / (cw * 1.0 / ch);
+		    if (currprefs.ntscmode) {
+		        dstratio = dstratio * 1.21;
+			if (currprefs.gfx_filter_keep_aspect == 2 && ispal ())
+			    dstratio = dstratio * 0.93;
+			else if (currprefs.gfx_filter_keep_aspect == 1 && !ispal ())
+			    dstratio = dstratio * 0.98;
+		    } else {
+			if (currprefs.gfx_filter_keep_aspect == 2 && ispal ())
+			    dstratio = dstratio * 0.95;
+			else if (currprefs.gfx_filter_keep_aspect == 1 && !ispal ())
+			    dstratio = dstratio * 0.95;
+		    }
+		}
+
+		if (srcratio > dstratio) {
+		    ymult = ymult * srcratio / dstratio;
+		} else {
+		    xmult = xmult * dstratio / srcratio;
+		}
+
+	        diff = diffx - diffx * xmult;
+	        sizeoffset (dr, zr, diff, 0);
+	        filteroffsetx += diff / 2;
+
+		diff = diffy - diffy * ymult;
+	        sizeoffset (dr, zr, 0, diff);
+	        filteroffsety += diff / 2;
+	    }
+
+	    diff = dr->right - dr->left;
+	    filterxmult = diff * 1000 / (dst_width * scale);
+	    diff = dr->bottom - dr->top;
+	    filterymult = diff * 1000 / (dst_height * scale);
+	    return;
+	}
+    }
+  
+    if (!currprefs.gfx_filter_horiz_zoom_mult && !currprefs.gfx_filter_vert_zoom_mult) {
+
+	sizeoffset (dr, zr, extraw, extrah);
+
+	if (currprefs.gfx_filter_keep_aspect) {
+	    float xm, ym, m;
+
+	    xm = 1.0 * aws / dst_width;
+	    ym = 1.0 * ahs / dst_height;
+	    if (xm < ym)
+		xm = ym;
+	    else
+		ym = xm;
+	    xmult = ymult = xm * 1000.0;
+
+	    m = (aws * 1.0 / dst_width) / (ahs * 1.0 / dst_height);
+	    dstratio = dstratio * m;
+	}
+
+    }
+
+    if (currprefs.ntscmode) {
+        if (currprefs.gfx_filter_keep_aspect == 2 && ispal ())
+	    dstratio = dstratio * 0.93;
+	else if (currprefs.gfx_filter_keep_aspect == 1 && !ispal ())
+    	    dstratio = dstratio * 0.98;
+    } else {
+	if (currprefs.gfx_filter_keep_aspect == 2 && ispal ())
+    	    dstratio = dstratio * 0.95;
+	else if (currprefs.gfx_filter_keep_aspect == 1 && !ispal ())
+	    dstratio = dstratio * 0.95;
+    }
+
+    if (srcratio > dstratio) {
+        ymult = ymult * srcratio / dstratio;
+    } else {
+        xmult = xmult * dstratio / srcratio;
+    }
+
+    if (xmult <= 0.01)
         xmult = aws * 1000 / dst_width;
     else
         xmult = xmult + xmult * currprefs.gfx_filter_horiz_zoom / 2000;
-
-    ymult = currprefs.gfx_filter_vert_zoom_mult;
-    if (ymult <= 0)
+    if (ymult <= 0.01)
         ymult = ahs * 1000 / dst_height;
     else
         ymult = ymult + ymult * currprefs.gfx_filter_vert_zoom / 2000;
 
-    if (currprefs.gfx_filter_aspect > 0) {
-	int srcratio, dstratio;
-	dstratio = (currprefs.gfx_filter_aspect >> 8) * 256 / (currprefs.gfx_filter_aspect & 0xff);
-	srcratio = dst_width * 256 / dst_height;
-	if (srcratio > dstratio)
-	    xmult = xmult * srcratio / dstratio;
-	else
-	    ymult = ymult * dstratio / srcratio;
+    if (!currprefs.gfx_filter_horiz_zoom_mult && !currprefs.gfx_filter_vert_zoom_mult) {
+	if (currprefs.ntscmode) {
+	    int v = vblscale2 (ahs);
+	    ymult /= 1.21;
+	    OffsetRect (dr, 0, (v - ahs2) / 2);
+	}
     }
 
+
+    ymult = vblscale (ymult);
+    OffsetRect (dr, 0, (ahs2 - ahs) / 2);
+
+    v = currprefs.gfx_filter ? currprefs.gfx_filter_horiz_offset : 0;
+    OffsetRect (zr, (int)(-v * aws / 1000.0), 0);
+    v = currprefs.gfx_filter ? currprefs.gfx_filter_vert_offset : 0;
+    OffsetRect (zr, 0, (int)(-v * ahs / 1000.0));
+
     xs = dst_width - dst_width * xmult / 1000;
-    dr->left += xs / 2;
-    dr->right -= xs / 2;
-
     ys = dst_height - dst_height * ymult / 1000;
-    dr->top += ys / 2;
-    dr->bottom -= ys / 2;
-}
+    sizeoffset (dr, zr, xs, ys);
 
-static int dst_width, dst_height, amiga_width, amiga_height, amiga_depth, dst_depth, scale;
-static int temp_width, temp_height;
-uae_u8 *bufmem_ptr;
-static LPDIRECTDRAWSURFACE7 tempsurf;
-static uae_u8 *tempsurf2, *tempsurf3;
-static uae_u32 rc[256], gc[256], bc[256];
+    filterxmult = xmult;
+    filterymult = ymult;
+    filteroffsetx += (dst_width - aw * 1000 / filterxmult) / 2;
+    filteroffsety += (dst_height - ah * 1000 / filterymult) / 2;
+
+}
 
 static void statusline (void)
 {
@@ -151,6 +430,10 @@ void S2X_free (void)
     tempsurf2 = 0;
     xfree (tempsurf3);
     tempsurf3 = 0;
+    filteroffsetx = 0;
+    filteroffsety = 0;
+    filterxmult = 1000;
+    filterymult = 1000;
 }
 
 void S2X_init (int dw, int dh, int aw, int ah, int mult, int ad, int dd)
@@ -215,7 +498,7 @@ void S2X_init (int dw, int dh, int aw, int ah, int mult, int ad, int dd)
         tempsurf = allocsurface (temp_width, temp_height);
     }
     if (!tempsurf)
-        write_log ("DDRAW: failed to create temp surface (%dx%d)\n", temp_width, temp_height);
+        write_log (L"DDRAW: failed to create temp surface (%dx%d)\n", temp_width, temp_height);
 
 }
 
@@ -224,7 +507,7 @@ void S2X_render (void)
     int aw, ah, aws, ahs;
     uae_u8 *dptr, *enddptr, *sptr, *endsptr;
     int ok = 0;
-    RECT sr, dr;
+    RECT sr, dr, zr;
     DDSURFACEDESC2 desc;
     DWORD pitch;
 
@@ -244,6 +527,10 @@ void S2X_render (void)
     endsptr = gfxvidinfo.bufmemend;
     bufmem_ptr = sptr;
 
+    if (cleartemp) {
+	clearsurface (tempsurf);
+	cleartemp = 0;
+    }
     if (!locksurface (tempsurf, &desc))
 	return;
     pitch = desc.lPitch;
@@ -298,6 +585,8 @@ void S2X_render (void)
 	    }
 	    for (i = 0; i < ah * scale; i++) {
 		int w = aw * scale * (dst_depth / 8);
+		if (dptr + w > enddptr)
+		    break;
 		memcpy (dptr, sptr2, w);
 		sptr2 += w;
 		dptr += pitch;
@@ -373,10 +662,12 @@ endfail:
 end:
     unlocksurface (tempsurf);
 
-    getfilterrect2 (&sr, &dr, dst_width, dst_height, amiga_width, amiga_height, scale, temp_width, temp_height);
-    if (dr.left >= 0 && dr.top >= 0 && dr.right < temp_width && dr.bottom < temp_height) {
-        if (dr.left < dr.right && dr.top < dr.bottom)
-    	    DirectDraw_BlitRect (NULL, &sr, tempsurf, &dr);
+    getfilterrect2 (&dr, &sr, &zr, dst_width, dst_height, aw, ah, scale, temp_width, temp_height);
+    //write_log (L"(%d %d %d %d) - (%d %d %d %d) (%d %d)\n", dr.left, dr.top, dr.right, dr.bottom, sr.left, sr.top, sr.right, sr.bottom, zr.left, zr.top);
+    OffsetRect (&sr, zr.left, zr.top);
+    if (sr.left >= 0 && sr.top >= 0 && sr.right < temp_width && sr.bottom < temp_height) {
+	if (sr.left < sr.right && sr.top < sr.bottom)
+	    DirectDraw_BlitRect (NULL, &dr, tempsurf, &sr);
     }
     statusline ();
 }

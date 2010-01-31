@@ -1,17 +1,23 @@
 
 struct zfile {
-    char *name;
-    char *zipname;
+    TCHAR *name;
+    TCHAR *zipname;
+    TCHAR *mode;
     FILE *f;
     uae_u8 *data;
-    int size;
-    int seek;
+    uae_u64 size;
+    uae_u64 seek;
     int deleteafterclose;
+    int textmode;
     struct zfile *next;
+    int zfdmask;
 };
 
+#define ZNODE_FILE 0
+#define ZNODE_DIR 1
+#define ZNODE_VDIR -1
 struct znode {
-    int isfile;
+    int type;
     struct znode *sibling;
     struct znode *child;
     struct zvolume *vchild;
@@ -20,11 +26,11 @@ struct znode {
     struct znode *next;
     struct znode *prev;
     struct znode *vfile; // points to real file when this node is virtual directory
-    char *name;
-    char *fullname;
-    unsigned int size;
+    TCHAR *name;
+    TCHAR *fullname;
+    uae_u64 size;
     struct zfile *f;
-    char *comment;
+    TCHAR *comment;
     int flags;
     time_t mtime;
     /* decompressor specific */
@@ -41,20 +47,23 @@ struct zvolume
     struct znode root;
     struct zvolume *next;
     struct znode *last;
+    struct znode *parentz;
     struct zvolume *parent;
-    unsigned int size;
+    uae_u64 size;
     unsigned int blocks;
     unsigned int id;
-    unsigned int archivesize;
+    uae_u64 archivesize;
     unsigned int method;
+    TCHAR *volumename;
+    int zfdmask;
 };
 
 struct zarchive_info
 {
-    const char *name;
-    unsigned int size;
+    const TCHAR *name;
+    uae_u64 size;
     int flags;
-    char *comment;
+    TCHAR *comment;
     time_t t;
 };
 
@@ -65,17 +74,19 @@ struct zarchive_info
 #define ArchiveFormatLZX 'lzx '
 #define ArchiveFormatPLAIN '----'
 #define ArchiveFormatAA 'aa  ' // method only
+#define ArchiveFormatADF 'DOS '
+#define ArchiveFormatRDB 'RDSK'
 
-extern int zfile_is_ignore_ext(const char *name);
+extern int zfile_is_ignore_ext(const TCHAR *name);
 
-extern struct zvolume *zvolume_alloc(struct zfile *z, unsigned int id, void *handle);
-extern struct zvolume *zvolume_alloc_empty(const char *name);
+extern struct zvolume *zvolume_alloc(struct zfile *z, unsigned int id, void *handle, const TCHAR*);
+extern struct zvolume *zvolume_alloc_empty(struct zvolume *zv, const TCHAR *name);
 
 extern struct znode *zvolume_addfile_abs(struct zvolume *zv, struct zarchive_info*);
 extern struct znode *zvolume_adddir_abs(struct zvolume *zv, struct zarchive_info *zai);
-extern struct znode *znode_adddir(struct znode *parent, const char *name, struct zarchive_info*);
+extern struct znode *znode_adddir(struct znode *parent, const TCHAR *name, struct zarchive_info*);
 
-extern struct zvolume *archive_directory_plain(struct zfile *zf);
+extern struct zvolume *archive_directory_plain (struct zfile *zf);
 extern struct zfile *archive_access_plain (struct znode *zn);
 extern struct zvolume *archive_directory_lha(struct zfile *zf);
 extern struct zfile *archive_access_lha (struct znode *zn);
@@ -89,8 +100,12 @@ extern struct zvolume *archive_directory_lzx (struct zfile *in_file);
 extern struct zfile *archive_access_lzx (struct znode *zn);
 extern struct zvolume *archive_directory_arcacc (struct zfile *z, unsigned int id);
 extern struct zfile *archive_access_arcacc (struct znode *zn);
+extern struct zvolume *archive_directory_adf (struct znode *zn, struct zfile *z);
+extern struct zfile *archive_access_adf (struct znode *zn);
+extern struct zvolume *archive_directory_rdb (struct zfile *z);
+extern struct zfile *archive_access_rdb (struct znode *zn);
 
-extern struct zfile *archive_access_select (struct zfile *zf, unsigned int id, int doselect);
+extern struct zfile *archive_access_select (struct znode *parent, struct zfile *zf, unsigned int id, int doselect);
 extern struct zfile *archive_access_arcacc_select (struct zfile *zf, unsigned int id);
 
 extern void archive_access_scan (struct zfile *zf, zfile_callback zc, void *user, unsigned int id);

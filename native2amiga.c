@@ -34,11 +34,24 @@ void native2amiga_install (void)
     uae_sem_init (&n2asem, 0, 1);
 }
 
+void native2amiga_reset (void)
+{
+    smp_comm_pipe *p = &native2amiga_pending;
+    p->rdp = p->wrp = 0;
+    p->reader_waiting = 0;
+    p->writer_waiting = 0;
+};
+
 /*
  * to be called when the Amiga boots, i.e. by filesys_diagentry()
  */
 void native2amiga_startup (void)
 {
+}
+
+int native2amiga_isfree (void)
+{
+    return comm_pipe_has_data (&native2amiga_pending) == 0;
 }
 
 #ifdef SUPPORT_THREADS

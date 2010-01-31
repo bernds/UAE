@@ -11,7 +11,7 @@
 #define IDS_ABOUT                       6
 #define IDS_LOADSAVE                    7
 #define IDS_AVIOUTPUT                   8
-#define IDS_PORTS                       9
+#define IDS_IOPORTS                     9
 #define IDS_MISC1                       10
 #define IDS_MEMORY                      11
 #define IDS_CPU                         12
@@ -24,6 +24,7 @@
 #define IDS_QUICKSTART                  18
 #define IDS_FRONTEND                    19
 #define IDS_CHIPSET2                    20
+#define IDS_GAMEPORTS                   21
 #define IDS_EXTTEXT                     100
 #define IDS_EXTACTUAL                   101
 #define IDS_SOUND                       102
@@ -76,9 +77,9 @@
 #define IDD_LOADSAVE                    135
 #define IDS_DESCRIPTION                 135
 #define IDS_ONEINSTANCE                 136
-#define IDI_PORTS                       137
+#define IDI_IOPORTS                     137
 #define IDS_INSTALLDIRECTX              137
-#define IDD_PORTS                       138
+#define IDD_IOPORTS                     138
 #define IDS_REGKEYCREATEFAILED          138
 #define IDS_COULDNOTLOADCONFIG          139
 #define IDD_CONTRIBUTORS                140
@@ -253,6 +254,9 @@
 #define IDS_SOUND_CLONED51              259
 #define IDS_SOUND_51                    260
 #define IDS_AUTOMATIC                   261
+#define IDI_GAMEPORTS                   262
+#define IDS_ALL                         262
+#define IDD_GAMEPORTS                   263
 #define IDS_NUMSG_NEEDEXT2              300
 #define IDS_NUMSG_NOROMKEY              301
 #define IDS_NUMSG_KSROMCRCERROR         302
@@ -291,6 +295,29 @@
 #define IDS_SB_FAVORITENAME             334
 #define IDD_DBGMEMINPUT                 335
 #define IDS_SB_CUSTOMEVENT              335
+#define IDS_FLOPPYTYPE35DDPC            336
+#define IDS_FLOPPYTYPE35HDPC            337
+#define IDS_JOYMODE_DEFAULT             338
+#define IDS_JOYMODE_MOUSE               339
+#define IDS_JOYMODE_JOYSTICK            340
+#define IDS_JOYMODE_JOYSTICKANALOG      341
+#define IDS_JOYMODE_LIGHTPEN            342
+#define IDS_JOYMODE_MOUSE_CDTV          343
+#define IDS_JOYMODE_JOYSTICK_CD32       344
+#define IDS_TABLET_BOTH_CURSORS         345
+#define IDS_TABLET_NATIVE_CURSOR        346
+#define IDS_TABLET_HOST_CURSOR          347
+#define IDS_AUTOSCALE_DISABLED          348
+#define IDS_AUTOSCALE_SCALING           349
+#define IDS_AUTOSCALE_RESIZE            350
+#define IDS_PRINTER_ASCII               351
+#define IDS_PRINTER_EPSON               352
+#define IDS_PRINTER_POSTSCRIPT_DETECTION 353
+#define IDS_PRINTER_POSTSCRIPT_EMULATION 354
+#define IDS_PRINTER_PASSTHROUGH         355
+#define IDS_RES_LORES                   356
+#define IDS_RES_HIRES                   357
+#define IDS_RES_SUPERHIRES              358
 #define IDS_QS_MODELS                   1000
 #define IDS_QS_MODEL_A500               1001
 #define IDS_QS_MODEL_A500P              1002
@@ -323,13 +350,19 @@
 #define IDC_CREATELOGFILE               1026
 #define IDC_PORT0_JOYS                  1026
 #define IDC_SCREENMODE_NATIVE           1026
+#define IDC_PRINTERTYPELIST             1026
 #define IDC_FASTMEM                     1027
 #define IDC_SHOWLEDS                    1027
 #define IDC_PORT1_JOYS                  1027
 #define IDC_SCREENMODE_RTG              1027
 #define IDC_MBMEM1                      1028
+#define IDC_PORT_TABLET_CURSOR          1028
+#define IDC_PORT0_JOYSMODE              1029
 #define IDC_SLOWMEM                     1030
+#define IDC_PORT1_JOYSMODE              1030
 #define IDC_MBMEM2                      1031
+#define IDC_PORT2_JOYS                  1031
+#define IDC_PORT3_JOYS                  1032
 #define IDC_PARALLEL                    1033
 #define IDC_JULIAN                      1040
 #define IDC_FASTTEXT                    1043
@@ -355,11 +388,12 @@
 #define IDC_RICHEDIT1                   1091
 #define IDC_RICHEDIT2                   1092
 #define IDC_CONTRIBUTORS                1124
-#define IDC_ASPECT                      1170
+#define IDC_BLACKER_THAN_BLACK          1170
 #define IDC_BLIT32                      1173
 #define IDC_BLITIMM                     1174
 #define IDC_LORES                       1176
 #define IDC_LORES_SMOOTHED              1179
+#define IDC_FLICKERFIXER                1180
 #define IDC_FRAMERATE                   1185
 #define IDC_RATETEXT                    1186
 #define IDC_XSIZE                       1187
@@ -547,6 +581,7 @@
 #define IDC_MAPDRIVES_CD                1509
 #define IDC_SELECTRESTEXT               1510
 #define IDC_FLUSHPRINTER                1510
+#define IDC_MAPDRIVES_REMOVABLE         1510
 #define IDC_SCREENRESTEXT               1511
 #define IDC_MAPDRIVES_AUTO              1511
 #define IDC_WIDTHTEXT                   1512
@@ -673,14 +708,13 @@
 #define IDC_POWERSAVE                   1612
 #define IDC_AVIOUTPUT_VIDEO             1613
 #define IDC_INPUTAUTOFIRE               1613
-#define IDC_MOUSETRICK                  1613
+#define IDC_PORT_MOUSETRICK             1613
 #define IDC_AVIOUTPUT_AUDIO             1614
 #define IDC_INPUTCOPYFROM               1614
 #define IDC_SANA2                       1614
 #define IDC_AVIOUTPUT_VIDEO_CODEC       1615
 #define IDC_INPUTDEVICEDISABLE          1615
 #define IDC_AVIOUTPUT_ACTIVATED         1615
-#define IDC_FILTERENABLE                1615
 #define IDC_AVIOUTPUT_AUDIO_CODEC       1616
 #define IDC_INPUTAMIGACNT               1616
 #define IDC_FILTERHZ                    1616
@@ -696,6 +730,7 @@
 #define IDC_INPREC_PLAY                 1620
 #define IDC_FILTERASPECT                1620
 #define IDC_AVIOUTPUT_24BIT             1621
+#define IDC_FILTERASPECT2               1621
 #define IDC_AVIOUTPUT_WIDTH             1622
 #define IDC_AVIOUTPUT_HEIGHT            1623
 #define IDC_AVIOUTPUT_FRAME             1624
@@ -721,6 +756,8 @@
 #define IDC_FILTERVZMULT                1635
 #define IDC_SOUNDPRIMARY                1636
 #define IDC_MINIMIZED_PRI               1636
+#define IDC_FILTERFILTER2               1636
+#define IDC_FILTERAUTOSCALE             1636
 #define IDC_VOLUME_BOOTPRI_TEXT         1637
 #define IDC_VOLUME_BOOTPRI              1638
 #define IDC_KBLED1                      1639
@@ -806,9 +843,12 @@
 #define IDC_RESETDISKHISTORY            1677
 #define IDC_DF0Q                        1678
 #define IDC_DF0QQ                       1678
+#define IDC_PATHS_RIPSL                 1678
 #define IDC_DF1Q                        1679
 #define IDC_QUICKSTART_HOSTCONFIG       1679
+#define IDC_PATHS_RIP                   1679
 #define IDC_DF1QQ                       1680
+#define IDC_PATHS_RIPS                  1680
 #define IDC_QUICKSTART_SETCONFIG        1681
 #define IDC_CONFIGAUTO                  1682
 #define IDC_DF0TEXTQ                    1683
@@ -841,7 +881,6 @@
 #define IDC_SCSIMODE2                   1706
 #define IDC_LANGUAGE                    1706
 #define IDC_CREATE_NAME                 1707
-#define IDC_FILTERAUTORES               1708
 #define IDC_SOUND_AUTO                  1709
 #define IDC_FILTERKEEPASPECT            1709
 #define IDC_CS_RTC                      1710
@@ -934,6 +973,7 @@
 #define IDC_DBG_AUTOSET                 1780
 #define IDC_HF_SPARSE                   1780
 #define IDC_DBG_DASM2                   1781
+#define IDC_HF_DYNAMIC                  1781
 #define IDC_DBG_MEM2                    1782
 #define IDC_DBG_MEMINPUT2               1783
 #define IDC_DBG_ADDRINPUTTXT            1784
@@ -944,8 +984,10 @@
 #define IDC_PATHS_CONFIGCACHE           1788
 #define IDC_RTG_24BIT                   1789
 #define IDC_ASSOCIATELIST               1789
+#define IDC_PORT_TABLET                 1789
 #define IDC_RTG_32BIT                   1790
 #define IDC_ASSOCIATE_OFF               1790
+#define IDC_PORT_TABLET_FULL            1790
 #define IDC_DD_SURFACETYPE              1791
 #define IDC_RTG_SCALE_ALLOW             1791
 #define IDC_RTG_SCALE_ASPECTRATIO       1792
@@ -994,9 +1036,9 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
 #define _APS_3D_CONTROLS                     1
-#define _APS_NEXT_RESOURCE_VALUE        335
+#define _APS_NEXT_RESOURCE_VALUE        345
 #define _APS_NEXT_COMMAND_VALUE         40045
-#define _APS_NEXT_CONTROL_VALUE         1789
+#define _APS_NEXT_CONTROL_VALUE         1790
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif
