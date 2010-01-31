@@ -521,7 +521,8 @@ static uae_u8 ReadCIAA (unsigned int addr)
 	    ciaasdr_unread = 2;
 	return ciaasdr;
     case 13:
-	tmp = ciaaicr; ciaaicr = 0; RethinkICRA(); return tmp;
+	tmp = ciaaicr; ciaaicr = 0; RethinkICRA();
+	return tmp;
     case 14:
 	return ciaacra;
     case 15:
@@ -728,7 +729,8 @@ static void WriteCIAA (uae_u16 addr,uae_u8 val)
 	CIA_calctimers ();
 	break;
     case 13:
-	setclr(&ciaaimask,val); break; /* ??? call RethinkICR() ? */
+	setclr(&ciaaimask,val);
+	break;
     case 14:
 	CIA_update ();
 	val &= 0x7f; /* bit 7 is unused */

@@ -118,7 +118,8 @@ int caps_loadtrack (uae_u16 *mfmbuf, uae_u16 **trackpointers, uae_u16 **tracktim
 	*tracktiming = tt;
     }
 #if 0
-    write_log ("caps: drive: %d, track: %d, revolutions: %d, uses timing: %s\n", drv, track, *revolutions, ci.timelen > 0 ? "yes" : "no");
+    write_log ("caps: drive: %d, track: %d, revolutions: %d, timing: %d\n",
+	drv, track, *revolutions, ci.timelen);
     for (i = 0; i < *revolutions; i++)
 	write_log ("- %d: length: %d bits, %d bytes\n", i, tracklengths[i], tracklengths[i] / 8);
 #endif

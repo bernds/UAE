@@ -6,10 +6,10 @@
   Copyright(c) 2001 - 2002 §ane
 */
 
-extern int avioutput_video, avioutput_audio;
+extern int avioutput_video, avioutput_audio, avioutput_enabled, avioutput_requested;
 
 extern int avioutput_width, avioutput_height, avioutput_bits;
-extern int avioutput_fps;
+extern int avioutput_fps, avioutput_framelimiter;
 
 extern char avioutput_filename[MAX_PATH];
 
@@ -17,14 +17,15 @@ extern void AVIOutput_WriteAudio(uae_u8 *sndbuffer, int sndbufsize);
 extern void AVIOutput_WriteVideo(void);
 extern LPSTR AVIOutput_ChooseAudioCodec(HWND hwnd);
 extern LPSTR AVIOutput_ChooseVideoCodec(HWND hwnd);
+extern void AVIOutput_Restart(void);
 extern void AVIOutput_End(void);
 extern void AVIOutput_Begin(void);
 extern void AVIOutput_Release(void);
 extern void AVIOutput_Initialize(void);
+extern void AVIOutput_RGBinfo(int,int,int,int,int,int);
 
 #define AVIAUDIO_AVI 1
 #define AVIAUDIO_WAV 2
-
 
 /*
 extern int avioutput_pause;

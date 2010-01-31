@@ -3242,7 +3242,8 @@ static uae_u32 exter_int_helper (void)
 #ifdef SUPPORT_THREADS
 	/* First, check signals/messages */
 	while (comm_pipe_has_data (&native2amiga_pending)) {
-	    switch (read_comm_pipe_int_blocking (&native2amiga_pending)) {
+	    int cmd = read_comm_pipe_int_blocking (&native2amiga_pending);
+	    switch (cmd) {
 	     case 0: /* Signal() */
 		m68k_areg (regs, 1) = read_comm_pipe_u32_blocking (&native2amiga_pending);
 		m68k_dreg (regs, 1) = read_comm_pipe_u32_blocking (&native2amiga_pending);
@@ -3267,7 +3268,7 @@ static uae_u32 exter_int_helper (void)
 		return 5;
 
 	     default:
-		write_log ("exter_int_helper: unknown native action\n");
+		write_log ("exter_int_helper: unknown native action %d\n", cmd);
 		break;
 	    }
 	}

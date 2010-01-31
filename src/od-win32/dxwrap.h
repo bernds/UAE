@@ -9,7 +9,7 @@ struct ScreenResolution
     uae_u32 height; /* in pixels */
 };
 
-#define MAX_PICASSO_MODES 200
+#define MAX_PICASSO_MODES 300
 #define MAX_REFRESH_RATES 100
 struct PicassoResolution
 {
@@ -26,7 +26,7 @@ extern GUID *displayGUID;
 
 #define MAX_DISPLAYS 10
 struct MultiDisplay {
-    int primary;
+    int primary, disabled;
     GUID guid;
     char *name;
     struct PicassoResolution *DisplayModes;
@@ -152,6 +152,7 @@ struct DirectDrawSurfaceMapper
     int isoverlay;
     int flipping;
     int locked;
+    int modeset;
     HWND window;
     struct
     {
@@ -240,5 +241,7 @@ extern void ddraw_unlockscr (void);
 #define DirectDraw_SurfaceUnlock() ddraw_unlockscr()
 
 extern const char *DXError (HRESULT hr);
+
+extern char *outGUID (GUID *guid);
 
 #endif

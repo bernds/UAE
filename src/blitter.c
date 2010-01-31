@@ -230,12 +230,11 @@ static void blitter_dofast(void)
 		preva = bltadat;
 
 		if (bltbdatptr) {
-		    blt_info.bltbdat = chipmem_wget (bltbdatptr);
+		    blt_info.bltbdat = bltbdat = chipmem_wget (bltbdatptr);
 		    bltbdatptr += 2;
+		    blitbhold = (((uae_u32)prevb << 16) | bltbdat) >> blt_info.blitbshift;
+		    prevb = bltbdat;
 		}
-		bltbdat = blt_info.bltbdat;
-		blitbhold = (((uae_u32)prevb << 16) | bltbdat) >> blt_info.blitbshift;
-		prevb = bltbdat;
 
 		if (bltcdatptr) {
 		    blt_info.bltcdat = chipmem_wget (bltcdatptr);
@@ -322,12 +321,11 @@ static void blitter_dofast_desc(void)
 		preva = bltadat;
 
 		if (bltbdatptr) {
-		    blt_info.bltbdat = chipmem_wget (bltbdatptr);
+		    blt_info.bltbdat = bltbdat = chipmem_wget (bltbdatptr);
 		    bltbdatptr -= 2;
+		    blitbhold = (((uae_u32)bltbdat << 16) | prevb) >> blt_info.blitdownbshift;
+		    prevb = bltbdat;
 		}
-		bltbdat = blt_info.bltbdat;
-		blitbhold = (((uae_u32)bltbdat << 16) | prevb) >> blt_info.blitdownbshift;
-		prevb = bltbdat;
 
 		if (bltcdatptr) {
 		    blt_info.bltcdat = blt_info.bltbdat = chipmem_wget (bltcdatptr);
@@ -537,8 +535,8 @@ static int blitter_vcounter1, blitter_vcounter2;
 static uae_u32 preva, prevb;
 STATIC_INLINE uae_u16 blitter_doblit (void)
 {
-    uae_u32 blitahold, blitbhold;
-    uae_u16 bltadat, bltbdat, ddat;
+    uae_u32 blitahold;
+    uae_u16 bltadat, ddat;
     uae_u8 mt = bltcon0 & 0xFF;
 
     bltadat = blt_info.bltadat;
@@ -552,14 +550,7 @@ STATIC_INLINE uae_u16 blitter_doblit (void)
         blitahold = (((uae_u32)preva << 16) | bltadat) >> blt_info.blitashift;
     preva = bltadat;
 
-    bltbdat = blt_info.bltbdat;
-    if (blitdesc)
-        blitbhold = (((uae_u32)bltbdat << 16) | prevb) >> blt_info.blitdownbshift;
-    else
-        blitbhold = (((uae_u32)prevb << 16) | bltbdat) >> blt_info.blitbshift;
-    prevb = bltbdat;
-
-    ddat = blit_func (blitahold, blitbhold, blt_info.bltcdat, mt) & 0xFFFF;
+    ddat = blit_func (blitahold, blt_info.bltbhold, blt_info.bltcdat, mt) & 0xFFFF;
 
     if (bltcon1 & 0x18) {
         uae_u16 d = ddat;
@@ -624,6 +615,11 @@ STATIC_INLINE void blitter_dodma (int ch)
 	case 2:
 	blt_info.bltbdat = chipmem_wget (bltbpt);
 	bltbpt += blit_add;
+	if (blitdesc)
+	    blt_info.bltbhold = (((uae_u32)blt_info.bltbdat << 16) | prevb) >> blt_info.blitdownbshift;
+	else
+	    blt_info.bltbhold = (((uae_u32)prevb << 16) | blt_info.bltbdat) >> blt_info.blitbshift;
+	prevb = blt_info.bltbdat;
 	break;
 	case 3:
 	blt_info.bltcdat = chipmem_wget (bltcpt);
@@ -766,7 +762,7 @@ static void blitter_force_finish (void)
     uae_u16 odmacon;
     if (bltstate == BLT_done)
 	return;
-    if (bltstate == BLT_work) {
+    if (bltstate != BLT_done) {
 	 /* blitter is currently running
 	  * force finish (no blitter state support yet)
           */

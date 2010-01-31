@@ -1590,7 +1590,7 @@ void map_banks (addrbank *bank, int start, int size, int realsize)
     unsigned long int hioffs = 0, endhioffs = 0x100;
     addrbank *orgbank = bank;
     uae_u32 realstart = start;
-    
+
     flush_icache (1);		/* Sure don't want to keep any old mappings around! */
 #ifdef NATMEM_OFFSET
     delete_shmmaps (start << 16, size << 16);

@@ -633,25 +633,30 @@ uae_u32 host_listen(SB, uae_u32 sd, uae_u32 backlog)
 
 void host_accept(SB, uae_u32 sd, uae_u32 name, uae_u32 namelen)
 {
-    struct sockaddr *rp_name;
+    struct sockaddr *rp_name,*rp_nameuae;
 	struct sockaddr sockaddr;
-    int hlen;
+    int hlen,hlenuae=0;
     SOCKET s, s2;
     int success = 0;
     unsigned int wMsg;
     
     sd++;
-	if (name != 0)
+	if (name != 0 )
 		{
-		rp_name = (struct sockaddr *)get_real_address(name);
-	    hlen = get_long(namelen);
+		rp_nameuae = rp_name = (struct sockaddr *)get_real_address(name);
+	    hlenuae = hlen = get_long(namelen);
+		if (hlenuae < sizeof(sockaddr))
+			{ // Fix for CNET BBS Windows must have 16 Bytes (sizeof(sockaddr)) otherwise Error WSAEFAULT
+			rp_name = &sockaddr; 
+			hlen = sizeof(sockaddr);
+			}
 		}
 	else
 		{
 		rp_name = &sockaddr; 
 		hlen = sizeof(sockaddr);
 		}
-    TRACE(("accept(%d,%d,%d) -> ",sd,name,hlen));
+    TRACE(("accept(%d,%d,%d) -> ",sd,name,hlenuae));
 
     s = (SOCKET)getsock(sb,(int)sd);
     
@@ -720,8 +725,23 @@ void host_accept(SB, uae_u32 sd, uae_u32 name, uae_u32 namelen)
 		sb->resultval--;
 	    if (rp_name != 0)
 			{ // 1.11.2002 XXX
-			prepamigaaddr(rp_name,hlen);
-			put_long(namelen,hlen);
+			if (hlen <= hlenuae)
+				{ // Fix for CNET BBS Part 2
+				prepamigaaddr(rp_name,hlen);
+				if (namelen != 0)
+					{
+					put_long(namelen,hlen);
+					}
+				}
+			else
+				{ // Copy only the number of bytes requested
+				if (hlenuae != 0)
+					{	
+					prepamigaaddr(rp_name,hlenuae);
+					memcpy(rp_nameuae,rp_name,hlenuae);
+					put_long(namelen,hlenuae);
+					}
+				}
 			}
 	    TRACE(("%d/%d\n",sb->resultval,hlen));
 	}

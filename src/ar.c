@@ -1600,7 +1600,7 @@ uae_u8 *save_action_replay (int *len, uae_u8 *dstptr)
     *len = 1;
     if (!armemory_ram || !armemory_rom || !armodel)
 	return 0;
-    *len = 256 + strlen(currprefs.cartfile) + arram_size;
+    *len = 1 + strlen(currprefs.cartfile) + 1 + arram_size + 256;
     if (dstptr)
 	dstbak = dst = dstptr;
     else

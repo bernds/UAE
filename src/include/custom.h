@@ -163,3 +163,11 @@ STATIC_INLINE int GET_RES (uae_u16 con0)
 
 extern void fpscounter_reset (void);
 extern unsigned long idletime;
+
+struct customhack {
+    uae_u16 v;
+    int vpos, hpos;
+};
+void customhack_put (struct customhack *ch, uae_u16 v, int hpos);
+uae_u16 customhack_get (struct customhack *ch, int hpos);
+

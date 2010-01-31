@@ -55,6 +55,7 @@
 #include "savestate.h"
 #include "ioport.h"
 #include "parser.h"
+#include "scsidev.h"
 
 extern void WIN32GFX_WindowMove ( void );
 extern void WIN32GFX_WindowSize ( void );
@@ -569,6 +570,7 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 	    setmousebuttonstate (dinput_winmouse(), 0, 0);
     return 0;
     case WM_LBUTTONDOWN:
+    case WM_LBUTTONDBLCLK:
 	if (!mouseactive && !isfullscreen()) {
 	    setmouseactive (1);
 	}
@@ -580,6 +582,7 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 	    setmousebuttonstate (dinput_winmouse(), 1, 0);
     return 0;
     case WM_RBUTTONDOWN:
+    case WM_RBUTTONDBLCLK:
 	if (dinput_winmouse () > 0)
 	    setmousebuttonstate (dinput_winmouse(), 1, 1);
     return 0;
@@ -588,6 +591,7 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 	    setmousebuttonstate (dinput_winmouse(), 2, 0);
     return 0;
     case WM_MBUTTONDOWN:
+    case WM_MBUTTONDBLCLK:
 	if (dinput_winmouse () > 0)
 	    setmousebuttonstate (dinput_winmouse(), 2, 1);
     return 0;
@@ -761,10 +765,13 @@ static long FAR PASCAL MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, L
      case WM_SYSKEYDOWN:
      case WM_LBUTTONDOWN:
      case WM_LBUTTONUP:
+     case WM_LBUTTONDBLCLK:
      case WM_MBUTTONDOWN:
      case WM_MBUTTONUP:
+     case WM_MBUTTONDBLCLK:
      case WM_RBUTTONDOWN:
      case WM_RBUTTONUP:
+     case WM_RBUTTONDBLCLK:
      case WM_MOVING:
      case WM_MOVE:
      case WM_SIZING:
@@ -1216,6 +1223,7 @@ static HMODULE LoadGUI( void )
 				)
 			    {
 				success = TRUE;
+				write_log ("Translation DLL '%s' loaded and used\n", dllname);
 			    }
 			}
 		    }
@@ -1628,7 +1636,8 @@ static int osdetect (void)
 
 char *start_path;
 char help_file[ MAX_PATH ];
-extern int harddrive_dangerous, do_rdbdump, aspi_allow_all, dsound_hardware_mixing;
+extern int harddrive_dangerous, do_rdbdump, aspi_allow_all, dsound_hardware_mixing, no_rawinput;
+int log_scsi;
 
 int PASCAL WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
 		    int nCmdShow)
@@ -1687,6 +1696,8 @@ __asm{
 	if (!strcmp (arg, "-dsaudiomix")) dsound_hardware_mixing = 1;
 	if (!strcmp (arg, "-nordtsc")) no_rdtsc = 1;
 	if (!strcmp (arg, "-forcerdtsc")) no_rdtsc = -1;
+	if (!strcmp (arg, "-norawinput")) no_rawinput = 1;
+	if (!strcmp (arg, "-scsilog")) log_scsi = 1;
     }
 
     /* Get our executable's root-path */
@@ -1720,9 +1731,11 @@ __asm{
 	    DWORD i = 0;
 
 	    DirectDraw_Release ();
-	    write_log ("Enumerating display devices:\n");
+	    write_log ("Enumerating display devices.. \n");
 	    DirectDraw_EnumDisplays (displaysCallback);
+	    write_log ("Sorting devices and modes..\n");
 	    sortdisplays ();
+	    write_log ("done\n");
 	    
 	    memset( &devmode, 0, sizeof(DEVMODE) + 8 );
 	    devmode.actual_devmode.dmSize = sizeof(DEVMODE);

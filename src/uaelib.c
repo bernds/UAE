@@ -18,7 +18,7 @@
 #include "options.h"
 #include "threaddep/thread.h"
 #include "uae.h"
-#include "include/memory.h"
+#include "memory.h"
 #include "custom.h"
 #include "newcpu.h"
 #include "xwin.h"
@@ -360,6 +360,7 @@ static uae_u32 uaelib_demux (void)
 #define ARG1 (get_long (m68k_areg (regs, 7) + 8))
 #define ARG2 (get_long (m68k_areg (regs, 7) + 12))
 #define ARG3 (get_long (m68k_areg (regs, 7) + 16))
+#define ARG4 (get_long (m68k_areg (regs, 7) + 20))
 
     switch (ARG0) {
      case 0: return emulib_GetVersion ();
@@ -412,6 +413,7 @@ static uae_u32 uaelib_demux (void)
      case 69: return emulib_ExecuteNativeCode ();
 
      case 80: return currprefs.maprom ? currprefs.maprom : 0xffffffff;
+     case 81: return cfgfile_uaelib (ARG1, ARG2, ARG3, ARG4);
     }
     return 0;
 }

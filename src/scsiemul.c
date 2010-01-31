@@ -27,8 +27,6 @@
 #include "blkdev.h"
 #include "scsidev.h"
 
-#define dev_debug
-//#define dev_debug write_log
 #define CDDEV_COMMANDS
 
 #define UAEDEV_SCSI "uaescsi.device"
@@ -112,6 +110,7 @@ struct priv_devstruct {
     int ioctl;
     int noscsi;
     int type;
+    int flags; /* OpenDevice() */
 };
 
 static struct devstruct devst[MAX_TOTAL_DEVICES];
@@ -126,11 +125,10 @@ static struct device_info *devinfo (int mode, int unitnum, struct device_info *d
 
 static void io_log (char *msg, uaecptr request)
 {
-#if 1
-    dev_debug ("%s: %08X %d %08.8X %d %d io_actual=%d io_error=%d\n",
-	msg, request,get_word(request + 28),get_long(request + 40),get_long(request + 36),get_long(request + 44),
-	get_long (request + 32), get_byte (request + 31));
-#endif
+    if (log_scsi)
+        write_log ("%s: %08X %d %08.8X %d %d io_actual=%d io_error=%d\n",
+	    msg, request,get_word(request + 28),get_long(request + 40),get_long(request + 36),get_long(request + 44),
+	    get_long (request + 32), get_byte (request + 31));
 }
 
 void memcpyha (uae_u32 dst, char *src, int size)
@@ -205,7 +203,8 @@ static uae_u32 dev_close_2 (void)
     if (!pdev)
 	return 0;
     dev = getdevstruct (pdev->unit);
-    dev_debug ("%s:%d close, req=%08.8X\n", getdevname (pdev->type), pdev->unit, request);
+    if (log_scsi)
+	write_log ("%s:%d close, req=%08.8X\n", getdevname (pdev->type), pdev->unit, request);
     if (!dev)
 	return 0;
     dev_close_3 (dev, pdev);
@@ -234,11 +233,13 @@ static uae_u32 dev_open_2 (int type)
 {
     uaecptr ioreq = m68k_areg(regs, 1);
     uae_u32 unit = m68k_dreg (regs, 0);
+    uae_u32 flags = m68k_dreg (regs, 1);
     struct devstruct *dev = getdevstruct (unit);
     struct priv_devstruct *pdev = 0;
     int i;
 
-    dev_debug ("opening %s:%d ioreq=%08.8X\n", getdevname (type), unit, ioreq);
+    if (log_scsi)
+	write_log ("opening %s:%d ioreq=%08.8X\n", getdevname (type), unit, ioreq);
     if (!dev)
 	return openfail (ioreq, 32); /* badunitnum */
     if (!dev->opencnt) {
@@ -258,6 +259,7 @@ static uae_u32 dev_open_2 (int type)
 	    return openfail (ioreq, -1);
         pdev->type = type;
         pdev->unit = unit;
+	pdev->flags = flags;
 	pdev->inuse = 1;
         put_long (ioreq + 24, pdev - pdevst);
 	start_thread (dev);
@@ -330,7 +332,8 @@ static int add_async_request (struct devstruct *dev, uaecptr request, int type, 
 {
     int i;
 
-    dev_debug ("async request %p (%d) added\n", request, type);
+    if (log_scsi)
+	write_log ("async request %p (%d) added\n", request, type);
     i = 0;
     while (i < MAX_ASYNC_REQUESTS) {
 	if (dev->d_request[i] == request) {
@@ -357,7 +360,8 @@ static int release_async_request (struct devstruct *dev, uaecptr request)
 {
     int i = 0;
 
-    dev_debug ("async request %p removed\n", request);
+    if (log_scsi)
+	write_log ("async request %p removed\n", request);
     while (i < MAX_ASYNC_REQUESTS) {
 	if (dev->d_request[i] == request) {
 	    int type = dev->d_request_type[i];
@@ -385,8 +389,8 @@ static void abort_async (struct devstruct *dev, uaecptr request, int errcode, in
 	i++;
     }
     i = release_async_request (dev, request);
-    if (i >= 0)
-	dev_debug ("asyncronous request=%08.8X aborted, error=%d\n", request, errcode);
+    if (i >= 0 && log_scsi)
+	write_log ("asyncronous request=%08.8X aborted, error=%d\n", request, errcode);
 }
 
 static int command_read (int mode, struct devstruct *dev, uaecptr data, int offset, int length, uae_u32 *io_actual)
@@ -487,7 +491,8 @@ static int dev_do_io (struct devstruct *dev, uaecptr request)
         if (dev->allow_scsi && pdev->scsi) {
 	    uae_u32 sdd = get_long (request + 40);
 	    io_error = sys_command_scsi_direct (dev->unitnum, sdd);
-	    dev_debug ("scsidev: did io: sdd %p request %p error %d\n", sdd, request, get_byte (request + 31));
+	    if (log_scsi)
+		write_log ("scsidev: did io: sdd %p request %p error %d\n", sdd, request, get_byte (request + 31));
 	}
 	break;
 	default:
@@ -538,7 +543,8 @@ static uae_u32 dev_beginio (void)
     put_byte (request+31, 0);
     if ((flags & 1) && dev_canquick (dev, request)) {
 	if (dev_do_io (dev, request))
-	    dev_debug ("device %s command %d bug with IO_QUICK\n", getdevname (pdev->type), command);
+	    if (log_scsi)
+		write_log ("device %s command %d bug with IO_QUICK\n", getdevname (pdev->type), command);
 	return get_byte (request + 31);
     } else {
         add_async_request (dev, request, ASYNC_REQUEST_TEMP, 0);
@@ -568,7 +574,8 @@ static void *dev_thread (void *devs)
 	    release_async_request (dev, request);
             uae_ReplyMsg (request);
 	} else {
-	    dev_debug("async request %08.8X\n", request);
+	    if (log_scsi)
+		write_log ("async request %08.8X\n", request);
 	}
 	uae_sem_post (&change_sem);
     }
@@ -578,7 +585,8 @@ static void *dev_thread (void *devs)
 static uae_u32 dev_init_2 (int type)
 {
     uae_u32 base = m68k_dreg (regs,0);
-    dev_debug("%s init\n", getdevname (type));
+    if (log_scsi)
+	write_log ("%s init\n", getdevname (type));
     return base;
 }
 
@@ -607,7 +615,8 @@ static uae_u32 dev_abortio (void)
 	return get_byte (request + 31);
     }
     put_byte (request + 31, -2);
-    dev_debug ("abortio %s unit=%d, request=%08.8X\n", getdevname (pdev->type), pdev->unit, request);
+    if (log_scsi)
+	write_log ("abortio %s unit=%d, request=%08.8X\n", getdevname (pdev->type), pdev->unit, request);
     abort_async (dev, request, -2, 0);
     return 0;
 }
@@ -694,7 +703,8 @@ static uaecptr diskdev_startup (uaecptr resaddr)
 {
     /* Build a struct Resident. This will set up and initialize
      * the cd.device */
-    dev_debug ("diskdev_startup(0x%x)\n", resaddr);
+    if (log_scsi)
+	write_log ("diskdev_startup(0x%x)\n", resaddr);
     put_word(resaddr + 0x0, 0x4AFC);
     put_long(resaddr + 0x2, resaddr);
     put_long(resaddr + 0x6, resaddr + 0x1A); /* Continue scan here */
@@ -711,7 +721,8 @@ uaecptr scsidev_startup (uaecptr resaddr)
 {
     if (!currprefs.scsi)
 	return resaddr;
-    dev_debug ("scsidev_startup(0x%x)\n", resaddr);
+    if (log_scsi)
+	write_log ("scsidev_startup(0x%x)\n", resaddr);
     /* Build a struct Resident. This will set up and initialize
      * the uaescsi.device */
     put_word(resaddr + 0x0, 0x4AFC);
@@ -735,7 +746,8 @@ static void diskdev_install (void)
 
     if (!currprefs.scsi)
 	return;
-    dev_debug ("diskdev_install(): 0x%x\n", here ());
+    if (log_scsi)
+	write_log ("diskdev_install(): 0x%x\n", here ());
 
     ROM_diskdev_resname = ds (UAEDEV_DISK);
     ROM_diskdev_resid = ds ("UAE disk.device 0.1");
@@ -813,7 +825,8 @@ void scsidev_install (void)
 
     if (!currprefs.scsi)
 	return;
-    dev_debug ("scsidev_install(): 0x%x\n", here ());
+    if (log_scsi)
+	write_log ("scsidev_install(): 0x%x\n", here ());
 
     ROM_scsidev_resname = ds (UAEDEV_SCSI);
     ROM_scsidev_resid = ds ("UAE scsi.device 0.2");
@@ -888,7 +901,8 @@ void scsidev_start_threads (void)
 {
     if (!currprefs.scsi) /* quite useless.. */
 	return;
-    dev_debug ("scsidev_start_threads()\n");
+    if (log_scsi)
+	write_log ("scsidev_start_threads()\n");
     uae_sem_init (&change_sem, 0, 1);
 }
 

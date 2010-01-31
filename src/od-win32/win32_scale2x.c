@@ -34,11 +34,14 @@ struct uae_filter uaefilters[] =
 
 
 static int dst_width, dst_height, amiga_width, amiga_height, amiga_depth, dst_depth, scale;
+uae_u8 *bufmem_ptr;
+int bufmem_width, bufmem_height;
 
 void S2X_configure (int rb, int gb, int bb, int rs, int gs, int bs)
 {
     Init_2xSaI (rb, gb, bb, rs, gs, bs);
     hq_init (rb, gb, bb, rs, gs, bs);
+    bufmem_ptr = 0;
 }
 
 void S2X_init (int dw, int dh, int aw, int ah, int mult, int ad, int dd)
@@ -89,6 +92,10 @@ void S2X_render (void)
 	return;
     if (aw < 16)
 	return;
+
+    bufmem_ptr = sptr;
+    bufmem_width = aw;
+    bufmem_height = ah;
 
     if (!DirectDraw_SurfaceLock (lockable_surface))
     	return;

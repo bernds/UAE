@@ -608,7 +608,7 @@ void finish_sound_buffer (void)
 #ifdef AVIOUTPUT
     if (avioutput_audio)
         AVIOutput_WriteAudio ((uae_u8*)sndbuffer, sndbufsize);
-    if (avioutput_video)
+    if (!avioutput_framelimiter && (avioutput_video || avioutput_audio))
 	return;
 #endif
     finish_sound_buffer_ds ();

@@ -1081,7 +1081,7 @@ static void allocate_expamem (void)
 	    map_banks (&z3fastmem_bank, z3fastmem_start >> 16, currprefs.z3fastmem_size >> 16,
 		       allocated_z3fastmem);
 	}
-	if (allocated_gfxmem > 0) {
+	if (allocated_gfxmem > 0 && gfxmem_start > 0) {
 	    restore_ram (p96_filepos, gfxmemory);
 	    map_banks (&gfxmem_bank, gfxmem_start >> 16, currprefs.gfxmem_size >> 16,
 		       allocated_gfxmem);
@@ -1243,7 +1243,8 @@ uae_u8 *save_expansion (int *len, uae_u8 *dstptr)
 	dst = dstbak = dstptr;
     save_u32 (fastmem_start);
     save_u32 (z3fastmem_start);
-    *len = 8;
+    save_u32 (gfxmem_start);
+    *len = 4 + 4 + 4;
     return dstbak;
 }
 
@@ -1251,5 +1252,6 @@ uae_u8 *restore_expansion (uae_u8 *src)
 {
     fastmem_start = restore_u32 ();
     z3fastmem_start = restore_u32 ();
+    gfxmem_start = restore_u32 ();
     return src;
 }

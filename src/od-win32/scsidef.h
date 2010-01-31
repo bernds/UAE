@@ -386,7 +386,3 @@ struct	scsi_inquiry {
 };					/* 96 */
 #endif
 
-#define MODE_SELECT_6           0x15
-#define MODE_SENSE_6            0x1a
-#define MODE_SELECT_10          0x55
-#define MODE_SENSE_10           0x5A

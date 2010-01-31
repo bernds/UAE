@@ -11,7 +11,11 @@
 #define SMART_UPDATE 1
 #endif
 
+#ifdef AGA
 #define MAX_PLANES 8
+#else
+#define MAX_PLANES 6
+#endif
 
 /* According to the HRM, pixel data spends a couple of cycles somewhere in the chips
    before it appears on-screen.  */
@@ -22,7 +26,7 @@
 #define DISPLAY_LEFT_SHIFT 0x40
 #define PIXEL_XPOS(HPOS) (((HPOS)*2 - DISPLAY_LEFT_SHIFT + DIW_DDF_OFFSET - 1) << lores_shift)
 
-#define max_diwlastword (PIXEL_XPOS(0x1c8 >> 1))
+#define max_diwlastword (PIXEL_XPOS(0x1d4 >> 1))
 
 extern int lores_factor, lores_shift, sprite_width;
 

@@ -1134,38 +1134,3 @@ END
 /////////////////////////////////////////////////////////////////////////////
 
 
-/////////////////////////////////////////////////////////////////////////////
-// Finnish resources
-
-#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_FIN)
-#ifdef _WIN32
-LANGUAGE LANG_FINNISH, SUBLANG_DEFAULT
-#pragma code_page(1252)
-#endif //_WIN32
-
-/////////////////////////////////////////////////////////////////////////////
-//
-// WAVE
-//
-
-IDR_DRIVE_STARTUP_A500_1 WAVE                    "drive_startup.wav"
-IDR_DRIVE_CLICK_A500_1  WAVE                    "drive_click.wav"
-IDR_DRIVE_SPIN_A500_1   WAVE                    "drive_spin.wav"
-IDR_DRIVE_SNATCH_A500_1 WAVE                    "drive_snatch.wav"
-IDR_DRIVE_SPINND_A500_1 WAVE                    "drive_spinnd.wav"
-#endif    // Finnish resources
-/////////////////////////////////////////////////////////////////////////////
-
-
-
-#ifndef APSTUDIO_INVOKED
-/////////////////////////////////////////////////////////////////////////////
-//
-// Generated from the TEXTINCLUDE 3 resource.
-//
-
-
-
-/////////////////////////////////////////////////////////////////////////////
-#endif    // not APSTUDIO_INVOKED
-

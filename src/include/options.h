@@ -9,7 +9,7 @@
 
 #define UAEMAJOR 0
 #define UAEMINOR 8
-#define UAESUBREV 24
+#define UAESUBREV 25
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -19,11 +19,12 @@ struct uaedev_mount_info;
 
 struct strlist {
     struct strlist *next;
-    char *str;
+    char *option, *value;
+    int unknown;
 };
 
 /* maximum number native input devices supported (single type) */
-#define MAX_INPUT_DEVICES 4
+#define MAX_INPUT_DEVICES 6
 /* maximum number of native input device's buttons and axles supported */
 #define MAX_INPUT_DEVICE_EVENTS 256
 /* 4 different customization settings */
@@ -40,7 +41,7 @@ struct uae_input_device {
 };
 
 struct uae_prefs {
-    struct strlist *unknown_lines;
+    struct strlist *all_lines;
 
     char description[256];
     char info[256];
@@ -228,7 +229,7 @@ extern void cfgfile_write (FILE *f, char *format,...);
 extern void default_prefs (struct uae_prefs *);
 extern void discard_prefs (struct uae_prefs *);
 
-extern int parse_cmdline_option (char, char *);
+int parse_cmdline_option (struct uae_prefs *, char, char *);
 
 extern int cfgfile_yesno (char *option, char *value, char *name, int *location);
 extern int cfgfile_intval (char *option, char *value, char *name, int *location, int scale);
@@ -246,6 +247,8 @@ extern void cfgfile_parse_line (struct uae_prefs *p, char *);
 extern int cfgfile_parse_option (struct uae_prefs *p, char *option, char *value);
 extern int cfgfile_get_description (const char *filename, char *description);
 extern void cfgfile_show_usage (void);
+extern uae_u32 cfgfile_uaelib(int mode, uae_u32 name, uae_u32 dst, uae_u32 maxlen);
+extern void cfgfile_addcfgparam (char *);
 
 extern void fixup_prefs_dimensions (struct uae_prefs *prefs);
 

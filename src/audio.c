@@ -23,6 +23,7 @@
 #include "audio.h"
 #include "savestate.h"
 #include "driveclick.h"
+#include "avioutput.h"
 
 #define MAX_EV ~0ul
 //#define DEBUG_AUDIO
@@ -742,6 +743,9 @@ void check_prefs_changed_audio (void)
     driveclick_check_prefs ();
     if (sound_available && sound_prefs_changed ()) {
 	close_sound ();
+#ifdef AVIOUTPUT
+	AVIOutput_Restart ();
+#endif
 
 	currprefs.produce_sound = changed_prefs.produce_sound;
 	currprefs.win32_soundcard = changed_prefs.win32_soundcard;

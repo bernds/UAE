@@ -21,8 +21,6 @@
 
 #include "scsidef.h"
 
-#define ASPI_DEBUG 0
-
 int aspi_allow_misc = 1;
 int aspi_allow_all = 0;
 
@@ -41,6 +39,7 @@ struct scsi_info {
     uae_u8 *buf;
     char label[100];
     SCSI *handle;
+    int isatapi;
 };
 static struct scsi_info si[MAX_TOTAL_DEVICES];
 static int unitcnt;
@@ -55,10 +54,9 @@ static int ha_inquiry(SCSI *scgp, int id, SRB_HAInquiry *ip)
     ip->SRB_Hdr_Rsvd = 0;
 
     Status = pfnSendASPI32Command((LPSRB)ip);
-#if ASPI_DEBUG
-    write_log ("ASPI: S=%d ha=%d, ID=%d, M='%s', Id='%s'\n",
-	Status, ip->HA_Count, ip->HA_SCSI_ID, ip->HA_ManagerId, ip->HA_Identifier);
-#endif
+    if (log_scsi)
+	write_log ("ASPI: S=%d ha=%d, ID=%d, M='%s', Id='%s'\n",
+	    Status, ip->HA_Count, ip->HA_SCSI_ID, ip->HA_ManagerId, ip->HA_Identifier);
     if (ip->SRB_Status != SS_COMP)
     	return -1;
     return 0;
@@ -235,9 +233,8 @@ static SCSI *openscsi (int busno, int tgt, int tlun)
 
     if (busno >= MAX_SCG || tgt >= MAX_TGT || tlun >= MAX_LUN) {
     	errno = EINVAL;
-#if ASPI_DEBUG
-	write_log ("ASPI: Illegal value for busno, target or lun '%d,%d,%d'\n", busno, tgt, tlun);
-#endif
+	if (log_scsi)
+	    write_log ("ASPI: Illegal value for busno, target or lun '%d,%d,%d'\n", busno, tgt, tlun);
 	return 0;
     }
     /*
@@ -279,17 +276,17 @@ static void closescsi (SCSI *scgp)
 
 static void scsi_debug (SCSI *scgp, SRB_ExecSCSICmd *s)
 {
-#if ASPI_DEBUG
-    int i;
+    if (log_scsi) {
+	int i;
 
-    if (scgp->scmd->cdb.g0_cdb.cmd == 0x12)
-	return;
-    write_log ("ASPI EXEC_SCSI: cmd=%02.2X bus=%d,target=%d,lun=%d\n",scgp->scmd->cdb.g0_cdb.cmd,s->SRB_HaId,s->SRB_Target,s->SRB_Lun);
-    for (i = 0; i < scgp->scmd->cdb_len; i++) {
-	write_log ("%s%02.2X", i > 0 ? "." : "", scgp->scmd->cdb.cmd_cdb[i]);
+	if (scgp->scmd->cdb.g0_cdb.cmd == 0x12)
+	    return;
+	write_log ("ASPI EXEC_SCSI: cmd=%02.2X bus=%d,target=%d,lun=%d\n",scgp->scmd->cdb.g0_cdb.cmd,s->SRB_HaId,s->SRB_Target,s->SRB_Lun);
+	for (i = 0; i < scgp->scmd->cdb_len; i++) {
+	    write_log ("%s%02.2X", i > 0 ? "." : "", scgp->scmd->cdb.cmd_cdb[i]);
+	}
+	write_log ("\n");
     }
-    write_log ("\n");
-#endif
 }
 
 
@@ -303,8 +300,7 @@ static void copy_sensedata(SRB_ExecSCSICmd *cp, struct scg_cmd *sp)
 	int len = sp->sense_len;
 	if (len > sizeof(sp->u_sense.Sense)) len = sizeof(sp->u_sense.Sense);
 	memcpy(&sp->u_sense.Sense, cp->SenseArea, len);
-#if ASPI_DEBUG
-	{
+	if (log_scsi) {
 	    int i;
 	    write_log ("ASPI SENSE:");
 	    for (i = 0; i < len; i++) {
@@ -312,7 +308,6 @@ static void copy_sensedata(SRB_ExecSCSICmd *cp, struct scg_cmd *sp)
 	    }
 	    write_log ("\n");
 	}
-#endif
     }
     sp->u_scb.cmd_scb[0] = cp->SRB_TargStat;
 }
@@ -381,9 +376,8 @@ static int scsiabort(SCSI *scgp, SRB_ExecSCSICmd *sp)
     DWORD Status = 0;
     SRB_Abort s;
 
-#if ASPI_DEBUG
-    write_log ("ASPI: Attempting to abort SCSI command\n");
-#endif
+    if (log_scsi)
+	write_log ("ASPI: Attempting to abort SCSI command\n");
     /*
      * Set structure variables
      */
@@ -399,14 +393,12 @@ static int scsiabort(SCSI *scgp, SRB_ExecSCSICmd *sp)
      * Check condition
      */
     if (s.SRB_Status != SS_COMP) {
-#if ASPI_DEBUG
-	write_log ("ASPI: Abort ERROR! 0x%08X\n", s.SRB_Status);
-#endif
+	if (log_scsi)
+	    write_log ("ASPI: Abort ERROR! 0x%08X\n", s.SRB_Status);
 	return FALSE;
     }
-#if ASPI_DEBUG
-    write_log ("ASPI: Abort SCSI command completed\n");
-#endif
+    if (log_scsi)
+	write_log ("ASPI: Abort SCSI command completed\n");
     /*
      * Everything went OK
      */
@@ -437,9 +429,8 @@ static int scsicmd(SCSI *scgp)
     if (sp->cdb_len > 16) {
     	sp->error = SCG_FATAL;
     	sp->ux_errno = EINVAL;
-#if ASPI_DEBUG
-    	write_log ("ASPI: sp->cdb_len > sizeof(SRB_ExecSCSICmd.CDBByte). Fatal error in scgo_send, exiting...\n");
-#endif
+	if (log_scsi)
+	    write_log ("ASPI: sp->cdb_len > sizeof(SRB_ExecSCSICmd.CDBByte). Fatal error in scgo_send, exiting...\n");
     	return -1;
     }
     /*
@@ -506,16 +497,13 @@ static int scsicmd(SCSI *scgp)
      * Check ASPI command status
      */
     if (s.SRB_Status != SS_COMP) {
-#if ASPI_DEBUG
-	if (s.SRB_Status != 0x82)
+        if (log_scsi && s.SRB_Status != 0x82)
 	    write_log ("ASPI: Error in scgo_send: s.SRB_Status is 0x%x\n", s.SRB_Status);
-#endif
 	set_error(&s, sp); /* Set error flags */
 	copy_sensedata(&s, sp); /* Copy sense and status */
-#if ASPI_DEBUG
-	if (s.SRB_Status != 0x82)
+	
+	if (log_scsi && s.SRB_Status != 0x82)
 	    write_log ("ASPI: Mapped to: error %d errno: %d\n", sp->error, sp->ux_errno);
-#endif
 	return 1;
     }
     /*
@@ -575,13 +563,22 @@ static void scan_scsi_bus (SCSI *scgp, int flags)
 		    if (unitcnt < MAX_TOTAL_DEVICES) {
 			struct scsi_info *cis = &si[unitcnt];
 			int use = 0;
+			write_log ("[");
 			if (inq.type == INQ_ROMD) {
-			    write_log (" [CDROM]");
+			    write_log ("CDROM");
 			    use = 1;
 			} else if (!flags && ((inq.type >= INQ_SEQD && inq.type < INQ_COMM && inq.type != INQ_PROCD && aspi_allow_misc) || aspi_allow_all)) {
-			    write_log (" [%d]", inq.type);
+			    write_log ("%d", inq.type);
 			    use = 1;
+			} else {
+			    write_log ("?");
 			}
+			if (inq.ansi_version == 0) {
+			    write_log (",ATAPI");
+			    cis->isatapi = 1;
+			} else
+			    write_log (",SCSI");
+			write_log("]");
 			if (use) {
 			    unitcnt++;
 			    cis->buf = malloc (DEVICE_SCSI_BUFSIZE);
@@ -685,15 +682,13 @@ static int open_scsi_device (int unitnum)
 {
     if (unitnum >= unitcnt)
 	return 0;
-#if ASPI_DEBUG
-    write_log ("ASPI: opening %d:%d:%d\n", si[unitnum].scsibus, si[unitnum].target, si[unitnum].lun);
-#endif
+    if (log_scsi)
+	write_log ("ASPI: opening %d:%d:%d\n", si[unitnum].scsibus, si[unitnum].target, si[unitnum].lun);
     si[unitnum].handle = openscsi (si[unitnum].scsibus, si[unitnum].target, si[unitnum].lun);
     if (si[unitnum].handle)
 	si[unitnum].mediainserted = mediacheck (unitnum);
-#if ASPI_DEBUG
-    write_log ("unit %d: %s\n", unitnum, si[unitnum].mediainserted ? "CD inserted" : "Drive empty");
-#endif
+    if (log_scsi)
+	write_log ("unit %d: %s\n", unitnum, si[unitnum].mediainserted ? "CD inserted" : "Drive empty");
     return si[unitnum].handle ? 1 : 0;
 }
 
@@ -715,19 +710,21 @@ static void close_scsi_bus (void)
 
 static int execscsicmd_direct (int unitnum, uaecptr acmd)
 {
-    int sactual = 0, i;
+    int sactual = 0, i, parm;
     SCSI *scgp = si[unitnum].handle;
     struct scg_cmd *scmd = scgp->scmd;
     uaecptr scsi_data = get_long (acmd + 0);
     uae_u32 scsi_len = get_long (acmd + 4);
     uaecptr scsi_cmd = get_long (acmd + 12);
-    uae_u16 scsi_cmd_len = get_word (acmd + 16);
+    int scsi_cmd_len = get_word (acmd + 16);
+    int scsi_cmd_len_org = scsi_cmd_len;
     uae_u8 scsi_flags = get_byte (acmd + 20);
     uaecptr scsi_sense = get_long (acmd + 22);
     uae_u16 scsi_sense_len = get_word (acmd + 26);
-
     int io_error = 0;
     addrbank *bank_data = &get_mem_bank (scsi_data);
+    uae_u8 *scsi_datap, *scsi_datap_org;
+
     /* do transfer directly to and from Amiga memory */
     if (!bank_data || !bank_data->check (scsi_data, scsi_len))
         return -5; /* IOERR_BADADDRESS */
@@ -736,10 +733,8 @@ static int execscsicmd_direct (int unitnum, uaecptr acmd)
 
     /* the Amiga does not tell us how long the timeout shall be, so make it _very_ long (specified in seconds) */
     scmd->timeout = 80 * 60;
-    scmd->addr = scsi_len ? bank_data->xlateaddr (scsi_data) : 0;
-    scmd->size = scsi_len;
+    scsi_datap = scsi_datap_org = scsi_len ? bank_data->xlateaddr (scsi_data) : 0;
     scmd->flags = ((scsi_flags & 1) ? SCG_RECV_DATA : 0) | SCG_DISRE_ENA;
-    scmd->cdb_len = scsi_cmd_len;
     for (i = 0; i < scsi_cmd_len; i++)
 	scmd->cdb.cmd_cdb[i] = get_byte (scsi_cmd + i);
     scmd->target = si[unitnum].target;
@@ -749,11 +744,18 @@ static int execscsicmd_direct (int unitnum, uaecptr acmd)
     scmd->sense_count = 0;
     scmd->u_scb.cmd_scb[0] = 0;
     scgp->addr.scsibus = si[unitnum].scsibus;
-    scgp->addr.target  = si[unitnum].target;
-    scgp->addr.lun     = si[unitnum].lun;
+    scgp->addr.target = si[unitnum].target;
+    scgp->addr.lun = si[unitnum].lun;
+    if (si[unitnum].isatapi)
+        scsi_atapi_fixup_pre (scmd->cdb.cmd_cdb, &scsi_cmd_len, &scsi_datap, &scsi_len, &parm);
+    scmd->addr = scsi_datap;
+    scmd->size = scsi_len;
+    scmd->cdb_len = scsi_cmd_len;
+    aspi_led (unitnum);
     scsicmd (scgp);
+    aspi_led (unitnum);
 
-    put_word (acmd + 18, scmd->error == SCG_FATAL ? 0 : scsi_cmd_len); /* fake scsi_CmdActual */
+    put_word (acmd + 18, scmd->error == SCG_FATAL ? 0 : scsi_cmd_len_org); /* fake scsi_CmdActual */
     put_byte (acmd + 21, scmd->u_scb.cmd_scb[0]); /* scsi_Status */
     if (scmd->u_scb.cmd_scb[0]) {
         io_error = 45; /* HFERR_BadStatus */
@@ -771,12 +773,18 @@ static int execscsicmd_direct (int unitnum, uaecptr acmd)
 	    put_long (acmd + 8, 0); /* scsi_Actual */
         } else {
 	    io_error = 0;
+	    if (si[unitnum].isatapi)
+		scsi_atapi_fixup_post (scmd->cdb.cmd_cdb, scsi_cmd_len, scsi_datap_org, scsi_datap, &scsi_len, parm);
             put_long (acmd + 8, scsi_len - scmd->resid); /* scsi_Actual */
         }
     }
     put_word (acmd + 28, sactual);
 
     uae_sem_post (&scgp_sem);
+
+    if (scsi_datap != scsi_datap_org)
+	free (scsi_datap);
+
     return io_error;
 }
 
@@ -811,8 +819,13 @@ void win32_aspi_media_change (char driveletter, int insert)
     }
 }
 
+static int check_isatapi (int unitnum)
+{
+    return si[unitnum].isatapi;
+}
+
 struct device_functions devicefunc_win32_aspi = {
     open_scsi_bus, close_scsi_bus, open_scsi_device, close_scsi_device, info_device,
     execscsicmd_out, execscsicmd_in, execscsicmd_direct,
-    0, 0, 0, 0, 0, 0
+    0, 0, 0, 0, 0, 0, 0, check_isatapi
 };

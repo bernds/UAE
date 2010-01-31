@@ -170,7 +170,9 @@ static void build_cpufunctbl (void)
 	abort ();
     }
     write_log ("Building CPU function table (%d %d %d).\n",
-	       currprefs.cpu_level, currprefs.cpu_cycle_exact ? -1 : currprefs.cpu_compatible ? 1 : 0, currprefs.address_space_24);
+	currprefs.cpu_level,
+	currprefs.cpu_cycle_exact ? -1 : currprefs.cpu_compatible ? 1 : 0,
+	currprefs.address_space_24);
 
     for (opcode = 0; opcode < 65536; opcode++)
 	cpufunctbl[opcode] = op_illg_1;
@@ -318,10 +320,13 @@ void init_m68k (void)
         write_log ("000");
         break;
     }
-    if (currprefs.cpu_cycle_exact)
-        write_log (" cycle-exact mode");
-    else if (currprefs.cpu_compatible)
-	write_log (" compatible mode");
+    if (currprefs.cpu_cycle_exact) {
+	if (currprefs.cpu_level == 0)
+	    write_log (" prefetch and cycle-exact");
+	else
+	    write_log (" ~cycle-exact");
+    } else if (currprefs.cpu_compatible)
+	write_log (" prefetch");
     if (currprefs.address_space_24) {
 	regs.address_space_mask = 0x00ffffff;
 	write_log (" 24-bit addressing");
@@ -1755,8 +1760,6 @@ static void m68k_run_1_ce (void)
 	    memmove (pcs + 1, pcs, 998 * 4);
 	    pcs[0] = pc;
 	}
-        if (pc == 0x35000)
-	    INTREQ (0x8060);
 #endif
 	(*cpufunctbl[opcode])(opcode);
 	if (regs.spcflags) {
@@ -1938,6 +1941,42 @@ static void out_cd32io (uae_u32 pc)
 }
 #endif
 
+/* emulate simple prefetch  */
+static void m68k_run_2p (void)
+{
+    uae_u32 prefetch, prefetch_pc;
+
+    prefetch_pc = m68k_getpc ();
+    prefetch = get_long (prefetch_pc);
+    for (;;) {
+	int cycles;
+	uae_u32 opcode;
+	uae_u32 pc = m68k_getpc ();
+	if (pc == prefetch_pc)
+	    opcode = prefetch >> 16;
+	else if (pc == prefetch_pc + 2)
+	    opcode = prefetch & 0xffff;
+	else
+	    opcode = get_iword (0);
+#if COUNT_INSTRS == 2
+	if (table68k[opcode].handler != -1)
+	    instrcount[table68k[opcode].handler]++;
+#elif COUNT_INSTRS == 1
+	instrcount[opcode]++;
+#endif
+	prefetch_pc = m68k_getpc () + 2;
+	prefetch = get_long (prefetch_pc);
+	cycles = (*cpufunctbl[opcode])(opcode);
+	cycles &= cycles_mask;
+	cycles |= cycles_val;
+        do_cycles (cycles);
+	if (regs.spcflags) {
+	    if (do_specialties (cycles))
+		return;
+	}
+    }
+}
+
 /* Same thing, but don't use prefetch to get opcode.  */
 static void m68k_run_2 (void)
 {
@@ -2058,12 +2097,14 @@ void m68k_go (int may_quit)
 	    debug ();
 
 #ifndef JIT
-	m68k_run1 (currprefs.cpu_cycle_exact ? m68k_run_1_ce :
-		    currprefs.cpu_compatible ? m68k_run_1 : m68k_run_2);
+	m68k_run1 (currprefs.cpu_level == 0 && currprefs.cpu_cycle_exact ? m68k_run_1_ce :
+		    currprefs.cpu_level == 0 && currprefs.cpu_compatible ? m68k_run_1 :
+		    currprefs.cpu_compatible ? m68k_run_2p : m68k_run_2);
 #else
 	m68k_run1 (currprefs.cpu_cycle_exact && currprefs.cpu_level == 0 ? m68k_run_1_ce : 
-		   currprefs.cpu_compatible > 0 ? m68k_run_1 : 
-		   currprefs.cpu_level >= 2 && currprefs.cachesize ? m68k_run_2a : m68k_run_2);
+		   currprefs.cpu_compatible > 0 && currprefs.cpu_level == 0 ? m68k_run_1 : 
+		   currprefs.cpu_level >= 2 && currprefs.cachesize ? m68k_run_2a :
+		   currprefs.cpu_compatible ? m68k_run_2p : m68k_run_2);
 #endif
     }
     in_m68k_go--;

@@ -38,6 +38,7 @@
 #include "caps/caps_win32.h"
 #endif
 
+
 /* writable track length with normal 2us bitcell/300RPM motor (PAL) */
 #define FLOPPY_WRITE_LEN (currprefs.ntscmode ? (12798 / 2) : (12668 / 2)) /* 12667 PAL, 12797 NTSC */
 /* This works out to 350 */
@@ -80,10 +81,10 @@ static uae_u8 *writebuffer[544 * 22];
 static uae_u32 dma_tab[MAX_DISK_WORDS_PER_LINE + 1];
 #endif
 static int dskdmaen, dsklength, dsklen;
-static uae_u16 dsksync, dskbytr_val;
+static uae_u16 dskbytr_val;
 static uae_u32 dskpt;
 static int dma_enable, bitoffset, syncoffset;
-static uae_u16 word;
+static uae_u16 word, dsksync;
 /* Always carried through to the next line.  */
 static int disk_hpos;
 
@@ -1944,12 +1945,14 @@ static void disk_doupdate_write (drive * drv, int floppybits)
 
 static void updatetrackspeed (drive *drv, int mfmpos)
 {
-    uae_u16 *p = drv->trackpointers[drv->current_revolution] - drv->trackpointers[0] + drv->tracktiming;
-    p += mfmpos / 8;
-    drv->trackspeed = get_floppy_speed () * drv->tracklen / (2 * 8 * FLOPPY_WRITE_LEN * drv->ddhd);
-    drv->trackspeed = drv->trackspeed * p[0] / 1000;
-	if (drv->trackspeed < 1000 || drv->trackspeed > 3000)
-		assert (0);
+    if (dskdmaen < 3) {
+	uae_u16 *p = drv->trackpointers[drv->current_revolution] - drv->trackpointers[0] + drv->tracktiming;
+	p += mfmpos / 8;
+	drv->trackspeed = get_floppy_speed () * drv->tracklen / (2 * 8 * FLOPPY_WRITE_LEN * drv->ddhd);
+	drv->trackspeed = drv->trackspeed * p[0] / 1000;
+	if (drv->trackspeed < 700 || drv->trackspeed > 3000)
+	    assert (0);
+    }
 }
 
 static void disk_doupdate_predict (drive * drv, int startcycle)
@@ -2207,7 +2210,7 @@ void DISK_update (int tohpos)
 
 void DSKLEN (uae_u16 v, int hpos)
 {
-    int dr;
+    int dr, prev = dsklen;
 
     DISK_update (hpos);
     if ((v & 0x8000) && (dsklen & 0x8000)) {
@@ -2232,7 +2235,7 @@ void DSKLEN (uae_u16 v, int hpos)
     if (dskdmaen == 0)
 	return;
 
-    if (v & 0x4000) {
+    if ((v & 0x4000) && (prev & 0x4000)) {
 	if (dsklength == 0)
 	    return;
 	dskdmaen = 3;
@@ -2330,9 +2333,10 @@ void DSKLEN (uae_u16 v, int hpos)
     }
 }
 
-
 void DSKSYNC (int hpos, uae_u16 v)
 {
+    if (v == dsksync)
+	return;
     DISK_update (hpos);
     dsksync = v;
 }

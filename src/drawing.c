@@ -1925,6 +1925,8 @@ void vsync_handle_redraw (int long_frame, int lof_changed)
 	    finish_drawing_frame ();
 #ifdef AVIOUTPUT
 	    frame_drawn ();
+	} else if (picasso_on) {
+	    frame_drawn ();
 #endif
 	}
 

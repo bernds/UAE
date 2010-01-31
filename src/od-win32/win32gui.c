@@ -139,6 +139,8 @@ static char szNone[ MAX_PATH ] = "None";
 
 static int cfgfile_doload (struct uae_prefs *p, const char *filename)
 {
+    if (p->mountinfo == currprefs.mountinfo)
+	currprefs.mountinfo = 0;
     discard_prefs (p);
 #ifdef FILESYS
     free_mountinfo (currprefs.mountinfo);
@@ -186,9 +188,6 @@ void gui_display( int shortcut )
 
     if( shortcut == -1 ) {
 	int ret;
-#ifdef AVIOUTPUT
-        AVIOutput_End ();
-#endif
         if( flipflop )
             ShowWindow( hAmigaWnd, SW_MINIMIZE );
 	ret = GetSettings (0);
@@ -197,9 +196,6 @@ void gui_display( int shortcut )
 	if (!ret) {
 	    savestate_state = 0;
 	}
-#ifdef AVIOUTPUT
-        AVIOutput_Begin ();
-#endif
     } else if (shortcut >= 0 && shortcut < 4) {
         DiskSelection( hAmigaWnd, IDC_DF0+shortcut, 0, &changed_prefs );
     } else if (shortcut == 5) {
@@ -228,6 +224,9 @@ void gui_display( int shortcut )
     setmouseactive (1);
 #ifdef D3D
     D3D_guimode (FALSE);
+#endif
+#ifdef AVIOUTPUT
+    AVIOutput_Begin ();
 #endif
     fpscounter_reset ();
 
@@ -1454,7 +1453,7 @@ static void DisplayContributors (HWND hDlg)
     DialogBox( hUIDLL ? hUIDLL : hInst, MAKEINTRESOURCE (IDD_CONTRIBUTORS), hDlg, ContributorsProc);
 }
 
-#define NUM_URLS 7
+#define NUM_URLS 8
 typedef struct url_info
 {
     int   id;
@@ -1471,7 +1470,8 @@ static urlinfo urls[NUM_URLS] =
     {IDC_UAEHOME, FALSE, "UAE Home Page", "http://www.freiburg.linux.de/~uae/"},
     {IDC_WINUAEHOME, FALSE, "WinUAE Home Page", "http://www.winuae.net/"},
     {IDC_AIABHOME, FALSE, "AIAB", "http://aiab.emuunlim.com/"},
-    {IDC_THEROOTS, FALSE, "Back To The Roots", "http://back2roots.emuunlim.com/"}
+    {IDC_THEROOTS, FALSE, "Back To The Roots", "http://back2roots.emuunlim.com/"},
+    {IDC_CAPS, FALSE, "CAPS", "http://caps-project.org/"}
 };
 
 static void SetupRichText( HWND hDlg, urlinfo *url )
@@ -1968,7 +1968,7 @@ static void init_displays_combo (HWND hDlg)
     int i = 0;
     SendDlgItemMessage(hDlg, IDC_DISPLAYSELECT, CB_RESETCONTENT, 0, 0);
     while (Displays[i].name) {
-        SendDlgItemMessage( hDlg, IDC_DISPLAYSELECT, CB_ADDSTRING, 0, (LPARAM)Displays[i].name);
+	SendDlgItemMessage( hDlg, IDC_DISPLAYSELECT, CB_ADDSTRING, 0, (LPARAM)Displays[i].name);
 	i++;
     }
     if (workprefs.gfx_display >= i)
@@ -2029,6 +2029,8 @@ static void values_from_displaydlg (HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 	    LONG posn;
 	    posn = SendDlgItemMessage (hDlg, IDC_DISPLAYSELECT, CB_GETCURSEL, 0, 0);
 	    if (posn != CB_ERR && posn != workprefs.gfx_display) {
+		if (Displays[posn].disabled)
+		    posn = 0;
 		workprefs.gfx_display = posn;
 	        DisplayModes = Displays[workprefs.gfx_display].DisplayModes;
 		init_resolution_combo (hDlg);
@@ -2082,13 +2084,6 @@ static void values_from_displaydlg (HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
     }
 
     updatewinfsmode (&workprefs);
-
-#ifdef AVIOUTPUT
-    if(workprefs.gfx_width != gfx_width)
-	SetDlgItemInt(pages[AVIOUTPUT_ID], IDC_AVIOUTPUT_WIDTH, workprefs.gfx_width, FALSE);
-    if(workprefs.gfx_height != gfx_height)
-	SetDlgItemInt(pages[AVIOUTPUT_ID], IDC_AVIOUTPUT_HEIGHT, workprefs.gfx_height, FALSE);
-#endif
 }
 
 static int hw3d_changed;
@@ -2468,6 +2463,9 @@ static BOOL CALLBACK KickstartDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARA
 #endif
 #if defined (UAE_MINI)
         EnableWindow( GetDlgItem( hDlg, IDC_KICKSHIFTER), FALSE );
+        EnableWindow( GetDlgItem( hDlg, IDC_ROMCHOOSER2), FALSE );
+        EnableWindow( GetDlgItem( hDlg, IDC_CARTCHOOSER), FALSE );
+        EnableWindow( GetDlgItem( hDlg, IDC_FLASHCHOOSER), FALSE );
 #endif	
     case WM_USER:
 	values_to_kickstartdlg (hDlg);
@@ -2825,15 +2823,8 @@ static void enable_for_cpudlg (HWND hDlg)
 {
     BOOL enable = FALSE, enable2 = FALSE;
     BOOL cpu_based_enable = FALSE;
-    int compa = workprefs.cpu_level == 0 && workprefs.cpu_compatible >= 0;
 
-#if !defined (CPUEMU_5) && !defined (CPUEMU_6)
-    compa = 0;
-#endif
-
-    /* The "compatible" checkbox is only available when CPU type is 68000 */
-    EnableWindow (GetDlgItem (hDlg, IDC_COMPATIBLE), !workprefs.cpu_cycle_exact && compa);
-
+    EnableWindow (GetDlgItem (hDlg, IDC_COMPATIBLE), !workprefs.cpu_cycle_exact && !workprefs.cachesize);
     /* These four items only get enabled when adjustable CPU style is enabled */
     EnableWindow (GetDlgItem (hDlg, IDC_SPEED), workprefs.m68k_speed > 0);
     EnableWindow (GetDlgItem (hDlg, IDC_CS_CPU_TEXT), workprefs.m68k_speed > 0);
@@ -2982,11 +2973,6 @@ static void values_from_cpudlg (HWND hDlg)
 	    workprefs.cpu_level = newcpu - 2;
 	break;
     }
-    if (newcpu > 0) {
-	workprefs.cpu_compatible = 0;
-        updatepage (CHIPSET_ID);
-    }
-
     newtrust = (IsDlgButtonChecked( hDlg, IDC_TRUST0 ) ? 0
 	: IsDlgButtonChecked( hDlg, IDC_TRUST1 ) ? 1 : 3 );
     workprefs.comptrustbyte = newtrust;
@@ -3009,6 +2995,11 @@ static void values_from_cpudlg (HWND hDlg)
     workprefs.cpu_idle = SendMessage(GetDlgItem(hDlg, IDC_CPUIDLE), TBM_GETPOS, 0, 0);
     if (workprefs.cpu_idle > 0)
 	workprefs.cpu_idle = (12 - workprefs.cpu_idle) * 15;
+
+    if (workprefs.cachesize > 0) {
+	workprefs.cpu_compatible = 0;
+        updatepage (CHIPSET_ID);
+    }
 
     if( pages[ KICKSTART_ID ] )
 	SendMessage( pages[ KICKSTART_ID ], WM_USER, 0, 0 );
@@ -5182,53 +5173,37 @@ static void values_to_avioutputdlg(HWND hDlg)
 		break;
 	}
 	
-	CheckRadioButton(hDlg, IDC_AVIOUTPUT_8BIT, IDC_AVIOUTPUT_24BIT, (avioutput_bits == 8) ? IDC_AVIOUTPUT_8BIT : IDC_AVIOUTPUT_24BIT);
+        CheckDlgButton (hDlg, IDC_AVIOUTPUT_FRAMELIMITER, avioutput_framelimiter ? FALSE : TRUE);
+        CheckDlgButton (hDlg, IDC_AVIOUTPUT_ACTIVATED, avioutput_requested ? BST_CHECKED : BST_UNCHECKED);
 }
 
 static void values_from_avioutputdlg(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-	BOOL success = FALSE;
-	
-	//AVIOutput_End(); // <sane> TODO if sound settings change, must cease AVI capture
-	
-        updatewinfsmode (&workprefs);
+	int tmp;
 
-	avioutput_width = GetDlgItemInt(hDlg, IDC_AVIOUTPUT_WIDTH, &success, FALSE);
-	
-	if(!success || (avioutput_width < 1))
-		avioutput_width = workprefs.gfx_width;
-	
-	avioutput_height = GetDlgItemInt(hDlg, IDC_AVIOUTPUT_HEIGHT, &success, FALSE);
-	
-	if(!success || (avioutput_height < 1))
-		avioutput_height = workprefs.gfx_height;
-	
-	avioutput_fps = SendMessage(GetDlgItem(hDlg, IDC_AVIOUTPUT_FPS), TBM_GETPOS, 0, 0);
-	
-	// = IsDlgButtonChecked(hDlg, );
+        updatewinfsmode (&workprefs);
+	tmp = SendMessage(GetDlgItem(hDlg, IDC_AVIOUTPUT_FPS), TBM_GETPOS, 0, 0);
+	if (tmp < 1)
+	    tmp = 1;
+	if (tmp != avioutput_fps) {
+	    avioutput_fps = tmp;
+	    AVIOutput_Restart ();
+	}
+	avioutput_framelimiter = IsDlgButtonChecked (hDlg, IDC_AVIOUTPUT_FRAMELIMITER) ? 0 : 1;
 }
+
+static char aviout_videoc[200], aviout_audioc[200];
 
 static void enable_for_avioutputdlg(HWND hDlg)
 {
-	static int sound_bits = 0;
-	static int sound_freq = 0;
-	static int stereo = 0;
-	
-	static int avioutput_width_old = 0;
-	static int avioutput_height_old = 0;
-	static int avioutput_bits_old = 0;
-	static int avioutput_fps_old = 0;
-	
+
         EnableWindow(GetDlgItem(hDlg, IDC_SCREENSHOT), full_property_sheet ? FALSE : TRUE);
 
-		EnableWindow(GetDlgItem(hDlg, IDC_AVIOUTPUT_PAL), TRUE);
-		EnableWindow(GetDlgItem(hDlg, IDC_AVIOUTPUT_NTSC), TRUE);
-		EnableWindow(GetDlgItem(hDlg, IDC_AVIOUTPUT_FPS), TRUE);
-		EnableWindow(GetDlgItem(hDlg, IDC_AVIOUTPUT_8BIT), TRUE);
-		EnableWindow(GetDlgItem(hDlg, IDC_AVIOUTPUT_24BIT), TRUE);
-		EnableWindow(GetDlgItem(hDlg, IDC_AVIOUTPUT_WIDTH), TRUE);
-		EnableWindow(GetDlgItem(hDlg, IDC_AVIOUTPUT_HEIGHT), TRUE);
-		EnableWindow(GetDlgItem(hDlg, IDC_AVIOUTPUT_FILE), TRUE);
+	EnableWindow(GetDlgItem(hDlg, IDC_AVIOUTPUT_PAL), TRUE);
+	EnableWindow(GetDlgItem(hDlg, IDC_AVIOUTPUT_NTSC), TRUE);
+	EnableWindow(GetDlgItem(hDlg, IDC_AVIOUTPUT_FPS), TRUE);
+	EnableWindow(GetDlgItem(hDlg, IDC_AVIOUTPUT_FILE), TRUE);
+        CheckDlgButton (hDlg, IDC_AVIOUTPUT_FRAMELIMITER, avioutput_framelimiter ? FALSE : TRUE);
 		
 		if(workprefs.produce_sound < 2)
 		{
@@ -5241,32 +5216,22 @@ static void enable_for_avioutputdlg(HWND hDlg)
 			EnableWindow(GetDlgItem(hDlg, IDC_AVIOUTPUT_AUDIO), TRUE);
 			EnableWindow(GetDlgItem(hDlg, IDC_AVIOUTPUT_AUDIO_STATIC), TRUE);
 			
-			if((workprefs.sound_bits != sound_bits) || (workprefs.sound_freq != sound_freq) || (workprefs.stereo != stereo))
-				avioutput_audio = 0;
 		}
 		
 		if(!avioutput_audio)
 		{
 			CheckDlgButton(hDlg, IDC_AVIOUTPUT_AUDIO, BST_UNCHECKED);
-			SetWindowText(GetDlgItem(hDlg, IDC_AVIOUTPUT_AUDIO_STATIC), "no codec selected");
+			WIN32GUI_LoadUIString (IDS_AVIOUTPUT_NOCODEC, aviout_audioc, sizeof (aviout_audioc));
 		}
+		SetWindowText(GetDlgItem(hDlg, IDC_AVIOUTPUT_AUDIO_STATIC), aviout_audioc);
 		
-		if(!avioutput_video || (avioutput_width != avioutput_width_old) || (avioutput_height != avioutput_height_old) || (avioutput_bits != avioutput_bits_old) || (avioutput_fps != avioutput_fps_old))
+		if(!avioutput_video)
 		{
 			CheckDlgButton(hDlg, IDC_AVIOUTPUT_VIDEO, BST_UNCHECKED);
-			SetWindowText(GetDlgItem(hDlg, IDC_AVIOUTPUT_VIDEO_STATIC), "no codec selected");
-			
-			RedrawWindow(hDlg, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW);
+			WIN32GUI_LoadUIString (IDS_AVIOUTPUT_NOCODEC, aviout_videoc, sizeof (aviout_videoc));
 		}
+		SetWindowText(GetDlgItem(hDlg, IDC_AVIOUTPUT_VIDEO_STATIC), aviout_videoc);
 
-	sound_bits = workprefs.sound_bits;
-	sound_freq = workprefs.sound_freq;
-	stereo = workprefs.stereo;
-	
-	avioutput_width_old = avioutput_width;
-	avioutput_height_old = avioutput_height;
-	avioutput_bits_old = avioutput_bits;
-	avioutput_fps_old = avioutput_fps;
 }
 
 static BOOL CALLBACK AVIOutputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -5278,6 +5243,7 @@ static BOOL CALLBACK AVIOutputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 	case WM_INITDIALOG:
 		pages[AVIOUTPUT_ID] = hDlg;
 		currentpage = AVIOUTPUT_ID;
+		enable_for_avioutputdlg(hDlg);
 		SendDlgItemMessage(hDlg, IDC_AVIOUTPUT_FPS, TBM_SETRANGE, TRUE, MAKELONG(1, VBLANK_HZ_NTSC));
 		SendDlgItemMessage(hDlg, IDC_AVIOUTPUT_FPS, TBM_SETPOS, TRUE, VBLANK_HZ_PAL);
 		SendMessage(hDlg, WM_HSCROLL, (WPARAM) NULL, (LPARAM) NULL);
@@ -5304,85 +5270,6 @@ static BOOL CALLBACK AVIOutputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 			return TRUE;
 		}
 		
-	case WM_PAINT:
-		{
-			PAINTSTRUCT Paint;
-			HDC hDC = BeginPaint(hDlg, &Paint);
-			
-			RECT AmigaRect; // Virtual amiga screen rect
-			RECT VideoRect; // AVI Frame dimensions
-			
-			RECT ScreenRect;
-			RECT ClientRect;
-			
-			POINT p;
-			
-			HWND hWnd = GetDlgItem(hDlg, IDC_AVIOUTPUT_FRAME);
-			
-			GetClientRect(hWnd, &ClientRect);
-			
-			p.x = ClientRect.left + 1;
-			p.y = ClientRect.top + 1;
-			ClientToScreen(hWnd, &p);
-			ScreenToClient(hDlg, &p);
-			
-			ClientRect.right -= 2;
-			ClientRect.bottom -= 2;
-			
-			ScreenRect.left = p.x;
-			ScreenRect.top = p.y;
-			ScreenRect.right = ScreenRect.left + ClientRect.right;
-			ScreenRect.bottom = ScreenRect.top + ClientRect.bottom;
-			
-			{
-				double x = (double)((avioutput_width > workprefs.gfx_width) ? workprefs.gfx_width : avioutput_width);
-				double y = (double)((avioutput_height > workprefs.gfx_height) ? workprefs.gfx_height : avioutput_height);
-				
-				AmigaRect.left = p.x;
-				AmigaRect.top = p.y;
-				
-				AmigaRect.right = (LONG)(((double)ClientRect.right / (double)avioutput_width) * x);
-				AmigaRect.bottom = (LONG)(((double)ClientRect.bottom / (double)avioutput_height) * y);
-				
-				// center
-				AmigaRect.left += ((ClientRect.right / 2) - (AmigaRect.right / 2));
-				AmigaRect.right += AmigaRect.left;
-				
-				AmigaRect.top += (ClientRect.bottom / 2) - (AmigaRect.bottom / 2);
-				AmigaRect.bottom += AmigaRect.top;
-				
-				VideoRect.left = p.x;
-				VideoRect.top = p.y;
-				
-				VideoRect.right = (LONG)(((double)ClientRect.right / (double)workprefs.gfx_width) * x);
-				VideoRect.bottom = (LONG)(((double)ClientRect.bottom / (double)workprefs.gfx_height) * y);
-				
-				// center
-				VideoRect.left += (ClientRect.right / 2) - (VideoRect.right / 2);
-				VideoRect.right += VideoRect.left;
-				
-				VideoRect.top += (ClientRect.bottom / 2) - (VideoRect.bottom / 2);
-				VideoRect.bottom += VideoRect.top;
-			}
-			
-			{
-				HBRUSH hbrush_red = CreateSolidBrush(RGB(255, 0, 0));
-				HBRUSH hbrush_gray = CreateSolidBrush(RGB(100, 100, 100));
-				
-				FillRect(hDC, &ScreenRect, GetStockObject(BLACK_BRUSH));
-				
-				//if(!BlitAmigaScreenThing(hDC, &AmigaRect))
-					FillRect(hDC, &AmigaRect, hbrush_gray);
-				
-				FrameRect(hDC, &VideoRect, hbrush_red);
-				
-				DeleteObject(hbrush_red);
-				DeleteObject(hbrush_gray);
-			}
-			
-			EndPaint(hDlg, &Paint);
-			return TRUE;
-		}
 		
 	case WM_COMMAND:
 		if(recursive > 0)
@@ -5392,22 +5279,15 @@ static BOOL CALLBACK AVIOutputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 		
 		switch(wParam)
 		{
+		case IDC_AVIOUTPUT_ACTIVATED:
+		    avioutput_requested = !avioutput_requested;
+		    SendMessage(hDlg, WM_HSCROLL, (WPARAM) NULL, (LPARAM) NULL);
+		    if (!avioutput_requested)
+			AVIOutput_End ();
+		    break;
+
 		case IDC_SCREENSHOT:
 			screenshot(1);
-			break;
-			
-		case IDC_AVIOUTPUT_8BIT:
-			if(avioutput_bits == 24)
-				avioutput_video = 0;
-			
-			avioutput_bits = 8;
-			break;
-			
-		case IDC_AVIOUTPUT_24BIT:
-			if(avioutput_bits == 8)
-				avioutput_video = 0;
-			
-			avioutput_bits = 24;
 			break;
 			
 		case IDC_AVIOUTPUT_PAL:
@@ -5422,14 +5302,17 @@ static BOOL CALLBACK AVIOutputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 			
 		case IDC_AVIOUTPUT_AUDIO:
 			{
+				if (avioutput_enabled)
+				    AVIOutput_End ();
 				if(IsDlgButtonChecked(hDlg, IDC_AVIOUTPUT_AUDIO) == BST_CHECKED)
 				{
 					LPSTR string;
 					
+					aviout_audioc[0] = 0;
 					if(string = AVIOutput_ChooseAudioCodec(hDlg))
 					{
 						avioutput_audio = AVIAUDIO_AVI;
-						
+						strcpy (aviout_audioc, string);
 						SetWindowText(GetDlgItem(hDlg, IDC_AVIOUTPUT_AUDIO_STATIC), string);
 					}
 					else
@@ -5443,14 +5326,16 @@ static BOOL CALLBACK AVIOutputDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 			
 		case IDC_AVIOUTPUT_VIDEO:
 			{
+				if (avioutput_enabled)
+				    AVIOutput_End ();
 				if(IsDlgButtonChecked(hDlg, IDC_AVIOUTPUT_VIDEO) == BST_CHECKED)
 				{
 					LPSTR string;
-					
+					aviout_videoc[0] = 0;
 					if(string = AVIOutput_ChooseVideoCodec(hDlg))
 					{
 						avioutput_video = 1;
-						
+						strcpy (aviout_videoc, string);
 						SetWindowText(GetDlgItem(hDlg, IDC_AVIOUTPUT_VIDEO_STATIC), string);
 					}
 					else
@@ -5628,7 +5513,7 @@ int gui_init (void)
     int ret;
     
     ret = GetSettings(1);
-    if (ret) {
+    if (ret > 0) {
 #ifdef AVIOUTPUT
 	AVIOutput_Begin ();
 #endif

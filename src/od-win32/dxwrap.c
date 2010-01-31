@@ -610,15 +610,17 @@ int DirectDraw_Start( GUID *guid )
 
     /* Prepare our DirectDrawState structure */
     ZeroMemory( &DirectDrawState, sizeof( DirectDrawState ) );
-
     ZeroMemory( &drivercaps, sizeof( drivercaps ) );
     ZeroMemory( &helcaps, sizeof( helcaps ) );
     drivercaps.dwSize = sizeof( drivercaps );
     helcaps.dwSize = sizeof( helcaps );
 
     ddrval = DirectDrawCreate( guid, &DirectDrawState.directdraw.ddx, NULL );
-    if (ddrval != DD_OK)
+    if (ddrval != DD_OK) {
+	if ( guid != NULL)
+	    return 0;
 	goto oops;
+    }
 
     DirectDrawState.initialized = TRUE;
 
@@ -628,21 +630,22 @@ int DirectDraw_Start( GUID *guid )
     if( ddrval != DD_OK )
     {
 	gui_message("start_ddraw(): DirectX 7 or newer required");
+        DirectDraw_Release();
 	return 0;
     }
 
     DirectDraw_GetCaps( &drivercaps, &helcaps );
     ShowDDCaps( drivercaps, 1 );
     ShowDDCaps( helcaps, 0 );
-
-    ddrval = DirectDraw_GetDisplayMode();
-    if (ddrval != DD_OK)
-	goto oops;
-
-    return 1;
+    if (DirectDraw_GetDisplayMode () == DD_OK)
+	return 1;
+    if (guid != NULL) {
+	DirectDraw_Release ();
+	return 0;
+    }
 
   oops:
-    gui_message("start_ddraw(): DirectDraw initialization failed with %s\n", DXError (ddrval));
+    gui_message ("start_ddraw(): DirectDraw initialization failed with %s\n", DXError (ddrval));
     DirectDraw_Release();
     return 0;
 }
@@ -669,11 +672,12 @@ void DirectDraw_Release( void )
     releaser( DirectDrawState.lpDDC, IDirectDrawClipper_Release );
     releaser( DirectDrawState.lpDDP, IDirectDrawPalette_Release );
 
-    if( DirectDrawState.directdraw.dd )
+    if (DirectDrawState.directdraw.dd && DirectDrawState.modeset)
     {
 	IDirectDraw7_RestoreDisplayMode( DirectDrawState.directdraw.dd );
 	IDirectDraw7_SetCooperativeLevel( DirectDrawState.directdraw.dd, hAmigaWnd, DDSCL_NORMAL);
     }
+    DirectDrawState.modeset = 0;
 
     releaser( DirectDrawState.overlay.surface, IDirectDrawSurface7_Release );
     releaser( DirectDrawState.primary.surface, IDirectDrawSurface7_Release );
@@ -783,6 +787,7 @@ HRESULT DirectDraw_SetDisplayMode( int width, int height, int bits, int freq )
 
     ddrval = IDirectDraw7_SetDisplayMode( DirectDrawState.directdraw.dd,
                                           width, height, bits, freq, 0 );
+    DirectDrawState.modeset = 1;
     return ddrval;
 }
 
@@ -2005,3 +2010,17 @@ HRESULT DirectDraw_UpdateOverlay( RECT sr, RECT dr )
     }
     return DD_OK;
 }
+
+char *outGUID (GUID *guid)
+{
+    static char gb[64];
+    if (guid == NULL)
+	return "NULL";
+    sprintf(gb, "%08.8X-%04.8X-%04.8X-%02.2X%02.2X%02.2X%02.2X%02.2X%02.2X%02.2X%02.2X",
+	guid->Data1, guid->Data2, guid->Data3,
+	guid->Data4[0], guid->Data4[1], guid->Data4[2], guid->Data4[3],
+	guid->Data4[4], guid->Data4[5], guid->Data4[6], guid->Data4[7]);
+    return gb;
+}
+
+

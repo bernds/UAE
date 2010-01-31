@@ -81,11 +81,12 @@ char *colormodes[] = { "256 colors", "32768 colors", "65536 colors",
 
 void discard_prefs (struct uae_prefs *p)
 {
-    struct strlist **ps = &p->unknown_lines;
+    struct strlist **ps = &p->all_lines;
     while (*ps) {
 	struct strlist *s = *ps;
 	*ps = s->next;
-	free (s->str);
+	free (s->value);
+	free (s->option);
 	free (s);
     }
 #ifdef FILESYS
@@ -115,7 +116,7 @@ void default_prefs (struct uae_prefs *p)
     p->start_gui = 1;
     p->start_debugger = 0;
 
-    p->unknown_lines = 0;
+    p->all_lines = 0;
     /* Note to porters: please don't change any of these options! UAE is supposed
      * to behave identically on all platforms if possible. */
     p->illegal_mem = 0;
@@ -441,9 +442,6 @@ static void fix_options (void)
     if (currprefs.cpu_cycle_exact || currprefs.blitter_cycle_exact)
 	currprefs.fast_copper = 0;
 
-    if (currprefs.cpu_level > 0)
-	currprefs.cpu_cycle_exact = 0;
-
     if (currprefs.collision_level < 0 || currprefs.collision_level > 3) {
 	write_log ("Invalid collision support level.  Using 1.\n");
 	currprefs.collision_level = 1;
@@ -537,12 +535,30 @@ const char *gameport_state (int nr)
 void usage (void)
 {
 }
-
-void parse_cmdline (int argc, char **argv)
+static void parse_cmdline_2 (int argc, char **argv)
 {
     int i;
+
+    cfgfile_addcfgparam (0);
     for (i = 1; i < argc; i++) {
-	if (strncmp (argv[i], "-config=", 8) == 0) {
+	if (strcmp (argv[i], "-cfgparam") == 0) {
+	    if (i + 1 == argc)
+		write_log ("Missing argument for '-cfgparam' option.\n");
+	    else
+		cfgfile_addcfgparam (argv[++i]);
+	}
+    }
+}
+
+static void parse_cmdline (int argc, char **argv)
+{
+    int i;
+
+    for (i = 1; i < argc; i++) {
+	if (strcmp (argv[i], "-cfgparam") == 0) {
+	    if (i + 1 < argc)
+		i++;
+	} else if (strncmp (argv[i], "-config=", 8) == 0) {
 #ifdef FILESYS
             free_mountinfo (currprefs.mountinfo);
             currprefs.mountinfo = alloc_mountinfo ();
@@ -574,7 +590,7 @@ void parse_cmdline (int argc, char **argv)
 		int extra_arg = *arg == '\0';
 		if (extra_arg)
 		    arg = i + 1 < argc ? argv[i + 1] : 0;
-		if (parse_cmdline_option (argv[i][1], (char*)arg) && extra_arg)
+		if (parse_cmdline_option (&currprefs, argv[i][1], (char*)arg) && extra_arg)
 		    i++;
 	    }
 	}
@@ -597,6 +613,8 @@ static void parse_cmdline_and_init_file (int argc, char **argv)
 	}
     }
 #endif
+
+    parse_cmdline_2 (argc, argv);
 
     strcat (optionsfile, restart_config);
 
@@ -675,6 +693,7 @@ void do_leave_program (void)
 #endif
     savestate_free ();
     memory_cleanup ();
+    cfgfile_addcfgparam (0);
 }
 
 void start_program (void)

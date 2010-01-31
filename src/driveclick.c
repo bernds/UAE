@@ -26,6 +26,8 @@ static int freq = 44100;
 static int drv_starting[4], drv_spinning[4], drv_has_spun[4], drv_has_disk[4];
 
 static int click_initialized;
+#define DS_SHIFT 10
+static int sample_step;
 
 static uae_s16 *clickbuffer;
 
@@ -88,7 +90,7 @@ static void freesample (struct drvsample *s)
 
 void driveclick_init(void)
 {
-    int v, vv, i;
+    int v, vv, i, j;
     char tmp[1000];
 
     driveclick_free ();
@@ -117,6 +119,8 @@ void driveclick_init(void)
 		    freesample (&drvs[i][j]);
 		currprefs.dfxclick[i] = changed_prefs.dfxclick[i] = 0;
 	    }
+	    for (j = 0; j < DS_END; j++)
+		drvs[i][j].len <<= DS_SHIFT;
 	    drvs[i][DS_CLICK].pos = drvs[i][DS_CLICK].len;
 	    drvs[i][DS_SNATCH].pos = drvs[i][DS_SNATCH].len;
 	    vv += currprefs.dfxclick[i];
@@ -132,6 +136,7 @@ void driveclick_reset (void)
 {
     free (clickbuffer);
     clickbuffer = xmalloc (sndbufsize);
+    sample_step = (freq << DS_SHIFT) / currprefs.sound_freq;
 }
 
 void driveclick_free (void)
@@ -163,13 +168,15 @@ STATIC_INLINE uae_s16 getsample(void)
 	    if (drv_spinning[i] || drv_starting[i]) {
 		if (drv_starting[i] && drv_has_spun[i]) {
 		    if (ds_start->p && ds_start->pos < ds_start->len) {
-			smp = ds_start->p[ds_start->pos++];
+			smp = ds_start->p[ds_start->pos >> DS_SHIFT];
+			ds_start->pos += sample_step;
 		    } else {
 			drv_starting[i] = 0;
 		    }
 		} else if (drv_starting[i] && drv_has_spun[i] == 0) {
 		    if (ds_snatch->p && ds_snatch->pos < ds_snatch->len) {
-			smp = ds_snatch->p[ds_snatch->pos++];
+			smp = ds_snatch->p[ds_snatch->pos >> DS_SHIFT];
+			ds_snatch->pos += sample_step;
 		    } else {
 			drv_starting[i] = 0;
 			ds_start->pos = ds_start->len;
@@ -179,11 +186,14 @@ STATIC_INLINE uae_s16 getsample(void)
 		if (ds_spin->p && drv_starting[i] == 0) {
 		    if (ds_spin->pos >= ds_spin->len)
 			ds_spin->pos -= ds_spin->len;
-		    smp = ds_spin->p[ds_spin->pos++];
+		    smp = ds_spin->p[ds_spin->pos >> DS_SHIFT];
+		    ds_spin->pos += sample_step;
 		}
 	    }
-	    if (ds_click->p && ds_click->pos < ds_click->len)
-		smp += ds_click->p[ds_click->pos++];
+	    if (ds_click->p && ds_click->pos < ds_click->len) {
+		smp += ds_click->p[ds_click->pos >> DS_SHIFT];
+		ds_click->pos += sample_step;
+	    }
 	}
     }
     if (!div)
@@ -205,6 +215,8 @@ static void mix (void)
 	    clickbuffer[clickcnt++] = getsample();
 	}
     }
+    if (clickcnt > 0)
+	clickbuffer[clickcnt] = clickbuffer[clickcnt - 1];
 }
 
 STATIC_INLINE uae_s16 limit (uae_s32 v)
@@ -224,38 +236,17 @@ void driveclick_mix (uae_s16 *sndbuffer, int size)
 	return;
     mix();
     clickcnt = 0;
-    if (freq != currprefs.sound_freq) {
-	int mult = (currprefs.sound_freq << 10) / freq;
-	static int offset;
-	if (currprefs.stereo) {
-	    for (i = 0; i < size / 2; i++) {
-		uae_s16 s = clickbuffer[offset >> 10];
-		sndbuffer[0] = limit(((sndbuffer[0] + s) * 2) / 3);
-		sndbuffer[1] = limit(((sndbuffer[1] + s) * 2) / 3);
-		sndbuffer += 2;
-		offset += mult;
-	    }
-	} else {
-	    for (i = 0; i < size; i++) {
-		sndbuffer[0] = limit(((sndbuffer[0] + clickbuffer[offset >> 10]) * 2) / 3);
-		sndbuffer++;
-		offset += mult;
-	    }
-	}
-	offset &= 0x3ff;
+    if (currprefs.stereo) {
+        for (i = 0; i < size / 2; i++) {
+	    uae_s16 s = clickbuffer[i];
+	    sndbuffer[0] = limit(((sndbuffer[0] + s) * 2) / 3);
+	    sndbuffer[1] = limit(((sndbuffer[1] + s) * 2) / 3);
+	    sndbuffer += 2;
+        }
     } else {
-	if (currprefs.stereo) {
-	    for (i = 0; i < size / 2; i++) {
-		uae_s16 s = clickbuffer[i];
-		sndbuffer[0] = limit(((sndbuffer[0] + s) * 2) / 3);
-		sndbuffer[1] = limit(((sndbuffer[1] + s) * 2) / 3);
-		sndbuffer += 2;
-	    }
-	} else {
-	    for (i = 0; i < size; i++) {
-		sndbuffer[0] = limit(((sndbuffer[0] + clickbuffer[i]) * 2) / 3);
-		sndbuffer++;
-	    }
+        for (i = 0; i < size; i++) {
+	    sndbuffer[0] = limit(((sndbuffer[0] + clickbuffer[i]) * 2) / 3);
+	    sndbuffer++;
 	}
     }
 }
@@ -267,7 +258,7 @@ void driveclick_click (int drive, int startOffset)
     if (!currprefs.dfxclick[drive])
 	return;
     mix();
-    drvs[drive][DS_CLICK].pos = startOffset * 4;
+    drvs[drive][DS_CLICK].pos = (startOffset * 4) << DS_SHIFT;
     if (drvs[drive][DS_CLICK].pos > drvs[drive][DS_CLICK].len / 2)
 	drvs[drive][DS_CLICK].pos = drvs[drive][DS_CLICK].len / 2;
 }
@@ -286,7 +277,7 @@ void driveclick_motor (int drive, int running)
         if (drv_spinning[drive] == 0) {
 	    drv_starting[drive] = 1;
 	    drv_spinning[drive] = 1;
-	    if (drv_has_spun[drive] == 0 && drvs[drive][DS_SNATCH].pos == drvs[drive][DS_SNATCH].len)
+	    if (drv_has_disk[drive] && drv_has_spun[drive] == 0 && drvs[drive][DS_SNATCH].pos >= drvs[drive][DS_SNATCH].len)
 		drvs[drive][DS_SNATCH].pos = 0;
 	    if (running == 2)
 		drvs[drive][DS_START].pos = 0;

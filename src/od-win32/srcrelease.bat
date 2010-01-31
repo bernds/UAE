@@ -72,6 +72,16 @@ rm -rf debug
 rm -rf release
 cd ..
 
+cd singlefilehelper
+rm -rf debug
+rm -rf release
+cd ..
+
+cd resourcedll
+rm -rf debug
+rm -rf release
+cd ..
+
 rmdir bak
 cd ..
 cd ..

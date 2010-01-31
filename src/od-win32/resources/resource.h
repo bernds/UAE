@@ -164,6 +164,8 @@
 #define IDS_VSYNC_DEFAULT               215
 #define IDS_DRIVESOUND_NONE             216
 #define IDS_DRIVESOUND_DEFAULT_A500     217
+#define IDS_AVIOUT_NOCODEC              218
+#define IDS_AVIOUTPUT_NOCODEC           218
 #define IDC_RESOLUTION                  1021
 #define IDC_SERIAL                      1022
 #define IDC_REFRESHRATE                 1022
@@ -198,6 +200,7 @@
 #define IDC_AIABHOME                    1074
 #define IDC_CLOANTOHOME                 1075
 #define IDC_THEROOTS                    1076
+#define IDC_CAPS                        1077
 #define IDC_RICHEDIT1                   1091
 #define IDC_RICHEDIT2                   1092
 #define IDC_CONTRIBUTORS                1124
@@ -223,7 +226,6 @@
 #define IDC_PFULLSCREEN                 1192
 #define IDC_P96MEM                      1193
 #define IDC_DA_SLIDER                   1193
-#define IDC_PFULLSCREEN2                1194
 #define IDC_CPU0                        1200
 #define IDC_CPU1                        1201
 #define IDC_CPU2                        1202
@@ -517,6 +519,7 @@
 #define IDC_AVIOUTPUT_VIDEO_CODEC       1615
 #define IDC_OPENGLENABLE                1615
 #define IDC_INPUTDEVICEDISABLE          1615
+#define IDC_AVIOUTPUT_ACTIVATED         1615
 #define IDC_AVIOUTPUT_AUDIO_CODEC       1616
 #define IDC_OPENGLHZ                    1616
 #define IDC_INPUTAMIGACNT               1616
@@ -578,6 +581,7 @@
 #define IDC_ACTIVE_PRI                  1644
 #define IDC_KAILLERANONE                1645
 #define IDC_MINIMIZED_PRIORITY          1645
+#define IDC_AVIOUTPUT_FRAMELIMITER      1645
 #define IDC_KAILLERACONTROLS            1646
 #define IDC_STATE_RATE                  1646
 #define IDC_KAILLERANOFPSLIMIT          1647
@@ -606,7 +610,7 @@
 #define _APS_3D_CONTROLS                     1
 #define _APS_NEXT_RESOURCE_VALUE        183
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1645
+#define _APS_NEXT_CONTROL_VALUE         1646
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

@@ -38,25 +38,26 @@ struct dev_info_spti {
     char drvpath[10];
     int mediainserted;
     HANDLE handle;
+    int isatapi;
 };
 
 static uae_sem_t scgp_sem;
 static struct dev_info_spti dev_info[MAX_TOTAL_DEVICES];
 static uae_u8 *scsibuf;
 
-static int doscsi_2 (HANDLE *h, SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER *swb, int *err)
+static int doscsi (HANDLE *h, SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER *swb, int *err)
 {
     DWORD status, returned;
     int i;
 
     *err = 0;
-#if 0
-    write_log("SCSI, H=%08.8X: ",h);
-    for (i = 0; i < swb->spt.CdbLength; i++) {
-	write_log("%s%02.2X", i > 0 ? "." : "", swb->spt.Cdb[i]);
+    if (log_scsi) {
+        write_log("SCSI, H=%08.8X: ",h);
+	for (i = 0; i < swb->spt.CdbLength; i++) {
+	    write_log("%s%02.2X", i > 0 ? "." : "", swb->spt.Cdb[i]);
+	}
+	write_log("\n");
     }
-    write_log("\n");
-#endif
     gui_cd_led (1);
     status = DeviceIoControl (h, IOCTL_SCSI_PASS_THROUGH_DIRECT,
 	swb, sizeof (SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER),
@@ -72,16 +73,15 @@ static int doscsi_2 (HANDLE *h, SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER *swb, int *
 	write_log("\n");
 	write_log("Error code = %d, LastError=%d\n", swb->spt.ScsiStatus, lasterror);
     }
-#if 0
-    if (swb->spt.SenseInfoLength>0 && swb->spt.SenseInfoLength < 32) {
-	write_log("SENSE: ");
-	for (i = 0; i < swb->spt.SenseInfoLength; i++) {
-	    write_log("%s%02.2X", i > 0 ? "." : "", swb->SenseBuf[i]);
+    if (log_scsi) {
+        if (swb->spt.SenseInfoLength > 0) {
+	    write_log("SENSE: ");
+	    for (i = 0; i < swb->spt.SenseInfoLength && i < 32; i++) {
+		write_log("%s%02.2X", i > 0 ? "." : "", swb->SenseBuf[i]);
+	    }
+	    write_log("\n");
 	}
-        write_log("\n");
-	return 0;
     }
-#endif
     if (swb->spt.SenseInfoLength > 0)
 	return 0;
     gui_cd_led (1);
@@ -94,38 +94,11 @@ static int doscsi_2 (HANDLE *h, SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER *swb, int *
 #define MODE_SELECT_10 0x55
 #define MODE_SENSE_10  0x5A
 
-static int doscsi (HANDLE *h, SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER *swb)
-{
-    int err;
-#if 0
-    int cmd, status;
-    cmd = swb->spt.Cdb[0];
-    if (cmd == MODE_SENSE_6 || cmd == MODE_SELECT_6) {
-	/* replace MODE_SELECT/SENSE_6 if we access a ATAPI drive,
-	   otherwise send it now */
-	int len = swb->spt.DataTransferLength;
-	uae_u8 *data = &swb->spt.Cdb[0];
-	if (cmd = MODE_SENSE_6) {
-	    data[0] = MODE_SENSE_10;
-	    len += 2;
-	    data[7] = (len >> 8) & 0xff;
-	    data[8] = len & 0xff;
-	    data[9] = data[5]; // control
-	    data[4] = data[5] = data[6] = data[7] = 0;
-	    swb->spt.DataBuffer = scsibuf;
-	    swb->spt.DataTransferLength = DEVICE_SCSI_BUFSIZE;
-	    swb->spt.CdbLength = 10;
-	    status = doscsi_2 (h, swb, &err);
-	}
-    }
-#endif
-    return doscsi_2 (h, swb, &err);
-}
-
 static int execscsicmd (int unitnum, uae_u8 *data, int len, uae_u8 *inbuf, int inlen)
 {
     SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER swb;
     DWORD status;
+    int err, dolen;
 
     uae_sem_wait (&scgp_sem);
     memset (&swb, 0, sizeof (swb));
@@ -143,11 +116,12 @@ static int execscsicmd (int unitnum, uae_u8 *data, int len, uae_u8 *inbuf, int i
     swb.spt.SenseInfoOffset = offsetof(SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER, SenseBuf);
     swb.spt.SenseInfoLength = 32;
     memcpy (swb.spt.Cdb, data, len);
-    status = doscsi (dev_info[unitnum].handle, &swb);
+    status = doscsi (dev_info[unitnum].handle, &swb, &err);
     uae_sem_post (&scgp_sem);
+    dolen = swb.spt.DataTransferLength;
     if (!status)
 	return -1;
-    return swb.spt.DataTransferLength;
+    return dolen;
 }
 
 static int execscsicmd_direct (int unitnum, uaecptr acmd)
@@ -158,12 +132,14 @@ static int execscsicmd_direct (int unitnum, uaecptr acmd)
     uaecptr scsi_data = get_long (acmd + 0);
     uae_u32 scsi_len = get_long (acmd + 4);
     uaecptr scsi_cmd = get_long (acmd + 12);
-    uae_u16 scsi_cmd_len = get_word (acmd + 16);
+    int scsi_cmd_len = get_word (acmd + 16);
+    int scsi_cmd_len_orig = scsi_cmd_len;
     uae_u8 scsi_flags = get_byte (acmd + 20);
     uaecptr scsi_sense = get_long (acmd + 22);
     uae_u16 scsi_sense_len = get_word (acmd + 26);
-    int io_error = 0;
+    int io_error = 0, err, parm;
     addrbank *bank_data = &get_mem_bank (scsi_data);
+    uae_u8 *scsi_datap, *scsi_datap_org;
 
     memset (&swb, 0, sizeof (swb));
     swb.spt.Length = sizeof (SCSI_PASS_THROUGH);
@@ -177,10 +153,9 @@ static int execscsicmd_direct (int unitnum, uaecptr acmd)
 
     /* the Amiga does not tell us how long the timeout shall be, so make it _very_ long (specified in seconds) */
     swb.spt.TimeOutValue = 80 * 60;
-    swb.spt.DataBuffer = scsi_len ? bank_data->xlateaddr (scsi_data) : 0;
+    scsi_datap = scsi_datap_org = scsi_len ? bank_data->xlateaddr (scsi_data) : 0;
     swb.spt.DataTransferLength = scsi_len;
     swb.spt.DataIn = (scsi_flags & 1) ? SCSI_IOCTL_DATA_IN : SCSI_IOCTL_DATA_OUT;
-    swb.spt.CdbLength = (UCHAR)scsi_cmd_len;
     for (i = 0; i < scsi_cmd_len; i++)
 	swb.spt.Cdb[i] = get_byte (scsi_cmd + i);
     if (scsi_sense_len > 32)
@@ -188,10 +163,14 @@ static int execscsicmd_direct (int unitnum, uaecptr acmd)
     swb.spt.SenseInfoLength  = (scsi_flags & 4) ? 4 : /* SCSIF_OLDAUTOSENSE */
         (scsi_flags & 2) ? scsi_sense_len : /* SCSIF_AUTOSENSE */
         32;
+    if (dev_info[unitnum].isatapi)
+        scsi_atapi_fixup_pre (swb.spt.Cdb, &scsi_cmd_len, &scsi_datap, &scsi_len, &parm);
+    swb.spt.CdbLength = (UCHAR)scsi_cmd_len;
+    swb.spt.DataBuffer = scsi_datap;
 
-    status = doscsi (dev_info[unitnum].handle, &swb);
+    status = doscsi (dev_info[unitnum].handle, &swb, &err);
 
-    put_word (acmd + 18, status == 0 ? 0 : scsi_cmd_len); /* fake scsi_CmdActual */
+    put_word (acmd + 18, status == 0 ? 0 : scsi_cmd_len_orig); /* fake scsi_CmdActual */
     put_byte (acmd + 21, swb.spt.ScsiStatus); /* scsi_Status */
     if (swb.spt.ScsiStatus) {
         io_error = 45; /* HFERR_BadStatus */
@@ -208,13 +187,19 @@ static int execscsicmd_direct (int unitnum, uaecptr acmd)
 	    io_error = 20; /* io_Error, but not specified */
 	    put_long (acmd + 8, 0); /* scsi_Actual */
         } else {
+	    scsi_len = swb.spt.DataTransferLength;
+	    if (dev_info[unitnum].isatapi)
+		scsi_atapi_fixup_post (swb.spt.Cdb, scsi_cmd_len, scsi_datap_org, scsi_datap, &scsi_len, parm);
 	    io_error = 0;
             put_long (acmd + 8, scsi_len); /* scsi_Actual */
         }
     }
     put_word (acmd + 28, sactual);
-
     uae_sem_post (&scgp_sem);
+
+    if (scsi_datap != scsi_datap_org)
+	free (scsi_datap);
+
     return io_error;
 }
 
@@ -295,12 +280,25 @@ static void close_scsi_bus (void)
     scsibuf = 0;
 }
 
+static int isatapi (int unitnum)
+{
+    uae_u8 cmd[6] = { 0x12,0,0,0,36,0 }; /* INQUIRY */
+    uae_u8 out[36];
+    int outlen = sizeof (out);
+    uae_u8 *p = execscsicmd_in (unitnum, cmd, sizeof (cmd), &outlen);
+    if (!p)
+	return 0;
+    if (outlen >= 2 && (p[0] & 31) == 5 && (p[2] & 7) == 0)
+	return 1;
+    return 0;
+}
+
 static int mediacheck (int unitnum)
 {
     uae_u8 cmd [6] = { 0,0,0,0,0,0 }; /* TEST UNIT READY */
     if (dev_info[unitnum].handle == INVALID_HANDLE_VALUE)
 	return 0;
-    return execscsicmd (unitnum, cmd, sizeof(cmd), 0, 0) >= 0 ? 1 : 0;
+    return execscsicmd (unitnum, cmd, sizeof (cmd), 0, 0) >= 0 ? 1 : 0;
 }
 
 int open_scsi_device (int unitnum)
@@ -317,7 +315,10 @@ int open_scsi_device (int unitnum)
         write_log ("failed to open cd unit %d (%s)\n", unitnum, dev);
     } else {
         dev_info[unitnum].mediainserted = mediacheck (unitnum);
-	write_log ("cd unit %d opened (%s), %s\n", unitnum, dev, dev_info[unitnum].mediainserted ? "CD inserted" : "Drive empty");
+	dev_info[unitnum].isatapi = isatapi (unitnum);
+	write_log ("cd unit %d %s opened (%s), %s\n", unitnum,
+	    dev_info[unitnum].isatapi ? "[ATAPI]" : "[SCSI]", dev,
+	    dev_info[unitnum].mediainserted ? "CD inserted" : "Drive empty");
         return 1;
     }
     return 0;
@@ -361,10 +362,15 @@ void win32_spti_media_change (char driveletter, int insert)
     }
 }
 
+static int check_isatapi (int unitnum)
+{
+    return dev_info[unitnum].isatapi;
+}
+
 struct device_functions devicefunc_win32_spti = {
     open_scsi_bus, close_scsi_bus, open_scsi_device, close_scsi_device, info_device,
     execscsicmd_out, execscsicmd_in, execscsicmd_direct,
-    0, 0, 0, 0, 0, 0
+    0, 0, 0, 0, 0, 0, 0, check_isatapi
 };
 
 #endif

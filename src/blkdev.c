@@ -8,6 +8,7 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 #include "options.h"
+#include "memory.h"
 
 #include "config.h"
 
@@ -185,7 +186,89 @@ struct device_info *sys_command_info (int mode, int unitnum, struct device_info 
 	return device_func[DF_IOCTL]->info (unitnum, di);
 }
 
+#define MODE_SELECT_6 0x15
+#define MODE_SENSE_6 0x1a
+#define MODE_SELECT_10 0x55
+#define MODE_SENSE_10 0x5A
+
+void scsi_atapi_fixup_pre (uae_u8 *scsi_cmd, int *len, uae_u8 **datap, int *datalen, int *parm)
+{
+    uae_u8 cmd, *p, *data = *datap;
+
+    *parm = 0;
+    cmd = scsi_cmd[0];
+    if (cmd == MODE_SELECT_6) {
+	scsi_cmd[0] = MODE_SELECT_10;
+	scsi_cmd[8] = scsi_cmd[4];
+	scsi_cmd[9] = scsi_cmd[5];
+	scsi_cmd[2] = scsi_cmd[3] = scsi_cmd[4] = 0;
+	scsi_cmd[5] = scsi_cmd[6] = scsi_cmd[7] = 0;
+	*len = 10;
+	p = xmalloc (*datalen + 4);
+	memcpy (p + 8, data + 4, (*datalen) - 4);
+	p[0] = 0;
+	p[1] = data[0];
+	p[2] = data[1];
+	p[3] = data[2];
+	p[4] = p[5] = p[6] = 0;
+	p[7] = data[3];
+	*datalen += 4;
+	*parm = MODE_SELECT_10;
+	*datap = p;
+	return;
+    } else if (cmd == MODE_SENSE_6) {
+	scsi_cmd[0] = MODE_SENSE_10;
+	scsi_cmd[8] = scsi_cmd[4];
+	scsi_cmd[9] = scsi_cmd[5];
+	scsi_cmd[3] = scsi_cmd[4] = scsi_cmd[5] = scsi_cmd[6] = scsi_cmd[7] = 0;
+	*datap = xmalloc (*datalen + 4);
+	*len = 10;
+	*parm = MODE_SENSE_10;
+	return;
+    }
+}
+
+void scsi_atapi_fixup_post (uae_u8 *scsi_cmd, int len, uae_u8 *olddata, uae_u8 *data, int *datalen, int parm)
+{
+    if (!data || !(*datalen))
+	return;
+    if (parm == MODE_SENSE_10) {
+	olddata[0] = data[1];
+	olddata[1] = data[2];
+	olddata[2] = data[3];
+	olddata[3] = data[7];
+	*datalen -= 4;
+	if (*datalen > 4)
+	    memcpy (olddata + 4, data + 8, (*datalen) - 4);
+    }
+}
+
+static void scsi_atapi_fixup_inquiry (uaecptr req)
+{
+    uaecptr scsi_data = get_long (req + 0);
+    uae_u32 scsi_len = get_long (req + 4);
+    uaecptr scsi_cmd = get_long (req + 12);
+    uae_u8 cmd;
+
+    cmd = get_byte (scsi_cmd);
+    /* CDROM INQUIRY: most Amiga programs expect ANSI version == 2
+     * (ATAPI normally responds with zero)
+     */
+    if (cmd == 0x12 && scsi_len > 2 && scsi_data) {
+	uae_u8 per = get_byte (scsi_data + 0);
+	uae_u8 b = get_byte (scsi_data + 2);
+	/* CDROM and ANSI version == 0 ? */
+	if ((per & 31) == 5 && (b & 7) == 0) {
+	    b |= 2;
+	    put_byte (scsi_data + 2, b);
+	}
+    }
+}
+
 int sys_command_scsi_direct (int unitnum, uaecptr request)
 {
-    return device_func[DF_SCSI]->exec_direct (unitnum, request);
+    int ret = device_func[DF_SCSI]->exec_direct (unitnum, request);
+    if (!ret && device_func[DF_SCSI]->isatapi(unitnum))
+        scsi_atapi_fixup_inquiry (request);
+    return ret;
 }

@@ -23,9 +23,6 @@
 #include <ntddcdrm.h>
 #include <ntdddisk.h>
 
-//#undef device_debug
-//#define device_debug write_log
-
 struct dev_info_ioctl {
     HANDLE h;
     uae_u8 *tempbuffer;
@@ -70,7 +67,8 @@ static int win32_error (int unitnum, const char *format,...)
     FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER|FORMAT_MESSAGE_FROM_SYSTEM|FORMAT_MESSAGE_IGNORE_INSERTS,
 	NULL,err,MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
 	(LPTSTR) &lpMsgBuf,0,NULL);
-    device_debug ("IOCTL: unit=%d %s,%d: %s ", unitnum, buf, err, (char*)lpMsgBuf);
+    if (log_scsi)
+	write_log ("IOCTL: unit=%d %s,%d: %s ", unitnum, buf, err, (char*)lpMsgBuf);
     va_end( arglist );
     return err;
 }
@@ -397,16 +395,19 @@ static int open_bus (int flags)
 	memset (&ciw32[i], 0, sizeof (struct dev_info_ioctl));
     total_devices = 0;
     dwDriveMask = GetLogicalDrives();
-    device_debug ("IOCTL: drive mask = %08.8X\n", dwDriveMask);
+    if (log_scsi)
+	write_log ("IOCTL: drive mask = %08.8X\n", dwDriveMask);
     dwDriveMask >>= 2; // Skip A and B drives...
     for( drive = 'C'; drive <= 'Z'; drive++) {
 	if (dwDriveMask & 1) {
 	    int dt;
 	    sprintf( tmp, "%c:\\", drive );
 	    dt = GetDriveType (tmp);
-	    device_debug ("IOCTL: drive %c type %d\n", drive, dt);
+	    if (log_scsi)
+		write_log ("IOCTL: drive %c type %d\n", drive, dt);
 	    if (((flags & (1 << INQ_ROMD)) && dt == DRIVE_CDROM) || ((flags & (1 << INQ_DASD)) && dt == DRIVE_FIXED)) {
-	        device_debug ("IOCTL: drive %c: = unit %d\n", drive, total_devices);
+	        if (log_scsi)
+		    write_log ("IOCTL: drive %c: = unit %d\n", drive, total_devices);
 		ciw32[total_devices].drvletter = drive;
 		ciw32[total_devices].type = dt;
 		sprintf (ciw32[total_devices].devname,"\\\\.\\%c:", drive);
