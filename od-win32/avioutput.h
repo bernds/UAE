@@ -9,20 +9,25 @@
 extern int avioutput_video, avioutput_audio, avioutput_enabled, avioutput_requested;
 
 extern int avioutput_width, avioutput_height, avioutput_bits;
-extern int avioutput_fps, avioutput_framelimiter;
+extern int avioutput_fps;
+extern DWORD avioutput_framelimiter, avioutput_nosoundoutput;
 
 extern char avioutput_filename[MAX_DPATH];
 
 extern void AVIOutput_WriteAudio(uae_u8 *sndbuffer, int sndbufsize);
 extern void AVIOutput_WriteVideo(void);
-extern LPSTR AVIOutput_ChooseAudioCodec(HWND hwnd);
-extern LPSTR AVIOutput_ChooseVideoCodec(HWND hwnd);
+extern int AVIOutput_ChooseAudioCodec(HWND hwnd,char*,int);
+extern int AVIOutput_GetAudioCodec(char*,int);
+extern int AVIOutput_ChooseVideoCodec(HWND hwnd,char*,int);
+extern int AVIOutput_GetVideoCodec(char*,int);
 extern void AVIOutput_Restart(void);
 extern void AVIOutput_End(void);
 extern void AVIOutput_Begin(void);
 extern void AVIOutput_Release(void);
 extern void AVIOutput_Initialize(void);
 extern void AVIOutput_RGBinfo(int,int,int,int,int,int);
+extern void AVIOutput_GetSettings(void);
+extern void AVIOutput_SetSettings(void);
 
 #define AVIAUDIO_AVI 1
 #define AVIAUDIO_WAV 2

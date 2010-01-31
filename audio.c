@@ -466,7 +466,7 @@ static void sinc_prehandler(unsigned long best_evtime)
          * write data into sinc queue for mixing in the BLEP */
         if (acd->output_state != output) {
             if (acd->sinc_queue_length > SINC_QUEUE_LENGTH - 1) {
-                write_log("warning: sinc queue truncated. Last age: %d.\n", acd->sinc_queue[SINC_QUEUE_LENGTH-1].age);
+                //write_log("warning: sinc queue truncated. Last age: %d.\n", acd->sinc_queue[SINC_QUEUE_LENGTH-1].age);
                 acd->sinc_queue_length = SINC_QUEUE_LENGTH - 1;
             }
             /* make room for new and add the new value */
@@ -1216,15 +1216,15 @@ void check_prefs_changed_audio (void)
 #endif
     if (!sound_available || !sound_prefs_changed ())
 	return;
+#ifdef AVIOUTPUT
+    AVIOutput_Restart ();
+#endif
     set_audio();
 }
 
 void set_audio(void)
 {
     close_sound ();
-#ifdef AVIOUTPUT
-    AVIOutput_Restart ();
-#endif
     currprefs.produce_sound = changed_prefs.produce_sound;
     currprefs.win32_soundcard = changed_prefs.win32_soundcard;
     currprefs.sound_stereo = changed_prefs.sound_stereo;

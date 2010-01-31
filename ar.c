@@ -752,9 +752,10 @@ static void action_replay_go1 (int irq)
 }
 
 typedef struct {
-	uae_u8 jmps[8];
+	uae_u8 dummy[4+4];
+	uae_u8 jmps[3*4];
 	uae_u32 mon_size;
-	uae_u16 col0, col1;
+	uae_u8 col0h, col0l, col1h, col1l;
 	uae_u8 right;
 	uae_u8 keyboard;
 	uae_u8 key;
@@ -806,9 +807,17 @@ static void hrtmon_go (void)
 	put_long ((uaecptr)(regs.vbr + 8), old);
     } else {
         old = get_long((uaecptr)(regs.vbr + 0x7c));
-	put_long ((uaecptr)(regs.vbr + 0x7c), hrtmem_start + 4);
+	put_long ((uaecptr)(regs.vbr + 0x7c), hrtmem_start + 12 + 2 + get_word (hrtmem_start + 14));
 	Interrupt (7);
-	put_long ((uaecptr)(regs.vbr + 0x7c), old);
+	//put_long ((uaecptr)(regs.vbr + 0x7c), old);
+    }
+}
+
+void cartridge_init (void)
+{
+    if (hrtmemory && !ar1200) {
+        hrtmon_map_banks ();
+	put_long ((uaecptr)(regs.vbr + 0x7c), hrtmem_start + 12 + 2 + get_word (hrtmem_start + 14));
     }
 }
 
@@ -1442,6 +1451,8 @@ static void hrtmon_configure(void)
     HRTCFG *cfg = (HRTCFG*)hrtmemory;
     if (ar1200 || armodel || !cfg)
 	return;
+    cfg->col0h = 0x00; cfg->col0l = 0x5a;
+    cfg->col1h = 0x0f; cfg->col1l = 0xff;
     cfg->a1200 = (currprefs.chipset_mask & CSMASK_AGA) ? 1 : 0;
     cfg->aga = (currprefs.chipset_mask & CSMASK_AGA) ? 1 : 0;
     cfg->cd32 = cd32_enabled;

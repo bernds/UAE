@@ -11,7 +11,7 @@
 			<DebugSettings
 				Command="$(TargetPath)"
 				WorkingDirectory="f:\amiga"
-				CommandArguments="-log -disableharddrivesafetycheck"
+				CommandArguments="-log -scsilog"
 				Attach="false"
 				DebuggerType="3"
 				Remote="1"

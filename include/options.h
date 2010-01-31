@@ -9,7 +9,7 @@
 
 #define UAEMAJOR 1
 #define UAEMINOR 3
-#define UAESUBREV 0
+#define UAESUBREV 1
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -159,7 +159,6 @@ struct uae_prefs {
     int leds_on_screen;
     int keyboard_leds[3];
     int keyboard_leds_in_use;
-    int fast_copper;
     int scsi;
     int uaeserial;
     int catweasel;

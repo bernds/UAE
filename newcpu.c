@@ -1601,10 +1601,10 @@ void mmu_op(uae_u32 opcode, uae_u16 extra)
     if ((opcode & 0xFE0) == 0x0500) {
 	/* PFLUSH */
 	mmusr = 0;
-	write_log ("PFLUSH @$%lx\n", m68k_getpc());
+	//write_log ("PFLUSH @$%lx\n", m68k_getpc());
     } else if ((opcode & 0x0FD8) == 0x548) {
 	/* PTEST */
-	write_log ("PTEST @$%lx\n", m68k_getpc());
+	//write_log ("PTEST @$%lx\n", m68k_getpc());
     } else
 	op_illg (opcode);
 }
@@ -1670,8 +1670,7 @@ static int do_specialties (int cycles)
 	    return 0;
     }
     #endif
-    if ((regs.spcflags & SPCFLAG_ACTION_REPLAY) && action_replay_flag != ACTION_REPLAY_INACTIVE )
-    {
+    if ((regs.spcflags & SPCFLAG_ACTION_REPLAY) && action_replay_flag != ACTION_REPLAY_INACTIVE ) {
 	/*if(action_replay_flag == ACTION_REPLAY_ACTIVE && !is_ar_pc_in_rom())*/
 	/*	write_log("PC:%p\n",m68k_getpc());*/
 
@@ -2257,6 +2256,12 @@ void m68k_go (int may_quit)
 	    }
 	}
 
+	if (regs.spcflags) {
+	    uae_u32 of = regs.spcflags;
+	    regs.spcflags &= ~(SPCFLAG_BRK | SPCFLAG_MODE_CHANGE);
+	    do_specialties (0);
+	    regs.spcflags |= of & (SPCFLAG_BRK | SPCFLAG_MODE_CHANGE);
+	}
 #ifndef JIT
 	m68k_run1 (currprefs.cpu_level == 0 && currprefs.cpu_cycle_exact ? m68k_run_1_ce :
 		    currprefs.cpu_level == 0 && currprefs.cpu_compatible ? m68k_run_1 :
@@ -2465,9 +2470,10 @@ void m68k_dumpstate (void *f, uaecptr *nextpc)
     if (regs.s && regs.m == 0) regs.isp = m68k_areg(regs, 7);
     f_out (f, "USP=%08lx ISP=%08lx MSP=%08lx VBR=%08lx\n",
 	regs.usp,regs.isp,regs.msp,regs.vbr);
-    f_out (f, "T=%d%d S=%d M=%d X=%d N=%d Z=%d V=%d C=%d IMASK=%d\n",
+    f_out (f, "T=%d%d S=%d M=%d X=%d N=%d Z=%d V=%d C=%d IMASK=%d STP=%d\n",
 	regs.t1, regs.t0, regs.s, regs.m,
-	GET_XFLG, GET_NFLG, GET_ZFLG, GET_VFLG, GET_CFLG, regs.intmask);
+	GET_XFLG, GET_NFLG, GET_ZFLG, GET_VFLG, GET_CFLG,
+	regs.intmask, regs.stopped);
 #ifdef FPUEMU
     if (currprefs.cpu_level >= 2) {
 	uae_u32 fpsr;
