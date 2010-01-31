@@ -1,5 +1,150 @@
 
-Final
+1.5.3
+
+Beta 8:
+
+- delay sync clock enable until 10s from reset (do not confuse
+  KS delay calibration routine)
+- real PCMCIA SRAM re-insert detection really really does work now
+  (Thanks to Eclipse for donating PCMCIA SRAM card)
+  Vista note: Vista does not come with generic PCMCIA SRAM drivers
+  anymore but XP built-in drivers do work, only need memcard.sys and
+  memcard.inf from XP install. 32-bit Vista tested only.
+- vblank interrupt was not working in RTG vsync mode
+- fixed wrong colors after 16-bit fullscreen RTG to 32-bit desktop
+  switch
+
+Beta 7:
+
+- fixed D3D scanline missing right edge
+- OCS NTSC chipset always used PAL rates
+- windowed RTG mode FPS counter shows both RTG and chipset refresh
+  rates "<RTG> [<chipset]"
+- CIA TOD didn't stop when genlock mode was enabled without genlock
+  (caused KS to detect wrong timing mode, result was most OS time
+  functions, including CLI wait-command, counted incorrectly if
+  configured chipset refresh rate was different than current refresh
+  rate. Bug since the beginning of time but genlock option made this
+  worse because old "genlock always connected" feature hide this bug..
+  (CIA-A TOD configured to PS tick didn't have this problem) Thanks
+  to Ed Cruse for real NTSC A3000 testing.
+- Syncronize clock improved. Automatically enables PS supply tick mode
+  (CIA-A TOD = sysclock only if it uses PS supply tick) and also counts
+  "lost" ticks when emulation is stopped (for example GUI is open)
+  This is still a hack but at least it seems to work now :)
+
+Beta 6:
+
+- Picasso96 vblank rewritten again, now uses build-in Picasso96 vblank
+  hardware interrupt support. It really works now, WaitTOF() does not
+  waste CPU time anymore
+- added Picasso96 vblank rate configuration in GUI. Chipset = RTG
+  vblank is same as chipset refresh rate (same as in previous versions)
+  Real = real host-side refresh rate. <value> = refresh rate. Currently
+  this only affects vertical blank waiting functions
+- "Associate all"-button didn't work
+- fullscreen to another fullscreen resolution switch on non-primary
+  display could have frozen emulation in some cases
+- statefile-configuration parameter also sets default statefile path
+- 150b23 "disk write does not start if wordsync is enabled" was not
+  exactly right, disk write works normally if wordsync is enabled and
+  previous read detected wordsync. Internal "Wordsync detected" flag
+  apparently only gets reset when disk read is started. Kick Off 2
+  save, most likely many other programs too..
+
+Beta 5:
+
+- moved file extension stuff to half-empty priority panel, replaced
+  button with list and added (de)associate all buttons. Extension
+  command line visible and editable? Perhaps later..
+- Improved emulation of reads from write-only custom register after
+  some boring real Amiga testing.. (still not exactly right)
+  S.E.X by Fantasys works now. (does MOVE.L INTREQ,D0 when it should
+  have been MOVE.W INTREQR,D0.. This only worked accidentally)
+- Picasso96 vblank wait implemented without busy waiting. Was in pre
+  1.5.0 but busy waited, was "lost" when RTG was rewritten
+- sometimes first vertical blank interrupt was missed when loading
+  statefile if statefile was created when blitter was active
+
+Beta 4:
+
+- midline resolution support changed again (should be "good enough" now,
+  better compatibility requires bigger changes and boring logic analyzer
+  testing)
+- centering was very broken in some cases (b2)
+- only accept openal32.dll 6.14.357.22 or newer. (fixes possible crash at
+  startup)
+- missing sprites in some programs fixed, for example Leander and Battle
+  Squadron (b2)
+- added descriptions to file associations, fall back to user-specific
+  (instead of system-wide) file associations if no admin privileges (was
+  broken in Vista)
+- added "Associate file extensions"-button to Paths-panel. Adds following
+  extensions: .uae, .adf, .ipf, .dms, .uss. Removal not yet possible
+  (it gets really tricky if other programs use same extensions and there
+  is no API for adding or removing associations, only way is to access
+  registry directly.. believe it or not.) Automatic .uae association
+  removed. Better GUI in future. Maybe.
+
+Beta 3:
+
+- fixed AGA display corruption (hopefully all cases..)
+- POTxDAT behavior in output mode fixed
+
+Beta 2:
+
+- RTG hardware cursor was still visible if switching from hardware
+  cursor enabled WB installation to non-hardware cursor installation
+  without closing WinUAE
+- some CE-mode memory access optimizations
+- configuration cache loader missed most configuration files inside
+  directories (parent was set to wrong entry..)
+- some midline resolution change updates. Disposable Hero looks better
+  but not perfect yet.. Innovation Part 2 by Axis also looks better
+  (sprite resolution issue still remaining). Brian the Lion "message
+  dialog" corruption fixed.
+
+Beta 1:
+
+- huge memory leak fixed (display mode switch)
+- fullscreen color depth change didn't work on the fly
+- multi monitor resolution list may only have listed primary monitor's
+  resolutions
+- OpenGL fullscreen works again
+
+Beta 0.1:
+
+- "always on top" change works on the fly
+- "no taskbar button" works on the fly
+- missing stack frame type 4 added to RTE
+- dragging zipped adf to floppy leds mounted it as a filesystem, not
+  as a disk image (I guess zip containing only disk image(s) dropped to
+  WinUAE window should also mount as a disk image?)
+- emulated OCS-only "scanline" effect if DDFSTRT < 0x18. (Music disks
+  Ode to Ramon I and II by Digital Force. ECS = scroller is unreadable
+  and without "scanline" effect)
+- "latest news/abandon"-fix broke "nakudemo"-fix, both work now
+- parallel/serial/midi select menus didn't work
+- Input-panel numeric boxes at the bottom didn't work (same as above)
+- sleep_millis() was not thread-safe (could have caused random timing
+  glitches in some very rare cases)
+- emulate joystick 2nd/3rd button pullup resistor because some games
+  require it (and apparently some/many Amiga compatible 2+ button pads
+  have it). For example BC.Kid 2-button mode won't work without
+  joystick/pad with pullup resistor in second button pin. (regular
+  single button joysticks don't have pullups) Analog joystick update in
+  1.5.x "broke" this.
+- POTxDAT X and Y counter bytes were inverted (Aladdin second button)
+- reset current disk sound parameters when on the fly drive sound
+  settings are changed (does not fix missing motor sound until drive
+  motor restarts, not worth the trouble, at least not yet)
+- replaced "shouldn't happen" abort()'s in JIT with error dialog and
+  forced hard reset
+- highgfx superhires mode missing pixels fixed (also possible in some
+  normal max overscanned AGA-only screenmodes)
+
+
+Final 1.5.2
 
 - uaescsi.device only updated CMD_GETGEOMETRY parameters when emulation
   was started (and also broke CMD_READ if there was no CD in drive)

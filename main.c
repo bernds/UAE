@@ -398,6 +398,8 @@ void fixup_prefs (struct uae_prefs *p)
 #endif
     if (p->maprom && !p->address_space_24)
 	p->maprom = 0x0f000000;
+    if (p->tod_hack && p->cs_ciaatod == 0)
+	p->cs_ciaatod = p->ntscmode ? 2 : 1;
     target_fixup_options (p);
 }
 
@@ -487,6 +489,9 @@ static void parse_cmdline (int argc, char **argv)
 	} else if (strncmp (argv[i], "-config=", 8) == 0) {
 	    currprefs.mountitems = 0;
 	    target_cfgfile_load (&currprefs, argv[i] + 8, -1, 1);
+	} else if (strncmp (argv[i], "-statefile=", 11) == 0) {
+	    savestate_state = STATE_DORESTORE;
+	    strcpy (savestate_fname, argv[++i]);
 	}
 	/* Check for new-style "-f xxx" argument, where xxx is config-file */
 	else if (strcmp (argv[i], "-f") == 0) {
@@ -555,6 +560,9 @@ void reset_all_systems (void)
 {
     init_eventtab ();
 
+#ifdef PICASSO96
+    picasso_reset ();
+#endif
 #ifdef SCSIEMU
     scsi_reset ();
     scsidev_reset ();

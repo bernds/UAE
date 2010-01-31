@@ -943,10 +943,14 @@
 #define IDC_RTG_16BIT                   1788
 #define IDC_PATHS_CONFIGCACHE           1788
 #define IDC_RTG_24BIT                   1789
+#define IDC_ASSOCIATELIST               1789
 #define IDC_RTG_32BIT                   1790
+#define IDC_ASSOCIATE_OFF               1790
 #define IDC_DD_SURFACETYPE              1791
 #define IDC_RTG_SCALE_ALLOW             1791
 #define IDC_RTG_SCALE_ASPECTRATIO       1792
+#define IDC_ASSOCIATE_ON                1792
+#define IDC_RTG_VBLANKRATE              1793
 #define ID__FLOPPYDRIVES                40004
 #define ID_FLOPPYDRIVES_DF0             40005
 #define ID_ST_CONFIGURATION             40010

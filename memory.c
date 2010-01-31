@@ -36,6 +36,7 @@ int candirect = -1;
 /* Set by each memory handler that does not simply access real memory. */
 int special_mem;
 #endif
+extern uae_u16 last_custom_value;
 
 static int isdirectjit (void)
 {
@@ -44,9 +45,12 @@ static int isdirectjit (void)
 
 static int canjit (void)
 {
+#if 0
     if (currprefs.cpu_model >= 68020)
 	return 1;
     return 0;
+#endif
+    return 1;
 }
 
 static void nocanbang (void)
@@ -313,23 +317,23 @@ static struct romdata roms[] = {
     { "Freezer: HRTMon v2.30 (built-in)", 0, 0, 0, 0, "HRTMON\0", 0, 63, 0, 0, ROMTYPE_HRTMON, 0, 1, NULL,
 	0xffffffff, 0, 0, 0, 0, 0, "HRTMon" },
 
-    { "A590/A2091 SCSI boot ROM", 0, 0, 6, 0, "A590\0A2091\0", 16384, 53, 0, 0, ROMTYPE_A2091BOOT, 0, 0, NULL,
+    { "A590/A2091 SCSI boot ROM", 6, 0, 6, 0, "A590\0A2091\0", 16384, 53, 0, 0, ROMTYPE_A2091BOOT, 0, 0, NULL,
 	0x8396cf4e, 0x5E03BC61,0x8C862ABE,0x7BF79723,0xB4EEF4D2,0x1859A0F2 },
     ALTROM(53, 1, 1, 8192, ROMTYPE_ODD  | ROMTYPE_8BIT, 0xb0b8cf24,0xfcf40175,0x05f4d441,0x814b45d5,0x59c19eab,0x43816b30)
     ALTROM(53, 1, 2, 8192, ROMTYPE_EVEN | ROMTYPE_8BIT, 0x2e77bbff,0x8a098845,0x068f32cf,0xa4d34a27,0x8cd290f6,0x1d35a52c)
-    { "A590/A2091 SCSI boot ROM", 0, 0, 6, 6, "A590\0A2091\0", 16384, 54, 0, 0, ROMTYPE_A2091BOOT, 0, 0, NULL,
+    { "A590/A2091 SCSI boot ROM", 6, 6, 6, 6, "A590\0A2091\0", 16384, 54, 0, 0, ROMTYPE_A2091BOOT, 0, 0, NULL,
 	0x33e00a7a, 0x739BB828,0xE874F064,0x9360F59D,0x26B5ED3F,0xBC99BB66 },
     ALTROM(54, 1, 1, 8192, ROMTYPE_ODD  | ROMTYPE_8BIT, 0xe536bbb2,0xfd7f8a6d,0xa18c1b02,0xd07eb990,0xc2467a24,0x183ede12)
     ALTROM(54, 1, 2, 8192, ROMTYPE_EVEN | ROMTYPE_8BIT, 0xc0871d25,0xe155f18a,0xbb90cf82,0x0589c15e,0x70559d3b,0x6b391af8)
-    { "A590/A2091 SCSI boot ROM", 0, 0, 7, 0, "A590\0A2091\0", 16384, 55, 0, 0, ROMTYPE_A2091BOOT, 0, 0, NULL,
+    { "A590/A2091 SCSI boot ROM", 7, 0, 7, 0, "A590\0A2091\0", 16384, 55, 0, 0, ROMTYPE_A2091BOOT, 0, 0, NULL,
 	0x714a97a2, 0xE50F01BA,0xF2899892,0x85547863,0x72A82C33,0x3C91276E },
     ALTROM(55, 1, 1, 8192, ROMTYPE_ODD  | ROMTYPE_8BIT, 0xa9ccffed,0x149f5bd5,0x2e2d2990,0x4e3de483,0xb9ad7724,0x48e9278e)
     ALTROM(55, 1, 2, 8192, ROMTYPE_EVEN | ROMTYPE_8BIT, 0x2942747a,0xdbd7648e,0x79c75333,0x7ff3e4f4,0x91de224b,0xf05e6bb6)
-    { "A590/A2091 SCSI Guru boot ROM", 0, 0, 6, 14, "A590\0A2091\0", 32768, 56, 0, 0, ROMTYPE_A2091BOOT, 0, 0, NULL,
+    { "A590/A2091 SCSI Guru boot ROM", 6, 14, 6, 14, "A590\0A2091\0", 32768, 56, 0, 0, ROMTYPE_A2091BOOT, 0, 0, NULL,
 	0x04e52f93, 0x6DA21B6F,0x5E8F8837,0xD64507CD,0x8A4D5CDC,0xAC4F426B },
-    { "A4091 SCSI boot ROM", 0, 0, 40, 9, "A4091\0", 32768, 57, 0, 0, ROMTYPE_A4091BOOT, 0, 0, NULL,
+    { "A4091 SCSI boot ROM", 40, 9, 40, 9, "A4091\0", 32768, 57, 0, 0, ROMTYPE_A4091BOOT, 0, 0, NULL,
 	0x00000000, 0, 0, 0, 0, 0 },
-    { "A4091 SCSI boot ROM", 0, 0, 40, 13, "A4091\0", 32768, 58, 0, 0, ROMTYPE_A4091BOOT, 0, 0, NULL,
+    { "A4091 SCSI boot ROM", 40, 13, 40, 13, "A4091\0", 32768, 58, 0, 0, ROMTYPE_A4091BOOT, 0, 0, NULL,
 	0x54cb9e85, 0x3CE66919,0xF6FD6797,0x4923A12D,0x91B730F1,0xFFB4A7BA },
 
     { "Arcadia OnePlay 2.11", 0, 0, 0, 0, "ARCADIA\0", 0, 49, 0, 0, ROMTYPE_ARCADIABIOS, 0, 0 },
@@ -1252,7 +1256,7 @@ static uae_u32 REGPARAM2 chipmem_lget_ce2 (uaecptr addr)
 
 static uae_u32 REGPARAM2 chipmem_wget_ce2 (uaecptr addr)
 {
-    uae_u16 *m;
+    uae_u16 *m, v;
 
 #ifdef JIT
     special_mem |= S_READ;
@@ -1260,7 +1264,9 @@ static uae_u32 REGPARAM2 chipmem_wget_ce2 (uaecptr addr)
     addr &= chipmem_mask;
     m = (uae_u16 *)(chipmemory + addr);
     ce2_timeout ();
-    return do_get_mem_word (m);
+    v = do_get_mem_word (m);
+    last_custom_value = v;
+    return v;
 }
 
 static uae_u32 REGPARAM2 chipmem_bget_ce2 (uaecptr addr)
@@ -1296,6 +1302,7 @@ static void REGPARAM2 chipmem_wput_ce2 (uaecptr addr, uae_u32 w)
     addr &= chipmem_mask;
     m = (uae_u16 *)(chipmemory + addr);
     ce2_timeout ();
+    last_custom_value = w;
     do_put_mem_word (m, w);
 }
 
@@ -1322,17 +1329,22 @@ uae_u32 REGPARAM2 chipmem_lget (uaecptr addr)
 
 static uae_u32 REGPARAM2 chipmem_wget (uaecptr addr)
 {
-    uae_u16 *m;
+    uae_u16 *m, v;
 
     addr &= chipmem_mask;
     m = (uae_u16 *)(chipmemory + addr);
-    return do_get_mem_word (m);
+    v = do_get_mem_word (m);
+    last_custom_value = v;
+    return v;
 }
 
 static uae_u32 REGPARAM2 chipmem_bget (uaecptr addr)
 {
+    uae_u8 v;
     addr &= chipmem_mask;
-    return chipmemory[addr];
+    v = chipmemory[addr];
+    last_custom_value = (v << 8) | v;
+    return v;
 }
 
 void REGPARAM2 chipmem_lput (uaecptr addr, uae_u32 l)
@@ -1350,12 +1362,14 @@ void REGPARAM2 chipmem_wput (uaecptr addr, uae_u32 w)
 
     addr &= chipmem_mask;
     m = (uae_u16 *)(chipmemory + addr);
+    last_custom_value = w;
     do_put_mem_word (m, w);
 }
 
 void REGPARAM2 chipmem_bput (uaecptr addr, uae_u32 b)
 {
     addr &= chipmem_mask;
+    last_custom_value = (b << 8) | b;
     chipmemory[addr] = b;
 }
 
@@ -3021,7 +3035,7 @@ static void add_shmmaps (uae_u32 start, addrbank *what)
     base = ((uae_u8 *) NATMEM_OFFSET) + start;
     y->native_address = shmat (y->id, base, 0);
     if (y->native_address == (void *) -1) {
-	write_log ("NATMEM: Failure to map existing at %08x(%p)\n",start,base);
+	write_log ("NATMEM: Failure to map existing at %08x(%p)\n", start, base);
 	dumplist ();
 	nocanbang ();
 	return;

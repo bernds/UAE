@@ -17,13 +17,13 @@
 
 #define WINUAEPUBLICBETA 0
 
-#define WINUAEBETA 0
-#define WINUAEDATE MAKEBD(2008, 9, 5)
+#define WINUAEBETA ""
+#define WINUAEDATE MAKEBD(2008, 11, 9)
 #define WINUAEEXTRA ""
 #define WINUAEREV ""
 
 #define IHF_WINDOWHIDDEN 6
-#define NORMAL_WINDOW_STYLE (WS_VISIBLE | WS_BORDER | WS_CAPTION | WS_MINIMIZEBOX | WS_SYSMENU | WS_SIZEBOX)
+#define NORMAL_WINDOW_STYLE (WS_BORDER | WS_CAPTION | WS_MINIMIZEBOX | WS_SYSMENU | WS_SIZEBOX)
 
 extern HMODULE hUIDLL;
 extern HWND hAmigaWnd, hMainWnd, hHiddenWnd, hGUIWnd;
@@ -120,6 +120,7 @@ void exit_gui (int);
 void fetch_path (char *name, char *out, int size);
 void set_path (char *name, char *path);
 void read_rom_list (void);
+void associate_file_extensions (void);
 
 #define WIN32_PLUGINDIR "plugins\\"
 HMODULE WIN32_LoadLibrary (const char *);
@@ -152,5 +153,14 @@ struct sound_device
 };
 extern struct sound_device sound_devices[MAX_SOUND_DEVICES];
 extern struct sound_device record_devices[MAX_SOUND_DEVICES];
+
+struct assext {
+    char *ext;
+    char *cmd;
+    char *desc;
+    int enabled;
+};
+struct assext exts[];
+void associate_file_extensions (void);
 
 #endif

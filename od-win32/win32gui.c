@@ -1232,12 +1232,12 @@ void gui_display (int shortcut)
 	    savestate_state = 0;
 	}
     } else if (shortcut >= 0 && shortcut < 4) {
-	DiskSelection(hAmigaWnd, IDC_DF0+shortcut, 0, &changed_prefs, 0);
+	DiskSelection (hAmigaWnd, IDC_DF0 + shortcut, 0, &changed_prefs, 0);
     } else if (shortcut == 5) {
-	if (DiskSelection(hAmigaWnd, IDC_DOSAVESTATE, 9, &changed_prefs, 0))
+	if (DiskSelection (hAmigaWnd, IDC_DOSAVESTATE, 9, &changed_prefs, 0))
 	    save_state (savestate_fname, "Description!");
     } else if (shortcut == 4) {
-	if (DiskSelection(hAmigaWnd, IDC_DOLOADSTATE, 10, &changed_prefs, 0))
+	if (DiskSelection (hAmigaWnd, IDC_DOLOADSTATE, 10, &changed_prefs, 0))
 	    savestate_state = STATE_DORESTORE;
     }
     manual_painting_needed--; /* So that WM_PAINT doesn't need to use custom refreshing */
@@ -1355,7 +1355,27 @@ int DiskSelection_2 (HWND hDlg, WPARAM wParam, int flag, struct uae_prefs *prefs
 	    break;
 	    case 9:
 	    case 10:
-		fetch_path ("StatefilePath", init_path, sizeof (init_path));
+	    {
+		int ok = 0;
+		if (savestate_fname[0]) {
+		    strcpy (init_path, savestate_fname);
+		    for (;;) {
+			char *p;
+			if (my_existsdir (init_path)) {
+			    ok = 1;
+			    break;
+			}
+			p = strrchr (init_path, '\\');
+			if (!p)
+			    p = strrchr (init_path, '/');
+			if (!p)
+			    break;
+			*p = 0;
+		    }
+		}
+		if (!ok)
+		    fetch_path ("StatefilePath", init_path, sizeof (init_path));
+	    }
 	    break;
 	    case 15:
 	    case 16:
@@ -1863,7 +1883,7 @@ static void setguititle (HWND phwnd)
 	hwnd = phwnd;
     if (hwnd && !title[0]) {
         GetWindowText (hwnd, title, sizeof (title));
-	if (WINUAEBETA > 0) {
+	if (strlen (WINUAEBETA) > 0) {
 	    strcat (title, BetaStr);
 	    if (strlen(WINUAEEXTRA) > 0) {
     		strcat (title, " ");
@@ -2108,7 +2128,7 @@ static struct ConfigStruct *readconfigcache (const char *path)
 		int i;
 		for (i = 0; i < configstoresize; i++) {
 		    struct ConfigStruct *cs2 = configstore[i];
-		    if (cs2 != cs && !strcmp (cs2->Path, tmp)) {
+		    if (cs2 != cs && !strcmp (cs2->Path, tmp) && cs2->Directory) {
 			cs->Parent = cs2;
 			if (!cs2->Child)
 			    cs2->Child = cs;
@@ -2578,12 +2598,14 @@ static int clicked_entry = -1;
 #define INPUT_COLUMNS 4
 #define HARDDISK_COLUMNS 8
 #define DISK_COLUMNS 3
+#define MISC2_COLUMNS 2
 #define MAX_COLUMN_HEADING_WIDTH 20
 
 #define LV_LOADSAVE 1
 #define LV_HARDDISK 2
 #define LV_INPUT 3
 #define LV_DISK 4
+#define LV_MISC2 5
 
 static int listview_num_columns;
 
@@ -2626,6 +2648,12 @@ void InitializeListView (HWND hDlg)
 	WIN32GUI_LoadUIString(IDS_INPUTAUTOFIRE, column_heading[2], MAX_COLUMN_HEADING_WIDTH);
 	strcpy (column_heading[3], "#");
 	list = GetDlgItem(hDlg, IDC_INPUTLIST);
+    } else if (hDlg == pages[MISC2_ID]) {
+	listview_num_columns = MISC2_COLUMNS;
+	lv_type = LV_MISC2;
+	strcpy (column_heading[0], "Extension");
+	strcpy (column_heading[1], "");
+	list = GetDlgItem (hDlg, IDC_ASSOCIATELIST);
     } else {
 	listview_num_columns = DISK_COLUMNS;
 	lv_type = LV_DISK;
@@ -2634,29 +2662,38 @@ void InitializeListView (HWND hDlg)
 	WIN32GUI_LoadUIString(IDS_DISK_DRIVENAME, column_heading[2], MAX_COLUMN_HEADING_WIDTH);
 	list = GetDlgItem (hDlg, IDC_DISK);
     }
-    cachedlist = list;
 
-    ListView_DeleteAllItems(list);
+    cachedlist = list;
+    ListView_DeleteAllItems (list);
 
     for(i = 0; i < listview_num_columns; i++)
-	listview_column_width[i] = ListView_GetStringWidth(list, column_heading[i]) + 15;
+	listview_column_width[i] = ListView_GetStringWidth (list, column_heading[i]) + 15;
 
     // If there are no columns, then insert some
     lvcolumn.mask = LVCF_WIDTH;
-    if(ListView_GetColumn(list, 1, &lvcolumn) == FALSE)
-    {
-	for(i = 0; i < listview_num_columns; i++)
-	{
+    if (ListView_GetColumn (list, 1, &lvcolumn) == FALSE) {
+	for(i = 0; i < listview_num_columns; i++) {
 	    lvcolumn.mask     = LVCF_FMT | LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
 	    lvcolumn.iSubItem = i;
 	    lvcolumn.fmt      = LVCFMT_LEFT;
 	    lvcolumn.pszText  = column_heading[i];
 	    lvcolumn.cx       = listview_column_width[i];
-	    ListView_InsertColumn(list, i, &lvcolumn);
+	    ListView_InsertColumn (list, i, &lvcolumn);
 	}
     }
-    if (lv_type == LV_INPUT)
-    {
+    if (lv_type == LV_MISC2) {
+	listview_column_width[0] = 180;
+	listview_column_width[1] = 10;
+	for (i = 0; exts[i].ext; i++) {
+	    lvstruct.mask     = LVIF_TEXT | LVIF_PARAM;
+	    lvstruct.pszText  = exts[i].ext;
+	    lvstruct.lParam   = 0;
+	    lvstruct.iItem    = i;
+	    lvstruct.iSubItem = 0;
+	    result = ListView_InsertItem (list, &lvstruct);
+	    ListView_SetItemText (list, result, 1, exts[i].enabled ? "*" : "");
+	}
+    } else if (lv_type == LV_INPUT) {
 	for (i = 0; input_total_devices && i < inputdevice_get_widget_num (input_selected_device); i++) {
 	    char name[100];
 	    inputdevice_get_widget_type (input_selected_device, i, name);
@@ -2665,8 +2702,8 @@ void InitializeListView (HWND hDlg)
 	    lvstruct.lParam   = 0;
 	    lvstruct.iItem    = i;
 	    lvstruct.iSubItem = 0;
-	    result = ListView_InsertItem(list, &lvstruct);
-	    width = ListView_GetStringWidth(list, lvstruct.pszText) + 15;
+	    result = ListView_InsertItem (list, &lvstruct);
+	    width = ListView_GetStringWidth (list, lvstruct.pszText) + 15;
 	    if( width > listview_column_width[0])
 		listview_column_width[0] = width;
 	    entry++;
@@ -2675,9 +2712,7 @@ void InitializeListView (HWND hDlg)
 	listview_column_width [2] = 65;
 	listview_column_width [3] = 30;
 	update_listview_input (hDlg);
-    }
-    else if (lv_type == LV_DISK)
-    {
+    } else if (lv_type == LV_DISK) {
 	for (i = 0; i < MAX_SPARE_DRIVES; i++) {
 	    int drv;
 	    sprintf (tmp, "%d", i + 1);
@@ -2704,7 +2739,7 @@ void InitializeListView (HWND hDlg)
 	    if (drv >= 0)
 		sprintf (tmp, "DF%d:", drv);
 	    ListView_SetItemText (list, result, 2, tmp);
-	    width = ListView_GetStringWidth(list, lvstruct.pszText) + 15;
+	    width = ListView_GetStringWidth (list, lvstruct.pszText) + 15;
 	    if (width > listview_column_width[0])
 		listview_column_width[0] = width;
 	    entry++;
@@ -2713,9 +2748,7 @@ void InitializeListView (HWND hDlg)
 	listview_column_width[1] = 336;
 	listview_column_width[2] = 50;
 
-    }
-    else if (lv_type == LV_HARDDISK)
-    {
+    } else if (lv_type == LV_HARDDISK) {
 #ifdef FILESYS
 	for(i = 0; i < workprefs.mountitems; i++)
 	{
@@ -2830,28 +2863,23 @@ void InitializeListView (HWND hDlg)
 	}
 #endif
     }
-
-    if(result != -1) {
-	if(GetWindowRect(list, &rect)) {
-	    ScreenToClient(hDlg, (LPPOINT)&rect);
-	    ScreenToClient(hDlg, (LPPOINT)&rect.right);
-	    if(listview_num_columns == 2) {
-		if((temp = rect.right - rect.left - listview_column_width[0] - 4) > listview_column_width[1])
+    if (result != -1) {
+	if (GetWindowRect (list, &rect)) {
+	    ScreenToClient (hDlg, (LPPOINT)&rect);
+	    ScreenToClient (hDlg, (LPPOINT)&rect.right);
+	    if (listview_num_columns == 2) {
+		if ((temp = rect.right - rect.left - listview_column_width[0] - 30) > listview_column_width[1])
 		    listview_column_width[1] = temp;
 	    }
 	}
-
 	// Adjust our column widths so that we can see the contents...
-	for(i = 0; i < listview_num_columns; i++) {
-	    ListView_SetColumnWidth(list, i, listview_column_width[i]);
-	}
-
+	for(i = 0; i < listview_num_columns; i++)
+	    ListView_SetColumnWidth (list, i, listview_column_width[i]);
 	// Turn on full-row-select option
-	ListView_SetExtendedListViewStyle(list, LVS_EX_FULLROWSELECT);
-
+	ListView_SetExtendedListViewStyle (list, LVS_EX_FULLROWSELECT);
 	// Redraw the items in the list...
-	items = ListView_GetItemCount(list);
-	ListView_RedrawItems(list, 0, items);
+	items = ListView_GetItemCount (list);
+	ListView_RedrawItems (list, 0, items);
     }
 }
 
@@ -3783,6 +3811,7 @@ static INT_PTR CALLBACK PathsDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 	    configurationcache = IsDlgButtonChecked (hDlg, IDC_PATHS_CONFIGCACHE) ? 1 : 0;
 	    regsetint (NULL, "ConfigurationCache", configurationcache);
 	    break;
+
 	}
 	recursive--;
     }
@@ -4304,9 +4333,10 @@ static void init_frequency_combo (HWND hDlg, int dmode)
     int i, j, freq, tmp;
     char hz[20], hz2[20], txt[100];
     LRESULT index;
+    struct MultiDisplay *md = getdisplay (&workprefs);
 
     i = 0; index = 0;
-    while ((freq = DisplayModes[dmode].refresh[i]) > 0 && index < MAX_REFRESH_RATES) {
+    while (dmode >= 0 && (freq = md->DisplayModes[dmode].refresh[i]) > 0 && index < MAX_REFRESH_RATES) {
 	storedrefreshrates[index++] = freq;
 	i++;
     }
@@ -4363,19 +4393,20 @@ static void init_frequency_combo (HWND hDlg, int dmode)
 #define MAX_FRAMERATE_LENGTH 40
 #define MAX_NTH_LENGTH 20
 
-static int display_mode_index(uae_u32 x, uae_u32 y, uae_u32 d)
+static int display_mode_index (uae_u32 x, uae_u32 y, uae_u32 d)
 {
     int i;
+    struct MultiDisplay *md = getdisplay (&workprefs);
 
     i = 0;
-    while (DisplayModes[i].depth >= 0) {
-	if (DisplayModes[i].res.width == x &&
-	    DisplayModes[i].res.height == y &&
-	    DisplayModes[i].depth == d)
+    while (md->DisplayModes[i].depth >= 0) {
+	if (md->DisplayModes[i].res.width == x &&
+	    md->DisplayModes[i].res.height == y &&
+	    md->DisplayModes[i].depth == d)
 	    break;
 	i++;
     }
-    if(DisplayModes[i].depth < 0)
+    if(md->DisplayModes[i].depth < 0)
 	i = -1;
     return i;
 }
@@ -4446,6 +4477,8 @@ static int gui_display_depths[3];
 static void init_display_mode (HWND hDlg)
 {
    int d, d2, index;
+   int i, cnt;
+   struct MultiDisplay *md = getdisplay (&workprefs);
 
    switch (workprefs.color_mode)
     {
@@ -4460,7 +4493,7 @@ static void init_display_mode (HWND hDlg)
 
     if (workprefs.gfx_afullscreen) {
 	d2 = d;
-	if ((index = WIN32GFX_AdjustScreenmode (&workprefs.gfx_size_fs.width, &workprefs.gfx_size_fs.height, &d2)) >= 0) {
+	if ((index = WIN32GFX_AdjustScreenmode (md, &workprefs.gfx_size_fs.width, &workprefs.gfx_size_fs.height, &d2)) >= 0) {
 	    switch (d2)
 	    {
 	    case 15:
@@ -4482,25 +4515,27 @@ static void init_display_mode (HWND hDlg)
 	d = d / 8;
     }
 
-    if ((index = display_mode_index (workprefs.gfx_size_fs.width, workprefs.gfx_size_fs.height, d)) >= 0) {
-	int i, cnt;
-	SendDlgItemMessage (hDlg, IDC_RESOLUTION, CB_SETCURSEL, DisplayModes[index].residx, 0);
-	SendDlgItemMessage(hDlg, IDC_RESOLUTIONDEPTH, CB_RESETCONTENT, 0, 0);
-	cnt = 0;
-	gui_display_depths[0] = gui_display_depths[1] = gui_display_depths[2] = -1;
-	for (i = 0; DisplayModes[i].depth >= 0; i++) {
-	    if (DisplayModes[i].depth > 1 && DisplayModes[i].residx == DisplayModes[index].residx) {
-		char tmp[64];
-		sprintf (tmp, "%d", DisplayModes[i].depth * 8);
-		SendDlgItemMessage(hDlg, IDC_RESOLUTIONDEPTH, CB_ADDSTRING, 0, (LPARAM)tmp);
-		if (DisplayModes[i].depth == d)
-		    SendDlgItemMessage (hDlg, IDC_RESOLUTIONDEPTH, CB_SETCURSEL, cnt, 0);
-		gui_display_depths[cnt] = DisplayModes[i].depth;
-		cnt++;
-	    }
+    index = display_mode_index (workprefs.gfx_size_fs.width, workprefs.gfx_size_fs.height, d);
+    if (index >= 0)
+	SendDlgItemMessage (hDlg, IDC_RESOLUTION, CB_SETCURSEL, md->DisplayModes[index].residx, 0);
+    else
+	index = 0;
+    SendDlgItemMessage(hDlg, IDC_RESOLUTIONDEPTH, CB_RESETCONTENT, 0, 0);
+    cnt = 0;
+    gui_display_depths[0] = gui_display_depths[1] = gui_display_depths[2] = -1;
+    for (i = 0; md->DisplayModes[i].depth >= 0; i++) {
+        if (md->DisplayModes[i].depth > 1 && md->DisplayModes[i].residx == md->DisplayModes[index].residx) {
+	    char tmp[64];
+	    sprintf (tmp, "%d", md->DisplayModes[i].depth * 8);
+	    SendDlgItemMessage(hDlg, IDC_RESOLUTIONDEPTH, CB_ADDSTRING, 0, (LPARAM)tmp);
+	    if (md->DisplayModes[i].depth == d)
+	        SendDlgItemMessage (hDlg, IDC_RESOLUTIONDEPTH, CB_SETCURSEL, cnt, 0);
+	    gui_display_depths[cnt] = md->DisplayModes[i].depth;
+	    cnt++;
 	}
-	init_frequency_combo (hDlg, index);
     }
+    init_frequency_combo (hDlg, index);
+
 }
 
 static int display_toselect(int fs, int vsync, int p96)
@@ -4628,13 +4663,14 @@ static void init_resolution_combo (HWND hDlg)
 {
     int i = 0, idx = -1;
     char tmp[64];
+    struct MultiDisplay *md = getdisplay (&workprefs);
 
     SendDlgItemMessage(hDlg, IDC_RESOLUTION, CB_RESETCONTENT, 0, 0);
-    while (DisplayModes[i].depth >= 0) {
-	if (DisplayModes[i].depth > 1 && DisplayModes[i].residx != idx) {
-	    sprintf (tmp, "%dx%d", DisplayModes[i].res.width, DisplayModes[i].res.height);
+    while (md->DisplayModes[i].depth >= 0) {
+	if (md->DisplayModes[i].depth > 1 && md->DisplayModes[i].residx != idx) {
+	    sprintf (tmp, "%dx%d", md->DisplayModes[i].res.width, md->DisplayModes[i].res.height);
 	    SendDlgItemMessage(hDlg, IDC_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)tmp);
-	    idx = DisplayModes[i].residx;
+	    idx = md->DisplayModes[i].residx;
 	}
 	i++;
     }
@@ -4715,7 +4751,6 @@ static void values_from_displaydlg (HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 		if (Displays[posn].disabled)
 		    posn = 0;
 		workprefs.gfx_display = posn;
-		DisplayModes = Displays[workprefs.gfx_display].DisplayModes;
 		init_resolution_combo (hDlg);
 		init_display_mode (hDlg);
 	    }
@@ -4725,6 +4760,7 @@ static void values_from_displaydlg (HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 	    if (posn != CB_ERR)
 		workprefs.gfx_resolution = posn;
 	} else if (LOWORD (wParam) == IDC_RESOLUTION || LOWORD(wParam) == IDC_RESOLUTIONDEPTH) {
+	    struct MultiDisplay *md = getdisplay (&workprefs);
 	    LRESULT posn1, posn2;
 	    posn1 = SendDlgItemMessage (hDlg, IDC_RESOLUTION, CB_GETCURSEL, 0, 0);
 	    if (posn1 == CB_ERR)
@@ -4732,23 +4768,23 @@ static void values_from_displaydlg (HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
 	    posn2 = SendDlgItemMessage (hDlg, IDC_RESOLUTIONDEPTH, CB_GETCURSEL, 0, 0);
 	    if (posn2 == CB_ERR)
 		return;
-	    for (i = 0; DisplayModes[i].depth >= 0; i++) {
-		if (DisplayModes[i].residx == posn1)
+	    for (i = 0; md->DisplayModes[i].depth >= 0; i++) {
+		if (md->DisplayModes[i].residx == posn1)
 		    break;
 	    }
-	    if (DisplayModes[i].depth < 0)
+	    if (md->DisplayModes[i].depth < 0)
 		return;
 	    j = i;
-	    while (DisplayModes[i].residx == posn1) {
-		if (DisplayModes[i].depth == gui_display_depths[posn2])
+	    while (md->DisplayModes[i].residx == posn1) {
+		if (md->DisplayModes[i].depth == gui_display_depths[posn2])
 		    break;
 		i++;
 	    }
-	    if (DisplayModes[i].residx != posn1)
+	    if (md->DisplayModes[i].residx != posn1)
 		i = j;
-	    workprefs.gfx_size_fs.width  = DisplayModes[i].res.width;
-	    workprefs.gfx_size_fs.height = DisplayModes[i].res.height;
-	    switch(DisplayModes[i].depth)
+	    workprefs.gfx_size_fs.width  = md->DisplayModes[i].res.width;
+	    workprefs.gfx_size_fs.height = md->DisplayModes[i].res.height;
+	    switch(md->DisplayModes[i].depth)
 	    {
 	    case 2:
 		workprefs.color_mode = 2;
@@ -5268,6 +5304,7 @@ static void enable_for_memorydlg (HWND hDlg)
     ew (hDlg, IDC_RTG_SCALE, rtg2);
     ew (hDlg, IDC_RTG_SCALE_ALLOW, rtg2);
     ew (hDlg, IDC_RTG_SCALE_ASPECTRATIO, rtg2);
+    ew (hDlg, IDC_RTG_VBLANKRATE, rtg2);
 }
 
 static void values_to_memorydlg (HWND hDlg)
@@ -5380,10 +5417,29 @@ static void values_to_memorydlg (HWND hDlg)
 	(workprefs.picasso96_modeflags & RGBFF_A8B8G8R8) ? 2 :
 	(workprefs.picasso96_modeflags & RGBFF_R8G8B8A8) ? 3 :
 	(workprefs.picasso96_modeflags & RGBFF_B8G8R8A8) ? 4 : 0, 0);
+    if (workprefs.win32_rtgvblankrate <= 0 ||
+	workprefs.win32_rtgvblankrate == 50 ||
+	workprefs.win32_rtgvblankrate == 60 ||
+	workprefs.win32_rtgvblankrate == 70 ||
+	workprefs.win32_rtgvblankrate == 75) {
+	SendDlgItemMessage (hDlg, IDC_RTG_VBLANKRATE, CB_SETCURSEL,
+	    (workprefs.win32_rtgvblankrate == 0) ? 0 :
+	    (workprefs.win32_rtgvblankrate < 0) ? 1 :
+	    (workprefs.win32_rtgvblankrate == 50) ? 2 :
+	    (workprefs.win32_rtgvblankrate == 60) ? 3 :
+	    (workprefs.win32_rtgvblankrate == 70) ? 4 :
+	    (workprefs.win32_rtgvblankrate == 75) ? 5 : 0, 0);
+    } else {
+	char tmp[10];
+	sprintf (tmp, "%d", workprefs.win32_rtgvblankrate);
+	SendDlgItemMessage (hDlg, IDC_RTG_VBLANKRATE, WM_SETTEXT, 0, (LPARAM)tmp);
+    }
+	
 
     CheckDlgButton (hDlg, IDC_RTG_SCALE, workprefs.win32_rtgscaleifsmall);
     CheckDlgButton (hDlg, IDC_RTG_SCALE_ALLOW, workprefs.win32_rtgallowscaling);
     CheckDlgButton (hDlg, IDC_RTG_MATCH_DEPTH, workprefs.win32_rtgmatchdepth);
+
     //CheckDlgButton (hDlg, IDC_RTG_LEDS, (workprefs.leds_on_screen & STATUSLINE_RTG) ? 1 : 0);
 
     SendDlgItemMessage (hDlg, IDC_RTG_SCALE_ASPECTRATIO, CB_SETCURSEL,
@@ -5510,6 +5566,13 @@ static INT_PTR CALLBACK MemoryDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARA
 	    SendDlgItemMessage (hDlg, IDC_RTG_SCALE_ASPECTRATIO, CB_ADDSTRING, 0, (LPARAM)"15:9");
 	    SendDlgItemMessage (hDlg, IDC_RTG_SCALE_ASPECTRATIO, CB_ADDSTRING, 0, (LPARAM)"16:9");
 	    SendDlgItemMessage (hDlg, IDC_RTG_SCALE_ASPECTRATIO, CB_ADDSTRING, 0, (LPARAM)"16:10");
+	    SendDlgItemMessage (hDlg, IDC_RTG_VBLANKRATE, CB_RESETCONTENT, 0, 0);
+	    SendDlgItemMessage (hDlg, IDC_RTG_VBLANKRATE, CB_ADDSTRING, 0, (LPARAM)"Chipset");
+	    SendDlgItemMessage (hDlg, IDC_RTG_VBLANKRATE, CB_ADDSTRING, 0, (LPARAM)"Real");
+	    SendDlgItemMessage (hDlg, IDC_RTG_VBLANKRATE, CB_ADDSTRING, 0, (LPARAM)"50");
+	    SendDlgItemMessage (hDlg, IDC_RTG_VBLANKRATE, CB_ADDSTRING, 0, (LPARAM)"60");
+	    SendDlgItemMessage (hDlg, IDC_RTG_VBLANKRATE, CB_ADDSTRING, 0, (LPARAM)"70");
+	    SendDlgItemMessage (hDlg, IDC_RTG_VBLANKRATE, CB_ADDSTRING, 0, (LPARAM)"75");
 
 	case WM_USER:
 	    recursive++;
@@ -5625,6 +5688,24 @@ static INT_PTR CALLBACK MemoryDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARA
 			if (v == 4)
 			    mask |= RGBFF_B8G8R8A8;
 		    }
+		    break;
+		    case IDC_RTG_VBLANKRATE:
+		    tmp[0] = 0;
+		    v = SendDlgItemMessage (hDlg, IDC_RTG_VBLANKRATE, CB_GETCURSEL, 0, 0L);
+		    if (v != CB_ERR) {
+			if (v == 0) {
+			    workprefs.win32_rtgvblankrate = 0;
+			} else if (v == 1) {
+			    workprefs.win32_rtgvblankrate = -1;
+			} else {
+			    v = SendDlgItemMessage (hDlg, IDC_RTG_VBLANKRATE, CB_GETLBTEXT, (WPARAM)v, (LPARAM)tmp);
+			}
+		    } else {
+		        v = SendDlgItemMessage (hDlg, IDC_RTG_VBLANKRATE, WM_GETTEXT, (WPARAM)sizeof tmp, (LPARAM)tmp);
+		    }
+		    if (tmp[0])
+			workprefs.win32_rtgvblankrate = atol (tmp);
+		    write_log ("%d\n", workprefs.win32_rtgvblankrate);
 		    break;
 		}
 		workprefs.picasso96_modeflags = mask;
@@ -6074,7 +6155,7 @@ static void values_to_miscdlg (HWND hDlg)
 static INT_PTR MiscDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     char txt[100];
-    int v;
+    int v, i;
     static int recursive;
 
     if (recursive)
@@ -6112,8 +6193,23 @@ static INT_PTR MiscDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 	}
     break;
 
-    case WM_COMMAND:
+    case WM_NOTIFY:
+	if (((LPNMHDR) lParam)->idFrom == IDC_ASSOCIATELIST) {
+	    int entry, col;
+	    HWND list;
+	    NM_LISTVIEW *nmlistview;
+	    nmlistview = (NM_LISTVIEW *) lParam;
+	    list = nmlistview->hdr.hwndFrom;
+	    if (nmlistview->hdr.code == NM_DBLCLK) {
+		entry = listview_entry_from_click (list, &col);
+		exts[entry].enabled = exts[entry].enabled ? 0 : 1;
+		associate_file_extensions ();
+		InitializeListView (hDlg);
+	    }
+	}
+    break;
 
+    case WM_COMMAND:
 	if (currentpage == MISC1_ID) {
 	    if (HIWORD (wParam) == CBN_SELENDOK || HIWORD (wParam) == CBN_KILLFOCUS || HIWORD (wParam) == CBN_EDITCHANGE)  {
 		switch (LOWORD (wParam))
@@ -6163,6 +6259,18 @@ static INT_PTR MiscDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 
 	switch(wParam)
 	{
+	case IDC_ASSOCIATE_ON:
+	    for (i = 0; exts[i].ext; i++)
+		exts[i].enabled = 1;
+	    associate_file_extensions ();
+	    InitializeListView (hDlg);
+	break;
+	case IDC_ASSOCIATE_OFF:
+	    for (i = 0; exts[i].ext; i++)
+		exts[i].enabled = 0;
+	    associate_file_extensions ();
+	    InitializeListView (hDlg);
+	break;
 	case IDC_DOSAVESTATE:
 	    if (DiskSelection(hDlg, wParam, 9, &workprefs, 0))
 		save_state (savestate_fname, "Description!");
@@ -6270,6 +6378,7 @@ static INT_PTR CALLBACK MiscDlgProc2 (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
     currentpage = MISC2_ID;
     if (msg == WM_INITDIALOG) {
 	pages[MISC2_ID] = hDlg;
+	InitializeListView (hDlg);
 	values_to_miscdlg (hDlg);
 	enable_for_miscdlg (hDlg);
 	return TRUE;
@@ -9086,6 +9195,10 @@ static INT_PTR CALLBACK PortsDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 		{
 		    case IDC_PORT0_JOYS:
 		    case IDC_PORT1_JOYS:
+		    case IDC_PRINTERLIST:
+		    case IDC_SERIAL:
+		    case IDC_MIDIOUTLIST:
+		    case IDC_MIDIINLIST:
 			values_from_portsdlg (hDlg);
 			updatejoyport (hDlg);
 			inputdevice_updateconfig (&workprefs);
@@ -9307,11 +9420,10 @@ static void doinputcustom (HWND hDlg, int newcustom)
     }
 }
 
-static void values_from_inputdlg (HWND hDlg, int inputchange)
+static void values_from_inputdlgbottom (HWND hDlg)
 {
-    int doselect = 0, v;
+    int v;
     BOOL success;
-    LRESULT item;
 
     v  = GetDlgItemInt (hDlg, IDC_INPUTDEADZONE, &success, FALSE);
     if (success) {
@@ -9330,6 +9442,12 @@ static void values_from_inputdlg (HWND hDlg, int inputchange)
     v  = GetDlgItemInt (hDlg, IDC_INPUTSPEEDM, &success, FALSE);
     if (success)
 	currprefs.input_mouse_speed = workprefs.input_mouse_speed = v;
+}
+
+static void values_from_inputdlg (HWND hDlg, int inputchange)
+{
+    int doselect = 0;
+    LRESULT item;
 
     item = SendDlgItemMessage (hDlg, IDC_INPUTAMIGACNT, CB_GETCURSEL, 0, 0L);
     if (item != CB_ERR && input_selected_sub_num != item) {
@@ -9479,6 +9597,16 @@ static INT_PTR CALLBACK InputDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM
 	    inputdevice_set_device_status (input_selected_device, IsDlgButtonChecked( hDlg, IDC_INPUTDEVICEDISABLE) ? 1 : 0);
 	    break;
 	    default:
+	    switch (LOWORD (wParam))
+	    {
+		case IDC_INPUTDEADZONE:
+		case IDC_INPUTAUTOFIRERATE:
+		case IDC_INPUTSPEEDD:
+		case IDC_INPUTSPEEDA:
+		case IDC_INPUTSPEEDM:
+		values_from_inputdlgbottom (hDlg);
+		break;
+	    }
 	    if (HIWORD (wParam) == CBN_SELCHANGE || HIWORD (wParam) == CBN_KILLFOCUS)  {
 		switch (LOWORD (wParam))
 		{
@@ -10020,9 +10148,8 @@ static INT_PTR CALLBACK hw3dDlgProc (HWND hDlg, UINT msg, WPARAM wParam, LPARAM 
     switch (msg)
     {
 	case WM_INITDIALOG:
-    #if WINUAEBETA == 0
-	    ShowWindow (GetDlgItem(hDlg, IDC_FILTERAUTORES), SW_HIDE);
-    #endif
+	    if (strlen (WINUAEBETA) == 0)
+    		ShowWindow (GetDlgItem(hDlg, IDC_FILTERAUTORES), SW_HIDE);
 	    pages[HW3D_ID] = hDlg;
 	    currentpage = HW3D_ID;
 	    SendDlgItemMessage (hDlg, IDC_FILTERASPECT, CB_RESETCONTENT, 0, 0);
@@ -10945,7 +11072,7 @@ static int do_filesys_insert (const char *root)
 
 int dragdrop (HWND hDlg, HDROP hd, struct uae_prefs *prefs, int	currentpage)
 {
-    int cnt, i, drv, firstdrv, list;
+    int cnt, i, drv, drvdrag, firstdrv, list;
     char file[MAX_DPATH];
     int dfxtext[] = { IDC_DF0TEXT, IDC_DF0TEXTQ, IDC_DF1TEXT, IDC_DF1TEXTQ, IDC_DF2TEXT, -1, IDC_DF3TEXT, -1 };
     POINT pt;
@@ -10959,6 +11086,7 @@ int dragdrop (HWND hDlg, HDROP hd, struct uae_prefs *prefs, int	currentpage)
     if (!cnt)
 	return 0;
     drv = 0;
+    drvdrag = 0;
     if (currentpage < 0) {
 	GetClientRect (hMainWnd, &r2);
 	GetClientRect (hStatusWnd, &r);
@@ -10966,6 +11094,7 @@ int dragdrop (HWND hDlg, HDROP hd, struct uae_prefs *prefs, int	currentpage)
 	    if (pt.x >= window_led_drives && pt.x < window_led_drives_end && window_led_drives > 0) {
 		drv = pt.x - window_led_drives;
 		drv /= (window_led_drives_end - window_led_drives) / 4;
+	        drvdrag = 1;
 		if (drv < 0 || drv > 3)
 		    drv = 0;
 	    }
@@ -11018,7 +11147,9 @@ int dragdrop (HWND hDlg, HDROP hd, struct uae_prefs *prefs, int	currentpage)
 	    }
 	}
 
-	if (zip) {
+	if (drvdrag) {
+	    type = ZFILE_DISKIMAGE;
+	} else if (zip) {
 	    do_filesys_insert (file);
 	    continue;
 	}
@@ -11694,7 +11825,7 @@ void gui_led (int led, int on)
 	tt = dfx[led - 1];
 	tt[0] = 0;
 	if (strlen (p + j) > 0)
-	    sprintf (tt, "%s (CRC=%08X)", p + j, gui_data.crc32[led - 1]);
+	    sprintf (tt, "%s [CRC=%08X]", p + j, gui_data.crc32[led - 1]);
     } else if (led == 0) {
 	pos = 3;
 	ptr = strcpy (drive_text + pos * 16, "Power");
@@ -11705,9 +11836,13 @@ void gui_led (int led, int on)
 	pos = 5;
 	ptr = strcpy (drive_text + pos * 16, "CD");
     } else if (led == 7) {
+	extern int p96vblank;
 	pos = 2;
 	ptr = drive_text + pos * 16;
-	sprintf (ptr, "FPS: %.1f", (double)(gui_data.fps  / 10.0));
+	if (picasso_on)
+	    sprintf (ptr, "%d [%.1f]", p96vblank, (double)(gui_data.fps  / 10.0));
+	else
+	    sprintf (ptr, "FPS: %.1f", (double)(gui_data.fps  / 10.0));
 	if (pause_emulation)
 	    strcpy (ptr, "PAUSED");
     } else if (led == 8) {

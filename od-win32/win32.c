@@ -28,6 +28,7 @@
 #include <mmsystem.h>
 #include <shobjidl.h>
 #include <shlobj.h>
+#include <shlwapi.h>
 #include <dbghelp.h>
 
 #include "sysdeps.h"
@@ -128,8 +129,11 @@ int mouseactive, focus;
 
 static int mm_timerres;
 static int timermode, timeon;
-static HANDLE timehandle;
+#define MAX_TIMEHANDLES 8
+static int timehandlecounter;
+static HANDLE timehandle[MAX_TIMEHANDLES];
 int sleep_resolution;
+static CRITICAL_SECTION cs_time;
 
 char start_path_data[MAX_DPATH];
 char start_path_exe[MAX_DPATH];
@@ -169,12 +173,17 @@ static int timebegin (void)
 static int init_mmtimer (void)
 {
     TIMECAPS tc;
+    int i;
+
     mm_timerres = 0;
     if (timeGetDevCaps(&tc, sizeof(TIMECAPS)) != TIMERR_NOERROR)
 	return 0;
     mm_timerres = min (max (tc.wPeriodMin, 1), tc.wPeriodMax);
     sleep_resolution = 1000 / mm_timerres;
-    timehandle = CreateEvent (NULL, TRUE, FALSE, NULL);
+    for (i = 0; i < MAX_TIMEHANDLES; i++)
+	timehandle[i] = CreateEvent (NULL, TRUE, FALSE, NULL);
+    InitializeCriticalSection(&cs_time);
+    timehandlecounter = 0;
     return 1;
 }
 
@@ -182,11 +191,17 @@ void sleep_millis (int ms)
 {
     UINT TimerEvent;
     int start;
+    int cnt;
     
     start = read_processor_time ();
-    TimerEvent = timeSetEvent (ms, 0, timehandle, 0, TIME_ONESHOT | TIME_CALLBACK_EVENT_SET);
-    WaitForSingleObject (timehandle, ms);
-    ResetEvent (timehandle);
+    EnterCriticalSection (&cs_time);
+    cnt = timehandlecounter++;
+    if (timehandlecounter >= MAX_TIMEHANDLES)
+	timehandlecounter = 0;
+    LeaveCriticalSection (&cs_time);
+    TimerEvent = timeSetEvent (ms, 0, timehandle[cnt], 0, TIME_ONESHOT | TIME_CALLBACK_EVENT_SET);
+    WaitForSingleObject (timehandle[cnt], ms);
+    ResetEvent (timehandle[cnt]);
     timeKillEvent (TimerEvent);
     idletime += read_processor_time () - start;
 }
@@ -320,6 +335,9 @@ static void setcursor (int oldx, int oldy)
     int y = (amigawin_rect.bottom - amigawin_rect.top) / 2;
     mouseposx = oldx - x;
     mouseposy = oldy - y;
+//    write_log ("%d %d %d %d %d - %d %d %d %d %d\n",
+//	x, amigawin_rect.left, amigawin_rect.right, mouseposx, oldx,
+//	y, amigawin_rect.top, amigawin_rect.bottom, mouseposy, oldy);
     if (oldx >= 30000 || oldy >= 30000 || oldx <= -30000 || oldy <= -30000) {
 	mouseposx = mouseposy = 0;
 	oldx = oldy = 0;
@@ -328,7 +346,6 @@ static void setcursor (int oldx, int oldy)
 	    return;
     }
     mouseposx = mouseposy = 0;
-//    if (oldx < amigawin_rect.left || oldy < amigawin_rect.top || oldx > amigawin_rect.right || oldy > amigawin_rect.bottom) {
     if (oldx < 0 || oldy < 0 || oldx > amigawin_rect.right - amigawin_rect.left || oldy > amigawin_rect.bottom - amigawin_rect.top) {
 	write_log ("Mouse out of range: %dx%d (%dx%d %dx%d)\n", oldx, oldy,
 	    amigawin_rect.left, amigawin_rect.top, amigawin_rect.right, amigawin_rect.bottom);
@@ -421,7 +438,7 @@ static void setmaintitle (HWND hwnd)
 	WIN32GUI_LoadUIString (currprefs.win32_middle_mouse ? IDS_WINUAETITLE_MMB : IDS_WINUAETITLE_NORMAL,
 	    txt2, sizeof (txt2));
     }
-    if (WINUAEBETA > 0) {
+    if (strlen (WINUAEBETA) > 0) {
 	strcat (txt, BetaStr);
 	if (strlen (WINUAEEXTRA) > 0) {
 	    strcat (txt, " ");
@@ -1938,6 +1955,7 @@ void target_default_options (struct uae_prefs *p, int type)
 	p->win32_rtgscaleifsmall = 1;
 	p->win32_rtgallowscaling = 0;
 	p->win32_rtgscaleaspectratio = -1;
+	p->win32_rtgvblankrate = 0;
     }
     if (type == 1 || type == 0) {
 	p->win32_uaescsimode = get_aspi (p->win32_uaescsimode);
@@ -1963,9 +1981,9 @@ void target_save_options (struct zfile *f, struct uae_prefs *p)
     cfgfile_target_dwrite (f, "map_cd_drives=%s\n", p->win32_automount_cddrives ? "true" : "false");
     cfgfile_target_dwrite (f, "map_net_drives=%s\n", p->win32_automount_netdrives ? "true" : "false");
     serdevtoname (p->sername);
-    cfgfile_target_dwrite (f, "serial_port=%s\n", p->sername[0] ? p->sername : "none" );
+    cfgfile_target_dwrite (f, "serial_port=%s\n", p->sername[0] ? p->sername : "none");
     sernametodev (p->sername);
-    cfgfile_target_dwrite (f, "parallel_port=%s\n", p->prtname[0] ? p->prtname : "none" );
+    cfgfile_target_dwrite (f, "parallel_port=%s\n", p->prtname[0] ? p->prtname : "none");
 
     cfgfile_target_dwrite (f, "active_priority=%d\n", priorities[p->win32_active_priority].value);
     cfgfile_target_dwrite (f, "inactive_priority=%d\n", priorities[p->win32_inactive_priority].value);
@@ -1984,6 +2002,10 @@ void target_save_options (struct zfile *f, struct uae_prefs *p)
     cfgfile_target_dwrite (f, "rtg_scale_aspect_ratio=%d:%d\n",
 	p->win32_rtgscaleaspectratio >= 0 ? (p->win32_rtgscaleaspectratio >> 8) : -1,
 	p->win32_rtgscaleaspectratio >= 0 ? (p->win32_rtgscaleaspectratio & 0xff) : -1);
+    if (p->win32_rtgvblankrate <= 0)
+	cfgfile_target_dwrite (f, "rtg_vblank=%s\n", p->win32_rtgvblankrate < 0 ? "real" : "chipset");
+    else
+	cfgfile_target_dwrite (f, "rtg_vblank=%d\n", p->win32_rtgvblankrate);
     cfgfile_target_dwrite (f, "borderless=%s\n", p->win32_borderless ? "true" : "false");
     cfgfile_target_dwrite (f, "uaescsimode=%s\n", scsimode[p->win32_uaescsimode]);
     cfgfile_target_dwrite (f, "soundcard=%d\n", p->win32_soundcard);
@@ -2058,6 +2080,19 @@ int target_parse_option (struct uae_prefs *p, char *option, char *value)
 	    p->win32_uaescsimode = get_aspi(0);
 	if (p->win32_uaescsimode < UAESCSI_ASPI_FIRST)
 	    p->win32_uaescsimode = UAESCSI_ADAPTECASPI;
+	return 1;
+    }
+
+    if (cfgfile_string (option, value, "rtg_vblank", tmpbuf, sizeof tmpbuf)) {
+	if (!strcmp (tmpbuf, "real")) {
+	    p->win32_rtgvblankrate = -1;
+	    return 1;
+	}
+	if (!strcmp (tmpbuf, "chipset")) {
+	    p->win32_rtgvblankrate = 0;
+	    return 1;
+	}
+	p->win32_rtgvblankrate = atol (tmpbuf);
 	return 1;
     }
 
@@ -2438,6 +2473,244 @@ static int checkversion (char *vs)
     return 1;
 }
 
+static int shell_deassociate (const char *extension)
+{
+    HKEY rkey;
+    const char *progid = "WinUAE";
+    int def = !strcmp (extension, ".uae");
+    char rpath1[MAX_DPATH], rpath2[MAX_DPATH], progid2[MAX_DPATH];
+    UAEREG *fkey;
+
+    if (extension == NULL || strlen (extension) < 1 || extension[0] != '.')
+	return 0;
+    strcpy (progid2, progid);
+    strcat (progid2, extension);
+    if (os_winnt_admin > 1)
+        rkey = HKEY_LOCAL_MACHINE;
+    else
+        rkey = HKEY_CURRENT_USER;
+
+    strcpy (rpath1, "Software\\Classes\\");
+    strcpy (rpath2, rpath1);
+    strcat (rpath2, extension);
+    if (RegDeleteKey (rkey, rpath2) != ERROR_SUCCESS)
+	return 0;
+    strcpy (rpath2, rpath1);
+    strcat (rpath2, progid);
+    if (!def)
+	strcat (rpath2, extension);
+    SHDeleteKey (rkey, rpath2);
+    fkey = regcreatetree (NULL, "FileAssociations");
+    regdelete (fkey, extension);
+    regclosetree (fkey);
+    return 1;
+}
+
+static int shell_associate_2 (const char *extension, const char *shellcommand, const char *command, const char *perceivedtype,
+			      const char *description, const char *ext2)
+{
+    char rpath1[MAX_DPATH], rpath2[MAX_DPATH], progid2[MAX_DPATH];
+    HKEY rkey, key1;
+    DWORD disposition;
+    const char *progid = "WinUAE";
+    int def = !strcmp (extension, ".uae");
+    UAEREG *fkey;
+
+    strcpy (progid2, progid);
+    strcat (progid2, ext2 ? ext2 : extension);
+    if (os_winnt_admin > 1)
+        rkey = HKEY_LOCAL_MACHINE;
+    else
+        rkey = HKEY_CURRENT_USER;
+
+    strcpy (rpath1, "Software\\Classes\\");
+    strcpy (rpath2, rpath1);
+    strcat (rpath2, extension);
+    if (RegCreateKeyEx (rkey, rpath2, 0, NULL, REG_OPTION_NON_VOLATILE,
+	KEY_WRITE | KEY_READ, NULL, &key1, &disposition) == ERROR_SUCCESS) {
+	RegSetValueEx (key1, "", 0, REG_SZ, (CONST BYTE *)(def ? progid : progid2), strlen (def ? progid : progid2) + 1);
+	if (perceivedtype)
+	    RegSetValueEx (key1, "PerceivedType", 0, REG_SZ, (CONST BYTE *)perceivedtype, strlen (perceivedtype) + 1);
+	RegCloseKey (key1);
+    }
+    strcpy (rpath2, rpath1);
+    strcat (rpath2, progid);
+    if (!def)
+	strcat (rpath2, ext2 ? ext2 : extension);
+    if (description) {
+	if (RegCreateKeyEx (rkey, rpath2, 0, NULL, REG_OPTION_NON_VOLATILE,
+	    KEY_WRITE | KEY_READ, NULL, &key1, &disposition) == ERROR_SUCCESS) {
+	    RegSetValueEx (key1, "", 0, REG_SZ, (CONST BYTE *)description, strlen (description) + 1);
+	    RegCloseKey (key1);
+	}
+    }
+    if (command) {
+	strcat (rpath2, "\\shell\\");
+	if (shellcommand)
+	    strcat (rpath2, shellcommand);
+	else
+	    strcat (rpath2, "open");
+	strcat (rpath2, "\\command");
+	if (RegCreateKeyEx (rkey, rpath2, 0, NULL, REG_OPTION_NON_VOLATILE,
+	    KEY_WRITE | KEY_READ, NULL, &key1, &disposition) == ERROR_SUCCESS) {
+	    char path[MAX_DPATH];
+	    sprintf (path, "\"%sWinUAE.exe\" %s", start_path_exe, command);
+	    RegSetValueEx (key1, "", 0, REG_SZ, (CONST BYTE *)path, strlen (path) + 1);
+	    RegCloseKey (key1);
+	}
+    }
+    fkey = regcreatetree (NULL, "FileAssociations");
+    regsetstr (fkey, extension, "");
+    regclosetree (fkey);
+    return 1;
+}
+static int shell_associate (const char *extension, const char *command, const char *perceivedtype, const char *description, const char *ext2)
+{
+    int v = shell_associate_2 (extension, NULL, command, perceivedtype, description, ext2);
+    if (!strcmp (extension, ".uae"))
+	shell_associate_2 (extension, "edit", "-f \"%1\" -s use_gui=yes", "text", description, NULL);
+    return v;
+}
+
+static int shell_associate_is (const char *extension)
+{
+    char rpath1[MAX_DPATH], rpath2[MAX_DPATH];
+    char progid2[MAX_DPATH], tmp[MAX_DPATH];
+    DWORD size;
+    HKEY rkey, key1;
+    const char *progid = "WinUAE";
+    int def = !strcmp (extension, ".uae");
+
+    strcpy (progid2, progid);
+    strcat (progid2, extension);
+    if (os_winnt_admin > 1)
+        rkey = HKEY_LOCAL_MACHINE;
+    else
+        rkey = HKEY_CURRENT_USER;
+
+    strcpy (rpath1, "Software\\Classes\\");
+    strcpy (rpath2, rpath1);
+    strcat (rpath2, extension);
+    size = sizeof tmp;
+    if (RegOpenKeyEx (rkey, rpath2, 0, KEY_READ, &key1) == ERROR_SUCCESS) {
+	if (RegQueryValueEx (key1, NULL, NULL, NULL, tmp, &size) == ERROR_SUCCESS) {
+	    if (strcmp (tmp, def ? progid : progid2)) {
+		RegCloseKey (key1);
+		return 0;
+	    }
+	}
+	RegCloseKey (key1);
+    }
+    strcpy (rpath2, rpath1);
+    strcat (rpath2, progid);
+    if (!def)
+	strcat (rpath2, extension);
+    if (RegOpenKeyEx (rkey, rpath2, 0, KEY_READ, &key1) == ERROR_SUCCESS) {
+	RegCloseKey (key1);
+	return 1;
+    }
+    return 0;
+}
+
+struct assext exts[] = {
+    { ".uae", "-f \"%1\"", "WinUAE configuration file", },
+    { ".adf", "-0 \"%1\" -s use_gui=no", "WinUAE floppy disk image" },
+    { ".adz", "-0 \"%1\" -s use_gui=no", "WinUAE floppy disk image" },
+    { ".dms", "-0 \"%1\" -s use_gui=no", "WinUAE floppy disk image" },
+    { ".fdi", "-0 \"%1\" -s use_gui=no", "WinUAE floppy disk image" },
+    { ".ipf", "-0 \"%1\" -s use_gui=no", "WinUAE floppy disk image" },
+    { ".uss", "-s statefile=\"%1\" -s use_gui=no", "WinUAE statefile" },
+    { NULL }
+};
+
+static void associate_init_extensions (void)
+{
+    int i;
+
+    for (i = 0; exts[i].ext; i++) {
+	exts[i].enabled = 0;
+	if (shell_associate_is (exts[i].ext))
+	    exts[i].enabled = 1;
+    }
+    // associate .uae by default when running for the first time
+    if (!regexiststree (NULL, "FileAssociations")) {
+	UAEREG *fkey;
+	if (exts[0].enabled == 0) {
+	    shell_associate (exts[0].ext, exts[0].cmd, NULL, exts[0].desc, NULL);
+	    exts[0].enabled = shell_associate_is (exts[0].ext);
+	}
+        fkey = regcreatetree (NULL, "FileAssociations");
+	regsetstr (fkey, exts[0].ext, "");
+	regclosetree (fkey);
+    }
+#if 0
+    UAEREG *fkey;
+    fkey = regcreatetree (NULL, "FileAssociations");
+    if (fkey) {
+	int ok = 1;
+	char tmp[MAX_DPATH];
+	strcpy (tmp, "Following file associations:\n");
+	for (i = 0; exts[i].ext; i++) {
+	    char tmp2[10];
+	    int size = sizeof tmp;
+	    int is1 = exts[i].enabled;
+	    int is2 = regquerystr (fkey, exts[i].ext, tmp2, &size);
+	    if (is1 == 0 && is2 != 0) {
+		strcat (tmp, exts[i].ext);
+		strcat (tmp, "\n");
+		ok = 0;
+	    }
+	}
+	if (!ok) {
+	    char szTitle[MAX_DPATH];
+	    WIN32GUI_LoadUIString (IDS_ERRORTITLE, szTitle, MAX_DPATH);
+	    strcat (szTitle, BetaStr);
+	    if (MessageBox (NULL, tmp, szTitle, MB_YESNO | MB_TASKMODAL) == IDOK) {
+		for (i = 0; exts[i].ext; i++) {
+		    char tmp2[10];
+		    int size = sizeof tmp;
+		    int is1 = exts[i].enabled;
+		    int is2 = regquerystr (fkey, exts[i].ext, tmp2, &size);
+		    if (is1 == 0 && is2 != 0) {
+			regdelete (fkey, exts[i].ext);
+			shell_associate (exts[i].ext, exts[i].cmd, NULL, exts[i].desc, NULL);
+			exts[i].enabled = shell_associate_is (exts[i].ext);
+		    }
+		}
+	    } else {
+		for (i = 0; exts[i].ext; i++) {
+		    if (!exts[i].enabled)
+		        regdelete (fkey, exts[i].ext);
+		}
+	    }
+	}
+    }
+#endif
+}
+
+void associate_file_extensions (void)
+{
+    int i;
+    int modified = 0;
+
+    for (i = 0; exts[i].ext; i++) {
+	int already = shell_associate_is (exts[i].ext);
+	if (exts[i].enabled == 0 && already) {
+	    shell_deassociate (exts[i].ext);
+	    exts[i].enabled = shell_associate_is (exts[i].ext);
+	    if (exts[i].enabled)
+		modified = 1;
+	} else if (exts[i].enabled && already == 0) {
+	    shell_associate (exts[i].ext, exts[i].cmd, NULL, exts[i].desc, NULL);
+	    exts[i].enabled = shell_associate_is (exts[i].ext);
+	    if (exts[i].enabled == 0)
+		modified = 1;
+	}
+    }
+    if (modified)
+	SHChangeNotify (SHCNE_ASSOCCHANGED, 0, 0, 0); 
+}
+
 static void WIN32_HandleRegistryStuff(void)
 {
     RGBFTYPE colortype = RGBFB_NONE;
@@ -2447,54 +2720,8 @@ static void WIN32_HandleRegistryStuff(void)
     DWORD disposition;
     char path[MAX_DPATH] = "";
     char version[100];
-    HKEY hWinUAEKeyLocal = NULL;
-    HKEY rkey;
-    char rpath1[MAX_DPATH], rpath2[MAX_DPATH], rpath3[MAX_DPATH];
 
-    rpath1[0] = rpath2[0] = rpath3[0] = 0;
-    rkey = HKEY_CLASSES_ROOT;
-    if (os_winnt_admin)
-        rkey = HKEY_LOCAL_MACHINE;
-    else
-        rkey = HKEY_CURRENT_USER;
-    strcpy (rpath1, "Software\\Classes\\");
-    strcpy (rpath2, rpath1);
-    strcpy (rpath3, rpath1);
-    strcat (rpath1, ".uae");
-    strcat (rpath2, "WinUAE\\shell\\Edit\\command");
-    strcat (rpath3, "WinUAE\\shell\\Open\\command");
-
-    /* Create/Open the hWinUAEKey which points to our config-info */
-    if (RegCreateKeyEx (rkey, rpath1, 0, "", REG_OPTION_NON_VOLATILE,
-	KEY_WRITE | KEY_READ, NULL, &hWinUAEKey, &disposition) == ERROR_SUCCESS)
-    {
-	// Regardless of opening the existing key, or creating a new key, we will write the .uae filename-extension
-	// commands in.  This way, we're always up to date.
-
-	/* Set our (default) sub-key to point to the "WinUAE" key, which we then create */
-	RegSetValueEx (hWinUAEKey, "", 0, REG_SZ, (CONST BYTE *)"WinUAE", strlen("WinUAE") + 1);
-
-	if (RegCreateKeyEx (rkey, rpath2, 0, "", REG_OPTION_NON_VOLATILE,
-			      KEY_WRITE | KEY_READ, NULL, &hWinUAEKeyLocal, &disposition) == ERROR_SUCCESS)
-	{
-	    /* Set our (default) sub-key to BE the "WinUAE" command for editing a configuration */
-	    sprintf (path, "\"%sWinUAE.exe\" -f \"%%1\" -s use_gui=yes", start_path_exe);
-	    RegSetValueEx (hWinUAEKeyLocal, "", 0, REG_SZ, (CONST BYTE *)path, strlen (path) + 1);
-	    RegCloseKey (hWinUAEKeyLocal);
-	}
-
-	if(RegCreateKeyEx(rkey, rpath3, 0, "", REG_OPTION_NON_VOLATILE,
-			      KEY_WRITE | KEY_READ, NULL, &hWinUAEKeyLocal, &disposition) == ERROR_SUCCESS)
-	{
-	    /* Set our (default) sub-key to BE the "WinUAE" command for launching a configuration */
-	    sprintf (path, "\"%sWinUAE.exe\" -f \"%%1\"", start_path_exe);
-	    RegSetValueEx (hWinUAEKeyLocal, "", 0, REG_SZ, (CONST BYTE *)path, strlen (path) + 1);
-	    RegCloseKey (hWinUAEKeyLocal);
-	}
-	RegCloseKey (hWinUAEKey);
-    }
     hWinUAEKey = NULL;
-
     /* Create/Open the hWinUAEKey which points our config-info */
     RegCreateKeyEx (HKEY_CURRENT_USER, "Software\\Arabuusimiehet\\WinUAE", 0, "", REG_OPTION_NON_VOLATILE,
 	  KEY_WRITE | KEY_READ, NULL, &hWinUAEKey, &disposition);
@@ -2562,6 +2789,7 @@ static void WIN32_HandleRegistryStuff(void)
     fetch_path ("InputPath", path, sizeof (path));
     createdir (path);
     regclosetree (read_disk_history ());
+    associate_init_extensions ();
     read_rom_list ();
     load_keyring (NULL, NULL);
 }
@@ -2989,15 +3217,15 @@ static int getval(char *s)
 
 static void makeverstr(char *s)
 {
-#if WINUAEBETA > 0
-    sprintf (BetaStr, " (%sBeta %d, %d.%02d.%02d)", WINUAEPUBLICBETA > 0 ? "Public " : "", WINUAEBETA,
-	GETBDY(WINUAEDATE), GETBDM(WINUAEDATE), GETBDD(WINUAEDATE));
-    sprintf (s, "WinUAE %d.%d.%d%s%s",
-	UAEMAJOR, UAEMINOR, UAESUBREV, WINUAEREV, BetaStr);
-#else
-    sprintf(s, "WinUAE %d.%d.%d%s (%d.%02d.%02d)",
-	UAEMAJOR, UAEMINOR, UAESUBREV, WINUAEREV, GETBDY(WINUAEDATE), GETBDM(WINUAEDATE), GETBDD(WINUAEDATE));
-#endif
+    if (strlen (WINUAEBETA) > 0) {
+	sprintf (BetaStr, " (%sBeta %s, %d.%02d.%02d)", WINUAEPUBLICBETA > 0 ? "Public " : "", WINUAEBETA,
+	    GETBDY(WINUAEDATE), GETBDM(WINUAEDATE), GETBDD(WINUAEDATE));
+	sprintf (s, "WinUAE %d.%d.%d%s%s",
+	    UAEMAJOR, UAEMINOR, UAESUBREV, WINUAEREV, BetaStr);
+    } else {
+	sprintf(s, "WinUAE %d.%d.%d%s (%d.%02d.%02d)",
+	    UAEMAJOR, UAEMINOR, UAESUBREV, WINUAEREV, GETBDY(WINUAEDATE), GETBDM(WINUAEDATE), GETBDD(WINUAEDATE));
+    }
     if (strlen (WINUAEEXTRA) > 0) {
 	strcat (s, " ");
 	strcat (s, WINUAEEXTRA);
@@ -3092,6 +3320,11 @@ static int process_arg(char **xargv)
 	if (!strcmp (arg, "-ddsoftwarecolorkey")) {
 	    extern int ddsoftwarecolorkey;
 	    ddsoftwarecolorkey = 1;
+	    continue;
+	}
+	if (!strcmp (arg, "-logflush")) {
+	    extern int always_flush_log;
+	    always_flush_log = 1;
 	    continue;
 	}
 
@@ -3249,7 +3482,6 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
 	write_log ("Sorting devices and modes..\n");
 	sortdisplays ();
 	write_log ("Display buffer mode = %d\n", ddforceram);
-	write_log ("Enumerating sound devices:\n");
 	enumerate_sound_devices ();
 	for (i = 0; sound_devices[i].name; i++) {
 	    write_log ("%d:%s: %s\n", i, sound_devices[i].type == SOUND_DEVICE_DS ? "DS" : "AL", sound_devices[i].name);

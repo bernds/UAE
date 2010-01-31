@@ -1083,8 +1083,29 @@ static int cfgfile_parse_host (struct uae_prefs *p, char *option, char *value)
     }
 
     if (cfgfile_string (option, value, "statefile", tmpbuf, sizeof (tmpbuf))) {
-	savestate_state = STATE_DORESTORE;
 	strcpy (savestate_fname, tmpbuf);
+	if (zfile_exists (savestate_fname)) {
+	    savestate_state = STATE_DORESTORE;
+	} else {
+	    int ok = 0;
+	    if (savestate_fname[0]) {
+		for (;;) {
+		    char *p;
+		    if (my_existsdir (savestate_fname)) {
+		        ok = 1;
+		        break;
+		    }
+		    p = strrchr (savestate_fname, '\\');
+		    if (!p)
+		        p = strrchr (savestate_fname, '/');
+		    if (!p)
+		        break;
+		    *p = 0;
+		}
+	    }
+	    if (!ok)
+		savestate_fname[0] = 0;
+	}
 	return 1;
     }
 
@@ -2840,6 +2861,7 @@ void default_prefs (struct uae_prefs *p, int type)
     p->config_hardware_path[0] = 0;
     p->config_host_path[0] = 0;
 
+    p->gfx_scandoubler = 0;
     p->start_gui = 1;
     p->start_debugger = 0;
 
@@ -3220,7 +3242,6 @@ static int bip_a3000 (struct uae_prefs *p, int config, int compa, int romcheck)
     p->produce_sound = 2;
     p->cachesize = 8192;
     p->dfxtype[0] = DRV_35_HD;
-    p->dfxtype[1] = DRV_35_HD;
     p->floppy_speed = 0;
     p->cpu_idle = 150;
     p->cs_compatible = CP_A3000;
