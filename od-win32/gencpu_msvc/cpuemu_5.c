@@ -928,9 +928,9 @@ unsigned long REGPARAM2 CPUFUNC(op_0188_5)(uae_u32 opcode)
 	uae_u32 dstreg = opcode & 7;
 {{	uae_s16 src = m68k_dreg(regs, srcreg);
 	uaecptr memp = m68k_areg(regs, dstreg) + (uae_s32)(uae_s16)get_word_prefetch (4);
+	put_byte (memp, src >> 8); put_byte (memp + 2, src);
 	regs.ir = regs.irc;
 	get_word_prefetch (6);
-	put_byte (memp, src >> 8); put_byte (memp + 2, src);
 }}	m68k_incpc (4);
 return 8 * 256;
 }
@@ -1116,10 +1116,10 @@ unsigned long REGPARAM2 CPUFUNC(op_01c8_5)(uae_u32 opcode)
 	uae_u32 dstreg = opcode & 7;
 {{	uae_s32 src = m68k_dreg(regs, srcreg);
 	uaecptr memp = m68k_areg(regs, dstreg) + (uae_s32)(uae_s16)get_word_prefetch (4);
-	regs.ir = regs.irc;
-	get_word_prefetch (6);
 	put_byte (memp, src >> 24); put_byte (memp + 2, src >> 16);
 	put_byte (memp + 4, src >> 8); put_byte (memp + 6, src);
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
 }}	m68k_incpc (4);
 return 8 * 256;
 }
@@ -5281,13 +5281,13 @@ unsigned long REGPARAM2 CPUFUNC(op_1100_5)(uae_u32 opcode)
 {	uaecptr dsta;
 	dsta = m68k_areg(regs, dstreg) - areg_byteinc[dstreg];
 	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
 	put_byte (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s8)(src)) == 0);
 	SET_NFLG (((uae_s8)(src)) < 0);
 	m68k_incpc (2);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}return 8 * 256;
 }
 /* MOVE.B (An),-(An) */
@@ -5300,13 +5300,13 @@ unsigned long REGPARAM2 CPUFUNC(op_1110_5)(uae_u32 opcode)
 {	uaecptr dsta;
 	dsta = m68k_areg(regs, dstreg) - areg_byteinc[dstreg];
 	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
 	put_byte (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s8)(src)) == 0);
 	SET_NFLG (((uae_s8)(src)) < 0);
 	m68k_incpc (2);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}return 12 * 256;
 }
 /* MOVE.B (An)+,-(An) */
@@ -5320,13 +5320,13 @@ unsigned long REGPARAM2 CPUFUNC(op_1118_5)(uae_u32 opcode)
 {	uaecptr dsta;
 	dsta = m68k_areg(regs, dstreg) - areg_byteinc[dstreg];
 	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
 	put_byte (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s8)(src)) == 0);
 	SET_NFLG (((uae_s8)(src)) < 0);
 	m68k_incpc (2);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}return 12 * 256;
 }
 /* MOVE.B -(An),-(An) */
@@ -5341,13 +5341,13 @@ unsigned long REGPARAM2 CPUFUNC(op_1120_5)(uae_u32 opcode)
 {	uaecptr dsta;
 	dsta = m68k_areg(regs, dstreg) - areg_byteinc[dstreg];
 	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
 	put_byte (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s8)(src)) == 0);
 	SET_NFLG (((uae_s8)(src)) < 0);
 	m68k_incpc (2);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}return 14 * 256;
 }
 /* MOVE.B (d16,An),-(An) */
@@ -5360,13 +5360,13 @@ unsigned long REGPARAM2 CPUFUNC(op_1128_5)(uae_u32 opcode)
 {	uaecptr dsta;
 	dsta = m68k_areg(regs, dstreg) - areg_byteinc[dstreg];
 	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
 	put_byte (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s8)(src)) == 0);
 	SET_NFLG (((uae_s8)(src)) < 0);
 	m68k_incpc (4);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}return 16 * 256;
 }
 /* MOVE.B (d8,An,Xn),-(An) */
@@ -5380,13 +5380,13 @@ unsigned long REGPARAM2 CPUFUNC(op_1130_5)(uae_u32 opcode)
 {	uaecptr dsta;
 	dsta = m68k_areg(regs, dstreg) - areg_byteinc[dstreg];
 	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
 	put_byte (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s8)(src)) == 0);
 	SET_NFLG (((uae_s8)(src)) < 0);
 	m68k_incpc (4);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}return 18 * 256;
 }
 /* MOVE.B (xxx).W,-(An) */
@@ -5398,13 +5398,13 @@ unsigned long REGPARAM2 CPUFUNC(op_1138_5)(uae_u32 opcode)
 {	uaecptr dsta;
 	dsta = m68k_areg(regs, dstreg) - areg_byteinc[dstreg];
 	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
 	put_byte (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s8)(src)) == 0);
 	SET_NFLG (((uae_s8)(src)) < 0);
 	m68k_incpc (4);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}return 16 * 256;
 }
 /* MOVE.B (xxx).L,-(An) */
@@ -5416,13 +5416,13 @@ unsigned long REGPARAM2 CPUFUNC(op_1139_5)(uae_u32 opcode)
 {	uaecptr dsta;
 	dsta = m68k_areg(regs, dstreg) - areg_byteinc[dstreg];
 	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (8);
 	put_byte (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s8)(src)) == 0);
 	SET_NFLG (((uae_s8)(src)) < 0);
 	m68k_incpc (6);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}return 20 * 256;
 }
 /* MOVE.B (d16,PC),-(An) */
@@ -5435,13 +5435,13 @@ unsigned long REGPARAM2 CPUFUNC(op_113a_5)(uae_u32 opcode)
 {	uaecptr dsta;
 	dsta = m68k_areg(regs, dstreg) - areg_byteinc[dstreg];
 	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
 	put_byte (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s8)(src)) == 0);
 	SET_NFLG (((uae_s8)(src)) < 0);
 	m68k_incpc (4);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}return 16 * 256;
 }
 /* MOVE.B (d8,PC,Xn),-(An) */
@@ -5456,13 +5456,13 @@ unsigned long REGPARAM2 CPUFUNC(op_113b_5)(uae_u32 opcode)
 {	uaecptr dsta;
 	dsta = m68k_areg(regs, dstreg) - areg_byteinc[dstreg];
 	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
 	put_byte (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s8)(src)) == 0);
 	SET_NFLG (((uae_s8)(src)) < 0);
 	m68k_incpc (4);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}return 18 * 256;
 }
 /* MOVE.B #<data>.B,-(An) */
@@ -5473,13 +5473,13 @@ unsigned long REGPARAM2 CPUFUNC(op_113c_5)(uae_u32 opcode)
 {	uaecptr dsta;
 	dsta = m68k_areg(regs, dstreg) - areg_byteinc[dstreg];
 	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
 	put_byte (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s8)(src)) == 0);
 	SET_NFLG (((uae_s8)(src)) < 0);
 	m68k_incpc (4);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}return 16 * 256;
 }
 /* MOVE.B Dn,(d16,An) */
@@ -6067,12 +6067,15 @@ unsigned long REGPARAM2 CPUFUNC(op_13d0_5)(uae_u32 opcode)
 	uae_u32 srcreg = (opcode & 7);
 {{	uaecptr srca = m68k_areg(regs, srcreg);
 {	uae_s8 src = get_byte (srca);
-{	uaecptr dsta = get_long_prefetch (4);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (4) << 16;
+	dsta |= regs.irc;
 	put_byte (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s8)(src)) == 0);
 	SET_NFLG (((uae_s8)(src)) < 0);
 	m68k_incpc (6);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}return 20 * 256;
@@ -6084,12 +6087,15 @@ unsigned long REGPARAM2 CPUFUNC(op_13d8_5)(uae_u32 opcode)
 {{	uaecptr srca = m68k_areg(regs, srcreg);
 {	uae_s8 src = get_byte (srca);
 	m68k_areg(regs, srcreg) += areg_byteinc[srcreg];
-{	uaecptr dsta = get_long_prefetch (4);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (4) << 16;
+	dsta |= regs.irc;
 	put_byte (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s8)(src)) == 0);
 	SET_NFLG (((uae_s8)(src)) < 0);
 	m68k_incpc (6);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}return 20 * 256;
@@ -6102,12 +6108,15 @@ unsigned long REGPARAM2 CPUFUNC(op_13e0_5)(uae_u32 opcode)
 	srca = m68k_areg(regs, srcreg) - areg_byteinc[srcreg];
 {	uae_s8 src = get_byte (srca);
 	m68k_areg (regs, srcreg) = srca;
-{	uaecptr dsta = get_long_prefetch (4);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (4) << 16;
+	dsta |= regs.irc;
 	put_byte (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s8)(src)) == 0);
 	SET_NFLG (((uae_s8)(src)) < 0);
 	m68k_incpc (6);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}return 22 * 256;
@@ -6118,12 +6127,15 @@ unsigned long REGPARAM2 CPUFUNC(op_13e8_5)(uae_u32 opcode)
 	uae_u32 srcreg = (opcode & 7);
 {{	uaecptr srca = m68k_areg(regs, srcreg) + (uae_s32)(uae_s16)get_word_prefetch (4);
 {	uae_s8 src = get_byte (srca);
-{	uaecptr dsta = get_long_prefetch (6);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (6) << 16;
+	dsta |= regs.irc;
 	put_byte (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s8)(src)) == 0);
 	SET_NFLG (((uae_s8)(src)) < 0);
 	m68k_incpc (8);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}return 24 * 256;
@@ -6135,12 +6147,15 @@ unsigned long REGPARAM2 CPUFUNC(op_13f0_5)(uae_u32 opcode)
 {{	uaecptr srca;
 	srca = get_disp_ea_000(m68k_areg(regs, srcreg), get_word_prefetch (4));
 {	uae_s8 src = get_byte (srca);
-{	uaecptr dsta = get_long_prefetch (6);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (6) << 16;
+	dsta |= regs.irc;
 	put_byte (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s8)(src)) == 0);
 	SET_NFLG (((uae_s8)(src)) < 0);
 	m68k_incpc (8);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}return 26 * 256;
@@ -6150,12 +6165,15 @@ unsigned long REGPARAM2 CPUFUNC(op_13f8_5)(uae_u32 opcode)
 {
 {{	uaecptr srca = (uae_s32)(uae_s16)get_word_prefetch (4);
 {	uae_s8 src = get_byte (srca);
-{	uaecptr dsta = get_long_prefetch (6);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (6) << 16;
+	dsta |= regs.irc;
 	put_byte (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s8)(src)) == 0);
 	SET_NFLG (((uae_s8)(src)) < 0);
 	m68k_incpc (8);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}return 24 * 256;
@@ -6165,12 +6183,15 @@ unsigned long REGPARAM2 CPUFUNC(op_13f9_5)(uae_u32 opcode)
 {
 {{	uaecptr srca = get_long_prefetch (4);
 {	uae_s8 src = get_byte (srca);
-{	uaecptr dsta = get_long_prefetch (8);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (8) << 16;
+	dsta |= regs.irc;
 	put_byte (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s8)(src)) == 0);
 	SET_NFLG (((uae_s8)(src)) < 0);
 	m68k_incpc (10);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}return 28 * 256;
@@ -6181,12 +6202,15 @@ unsigned long REGPARAM2 CPUFUNC(op_13fa_5)(uae_u32 opcode)
 {{	uaecptr srca = m68k_getpc () + 2;
 	srca += (uae_s32)(uae_s16)get_word_prefetch (4);
 {	uae_s8 src = get_byte (srca);
-{	uaecptr dsta = get_long_prefetch (6);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (6) << 16;
+	dsta |= regs.irc;
 	put_byte (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s8)(src)) == 0);
 	SET_NFLG (((uae_s8)(src)) < 0);
 	m68k_incpc (8);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}return 24 * 256;
@@ -6199,12 +6223,15 @@ unsigned long REGPARAM2 CPUFUNC(op_13fb_5)(uae_u32 opcode)
 	tmppc = m68k_getpc() + 2;
 	srca = get_disp_ea_000(tmppc, get_word_prefetch (4));
 {	uae_s8 src = get_byte (srca);
-{	uaecptr dsta = get_long_prefetch (6);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (6) << 16;
+	dsta |= regs.irc;
 	put_byte (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s8)(src)) == 0);
 	SET_NFLG (((uae_s8)(src)) < 0);
 	m68k_incpc (8);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}return 26 * 256;
@@ -6466,12 +6493,11 @@ unsigned long REGPARAM2 CPUFUNC(op_2040_5)(uae_u32 opcode)
 	uae_u32 srcreg = (opcode & 7);
 	uae_u32 dstreg = (opcode >> 9) & 7;
 {{	uae_s32 src = m68k_dreg(regs, srcreg);
-{	uae_u32 val = src;
+{	m68k_areg(regs, dstreg) = (src);
+	m68k_incpc (2);
 	regs.ir = regs.irc;
-	get_word_prefetch (4);
-	m68k_areg(regs, dstreg) = (val);
-}}}	m68k_incpc (2);
-return 4 * 256;
+	get_word_prefetch (2);
+}}}return 4 * 256;
 }
 /* MOVEA.L An,An */
 unsigned long REGPARAM2 CPUFUNC(op_2048_5)(uae_u32 opcode)
@@ -6479,12 +6505,11 @@ unsigned long REGPARAM2 CPUFUNC(op_2048_5)(uae_u32 opcode)
 	uae_u32 srcreg = (opcode & 7);
 	uae_u32 dstreg = (opcode >> 9) & 7;
 {{	uae_s32 src = m68k_areg(regs, srcreg);
-{	uae_u32 val = src;
+{	m68k_areg(regs, dstreg) = (src);
+	m68k_incpc (2);
 	regs.ir = regs.irc;
-	get_word_prefetch (4);
-	m68k_areg(regs, dstreg) = (val);
-}}}	m68k_incpc (2);
-return 4 * 256;
+	get_word_prefetch (2);
+}}}return 4 * 256;
 }
 /* MOVEA.L (An),An */
 unsigned long REGPARAM2 CPUFUNC(op_2050_5)(uae_u32 opcode)
@@ -6497,12 +6522,11 @@ unsigned long REGPARAM2 CPUFUNC(op_2050_5)(uae_u32 opcode)
 		goto endlabel2480;
 	}
 {{	uae_s32 src = get_long (srca);
-{	uae_u32 val = src;
+{	m68k_areg(regs, dstreg) = (src);
+	m68k_incpc (2);
 	regs.ir = regs.irc;
-	get_word_prefetch (4);
-	m68k_areg(regs, dstreg) = (val);
-}}}}}	m68k_incpc (2);
-endlabel2480: ;
+	get_word_prefetch (2);
+}}}}}endlabel2480: ;
 return 12 * 256;
 }
 /* MOVEA.L (An)+,An */
@@ -6517,12 +6541,11 @@ unsigned long REGPARAM2 CPUFUNC(op_2058_5)(uae_u32 opcode)
 	}
 {{	uae_s32 src = get_long (srca);
 	m68k_areg(regs, srcreg) += 4;
-{	uae_u32 val = src;
+{	m68k_areg(regs, dstreg) = (src);
+	m68k_incpc (2);
 	regs.ir = regs.irc;
-	get_word_prefetch (4);
-	m68k_areg(regs, dstreg) = (val);
-}}}}}	m68k_incpc (2);
-endlabel2481: ;
+	get_word_prefetch (2);
+}}}}}endlabel2481: ;
 return 12 * 256;
 }
 /* MOVEA.L -(An),An */
@@ -6538,12 +6561,11 @@ unsigned long REGPARAM2 CPUFUNC(op_2060_5)(uae_u32 opcode)
 	}
 {{	uae_s32 src = get_long (srca);
 	m68k_areg (regs, srcreg) = srca;
-{	uae_u32 val = src;
+{	m68k_areg(regs, dstreg) = (src);
+	m68k_incpc (2);
 	regs.ir = regs.irc;
-	get_word_prefetch (4);
-	m68k_areg(regs, dstreg) = (val);
-}}}}}	m68k_incpc (2);
-endlabel2482: ;
+	get_word_prefetch (2);
+}}}}}endlabel2482: ;
 return 14 * 256;
 }
 /* MOVEA.L (d16,An),An */
@@ -6557,12 +6579,11 @@ unsigned long REGPARAM2 CPUFUNC(op_2068_5)(uae_u32 opcode)
 		goto endlabel2483;
 	}
 {{	uae_s32 src = get_long (srca);
-{	uae_u32 val = src;
+{	m68k_areg(regs, dstreg) = (src);
+	m68k_incpc (4);
 	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_areg(regs, dstreg) = (val);
-}}}}}	m68k_incpc (4);
-endlabel2483: ;
+	get_word_prefetch (2);
+}}}}}endlabel2483: ;
 return 16 * 256;
 }
 /* MOVEA.L (d8,An,Xn),An */
@@ -6577,12 +6598,11 @@ unsigned long REGPARAM2 CPUFUNC(op_2070_5)(uae_u32 opcode)
 		goto endlabel2484;
 	}
 {{	uae_s32 src = get_long (srca);
-{	uae_u32 val = src;
+{	m68k_areg(regs, dstreg) = (src);
+	m68k_incpc (4);
 	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_areg(regs, dstreg) = (val);
-}}}}}	m68k_incpc (4);
-endlabel2484: ;
+	get_word_prefetch (2);
+}}}}}endlabel2484: ;
 return 18 * 256;
 }
 /* MOVEA.L (xxx).W,An */
@@ -6595,12 +6615,11 @@ unsigned long REGPARAM2 CPUFUNC(op_2078_5)(uae_u32 opcode)
 		goto endlabel2485;
 	}
 {{	uae_s32 src = get_long (srca);
-{	uae_u32 val = src;
+{	m68k_areg(regs, dstreg) = (src);
+	m68k_incpc (4);
 	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_areg(regs, dstreg) = (val);
-}}}}}	m68k_incpc (4);
-endlabel2485: ;
+	get_word_prefetch (2);
+}}}}}endlabel2485: ;
 return 16 * 256;
 }
 /* MOVEA.L (xxx).L,An */
@@ -6613,12 +6632,11 @@ unsigned long REGPARAM2 CPUFUNC(op_2079_5)(uae_u32 opcode)
 		goto endlabel2486;
 	}
 {{	uae_s32 src = get_long (srca);
-{	uae_u32 val = src;
+{	m68k_areg(regs, dstreg) = (src);
+	m68k_incpc (6);
 	regs.ir = regs.irc;
-	get_word_prefetch (8);
-	m68k_areg(regs, dstreg) = (val);
-}}}}}	m68k_incpc (6);
-endlabel2486: ;
+	get_word_prefetch (2);
+}}}}}endlabel2486: ;
 return 20 * 256;
 }
 /* MOVEA.L (d16,PC),An */
@@ -6632,12 +6650,11 @@ unsigned long REGPARAM2 CPUFUNC(op_207a_5)(uae_u32 opcode)
 		goto endlabel2487;
 	}
 {{	uae_s32 src = get_long (srca);
-{	uae_u32 val = src;
+{	m68k_areg(regs, dstreg) = (src);
+	m68k_incpc (4);
 	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_areg(regs, dstreg) = (val);
-}}}}}	m68k_incpc (4);
-endlabel2487: ;
+	get_word_prefetch (2);
+}}}}}endlabel2487: ;
 return 16 * 256;
 }
 /* MOVEA.L (d8,PC,Xn),An */
@@ -6653,12 +6670,11 @@ unsigned long REGPARAM2 CPUFUNC(op_207b_5)(uae_u32 opcode)
 		goto endlabel2488;
 	}
 {{	uae_s32 src = get_long (srca);
-{	uae_u32 val = src;
+{	m68k_areg(regs, dstreg) = (src);
+	m68k_incpc (4);
 	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_areg(regs, dstreg) = (val);
-}}}}}	m68k_incpc (4);
-endlabel2488: ;
+	get_word_prefetch (2);
+}}}}}endlabel2488: ;
 return 18 * 256;
 }
 /* MOVEA.L #<data>.L,An */
@@ -6666,12 +6682,11 @@ unsigned long REGPARAM2 CPUFUNC(op_207c_5)(uae_u32 opcode)
 {
 	uae_u32 dstreg = (opcode >> 9) & 7;
 {{	uae_s32 src = get_long_prefetch (4);
-{	uae_u32 val = src;
+{	m68k_areg(regs, dstreg) = (src);
+	m68k_incpc (6);
 	regs.ir = regs.irc;
-	get_word_prefetch (8);
-	m68k_areg(regs, dstreg) = (val);
-}}}	m68k_incpc (6);
-return 12 * 256;
+	get_word_prefetch (2);
+}}}return 12 * 256;
 }
 /* MOVE.L Dn,(An) */
 unsigned long REGPARAM2 CPUFUNC(op_2080_5)(uae_u32 opcode)
@@ -7298,13 +7313,13 @@ unsigned long REGPARAM2 CPUFUNC(op_2100_5)(uae_u32 opcode)
 		goto endlabel2514;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
 	put_long (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (2);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}endlabel2514: ;
 return 12 * 256;
 }
@@ -7321,13 +7336,13 @@ unsigned long REGPARAM2 CPUFUNC(op_2108_5)(uae_u32 opcode)
 		goto endlabel2515;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
 	put_long (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (2);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}endlabel2515: ;
 return 12 * 256;
 }
@@ -7349,13 +7364,13 @@ unsigned long REGPARAM2 CPUFUNC(op_2110_5)(uae_u32 opcode)
 		goto endlabel2516;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
 	put_long (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (2);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}}}endlabel2516: ;
 return 20 * 256;
 }
@@ -7378,13 +7393,13 @@ unsigned long REGPARAM2 CPUFUNC(op_2118_5)(uae_u32 opcode)
 		goto endlabel2517;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
 	put_long (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (2);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}}}endlabel2517: ;
 return 20 * 256;
 }
@@ -7408,13 +7423,13 @@ unsigned long REGPARAM2 CPUFUNC(op_2120_5)(uae_u32 opcode)
 		goto endlabel2518;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
 	put_long (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (2);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}}}endlabel2518: ;
 return 22 * 256;
 }
@@ -7436,13 +7451,13 @@ unsigned long REGPARAM2 CPUFUNC(op_2128_5)(uae_u32 opcode)
 		goto endlabel2519;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
 	put_long (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (4);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}}}endlabel2519: ;
 return 24 * 256;
 }
@@ -7465,13 +7480,13 @@ unsigned long REGPARAM2 CPUFUNC(op_2130_5)(uae_u32 opcode)
 		goto endlabel2520;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
 	put_long (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (4);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}}}endlabel2520: ;
 return 26 * 256;
 }
@@ -7492,13 +7507,13 @@ unsigned long REGPARAM2 CPUFUNC(op_2138_5)(uae_u32 opcode)
 		goto endlabel2521;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
 	put_long (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (4);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}}}endlabel2521: ;
 return 24 * 256;
 }
@@ -7519,13 +7534,13 @@ unsigned long REGPARAM2 CPUFUNC(op_2139_5)(uae_u32 opcode)
 		goto endlabel2522;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (8);
 	put_long (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (6);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}}}endlabel2522: ;
 return 28 * 256;
 }
@@ -7547,13 +7562,13 @@ unsigned long REGPARAM2 CPUFUNC(op_213a_5)(uae_u32 opcode)
 		goto endlabel2523;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
 	put_long (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (4);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}}}endlabel2523: ;
 return 24 * 256;
 }
@@ -7577,13 +7592,13 @@ unsigned long REGPARAM2 CPUFUNC(op_213b_5)(uae_u32 opcode)
 		goto endlabel2524;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
 	put_long (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (4);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}}}endlabel2524: ;
 return 26 * 256;
 }
@@ -7599,13 +7614,13 @@ unsigned long REGPARAM2 CPUFUNC(op_213c_5)(uae_u32 opcode)
 		goto endlabel2525;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (8);
 	put_long (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (6);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}endlabel2525: ;
 return 20 * 256;
 }
@@ -8562,7 +8577,9 @@ unsigned long REGPARAM2 CPUFUNC(op_23d0_5)(uae_u32 opcode)
 		goto endlabel2564;
 	}
 {{	uae_s32 src = get_long (srca);
-{	uaecptr dsta = get_long_prefetch (4);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (4) << 16;
+	dsta |= regs.irc;
 	if (dsta & 1) {
 		exception3 (opcode, m68k_getpc() + 2, dsta);
 		goto endlabel2564;
@@ -8572,6 +8589,7 @@ unsigned long REGPARAM2 CPUFUNC(op_23d0_5)(uae_u32 opcode)
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (6);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}}}endlabel2564: ;
@@ -8588,7 +8606,9 @@ unsigned long REGPARAM2 CPUFUNC(op_23d8_5)(uae_u32 opcode)
 	}
 {{	uae_s32 src = get_long (srca);
 	m68k_areg(regs, srcreg) += 4;
-{	uaecptr dsta = get_long_prefetch (4);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (4) << 16;
+	dsta |= regs.irc;
 	if (dsta & 1) {
 		exception3 (opcode, m68k_getpc() + 2, dsta);
 		goto endlabel2565;
@@ -8598,6 +8618,7 @@ unsigned long REGPARAM2 CPUFUNC(op_23d8_5)(uae_u32 opcode)
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (6);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}}}endlabel2565: ;
@@ -8615,7 +8636,9 @@ unsigned long REGPARAM2 CPUFUNC(op_23e0_5)(uae_u32 opcode)
 	}
 {{	uae_s32 src = get_long (srca);
 	m68k_areg (regs, srcreg) = srca;
-{	uaecptr dsta = get_long_prefetch (4);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (4) << 16;
+	dsta |= regs.irc;
 	if (dsta & 1) {
 		exception3 (opcode, m68k_getpc() + 2, dsta);
 		goto endlabel2566;
@@ -8625,6 +8648,7 @@ unsigned long REGPARAM2 CPUFUNC(op_23e0_5)(uae_u32 opcode)
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (6);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}}}endlabel2566: ;
@@ -8640,7 +8664,9 @@ unsigned long REGPARAM2 CPUFUNC(op_23e8_5)(uae_u32 opcode)
 		goto endlabel2567;
 	}
 {{	uae_s32 src = get_long (srca);
-{	uaecptr dsta = get_long_prefetch (6);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (6) << 16;
+	dsta |= regs.irc;
 	if (dsta & 1) {
 		exception3 (opcode, m68k_getpc() + 4, dsta);
 		goto endlabel2567;
@@ -8650,6 +8676,7 @@ unsigned long REGPARAM2 CPUFUNC(op_23e8_5)(uae_u32 opcode)
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (8);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}}}endlabel2567: ;
@@ -8666,7 +8693,9 @@ unsigned long REGPARAM2 CPUFUNC(op_23f0_5)(uae_u32 opcode)
 		goto endlabel2568;
 	}
 {{	uae_s32 src = get_long (srca);
-{	uaecptr dsta = get_long_prefetch (6);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (6) << 16;
+	dsta |= regs.irc;
 	if (dsta & 1) {
 		exception3 (opcode, m68k_getpc() + 4, dsta);
 		goto endlabel2568;
@@ -8676,6 +8705,7 @@ unsigned long REGPARAM2 CPUFUNC(op_23f0_5)(uae_u32 opcode)
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (8);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}}}endlabel2568: ;
@@ -8690,7 +8720,9 @@ unsigned long REGPARAM2 CPUFUNC(op_23f8_5)(uae_u32 opcode)
 		goto endlabel2569;
 	}
 {{	uae_s32 src = get_long (srca);
-{	uaecptr dsta = get_long_prefetch (6);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (6) << 16;
+	dsta |= regs.irc;
 	if (dsta & 1) {
 		exception3 (opcode, m68k_getpc() + 4, dsta);
 		goto endlabel2569;
@@ -8700,6 +8732,7 @@ unsigned long REGPARAM2 CPUFUNC(op_23f8_5)(uae_u32 opcode)
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (8);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}}}endlabel2569: ;
@@ -8714,7 +8747,9 @@ unsigned long REGPARAM2 CPUFUNC(op_23f9_5)(uae_u32 opcode)
 		goto endlabel2570;
 	}
 {{	uae_s32 src = get_long (srca);
-{	uaecptr dsta = get_long_prefetch (8);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (8) << 16;
+	dsta |= regs.irc;
 	if (dsta & 1) {
 		exception3 (opcode, m68k_getpc() + 6, dsta);
 		goto endlabel2570;
@@ -8724,6 +8759,7 @@ unsigned long REGPARAM2 CPUFUNC(op_23f9_5)(uae_u32 opcode)
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (10);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}}}endlabel2570: ;
@@ -8739,7 +8775,9 @@ unsigned long REGPARAM2 CPUFUNC(op_23fa_5)(uae_u32 opcode)
 		goto endlabel2571;
 	}
 {{	uae_s32 src = get_long (srca);
-{	uaecptr dsta = get_long_prefetch (6);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (6) << 16;
+	dsta |= regs.irc;
 	if (dsta & 1) {
 		exception3 (opcode, m68k_getpc() + 4, dsta);
 		goto endlabel2571;
@@ -8749,6 +8787,7 @@ unsigned long REGPARAM2 CPUFUNC(op_23fa_5)(uae_u32 opcode)
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (8);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}}}endlabel2571: ;
@@ -8766,7 +8805,9 @@ unsigned long REGPARAM2 CPUFUNC(op_23fb_5)(uae_u32 opcode)
 		goto endlabel2572;
 	}
 {{	uae_s32 src = get_long (srca);
-{	uaecptr dsta = get_long_prefetch (6);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (6) << 16;
+	dsta |= regs.irc;
 	if (dsta & 1) {
 		exception3 (opcode, m68k_getpc() + 4, dsta);
 		goto endlabel2572;
@@ -8776,6 +8817,7 @@ unsigned long REGPARAM2 CPUFUNC(op_23fb_5)(uae_u32 opcode)
 	SET_ZFLG (((uae_s32)(src)) == 0);
 	SET_NFLG (((uae_s32)(src)) < 0);
 	m68k_incpc (8);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}}}endlabel2572: ;
@@ -9043,12 +9085,12 @@ unsigned long REGPARAM2 CPUFUNC(op_3040_5)(uae_u32 opcode)
 	uae_u32 srcreg = (opcode & 7);
 	uae_u32 dstreg = (opcode >> 9) & 7;
 {{	uae_s16 src = m68k_dreg(regs, srcreg);
-{	uae_u32 val = (uae_s32)(uae_s16)src;
+{	src = (uae_s32)(uae_s16)src;
+	m68k_areg(regs, dstreg) = (uae_s32)(uae_s16)(src);
+	m68k_incpc (2);
 	regs.ir = regs.irc;
-	get_word_prefetch (4);
-	m68k_areg(regs, dstreg) = (val);
-}}}	m68k_incpc (2);
-return 4 * 256;
+	get_word_prefetch (2);
+}}}return 4 * 256;
 }
 /* MOVEA.W An,An */
 unsigned long REGPARAM2 CPUFUNC(op_3048_5)(uae_u32 opcode)
@@ -9056,12 +9098,12 @@ unsigned long REGPARAM2 CPUFUNC(op_3048_5)(uae_u32 opcode)
 	uae_u32 srcreg = (opcode & 7);
 	uae_u32 dstreg = (opcode >> 9) & 7;
 {{	uae_s16 src = m68k_areg(regs, srcreg);
-{	uae_u32 val = (uae_s32)(uae_s16)src;
+{	src = (uae_s32)(uae_s16)src;
+	m68k_areg(regs, dstreg) = (uae_s32)(uae_s16)(src);
+	m68k_incpc (2);
 	regs.ir = regs.irc;
-	get_word_prefetch (4);
-	m68k_areg(regs, dstreg) = (val);
-}}}	m68k_incpc (2);
-return 4 * 256;
+	get_word_prefetch (2);
+}}}return 4 * 256;
 }
 /* MOVEA.W (An),An */
 unsigned long REGPARAM2 CPUFUNC(op_3050_5)(uae_u32 opcode)
@@ -9074,12 +9116,12 @@ unsigned long REGPARAM2 CPUFUNC(op_3050_5)(uae_u32 opcode)
 		goto endlabel2588;
 	}
 {{	uae_s16 src = get_word (srca);
-{	uae_u32 val = (uae_s32)(uae_s16)src;
+{	src = (uae_s32)(uae_s16)src;
+	m68k_areg(regs, dstreg) = (uae_s32)(uae_s16)(src);
+	m68k_incpc (2);
 	regs.ir = regs.irc;
-	get_word_prefetch (4);
-	m68k_areg(regs, dstreg) = (val);
-}}}}}	m68k_incpc (2);
-endlabel2588: ;
+	get_word_prefetch (2);
+}}}}}endlabel2588: ;
 return 8 * 256;
 }
 /* MOVEA.W (An)+,An */
@@ -9094,12 +9136,12 @@ unsigned long REGPARAM2 CPUFUNC(op_3058_5)(uae_u32 opcode)
 	}
 {{	uae_s16 src = get_word (srca);
 	m68k_areg(regs, srcreg) += 2;
-{	uae_u32 val = (uae_s32)(uae_s16)src;
+{	src = (uae_s32)(uae_s16)src;
+	m68k_areg(regs, dstreg) = (uae_s32)(uae_s16)(src);
+	m68k_incpc (2);
 	regs.ir = regs.irc;
-	get_word_prefetch (4);
-	m68k_areg(regs, dstreg) = (val);
-}}}}}	m68k_incpc (2);
-endlabel2589: ;
+	get_word_prefetch (2);
+}}}}}endlabel2589: ;
 return 8 * 256;
 }
 /* MOVEA.W -(An),An */
@@ -9115,12 +9157,12 @@ unsigned long REGPARAM2 CPUFUNC(op_3060_5)(uae_u32 opcode)
 	}
 {{	uae_s16 src = get_word (srca);
 	m68k_areg (regs, srcreg) = srca;
-{	uae_u32 val = (uae_s32)(uae_s16)src;
+{	src = (uae_s32)(uae_s16)src;
+	m68k_areg(regs, dstreg) = (uae_s32)(uae_s16)(src);
+	m68k_incpc (2);
 	regs.ir = regs.irc;
-	get_word_prefetch (4);
-	m68k_areg(regs, dstreg) = (val);
-}}}}}	m68k_incpc (2);
-endlabel2590: ;
+	get_word_prefetch (2);
+}}}}}endlabel2590: ;
 return 10 * 256;
 }
 /* MOVEA.W (d16,An),An */
@@ -9134,12 +9176,12 @@ unsigned long REGPARAM2 CPUFUNC(op_3068_5)(uae_u32 opcode)
 		goto endlabel2591;
 	}
 {{	uae_s16 src = get_word (srca);
-{	uae_u32 val = (uae_s32)(uae_s16)src;
+{	src = (uae_s32)(uae_s16)src;
+	m68k_areg(regs, dstreg) = (uae_s32)(uae_s16)(src);
+	m68k_incpc (4);
 	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_areg(regs, dstreg) = (val);
-}}}}}	m68k_incpc (4);
-endlabel2591: ;
+	get_word_prefetch (2);
+}}}}}endlabel2591: ;
 return 12 * 256;
 }
 /* MOVEA.W (d8,An,Xn),An */
@@ -9154,12 +9196,12 @@ unsigned long REGPARAM2 CPUFUNC(op_3070_5)(uae_u32 opcode)
 		goto endlabel2592;
 	}
 {{	uae_s16 src = get_word (srca);
-{	uae_u32 val = (uae_s32)(uae_s16)src;
+{	src = (uae_s32)(uae_s16)src;
+	m68k_areg(regs, dstreg) = (uae_s32)(uae_s16)(src);
+	m68k_incpc (4);
 	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_areg(regs, dstreg) = (val);
-}}}}}	m68k_incpc (4);
-endlabel2592: ;
+	get_word_prefetch (2);
+}}}}}endlabel2592: ;
 return 14 * 256;
 }
 /* MOVEA.W (xxx).W,An */
@@ -9172,12 +9214,12 @@ unsigned long REGPARAM2 CPUFUNC(op_3078_5)(uae_u32 opcode)
 		goto endlabel2593;
 	}
 {{	uae_s16 src = get_word (srca);
-{	uae_u32 val = (uae_s32)(uae_s16)src;
+{	src = (uae_s32)(uae_s16)src;
+	m68k_areg(regs, dstreg) = (uae_s32)(uae_s16)(src);
+	m68k_incpc (4);
 	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_areg(regs, dstreg) = (val);
-}}}}}	m68k_incpc (4);
-endlabel2593: ;
+	get_word_prefetch (2);
+}}}}}endlabel2593: ;
 return 12 * 256;
 }
 /* MOVEA.W (xxx).L,An */
@@ -9190,12 +9232,12 @@ unsigned long REGPARAM2 CPUFUNC(op_3079_5)(uae_u32 opcode)
 		goto endlabel2594;
 	}
 {{	uae_s16 src = get_word (srca);
-{	uae_u32 val = (uae_s32)(uae_s16)src;
+{	src = (uae_s32)(uae_s16)src;
+	m68k_areg(regs, dstreg) = (uae_s32)(uae_s16)(src);
+	m68k_incpc (6);
 	regs.ir = regs.irc;
-	get_word_prefetch (8);
-	m68k_areg(regs, dstreg) = (val);
-}}}}}	m68k_incpc (6);
-endlabel2594: ;
+	get_word_prefetch (2);
+}}}}}endlabel2594: ;
 return 16 * 256;
 }
 /* MOVEA.W (d16,PC),An */
@@ -9209,12 +9251,12 @@ unsigned long REGPARAM2 CPUFUNC(op_307a_5)(uae_u32 opcode)
 		goto endlabel2595;
 	}
 {{	uae_s16 src = get_word (srca);
-{	uae_u32 val = (uae_s32)(uae_s16)src;
+{	src = (uae_s32)(uae_s16)src;
+	m68k_areg(regs, dstreg) = (uae_s32)(uae_s16)(src);
+	m68k_incpc (4);
 	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_areg(regs, dstreg) = (val);
-}}}}}	m68k_incpc (4);
-endlabel2595: ;
+	get_word_prefetch (2);
+}}}}}endlabel2595: ;
 return 12 * 256;
 }
 /* MOVEA.W (d8,PC,Xn),An */
@@ -9230,12 +9272,12 @@ unsigned long REGPARAM2 CPUFUNC(op_307b_5)(uae_u32 opcode)
 		goto endlabel2596;
 	}
 {{	uae_s16 src = get_word (srca);
-{	uae_u32 val = (uae_s32)(uae_s16)src;
+{	src = (uae_s32)(uae_s16)src;
+	m68k_areg(regs, dstreg) = (uae_s32)(uae_s16)(src);
+	m68k_incpc (4);
 	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_areg(regs, dstreg) = (val);
-}}}}}	m68k_incpc (4);
-endlabel2596: ;
+	get_word_prefetch (2);
+}}}}}endlabel2596: ;
 return 14 * 256;
 }
 /* MOVEA.W #<data>.W,An */
@@ -9243,12 +9285,12 @@ unsigned long REGPARAM2 CPUFUNC(op_307c_5)(uae_u32 opcode)
 {
 	uae_u32 dstreg = (opcode >> 9) & 7;
 {{	uae_s16 src = get_word_prefetch (4);
-{	uae_u32 val = (uae_s32)(uae_s16)src;
+{	src = (uae_s32)(uae_s16)src;
+	m68k_areg(regs, dstreg) = (uae_s32)(uae_s16)(src);
+	m68k_incpc (4);
 	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_areg(regs, dstreg) = (val);
-}}}	m68k_incpc (4);
-return 8 * 256;
+	get_word_prefetch (2);
+}}}return 8 * 256;
 }
 /* MOVE.W Dn,(An) */
 unsigned long REGPARAM2 CPUFUNC(op_3080_5)(uae_u32 opcode)
@@ -9875,13 +9917,13 @@ unsigned long REGPARAM2 CPUFUNC(op_3100_5)(uae_u32 opcode)
 		goto endlabel2622;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
 	put_word (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (2);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}endlabel2622: ;
 return 8 * 256;
 }
@@ -9898,13 +9940,13 @@ unsigned long REGPARAM2 CPUFUNC(op_3108_5)(uae_u32 opcode)
 		goto endlabel2623;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
 	put_word (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (2);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}endlabel2623: ;
 return 8 * 256;
 }
@@ -9926,13 +9968,13 @@ unsigned long REGPARAM2 CPUFUNC(op_3110_5)(uae_u32 opcode)
 		goto endlabel2624;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
 	put_word (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (2);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}}}endlabel2624: ;
 return 12 * 256;
 }
@@ -9955,13 +9997,13 @@ unsigned long REGPARAM2 CPUFUNC(op_3118_5)(uae_u32 opcode)
 		goto endlabel2625;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
 	put_word (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (2);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}}}endlabel2625: ;
 return 12 * 256;
 }
@@ -9985,13 +10027,13 @@ unsigned long REGPARAM2 CPUFUNC(op_3120_5)(uae_u32 opcode)
 		goto endlabel2626;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
 	put_word (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (2);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}}}endlabel2626: ;
 return 14 * 256;
 }
@@ -10013,13 +10055,13 @@ unsigned long REGPARAM2 CPUFUNC(op_3128_5)(uae_u32 opcode)
 		goto endlabel2627;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
 	put_word (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (4);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}}}endlabel2627: ;
 return 16 * 256;
 }
@@ -10042,13 +10084,13 @@ unsigned long REGPARAM2 CPUFUNC(op_3130_5)(uae_u32 opcode)
 		goto endlabel2628;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
 	put_word (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (4);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}}}endlabel2628: ;
 return 18 * 256;
 }
@@ -10069,13 +10111,13 @@ unsigned long REGPARAM2 CPUFUNC(op_3138_5)(uae_u32 opcode)
 		goto endlabel2629;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
 	put_word (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (4);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}}}endlabel2629: ;
 return 16 * 256;
 }
@@ -10096,13 +10138,13 @@ unsigned long REGPARAM2 CPUFUNC(op_3139_5)(uae_u32 opcode)
 		goto endlabel2630;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (8);
 	put_word (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (6);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}}}endlabel2630: ;
 return 20 * 256;
 }
@@ -10124,13 +10166,13 @@ unsigned long REGPARAM2 CPUFUNC(op_313a_5)(uae_u32 opcode)
 		goto endlabel2631;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
 	put_word (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (4);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}}}endlabel2631: ;
 return 16 * 256;
 }
@@ -10154,13 +10196,13 @@ unsigned long REGPARAM2 CPUFUNC(op_313b_5)(uae_u32 opcode)
 		goto endlabel2632;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
 	put_word (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (4);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}}}endlabel2632: ;
 return 18 * 256;
 }
@@ -10176,13 +10218,13 @@ unsigned long REGPARAM2 CPUFUNC(op_313c_5)(uae_u32 opcode)
 		goto endlabel2633;
 	}
 {	m68k_areg (regs, dstreg) = dsta;
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
 	put_word (dsta,src);
 	CLEAR_CZNV;
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (4);
-	regs.ir = regs.irc;
-	get_word_prefetch (2);
 }}}}endlabel2633: ;
 return 12 * 256;
 }
@@ -11136,7 +11178,9 @@ unsigned long REGPARAM2 CPUFUNC(op_33d0_5)(uae_u32 opcode)
 		goto endlabel2672;
 	}
 {{	uae_s16 src = get_word (srca);
-{	uaecptr dsta = get_long_prefetch (4);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (4) << 16;
+	dsta |= regs.irc;
 	if (dsta & 1) {
 		exception3 (opcode, m68k_getpc() + 2, dsta);
 		goto endlabel2672;
@@ -11146,6 +11190,7 @@ unsigned long REGPARAM2 CPUFUNC(op_33d0_5)(uae_u32 opcode)
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (6);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}}}endlabel2672: ;
@@ -11162,7 +11207,9 @@ unsigned long REGPARAM2 CPUFUNC(op_33d8_5)(uae_u32 opcode)
 	}
 {{	uae_s16 src = get_word (srca);
 	m68k_areg(regs, srcreg) += 2;
-{	uaecptr dsta = get_long_prefetch (4);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (4) << 16;
+	dsta |= regs.irc;
 	if (dsta & 1) {
 		exception3 (opcode, m68k_getpc() + 2, dsta);
 		goto endlabel2673;
@@ -11172,6 +11219,7 @@ unsigned long REGPARAM2 CPUFUNC(op_33d8_5)(uae_u32 opcode)
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (6);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}}}endlabel2673: ;
@@ -11189,7 +11237,9 @@ unsigned long REGPARAM2 CPUFUNC(op_33e0_5)(uae_u32 opcode)
 	}
 {{	uae_s16 src = get_word (srca);
 	m68k_areg (regs, srcreg) = srca;
-{	uaecptr dsta = get_long_prefetch (4);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (4) << 16;
+	dsta |= regs.irc;
 	if (dsta & 1) {
 		exception3 (opcode, m68k_getpc() + 2, dsta);
 		goto endlabel2674;
@@ -11199,6 +11249,7 @@ unsigned long REGPARAM2 CPUFUNC(op_33e0_5)(uae_u32 opcode)
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (6);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}}}endlabel2674: ;
@@ -11214,7 +11265,9 @@ unsigned long REGPARAM2 CPUFUNC(op_33e8_5)(uae_u32 opcode)
 		goto endlabel2675;
 	}
 {{	uae_s16 src = get_word (srca);
-{	uaecptr dsta = get_long_prefetch (6);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (6) << 16;
+	dsta |= regs.irc;
 	if (dsta & 1) {
 		exception3 (opcode, m68k_getpc() + 4, dsta);
 		goto endlabel2675;
@@ -11224,6 +11277,7 @@ unsigned long REGPARAM2 CPUFUNC(op_33e8_5)(uae_u32 opcode)
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (8);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}}}endlabel2675: ;
@@ -11240,7 +11294,9 @@ unsigned long REGPARAM2 CPUFUNC(op_33f0_5)(uae_u32 opcode)
 		goto endlabel2676;
 	}
 {{	uae_s16 src = get_word (srca);
-{	uaecptr dsta = get_long_prefetch (6);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (6) << 16;
+	dsta |= regs.irc;
 	if (dsta & 1) {
 		exception3 (opcode, m68k_getpc() + 4, dsta);
 		goto endlabel2676;
@@ -11250,6 +11306,7 @@ unsigned long REGPARAM2 CPUFUNC(op_33f0_5)(uae_u32 opcode)
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (8);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}}}endlabel2676: ;
@@ -11264,7 +11321,9 @@ unsigned long REGPARAM2 CPUFUNC(op_33f8_5)(uae_u32 opcode)
 		goto endlabel2677;
 	}
 {{	uae_s16 src = get_word (srca);
-{	uaecptr dsta = get_long_prefetch (6);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (6) << 16;
+	dsta |= regs.irc;
 	if (dsta & 1) {
 		exception3 (opcode, m68k_getpc() + 4, dsta);
 		goto endlabel2677;
@@ -11274,6 +11333,7 @@ unsigned long REGPARAM2 CPUFUNC(op_33f8_5)(uae_u32 opcode)
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (8);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}}}endlabel2677: ;
@@ -11288,7 +11348,9 @@ unsigned long REGPARAM2 CPUFUNC(op_33f9_5)(uae_u32 opcode)
 		goto endlabel2678;
 	}
 {{	uae_s16 src = get_word (srca);
-{	uaecptr dsta = get_long_prefetch (8);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (8) << 16;
+	dsta |= regs.irc;
 	if (dsta & 1) {
 		exception3 (opcode, m68k_getpc() + 6, dsta);
 		goto endlabel2678;
@@ -11298,6 +11360,7 @@ unsigned long REGPARAM2 CPUFUNC(op_33f9_5)(uae_u32 opcode)
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (10);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}}}endlabel2678: ;
@@ -11313,7 +11376,9 @@ unsigned long REGPARAM2 CPUFUNC(op_33fa_5)(uae_u32 opcode)
 		goto endlabel2679;
 	}
 {{	uae_s16 src = get_word (srca);
-{	uaecptr dsta = get_long_prefetch (6);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (6) << 16;
+	dsta |= regs.irc;
 	if (dsta & 1) {
 		exception3 (opcode, m68k_getpc() + 4, dsta);
 		goto endlabel2679;
@@ -11323,6 +11388,7 @@ unsigned long REGPARAM2 CPUFUNC(op_33fa_5)(uae_u32 opcode)
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (8);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}}}endlabel2679: ;
@@ -11340,7 +11406,9 @@ unsigned long REGPARAM2 CPUFUNC(op_33fb_5)(uae_u32 opcode)
 		goto endlabel2680;
 	}
 {{	uae_s16 src = get_word (srca);
-{	uaecptr dsta = get_long_prefetch (6);
+{	uaecptr dsta;
+	dsta = get_word_prefetch (6) << 16;
+	dsta |= regs.irc;
 	if (dsta & 1) {
 		exception3 (opcode, m68k_getpc() + 4, dsta);
 		goto endlabel2680;
@@ -11350,6 +11418,7 @@ unsigned long REGPARAM2 CPUFUNC(op_33fb_5)(uae_u32 opcode)
 	SET_ZFLG (((uae_s16)(src)) == 0);
 	SET_NFLG (((uae_s16)(src)) < 0);
 	m68k_incpc (8);
+	get_word_prefetch (0);
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}}}}endlabel2680: ;
@@ -14922,9 +14991,9 @@ unsigned long REGPARAM2 CPUFUNC(op_4878_5)(uae_u32 opcode)
 		goto endlabel2849;
 	}
 {	m68k_areg (regs, 7) = dsta;
+	put_long (dsta,srca);
 	regs.ir = regs.irc;
 	get_word_prefetch (6);
-	put_long (dsta,srca);
 }}}}	m68k_incpc (4);
 endlabel2849: ;
 return 16 * 256;
@@ -14940,9 +15009,9 @@ unsigned long REGPARAM2 CPUFUNC(op_4879_5)(uae_u32 opcode)
 		goto endlabel2850;
 	}
 {	m68k_areg (regs, 7) = dsta;
+	put_long (dsta,srca);
 	regs.ir = regs.irc;
 	get_word_prefetch (8);
-	put_long (dsta,srca);
 }}}}	m68k_incpc (6);
 endlabel2850: ;
 return 20 * 256;
@@ -16195,6 +16264,7 @@ unsigned long REGPARAM2 CPUFUNC(op_4e70_5)(uae_u32 opcode)
 {	regs.ir = regs.irc;
 	get_word_prefetch (4);
 	cpureset();
+	regs.irc = get_iword(4);
 }}	m68k_incpc (2);
 endlabel2921: ;
 return 4 * 256;
@@ -16413,7 +16483,7 @@ unsigned long REGPARAM2 CPUFUNC(op_4eb9_5)(uae_u32 opcode)
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}}endlabel2933: ;
-return 20 * 256;
+return 12 * 256;
 }
 /* JSR.L (d16,PC) */
 unsigned long REGPARAM2 CPUFUNC(op_4eba_5)(uae_u32 opcode)
@@ -16534,7 +16604,7 @@ unsigned long REGPARAM2 CPUFUNC(op_4ef9_5)(uae_u32 opcode)
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}endlabel2940: ;
-return 20 * 256;
+return 12 * 256;
 }
 /* JMP.L (d16,PC) */
 unsigned long REGPARAM2 CPUFUNC(op_4efa_5)(uae_u32 opcode)
@@ -20154,7 +20224,7 @@ unsigned long REGPARAM2 CPUFUNC(op_61ff_5)(uae_u32 opcode)
 	regs.ir = regs.irc;
 	get_word_prefetch (2);
 }}endlabel3144: ;
-return 20 * 256;
+return 12 * 256;
 }
 /* Bcc.W #<data>.W */
 unsigned long REGPARAM2 CPUFUNC(op_6200_5)(uae_u32 opcode)
@@ -21930,11 +22000,9 @@ unsigned long REGPARAM2 CPUFUNC(op_80c0_5)(uae_u32 opcode)
 {	uaecptr oldpc = m68k_getpc();
 {	uae_s16 src = m68k_dreg(regs, srcreg);
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (4);
-	m68k_incpc (2);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (2);
 		Exception (5, oldpc);
 		goto endlabel3221;
 	} else {
@@ -21950,9 +22018,12 @@ unsigned long REGPARAM2 CPUFUNC(op_80c0_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
+	m68k_incpc (2);
 	}
 }}}endlabel3221: ;
-return 140 * 256;
+return 110 * 256;
 }
 /* DIVU.W (An),Dn */
 unsigned long REGPARAM2 CPUFUNC(op_80d0_5)(uae_u32 opcode)
@@ -21967,11 +22038,9 @@ unsigned long REGPARAM2 CPUFUNC(op_80d0_5)(uae_u32 opcode)
 	}
 {{	uae_s16 src = get_word (srca);
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (4);
-	m68k_incpc (2);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (2);
 		Exception (5, oldpc);
 		goto endlabel3222;
 	} else {
@@ -21987,9 +22056,12 @@ unsigned long REGPARAM2 CPUFUNC(op_80d0_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
+	m68k_incpc (2);
 	}
 }}}}}endlabel3222: ;
-return 144 * 256;
+return 114 * 256;
 }
 /* DIVU.W (An)+,Dn */
 unsigned long REGPARAM2 CPUFUNC(op_80d8_5)(uae_u32 opcode)
@@ -22005,11 +22077,9 @@ unsigned long REGPARAM2 CPUFUNC(op_80d8_5)(uae_u32 opcode)
 {{	uae_s16 src = get_word (srca);
 	m68k_areg(regs, srcreg) += 2;
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (4);
-	m68k_incpc (2);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (2);
 		Exception (5, oldpc);
 		goto endlabel3223;
 	} else {
@@ -22025,9 +22095,12 @@ unsigned long REGPARAM2 CPUFUNC(op_80d8_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
+	m68k_incpc (2);
 	}
 }}}}}endlabel3223: ;
-return 144 * 256;
+return 114 * 256;
 }
 /* DIVU.W -(An),Dn */
 unsigned long REGPARAM2 CPUFUNC(op_80e0_5)(uae_u32 opcode)
@@ -22044,11 +22117,9 @@ unsigned long REGPARAM2 CPUFUNC(op_80e0_5)(uae_u32 opcode)
 {{	uae_s16 src = get_word (srca);
 	m68k_areg (regs, srcreg) = srca;
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (4);
-	m68k_incpc (2);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (2);
 		Exception (5, oldpc);
 		goto endlabel3224;
 	} else {
@@ -22064,9 +22135,12 @@ unsigned long REGPARAM2 CPUFUNC(op_80e0_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
+	m68k_incpc (2);
 	}
 }}}}}endlabel3224: ;
-return 146 * 256;
+return 116 * 256;
 }
 /* DIVU.W (d16,An),Dn */
 unsigned long REGPARAM2 CPUFUNC(op_80e8_5)(uae_u32 opcode)
@@ -22081,11 +22155,9 @@ unsigned long REGPARAM2 CPUFUNC(op_80e8_5)(uae_u32 opcode)
 	}
 {{	uae_s16 src = get_word (srca);
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_incpc (4);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (4);
 		Exception (5, oldpc);
 		goto endlabel3225;
 	} else {
@@ -22101,9 +22173,12 @@ unsigned long REGPARAM2 CPUFUNC(op_80e8_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
+	m68k_incpc (4);
 	}
 }}}}}endlabel3225: ;
-return 148 * 256;
+return 118 * 256;
 }
 /* DIVU.W (d8,An,Xn),Dn */
 unsigned long REGPARAM2 CPUFUNC(op_80f0_5)(uae_u32 opcode)
@@ -22119,11 +22194,9 @@ unsigned long REGPARAM2 CPUFUNC(op_80f0_5)(uae_u32 opcode)
 	}
 {{	uae_s16 src = get_word (srca);
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_incpc (4);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (4);
 		Exception (5, oldpc);
 		goto endlabel3226;
 	} else {
@@ -22139,9 +22212,12 @@ unsigned long REGPARAM2 CPUFUNC(op_80f0_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
+	m68k_incpc (4);
 	}
 }}}}}endlabel3226: ;
-return 150 * 256;
+return 120 * 256;
 }
 /* DIVU.W (xxx).W,Dn */
 unsigned long REGPARAM2 CPUFUNC(op_80f8_5)(uae_u32 opcode)
@@ -22155,11 +22231,9 @@ unsigned long REGPARAM2 CPUFUNC(op_80f8_5)(uae_u32 opcode)
 	}
 {{	uae_s16 src = get_word (srca);
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_incpc (4);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (4);
 		Exception (5, oldpc);
 		goto endlabel3227;
 	} else {
@@ -22175,9 +22249,12 @@ unsigned long REGPARAM2 CPUFUNC(op_80f8_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
+	m68k_incpc (4);
 	}
 }}}}}endlabel3227: ;
-return 148 * 256;
+return 118 * 256;
 }
 /* DIVU.W (xxx).L,Dn */
 unsigned long REGPARAM2 CPUFUNC(op_80f9_5)(uae_u32 opcode)
@@ -22191,11 +22268,9 @@ unsigned long REGPARAM2 CPUFUNC(op_80f9_5)(uae_u32 opcode)
 	}
 {{	uae_s16 src = get_word (srca);
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (8);
-	m68k_incpc (6);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (6);
 		Exception (5, oldpc);
 		goto endlabel3228;
 	} else {
@@ -22211,9 +22286,12 @@ unsigned long REGPARAM2 CPUFUNC(op_80f9_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (8);
+	m68k_incpc (6);
 	}
 }}}}}endlabel3228: ;
-return 152 * 256;
+return 122 * 256;
 }
 /* DIVU.W (d16,PC),Dn */
 unsigned long REGPARAM2 CPUFUNC(op_80fa_5)(uae_u32 opcode)
@@ -22228,11 +22306,9 @@ unsigned long REGPARAM2 CPUFUNC(op_80fa_5)(uae_u32 opcode)
 	}
 {{	uae_s16 src = get_word (srca);
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_incpc (4);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (4);
 		Exception (5, oldpc);
 		goto endlabel3229;
 	} else {
@@ -22248,9 +22324,12 @@ unsigned long REGPARAM2 CPUFUNC(op_80fa_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
+	m68k_incpc (4);
 	}
 }}}}}endlabel3229: ;
-return 148 * 256;
+return 118 * 256;
 }
 /* DIVU.W (d8,PC,Xn),Dn */
 unsigned long REGPARAM2 CPUFUNC(op_80fb_5)(uae_u32 opcode)
@@ -22267,11 +22346,9 @@ unsigned long REGPARAM2 CPUFUNC(op_80fb_5)(uae_u32 opcode)
 	}
 {{	uae_s16 src = get_word (srca);
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_incpc (4);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (4);
 		Exception (5, oldpc);
 		goto endlabel3230;
 	} else {
@@ -22287,9 +22364,12 @@ unsigned long REGPARAM2 CPUFUNC(op_80fb_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
+	m68k_incpc (4);
 	}
 }}}}}endlabel3230: ;
-return 150 * 256;
+return 120 * 256;
 }
 /* DIVU.W #<data>.W,Dn */
 unsigned long REGPARAM2 CPUFUNC(op_80fc_5)(uae_u32 opcode)
@@ -22298,11 +22378,9 @@ unsigned long REGPARAM2 CPUFUNC(op_80fc_5)(uae_u32 opcode)
 {	uaecptr oldpc = m68k_getpc();
 {	uae_s16 src = get_word_prefetch (4);
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_incpc (4);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (4);
 		Exception (5, oldpc);
 		goto endlabel3231;
 	} else {
@@ -22318,9 +22396,12 @@ unsigned long REGPARAM2 CPUFUNC(op_80fc_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
+	m68k_incpc (4);
 	}
 }}}endlabel3231: ;
-return 144 * 256;
+return 114 * 256;
 }
 /* SBCD.B Dn,Dn */
 unsigned long REGPARAM2 CPUFUNC(op_8100_5)(uae_u32 opcode)
@@ -22840,11 +22921,9 @@ unsigned long REGPARAM2 CPUFUNC(op_81c0_5)(uae_u32 opcode)
 {	uaecptr oldpc = m68k_getpc();
 {	uae_s16 src = m68k_dreg(regs, srcreg);
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (4);
-	m68k_incpc (2);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (2);
 		Exception (5, oldpc);
 		goto endlabel3255;
 	} else {
@@ -22861,9 +22940,12 @@ unsigned long REGPARAM2 CPUFUNC(op_81c0_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
+	m68k_incpc (2);
 	}
 }}}endlabel3255: ;
-return 158 * 256;
+return 142 * 256;
 }
 /* DIVS.W (An),Dn */
 unsigned long REGPARAM2 CPUFUNC(op_81d0_5)(uae_u32 opcode)
@@ -22878,11 +22960,9 @@ unsigned long REGPARAM2 CPUFUNC(op_81d0_5)(uae_u32 opcode)
 	}
 {{	uae_s16 src = get_word (srca);
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (4);
-	m68k_incpc (2);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (2);
 		Exception (5, oldpc);
 		goto endlabel3256;
 	} else {
@@ -22899,9 +22979,12 @@ unsigned long REGPARAM2 CPUFUNC(op_81d0_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
+	m68k_incpc (2);
 	}
 }}}}}endlabel3256: ;
-return 162 * 256;
+return 146 * 256;
 }
 /* DIVS.W (An)+,Dn */
 unsigned long REGPARAM2 CPUFUNC(op_81d8_5)(uae_u32 opcode)
@@ -22917,11 +23000,9 @@ unsigned long REGPARAM2 CPUFUNC(op_81d8_5)(uae_u32 opcode)
 {{	uae_s16 src = get_word (srca);
 	m68k_areg(regs, srcreg) += 2;
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (4);
-	m68k_incpc (2);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (2);
 		Exception (5, oldpc);
 		goto endlabel3257;
 	} else {
@@ -22938,9 +23019,12 @@ unsigned long REGPARAM2 CPUFUNC(op_81d8_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
+	m68k_incpc (2);
 	}
 }}}}}endlabel3257: ;
-return 162 * 256;
+return 146 * 256;
 }
 /* DIVS.W -(An),Dn */
 unsigned long REGPARAM2 CPUFUNC(op_81e0_5)(uae_u32 opcode)
@@ -22957,11 +23041,9 @@ unsigned long REGPARAM2 CPUFUNC(op_81e0_5)(uae_u32 opcode)
 {{	uae_s16 src = get_word (srca);
 	m68k_areg (regs, srcreg) = srca;
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (4);
-	m68k_incpc (2);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (2);
 		Exception (5, oldpc);
 		goto endlabel3258;
 	} else {
@@ -22978,9 +23060,12 @@ unsigned long REGPARAM2 CPUFUNC(op_81e0_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (4);
+	m68k_incpc (2);
 	}
 }}}}}endlabel3258: ;
-return 164 * 256;
+return 148 * 256;
 }
 /* DIVS.W (d16,An),Dn */
 unsigned long REGPARAM2 CPUFUNC(op_81e8_5)(uae_u32 opcode)
@@ -22995,11 +23080,9 @@ unsigned long REGPARAM2 CPUFUNC(op_81e8_5)(uae_u32 opcode)
 	}
 {{	uae_s16 src = get_word (srca);
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_incpc (4);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (4);
 		Exception (5, oldpc);
 		goto endlabel3259;
 	} else {
@@ -23016,9 +23099,12 @@ unsigned long REGPARAM2 CPUFUNC(op_81e8_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
+	m68k_incpc (4);
 	}
 }}}}}endlabel3259: ;
-return 166 * 256;
+return 150 * 256;
 }
 /* DIVS.W (d8,An,Xn),Dn */
 unsigned long REGPARAM2 CPUFUNC(op_81f0_5)(uae_u32 opcode)
@@ -23034,11 +23120,9 @@ unsigned long REGPARAM2 CPUFUNC(op_81f0_5)(uae_u32 opcode)
 	}
 {{	uae_s16 src = get_word (srca);
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_incpc (4);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (4);
 		Exception (5, oldpc);
 		goto endlabel3260;
 	} else {
@@ -23055,9 +23139,12 @@ unsigned long REGPARAM2 CPUFUNC(op_81f0_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
+	m68k_incpc (4);
 	}
 }}}}}endlabel3260: ;
-return 168 * 256;
+return 152 * 256;
 }
 /* DIVS.W (xxx).W,Dn */
 unsigned long REGPARAM2 CPUFUNC(op_81f8_5)(uae_u32 opcode)
@@ -23071,11 +23158,9 @@ unsigned long REGPARAM2 CPUFUNC(op_81f8_5)(uae_u32 opcode)
 	}
 {{	uae_s16 src = get_word (srca);
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_incpc (4);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (4);
 		Exception (5, oldpc);
 		goto endlabel3261;
 	} else {
@@ -23092,9 +23177,12 @@ unsigned long REGPARAM2 CPUFUNC(op_81f8_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
+	m68k_incpc (4);
 	}
 }}}}}endlabel3261: ;
-return 166 * 256;
+return 150 * 256;
 }
 /* DIVS.W (xxx).L,Dn */
 unsigned long REGPARAM2 CPUFUNC(op_81f9_5)(uae_u32 opcode)
@@ -23108,11 +23196,9 @@ unsigned long REGPARAM2 CPUFUNC(op_81f9_5)(uae_u32 opcode)
 	}
 {{	uae_s16 src = get_word (srca);
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (8);
-	m68k_incpc (6);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (6);
 		Exception (5, oldpc);
 		goto endlabel3262;
 	} else {
@@ -23129,9 +23215,12 @@ unsigned long REGPARAM2 CPUFUNC(op_81f9_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (8);
+	m68k_incpc (6);
 	}
 }}}}}endlabel3262: ;
-return 170 * 256;
+return 154 * 256;
 }
 /* DIVS.W (d16,PC),Dn */
 unsigned long REGPARAM2 CPUFUNC(op_81fa_5)(uae_u32 opcode)
@@ -23146,11 +23235,9 @@ unsigned long REGPARAM2 CPUFUNC(op_81fa_5)(uae_u32 opcode)
 	}
 {{	uae_s16 src = get_word (srca);
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_incpc (4);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (4);
 		Exception (5, oldpc);
 		goto endlabel3263;
 	} else {
@@ -23167,9 +23254,12 @@ unsigned long REGPARAM2 CPUFUNC(op_81fa_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
+	m68k_incpc (4);
 	}
 }}}}}endlabel3263: ;
-return 166 * 256;
+return 150 * 256;
 }
 /* DIVS.W (d8,PC,Xn),Dn */
 unsigned long REGPARAM2 CPUFUNC(op_81fb_5)(uae_u32 opcode)
@@ -23186,11 +23276,9 @@ unsigned long REGPARAM2 CPUFUNC(op_81fb_5)(uae_u32 opcode)
 	}
 {{	uae_s16 src = get_word (srca);
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_incpc (4);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (4);
 		Exception (5, oldpc);
 		goto endlabel3264;
 	} else {
@@ -23207,9 +23295,12 @@ unsigned long REGPARAM2 CPUFUNC(op_81fb_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
+	m68k_incpc (4);
 	}
 }}}}}endlabel3264: ;
-return 168 * 256;
+return 152 * 256;
 }
 /* DIVS.W #<data>.W,Dn */
 unsigned long REGPARAM2 CPUFUNC(op_81fc_5)(uae_u32 opcode)
@@ -23218,11 +23309,9 @@ unsigned long REGPARAM2 CPUFUNC(op_81fc_5)(uae_u32 opcode)
 {	uaecptr oldpc = m68k_getpc();
 {	uae_s16 src = get_word_prefetch (4);
 {	uae_s32 dst = m68k_dreg(regs, dstreg);
-	regs.ir = regs.irc;
-	get_word_prefetch (6);
-	m68k_incpc (4);
 	CLEAR_CZNV;
 	if (src == 0) {
+		m68k_incpc (4);
 		Exception (5, oldpc);
 		goto endlabel3265;
 	} else {
@@ -23239,9 +23328,12 @@ unsigned long REGPARAM2 CPUFUNC(op_81fc_5)(uae_u32 opcode)
 			newv = (newv & 0xffff) | ((uae_u32)rem << 16);
 			m68k_dreg(regs, dstreg) = (newv);
 		}
+	regs.ir = regs.irc;
+	get_word_prefetch (6);
+	m68k_incpc (4);
 	}
 }}}endlabel3265: ;
-return 162 * 256;
+return 146 * 256;
 }
 /* SUB.B Dn,Dn */
 unsigned long REGPARAM2 CPUFUNC(op_9000_5)(uae_u32 opcode)
