@@ -31,11 +31,13 @@ extern HWND hStatusWnd;
 extern HINSTANCE hDDraw;
 extern uae_u32 default_freq;
 extern int normal_display_change_starting;
+extern int window_led_drives, window_led_drives_end;
 
 extern HDC gethdc (void);
 extern void releasehdc (HDC hdc);
 extern void close_windows (void);
 extern void updatewinfsmode (struct uae_prefs *p);
 extern int is3dmode (void);
+extern void setoverlay(int);
 
 #endif

@@ -30,7 +30,7 @@
 
 #define max_diwlastword (PIXEL_XPOS(0x1d4 >> 1))
 
-extern int lores_factor, lores_shift, sprite_width;
+extern int lores_factor, lores_shift, sprite_width, interlace_seen;
 
 STATIC_INLINE int coord_hw_to_window_x (int x)
 {
@@ -211,6 +211,7 @@ struct decision {
     unsigned int any_hires_sprites:1;
     unsigned int ham_seen:1;
     unsigned int ham_at_start:1;
+    unsigned int valid:1;
 };
 
 /* Anything related to changes in hw registers during the DDF for one

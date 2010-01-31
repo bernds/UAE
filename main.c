@@ -96,24 +96,22 @@ void discard_prefs (struct uae_prefs *p, int type)
 #endif
 }
 
+static void fixup_prefs_dim2 (struct wh *wh)
+{
+    if (wh->width < 320)
+	wh->width = 320;
+    if (wh->height < 200)
+	wh->height = 200;
+    if (wh->width > 1280)
+	wh->width = 1280;
+    wh->width += 7;
+    wh->width &= ~7;
+}
+
 void fixup_prefs_dimensions (struct uae_prefs *prefs)
 {
-    if (prefs->gfx_width_fs < 320)
-	prefs->gfx_width_fs = 320;
-    if (prefs->gfx_height_fs < 200)
-	prefs->gfx_height_fs = 200;
-    if (prefs->gfx_height_fs > 1280)
-	prefs->gfx_height_fs = 1280;
-    prefs->gfx_width_fs += 7; /* X86.S wants multiples of 4 bytes, might be 8 in the future. */
-    prefs->gfx_width_fs &= ~7;
-    if (prefs->gfx_width_win < 320)
-	prefs->gfx_width_win = 320;
-    if (prefs->gfx_height_win < 200)
-	prefs->gfx_height_win = 200;
-    if (prefs->gfx_height_win > 1280)
-	prefs->gfx_height_win = 1280;
-    prefs->gfx_width_win += 7; /* X86.S wants multiples of 4 bytes, might be 8 in the future. */
-    prefs->gfx_width_win &= ~7;
+    fixup_prefs_dim2(&prefs->gfx_size_fs);
+    fixup_prefs_dim2(&prefs->gfx_size_win);
 }
 
 void fixup_prefs (struct uae_prefs *p)
@@ -124,8 +122,8 @@ void fixup_prefs (struct uae_prefs *p)
 	|| p->chipmem_size < 0x40000
 	|| p->chipmem_size > 0x800000)
     {
+	write_log ("Unsupported chipmem size %x!\n", p->chipmem_size);
 	p->chipmem_size = 0x200000;
-	write_log ("Unsupported chipmem size!\n");
 	err = 1;
     }
     if (p->chipmem_size > 0x80000)
@@ -134,14 +132,13 @@ void fixup_prefs (struct uae_prefs *p)
     if ((p->fastmem_size & (p->fastmem_size - 1)) != 0
 	|| (p->fastmem_size != 0 && (p->fastmem_size < 0x100000 || p->fastmem_size > 0x800000)))
     {
-	p->fastmem_size = 0;
-	write_log ("Unsupported fastmem size!\n");
+	write_log ("Unsupported fastmem size %x!\n", p->fastmem_size);
 	err = 1;
     }
     if ((p->gfxmem_size & (p->gfxmem_size - 1)) != 0
 	|| (p->gfxmem_size != 0 && (p->gfxmem_size < 0x100000 || p->gfxmem_size > 0x8000000)))
     {
-	write_log ("Unsupported graphics card memory size %lx!\n", p->gfxmem_size);
+	write_log ("Unsupported graphics card memory size %x!\n", p->gfxmem_size);
 	p->gfxmem_size = 0;
 	err = 1;
     }

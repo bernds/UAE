@@ -90,37 +90,38 @@ void romlist_clear (void)
 static struct romdata roms[] = {
     { "Cloanto Amiga Forever ROM key", 0, 0, 0, 0, 0, 0x869ae1b1, 2069, 0, 0, 1, ROMTYPE_KEY },
 
-    { "Kickstart v1.0 (A1000)(NTSC)", 1, 0, 1, 0, "A1000\0", 0x299790ff, 262144, 1, 0, 0, ROMTYPE_KICK },
-    { "Kickstart v1.1 (A1000)(NTSC)", 1, 1, 31, 34, "A1000\0", 0xd060572a, 262144, 2, 0, 0, ROMTYPE_KICK },
-    { "Kickstart v1.1 (A1000)(PAL)", 1, 1, 31, 34, "A1000\0", 0xec86dae2, 262144, 3, 0, 0, ROMTYPE_KICK },
-    { "Kickstart v1.2 (A1000)", 1, 2, 33, 166, "A1000\0", 0x9ed783d0, 262144, 4, 0, 0, ROMTYPE_KICK },
-    { "Kickstart v1.2 (A500,A1000,A2000)", 1, 2, 33, 180, "A500\0A1000\0A2000\0", 0xa6ce1636, 262144, 5, 0, 0, ROMTYPE_KICK },
-    { "Kickstart v1.3 (A500,A1000,A2000)", 1, 3, 34, 5, "A500\0A1000\0A2000\0", 0xc4f0f55f, 262144, 6, 60, 0, ROMTYPE_KICK },
-    { "Kickstart v1.3 (A3000)", 1, 3, 34, 5, "A3000\0", 0xe0f37258, 262144, 32, 0, 0, ROMTYPE_KICK },
+    { "KS ROM v1.0 (A1000)(NTSC)", 1, 0, 1, 0, "A1000\0", 0x299790ff, 262144, 1, 0, 0, ROMTYPE_KICK },
+    { "KS ROM v1.1 (A1000)(NTSC)", 1, 1, 31, 34, "A1000\0", 0xd060572a, 262144, 2, 0, 0, ROMTYPE_KICK },
+    { "KS ROM v1.1 (A1000)(PAL)", 1, 1, 31, 34, "A1000\0", 0xec86dae2, 262144, 3, 0, 0, ROMTYPE_KICK },
+    { "KS ROM v1.2 (A1000)", 1, 2, 33, 166, "A1000\0", 0x9ed783d0, 262144, 4, 0, 0, ROMTYPE_KICK },
+    { "KS ROM v1.2 (A500,A1000,A2000)", 1, 2, 33, 180, "A500\0A1000\0A2000\0", 0xa6ce1636, 262144, 5, 0, 0, ROMTYPE_KICK },
+    { "KS ROM v1.3 (A500,A1000,A2000)", 1, 3, 34, 5, "A500\0A1000\0A2000\0", 0xc4f0f55f, 262144, 6, 60, 0, ROMTYPE_KICK },
+    { "KS ROM v1.3 (A3000)", 1, 3, 34, 5, "A3000\0", 0xe0f37258, 262144, 32, 0, 0, ROMTYPE_KICK },
 
-    { "Kickstart v2.04 (A500+)", 2, 4, 37, 175, "A500+\0", 0xc3bdb240, 524288, 7, 0, 0, ROMTYPE_KICK },
-    { "Kickstart v2.05 (A600)", 2, 5, 37, 299, "A600\0", 0x83028fb5, 524288, 8, 0, 0, ROMTYPE_KICK },
-    { "Kickstart v2.05 (A600HD)", 2, 5, 37, 300, "A600HD\0A600\0", 0x64466c2a, 524288, 9, 0, 0, ROMTYPE_KICK },
-    { "Kickstart v2.05 (A600HD)", 2, 5, 37, 350, "A600HD\0A600\0", 0x43b0df7b, 524288, 10, 0, 0, ROMTYPE_KICK },
+    { "KS ROM v2.04 (A500+)", 2, 4, 37, 175, "A500+\0", 0xc3bdb240, 524288, 7, 0, 0, ROMTYPE_KICK },
+    { "KS ROM v2.05 (A600)", 2, 5, 37, 299, "A600\0", 0x83028fb5, 524288, 8, 0, 0, ROMTYPE_KICK },
+    { "KS ROM v2.05 (A600HD)", 2, 5, 37, 300, "A600HD\0A600\0", 0x64466c2a, 524288, 9, 0, 0, ROMTYPE_KICK },
+    { "KS ROM v2.05 (A600HD)", 2, 5, 37, 350, "A600HD\0A600\0", 0x43b0df7b, 524288, 10, 0, 0, ROMTYPE_KICK },
 
-    { "Kickstart v3.0 (A1200)", 3, 0, 39, 106, "A1200\0", 0x6c9b07d2, 524288, 11, 0, 0, ROMTYPE_KICK },
-    { "Kickstart v3.0 (A4000)", 3, 0, 39, 106, "A4000\0", 0x9e6ac152, 524288, 12, 2, 0, ROMTYPE_KICK },
-    { "Kickstart v3.1 (A4000)", 3, 1, 40, 70, "A4000\0", 0x2b4566f1, 524288, 13, 2, 0, ROMTYPE_KICK },
-    { "Kickstart v3.1 (A500,A600,A2000)", 3, 1, 40, 63, "A500\0A600\0A2000\0", 0xfc24ae0d, 524288, 14, 0, 0, ROMTYPE_KICK },
-    { "Kickstart v3.1 (A1200)", 3, 1, 40, 68, "A1200\0", 0x1483a091, 524288, 15, 1, 0, ROMTYPE_KICK },
-    { "Kickstart v3.1 (A4000)(Cloanto)", 3, 1, 40, 68, "A4000\0", 0x43b6dd22, 524288, 31, 2, 1, ROMTYPE_KICK },
-    { "Kickstart v3.1 (A4000)", 3, 1, 40, 68, "A4000\0", 0xd6bae334, 524288, 16, 2, 0, ROMTYPE_KICK },
-    { "Kickstart v3.1 (A4000T)", 3, 1, 40, 70, "A4000T\0", 0x75932c3a, 524288, 17, 2, 0, ROMTYPE_KICK },
+    { "KS ROM v3.0 (A1200)", 3, 0, 39, 106, "A1200\0", 0x6c9b07d2, 524288, 11, 0, 0, ROMTYPE_KICK },
+    { "KS ROM v3.0 (A4000)", 3, 0, 39, 106, "A4000\0", 0x9e6ac152, 524288, 12, 2, 0, ROMTYPE_KICK },
+    { "KS ROM v3.1 (A4000)", 3, 1, 40, 70, "A4000\0", 0x2b4566f1, 524288, 13, 2, 0, ROMTYPE_KICK },
+    { "KS ROM v3.1 (A500,A600,A2000)", 3, 1, 40, 63, "A500\0A600\0A2000\0", 0xfc24ae0d, 524288, 14, 0, 0, ROMTYPE_KICK },
+    { "KS ROM v3.1 (A1200)", 3, 1, 40, 68, "A1200\0", 0x1483a091, 524288, 15, 1, 0, ROMTYPE_KICK },
+    { "KS ROM v3.1 (A4000)(Cloanto)", 3, 1, 40, 68, "A4000\0", 0x43b6dd22, 524288, 31, 2, 1, ROMTYPE_KICK },
+    { "KS ROM v3.1 (A4000)", 3, 1, 40, 68, "A4000\0", 0xd6bae334, 524288, 16, 2, 0, ROMTYPE_KICK },
+    { "KS ROM v3.1 (A4000T)", 3, 1, 40, 70, "A4000T\0", 0x75932c3a, 524288, 17, 2, 0, ROMTYPE_KICK },
+    { "KS ROM v3.X (A4000)(Cloanto)", 3, 10, 45, 57, "A4000\0", 0x08b69382, 524288, 46, 2, 0, ROMTYPE_KICK },
 
-    { "CD32 Kickstart v3.1", 3, 1, 40, 60, "CD32\0", 0x1e62d4a5, 524288, 18, 1, 0, ROMTYPE_KICKCD32 },
-    { "CD32 Extended", 3, 1, 40, 60, "CD32\0", 0x87746be2, 524288, 19, 1, 0, ROMTYPE_EXTCD32 },
+    { "CD32 KS ROM v3.1", 3, 1, 40, 60, "CD32\0", 0x1e62d4a5, 524288, 18, 1, 0, ROMTYPE_KICKCD32 },
+    { "CD32 extended ROM", 3, 1, 40, 60, "CD32\0", 0x87746be2, 524288, 19, 1, 0, ROMTYPE_EXTCD32 },
 
-    { "CDTV Extended v1.00", 1, 0, 1, 0, "CDTV\0", 0x42baa124, 262144, 20, 0, 0, ROMTYPE_EXTCDTV },
-    { "CDTV Extended v2.30", 2, 30, 2, 30, "CDTV\0", 0x30b54232, 262144, 21, 0, 0, ROMTYPE_EXTCDTV },
-    { "CDTV Extended v2.07", 2, 7, 2, 7, "CDTV\0", 0xceae68d2, 262144, 22, 0, 0, ROMTYPE_EXTCDTV },
+    { "CDTV extended ROM v1.00", 1, 0, 1, 0, "CDTV\0", 0x42baa124, 262144, 20, 0, 0, ROMTYPE_EXTCDTV },
+    { "CDTV extended ROM v2.30", 2, 30, 2, 30, "CDTV\0", 0x30b54232, 262144, 21, 0, 0, ROMTYPE_EXTCDTV },
+    { "CDTV extended ROM v2.07", 2, 7, 2, 7, "CDTV\0", 0xceae68d2, 262144, 22, 0, 0, ROMTYPE_EXTCDTV },
 
-    { "A1000 Bootstrap", 0, 0, 0, 0, "A1000\0", 0x62f11c04, 8192, 23, 0, 0, ROMTYPE_KICK },
-    { "A1000 Bootstrap", 0, 0, 0, 0, "A1000\0", 0x0b1ad2d0, 65536, 24, 0, 0, ROMTYPE_KICK },
+    { "A1000 bootstrap ROM", 0, 0, 0, 0, "A1000\0", 0x62f11c04, 8192, 23, 0, 0, ROMTYPE_KICK },
+    { "A1000 bootstrap ROM", 0, 0, 0, 0, "A1000\0", 0x0b1ad2d0, 65536, 24, 0, 0, ROMTYPE_KICK },
 
     { "Action Replay Mk I v1.50", 1, 50, 1, 50, "AR\0", 0xd4ce0675, 65536, 25, 0, 0, ROMTYPE_AR },
     { "Action Replay Mk II v2.05", 2, 5, 2, 5, "AR\0", 0x1287301f , 131072, 26, 0, 0, ROMTYPE_AR },
@@ -128,6 +129,7 @@ static struct romdata roms[] = {
     { "Action Replay Mk II v2.14", 2, 14, 2, 14, "AR\0", 0x49650e4f, 131072, 28, 0, 0, ROMTYPE_AR },
     { "Action Replay Mk III v3.09", 3, 9, 3, 9, "AR\0", 0x0ed9b5aa, 262144, 29, 0, 0, ROMTYPE_AR },
     { "Action Replay Mk III v3.17", 3, 17, 3, 17, "AR\0", 0xc8a16406, 262144, 30, 0, 0, ROMTYPE_AR },
+    { "Action Replay 1200", 0, 0, 0, 0, "AR\0", 0x8d760101, 262144, 47, 0, 0, ROMTYPE_AR },
 
     { "Arcadia SportTime Table Hockey\0ar_airh", 0, 0, 0, 0, "ARCADIA\0", 0, 0, 33, 0, 0, ROMTYPE_ARCADIA },
     { "Arcadia SportTime Bowling\0ar_bowl", 0, 0, 0, 0, "ARCADIA\0", 0, 0, 34, 0, 0, ROMTYPE_ARCADIA },
@@ -498,7 +500,7 @@ static void dummy_wput (uaecptr, uae_u32) REGPARAM;
 static void dummy_bput (uaecptr, uae_u32) REGPARAM;
 static int dummy_check (uaecptr addr, uae_u32 size) REGPARAM;
 
-#define	MAX_ILG 20
+#define	MAX_ILG 200
 #define NONEXISTINGDATA 0
 //#define NONEXISTINGDATA 0xffffffff
 
@@ -508,8 +510,9 @@ uae_u32 REGPARAM2 dummy_lget (uaecptr addr)
     special_mem |= S_READ;
 #endif
     if (currprefs.illegal_mem) {
-	if (illegal_count < MAX_ILG) {
-	    illegal_count++;
+	if (illegal_count < MAX_ILG || MAX_ILG < 0) {
+	    if (MAX_ILG >= 0)
+		illegal_count++;
 	    write_log ("Illegal lget at %08lx PC=%x\n", addr, m68k_getpc());
 	}
     }
@@ -524,8 +527,9 @@ uae_u32 REGPARAM2 dummy_wget (uaecptr addr)
     special_mem |= S_READ;
 #endif
     if (currprefs.illegal_mem && addr < 0xf00000) {
-	if (illegal_count < MAX_ILG) {
-	    illegal_count++;
+	if (illegal_count < MAX_ILG || MAX_ILG < 0) {
+	    if (MAX_ILG >= 0)
+		illegal_count++;
 	    write_log ("Illegal wget at %08lx PC=%x\n", addr, m68k_getpc());
 	}
     }
@@ -540,8 +544,9 @@ uae_u32 REGPARAM2 dummy_bget (uaecptr addr)
     special_mem |= S_READ;
 #endif
     if (currprefs.illegal_mem) {
-	if (illegal_count < MAX_ILG) {
-	    illegal_count++;
+	if (illegal_count < MAX_ILG || MAX_ILG < 0) {
+	    if (MAX_ILG >= 0)
+		illegal_count++;
 	    write_log ("Illegal bget at %08lx PC=%x\n", addr, m68k_getpc());
 	}
     }
@@ -556,8 +561,9 @@ void REGPARAM2 dummy_lput (uaecptr addr, uae_u32 l)
     special_mem |= S_WRITE;
 #endif
    if (currprefs.illegal_mem) {
-	if (illegal_count < MAX_ILG) {
-	    illegal_count++;
+	if (illegal_count < MAX_ILG || MAX_ILG < 0) {
+	    if (MAX_ILG >= 0)
+		illegal_count++;
 	    write_log ("Illegal lput at %08lx PC=%x\n", addr, m68k_getpc());
 	}
     }
@@ -568,8 +574,9 @@ void REGPARAM2 dummy_wput (uaecptr addr, uae_u32 w)
     special_mem |= S_WRITE;
 #endif
     if (currprefs.illegal_mem) {
-	if (illegal_count < MAX_ILG) {
-	    illegal_count++;
+	if (illegal_count < MAX_ILG || MAX_ILG < 0) {
+	    if (MAX_ILG >= 0)
+		illegal_count++;
 	    write_log ("Illegal wput at %08lx PC=%x\n", addr, m68k_getpc());
 	}
     }
@@ -580,8 +587,9 @@ void REGPARAM2 dummy_bput (uaecptr addr, uae_u32 b)
     special_mem |= S_WRITE;
 #endif
     if (currprefs.illegal_mem) {
-	if (illegal_count < MAX_ILG) {
-	    illegal_count++;
+	if (illegal_count < MAX_ILG || MAX_ILG < 0) {
+	    if (MAX_ILG >= 0)
+		illegal_count++;
 	    write_log ("Illegal bput at %08lx PC=%x\n", addr, m68k_getpc());
 	}
     }
@@ -593,8 +601,9 @@ int REGPARAM2 dummy_check (uaecptr addr, uae_u32 size)
     special_mem |= S_READ;
 #endif
     if (currprefs.illegal_mem) {
-	if (illegal_count < MAX_ILG) {
-	    illegal_count++;
+	if (illegal_count < MAX_ILG || MAX_ILG < 0) {
+	    if (MAX_ILG >= 0)
+		illegal_count++;
 	    write_log ("Illegal check at %08lx PC=%x\n", addr, m68k_getpc());
 	}
     }
@@ -1389,67 +1398,67 @@ uae_u8 REGPARAM2 *default_xlate (uaecptr a)
 addrbank dummy_bank = {
     dummy_lget, dummy_wget, dummy_bget,
     dummy_lput, dummy_wput, dummy_bput,
-    default_xlate, dummy_check, NULL
+    default_xlate, dummy_check, NULL, NULL
 };
 
 #ifdef AUTOCONFIG
 addrbank mbres_bank = {
     mbres_lget, mbres_wget, mbres_bget,
     mbres_lput, mbres_wput, mbres_bput,
-    default_xlate, mbres_check, NULL
+    default_xlate, mbres_check, NULL, "MBRES"
 };
 #endif
 
 addrbank chipmem_bank = {
     chipmem_lget, chipmem_wget, chipmem_bget,
     chipmem_lput, chipmem_wput, chipmem_bput,
-    chipmem_xlate, chipmem_check, NULL
+    chipmem_xlate, chipmem_check, NULL, "Chip memory"
 };
 
 addrbank chipmem_agnus_bank = {
     chipmem_agnus_lget, chipmem_agnus_wget, chipmem_agnus_bget,
     chipmem_agnus_lput, chipmem_agnus_wput, chipmem_agnus_bput,
-    chipmem_xlate, chipmem_check, NULL
+    chipmem_xlate, chipmem_check, NULL, "Chip memory"
 };
 
 #ifdef AGA
 addrbank chipmem_bank_ce2 = {
     chipmem_lget_ce2, chipmem_wget_ce2, chipmem_bget_ce2,
     chipmem_lput_ce2, chipmem_wput_ce2, chipmem_bput_ce2,
-    chipmem_xlate, chipmem_check, NULL
+    chipmem_xlate, chipmem_check, NULL, "Chip memory"
 };
 #endif
 
 addrbank bogomem_bank = {
     bogomem_lget, bogomem_wget, bogomem_bget,
     bogomem_lput, bogomem_wput, bogomem_bput,
-    bogomem_xlate, bogomem_check, NULL
+    bogomem_xlate, bogomem_check, NULL, "Slow memory"
 };
 
 #ifdef AUTOCONFIG
 addrbank a3000mem_bank = {
     a3000mem_lget, a3000mem_wget, a3000mem_bget,
     a3000mem_lput, a3000mem_wput, a3000mem_bput,
-    a3000mem_xlate, a3000mem_check, NULL
+    a3000mem_xlate, a3000mem_check, NULL, "A3000 memory"
 };
 #endif
 
 addrbank kickmem_bank = {
     kickmem_lget, kickmem_wget, kickmem_bget,
     kickmem_lput, kickmem_wput, kickmem_bput,
-    kickmem_xlate, kickmem_check, NULL
+    kickmem_xlate, kickmem_check, NULL, "Kickstart ROM"
 };
 
 addrbank kickram_bank = {
     kickmem_lget, kickmem_wget, kickmem_bget,
     kickmem2_lput, kickmem2_wput, kickmem2_bput,
-    kickmem_xlate, kickmem_check, NULL
+    kickmem_xlate, kickmem_check, NULL, "Kickstart Shadow RAM"
 };
 
 addrbank extendedkickmem_bank = {
     extendedkickmem_lget, extendedkickmem_wget, extendedkickmem_bget,
     extendedkickmem_lput, extendedkickmem_wput, extendedkickmem_bput,
-    extendedkickmem_xlate, extendedkickmem_check, NULL
+    extendedkickmem_xlate, extendedkickmem_check, NULL, "Extended Kickstart ROM"
 };
 
 static int kickstart_checksum (uae_u8 *mem, int size)
@@ -1470,10 +1479,11 @@ static int kickstart_checksum (uae_u8 *mem, int size)
     return 0;
 }
 
+static char *kickstring = "exec.library";
 int read_kickstart (struct zfile *f, uae_u8 *mem, int size, int dochecksum, int *cloanto_rom)
 {
     unsigned char buffer[20];
-    int i, cr = 0;
+    int i, j, cr = 0;
 
     if (cloanto_rom)
 	*cloanto_rom = 0;
@@ -1513,7 +1523,14 @@ int read_kickstart (struct zfile *f, uae_u8 *mem, int size, int dochecksum, int 
 	i = 524288;
 	dochecksum = 0;
     }
-    if (dochecksum && i >= 262144)
+    for (j = 0; j < 256 && i >= 262144; j++) {
+	if (!memcmp (kickmemory + j, kickstring, strlen (kickstring) + 1))
+	    break;
+    }
+    if (j == 256 || i < 262144)
+	dochecksum = 0;
+
+    if (dochecksum)
 	kickstart_checksum (mem, size);
     return i;
 }
@@ -2026,7 +2043,6 @@ void memory_reset (void)
     custom_start = 0xC0;
     map_banks (&custom_bank, custom_start, 0xE0 - custom_start, 0);
     map_banks (&cia_bank, 0xA0, 32, 0);
-    map_banks (&clock_bank, 0xDC, 1, 0);
 
     /* map "nothing" to 0x200000 - 0xa00000 */
     bnk = allocated_chipmem >> 16;
@@ -2041,12 +2057,16 @@ void memory_reset (void)
 	    t = 0x1C;
 	map_banks (&bogomem_bank, 0xC0, t, allocated_bogomem);
     }
+    if (currprefs.chipset_mask & CSMASK_AGA)
+	map_banks (&gayle_bank, 0xD8, 7, 0);
+    map_banks (&clock_bank, 0xDC, 1, 0);
+
 #ifdef AUTOCONFIG
     if (a3000memory != 0)
 	map_banks (&a3000mem_bank, a3000mem_start >> 16, allocated_a3000mem >> 16,
 		   allocated_a3000mem);
-
-    map_banks (&rtarea_bank, RTAREA_BASE >> 16, 1, 0);
+    if (nr_units (currprefs.mountinfo) > 0)
+	map_banks (&rtarea_bank, RTAREA_BASE >> 16, 1, 0);
 #endif
 
     map_banks (&kickmem_bank, 0xF8, 8, 0);
@@ -2114,15 +2134,6 @@ void memory_reset (void)
     if (!arcadia_rom) {
 #endif
     action_replay_memory_reset();
-    #ifdef ACTION_REPLAY_HRTMON
-    hrtmon_map_banks();
-    #endif
-
-    #ifndef ACTION_REPLAY_HIDE_CARTRIDGES
-    #ifdef ACTION_REPLAY
-    action_replay_map_banks();
-    #endif
-    #endif
 #ifdef ARCADIA
     }
 #endif
@@ -2156,10 +2167,9 @@ void memory_init (void)
 #ifdef ACTION_REPLAY
     action_replay_load();
     action_replay_init(1);
-
-    #ifdef ACTION_REPLAY_HRTM
-    hrtmon_load(1);
-    #endif
+#ifdef ACTION_REPLAY_HRTMON
+    hrtmon_load();
+#endif
 #endif
 
     init_mem_banks ();
@@ -2300,6 +2310,8 @@ uae_u8 *restore_rom (uae_u8 *src)
 	}
     }
     src += strlen (src) + 1;
+    if (zfile_exists(src))
+	strncpy (changed_prefs.romfile, src, 255);
     src += strlen (src) + 1;
     return src;
 }

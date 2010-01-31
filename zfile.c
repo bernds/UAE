@@ -20,6 +20,8 @@
 #include "dms/pfile.h"
 #include "gui.h"
 #include "crc32.h"
+#include "fsdb.h"
+
 #include <zlib.h>
 
 struct zfile {
@@ -215,7 +217,7 @@ static struct zfile *updateoutputfile (struct zfile *z)
 
 static struct zfile *zuncompress (struct zfile *z);
 
-static struct zfile *gunzip (struct zfile *z)
+struct zfile *zfile_gunzip (struct zfile *z)
 {
     uae_u8 header[2 + 1 + 1 + 4 + 1 + 1];
     z_stream zs;
@@ -697,13 +699,13 @@ static struct zfile *zuncompress (struct zfile *z)
 	if (strcasecmp (ext, "zip") == 0)
 	     return unzip (z);
 	if (strcasecmp (ext, "gz") == 0)
-	     return gunzip (z);
+	     return zfile_gunzip (z);
 	if (strcasecmp (ext, "adz") == 0)
-	     return gunzip (z);
+	     return zfile_gunzip (z);
 	if (strcasecmp (ext, "roz") == 0)
-	     return gunzip (z);
+	     return zfile_gunzip (z);
 	if (strcasecmp (ext, "hdz") == 0)
-	     return gunzip (z);
+	     return zfile_gunzip (z);
 	if (strcasecmp (ext, "dms") == 0)
 	     return dms (z);
 #if defined(ARCHIVEACCESS)
@@ -720,7 +722,7 @@ static struct zfile *zuncompress (struct zfile *z)
 	zfile_fread (header, sizeof (header), 1, z);
 	zfile_fseek (z, 0, SEEK_SET);
 	if (header[0] == 0x1f && header[1] == 0x8b)
-	    return gunzip (z);
+	    return zfile_gunzip (z);
 	if (header[0] == 'P' && header[1] == 'K')
 	    return unzip (z);
 	if (header[0] == 'D' && header[1] == 'M' && header[2] == 'S' && header[3] == '!')
@@ -1019,6 +1021,8 @@ int zfile_exists (const char *name)
     f = openzip (fname, 0);
     if (!f) {
 	manglefilename(fname, name);
+	if (!my_existsfile(fname))
+	    return 0;
 	f = fopen(fname,"rb");
     }
     if (!f)
@@ -1036,10 +1040,21 @@ struct zfile *zfile_fopen_empty (const char *name, int size)
 {
     struct zfile *l;
     l = zfile_create ();
-    l->name = strdup (name);
+    l->name = name ? strdup (name) : "";
     l->data = malloc (size);
     l->size = size;
     memset (l->data, 0, size);
+    return l;
+}
+
+struct zfile *zfile_fopen_data (const char *name, int size, uae_u8 *data)
+{
+    struct zfile *l;
+    l = zfile_create ();
+    l->name = name ? strdup (name) : "";
+    l->data = malloc (size);
+    l->size = size;
+    memcpy (l->data, data, size);
     return l;
 }
 
@@ -1063,7 +1078,7 @@ int zfile_fseek (struct zfile *z, long offset, int mode)
 	    z->seek += offset;
 	    break;
 	    case SEEK_END:
-	    z->seek = z->size - offset;
+	    z->seek = z->size + offset;
 	    break;
 	}
 	if (z->seek < 0) z->seek = 0;

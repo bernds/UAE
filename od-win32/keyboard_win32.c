@@ -369,7 +369,7 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 		    num += 10;
 		if (ctrlpressed ()) {
 		    swapperdrive = num;
-		    if (num > 3)
+		    if (swapperdrive > 3)
 			swapperdrive = 0;
 		} else {
 		    int i;
@@ -418,8 +418,7 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 	    break;
 	    case DIK_PRIOR:
 #ifdef ACTION_REPLAY
-	    if (armodel)
-		code = AKS_FREEZEBUTTON;
+	    code = AKS_FREEZEBUTTON;
 #endif
 	    break;
 	    case DIK_NEXT:
@@ -450,11 +449,15 @@ void my_kbd_handler (int keyboard, int scancode, int newstate)
 	    break;
 	}
     }
+
     if (code) {
 	inputdevice_add_inputcode (code, 1);
 	return;
     }
+
     if (scancode == specialkeycode())
+	return;
+    if (specialpressed())
 	return;
 
     if (scancode == DIK_CAPITAL) {

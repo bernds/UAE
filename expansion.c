@@ -24,7 +24,6 @@
 #include "zfile.h"
 #include "catweasel.h"
 #include "cdtv.h"
-#include "arcadia.h"
 
 #define MAX_EXPANSION_BOARDS 8
 
@@ -191,7 +190,7 @@ static void expamem_bput (uaecptr, uae_u32) REGPARAM;
 addrbank expamem_bank = {
     expamem_lget, expamem_wget, expamem_bget,
     expamem_lput, expamem_wput, expamem_bput,
-    default_xlate, default_check, NULL
+    default_xlate, default_check, NULL, "Autoconfig"
 };
 
 static uae_u32 REGPARAM2 expamem_lget (uaecptr addr)
@@ -409,7 +408,7 @@ static uae_u8 REGPARAM2 *fastmem_xlate (uaecptr addr)
 addrbank fastmem_bank = {
     fastmem_lget, fastmem_wget, fastmem_bget,
     fastmem_lput, fastmem_wput, fastmem_bput,
-    fastmem_xlate, fastmem_check, NULL
+    fastmem_xlate, fastmem_check, NULL, "Fast memory"
 };
 
 
@@ -500,7 +499,7 @@ static uae_u8 REGPARAM2 *catweasel_xlate (uaecptr addr)
 static addrbank catweasel_bank = {
     catweasel_lget, catweasel_wget, catweasel_bget,
     catweasel_lput, catweasel_wput, catweasel_bput,
-    catweasel_xlate, catweasel_check, NULL
+    catweasel_xlate, catweasel_check, NULL, "Catweasel"
 };
 
 static void expamem_map_catweasel (void)
@@ -622,7 +621,7 @@ static void REGPARAM2 filesys_bput (uaecptr addr, uae_u32 b)
 static addrbank filesys_bank = {
     filesys_lget, filesys_wget, filesys_bget,
     filesys_lput, filesys_wput, filesys_bput,
-    default_xlate, default_check, NULL
+    default_xlate, default_check, NULL, "Filesystem Autoconfig Area"
 };
 
 /*
@@ -710,7 +709,7 @@ static uae_u8 REGPARAM2 *z3fastmem_xlate (uaecptr addr)
 addrbank z3fastmem_bank = {
     z3fastmem_lget, z3fastmem_wget, z3fastmem_bget,
     z3fastmem_lput, z3fastmem_wput, z3fastmem_bput,
-    z3fastmem_xlate, z3fastmem_check, NULL
+    z3fastmem_xlate, z3fastmem_check, NULL, "ZorroIII Fast RAM"
 };
 
 /* Z3-based UAEGFX-card */
@@ -762,118 +761,6 @@ static void expamem_init_fastcard (void)
 }
 
 /* ********************************************************** */
-
-#ifdef ARCADIA
-
-static uae_u8 *arcadiaboot;
-static uae_u32 arcadia_start;
-
-static uae_u32 REGPARAM2 arcadia_lget (uaecptr addr)
-{
-    uae_u8 *m;
-#ifdef JIT
-    special_mem |= S_READ;
-#endif
-    addr -= arcadia_start & 65535;
-    addr &= 65535;
-    m = arcadiaboot + addr;
-    return do_get_mem_long ((uae_u32 *)m);
-}
-
-static uae_u32 REGPARAM2 arcadia_wget (uaecptr addr)
-{
-    uae_u8 *m;
-#ifdef JIT
-    special_mem |= S_READ;
-#endif
-    addr -= arcadia_start & 65535;
-    addr &= 65535;
-    m = arcadiaboot + addr;
-    return do_get_mem_word ((uae_u16 *)m);
-}
-
-static uae_u32 REGPARAM2 arcadia_bget (uaecptr addr)
-{
-#ifdef JIT
-    special_mem |= S_READ;
-#endif
-    addr -= arcadia_start & 65535;
-    addr &= 65535;
-    return arcadiaboot[addr];
-}
-
-static void REGPARAM2 arcadia_lput (uaecptr addr, uae_u32 l)
-{
-#ifdef JIT
-    special_mem |= S_WRITE;
-#endif
-    write_log ("arcadia_lput called PC=%p\n", m68k_getpc());
-}
-
-static void REGPARAM2 arcadia_wput (uaecptr addr, uae_u32 w)
-{
-#ifdef JIT
-    special_mem |= S_WRITE;
-#endif
-    write_log ("arcadia_wput called PC=%p\n", m68k_getpc());
-}
-
-static void REGPARAM2 arcadia_bput (uaecptr addr, uae_u32 b)
-{
-#ifdef JIT
-    special_mem |= S_WRITE;
-#endif
-}
-
-static addrbank arcadia_bank = {
-    arcadia_lget, arcadia_wget, arcadia_bget,
-    arcadia_lput, arcadia_wput, arcadia_bput,
-    default_xlate, default_check, NULL
-};
-
-static void expamem_map_arcadia (void)
-{
-    arcadia_start = ((expamem_hi | (expamem_lo >> 4)) << 16);
-    write_log ("Arcadia initialized @%08.8X\n", arcadia_start);
-    map_banks (&arcadia_bank, arcadia_start >> 16, 1, 0);
-}
-
-static void expamem_init_arcadia (void)
-{
-    expamem_init_clear();
-    expamem_write (0x00, zorroII | Z2_MEM_2MB | rom_card);
-
-    expamem_write (0x04, 1);
-    expamem_write (0x08, no_shutup);
-
-    expamem_write (0x10, 0x07);
-    expamem_write (0x14, 0x70);
-
-    expamem_write (0x18, 0x00); /* ser.no. Byte 0 */
-    expamem_write (0x1c, 0x00); /* ser.no. Byte 1 */
-    expamem_write (0x20, 0x00); /* ser.no. Byte 2 */
-    expamem_write (0x24, 0x01); /* ser.no. Byte 3 */
-
-    expamem_write (0x28, 0x10); /* Rom-Offset hi */
-    expamem_write (0x2c, 0x00); /* ROM-Offset lo */
-
-    expamem_write (0x40, 0x00); /* Ctrl/Statusreg.*/
-
-    expamem[0x1000] = 0x90;
-    expamem[0x1001] = 0x00;
-    expamem[0x1002] = 0x01;
-    expamem[0x1003] = 0x06;
-    expamem[0x1004] = 0x01;
-    expamem[0x1005] = 0x00;
-
-    /* Call DiagEntry */
-    do_put_mem_word ((uae_u16 *)(expamem + 0x1100), 0x4EF9); /* JMP */
-    do_put_mem_long ((uae_u32 *)(expamem + 0x1102), arcadia_rom->boot);
-
-    memcpy (arcadiaboot, expamem, 0x2000);
-}
-
-#endif
 
 /*
  * Filesystem device
@@ -942,18 +829,18 @@ static void expamem_init_filesys (void)
 
 static void expamem_map_z3fastmem (void)
 {
-	int z3fs = ((expamem_hi | (expamem_lo >> 4)) << 16);
+    int z3fs = ((expamem_hi | (expamem_lo >> 4)) << 16);
 
-	if (z3fastmem_start != z3fs) {
-		write_log("WARNING: Z3FAST mapping changed from $%lx to $%lx\n", z3fastmem_start, z3fs);
-		map_banks(&dummy_bank, z3fastmem_start >> 16, currprefs.z3fastmem_size >> 16,
-			allocated_z3fastmem);
-		z3fastmem_start = z3fs;
-	    map_banks (&z3fastmem_bank, z3fastmem_start >> 16, currprefs.z3fastmem_size >> 16,
-	       allocated_z3fastmem);
-	}
+    if (z3fastmem_start != z3fs) {
+    	write_log("WARNING: Z3FAST mapping changed from $%lx to $%lx\n", z3fastmem_start, z3fs);
+	map_banks(&dummy_bank, z3fastmem_start >> 16, currprefs.z3fastmem_size >> 16,
+	    allocated_z3fastmem);
+	z3fastmem_start = z3fs;
+	map_banks (&z3fastmem_bank, z3fastmem_start >> 16, currprefs.z3fastmem_size >> 16,
+	    allocated_z3fastmem);
+    }
     write_log ("Fastmem (32bit): mapped @$%lx: %d MB Zorro III fast memory \n",
-	       z3fastmem_start, allocated_z3fastmem / 0x100000);
+       z3fastmem_start, allocated_z3fastmem / 0x100000);
 }
 
 static void expamem_init_z3fastmem (void)
@@ -1109,18 +996,18 @@ static void allocate_expamem (void)
 	if (allocated_fastmem > 0) {
 	    restore_ram (fast_filepos, fastmemory);
 	    map_banks (&fastmem_bank, fastmem_start >> 16, currprefs.fastmem_size >> 16,
-		       allocated_fastmem);
+		allocated_fastmem);
 	}
 	if (allocated_z3fastmem > 0) {
 	    restore_ram (z3_filepos, z3fastmem);
 	    map_banks (&z3fastmem_bank, z3fastmem_start >> 16, currprefs.z3fastmem_size >> 16,
-		       allocated_z3fastmem);
+		allocated_z3fastmem);
 	}
 #if defined(PICASSO96)
 	if (allocated_gfxmem > 0 && gfxmem_start > 0) {
 	    restore_ram (p96_filepos, gfxmemory);
 	    map_banks (&gfxmem_bank, gfxmem_start >> 16, currprefs.gfxmem_size >> 16,
-		       allocated_gfxmem);
+		allocated_gfxmem);
 	}
 #endif
     }
@@ -1160,14 +1047,6 @@ void expamem_reset (void)
     if (nr_units (currprefs.mountinfo) == 0)
 	do_mount = 0;
 
-#ifdef ARCADIA
-    if (arcadia_rom) {
-	arcadiaboot = mapped_malloc (0x10000, "arcadia");
-	arcadia_bank.baseaddr = arcadiaboot;
-	card_init[cardno] = expamem_init_arcadia;
-	card_map[cardno++] = expamem_map_arcadia;
-    }
-#endif
     if (fastmemory != NULL) {
 	card_init[cardno] = expamem_init_fastcard;
 	card_map[cardno++] = expamem_map_fastcard;
@@ -1198,6 +1077,7 @@ void expamem_reset (void)
     }
 
     (*card_init[0]) ();
+
 }
 
 void expansion_init (void)

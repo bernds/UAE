@@ -10,7 +10,7 @@
 			>
 			<DebugSettings
 				Command="$(TargetPath)"
-				WorkingDirectory="d:\amiga"
+				WorkingDirectory="f:\amiga"
 				CommandArguments="-log -disableharddrivesafetycheck"
 				Attach="false"
 				DebuggerType="3"
@@ -66,7 +66,7 @@
 			>
 			<DebugSettings
 				Command="$(TargetPath)"
-				WorkingDirectory="d:\amiga"
+				WorkingDirectory="f:\amiga"
 				CommandArguments="-log"
 				Attach="false"
 				DebuggerType="3"

@@ -46,7 +46,7 @@ struct scsi_info {
 static struct scsi_info si[MAX_TOTAL_DEVICES];
 static int unitcnt;
 
-static int getversion(char *name, VS_FIXEDFILEINFO *ver)
+static int getversion(const char *name, VS_FIXEDFILEINFO *ver)
 {
     int ok = FALSE;
     DWORD  dwVersionHandle, dwFileVersionInfoSize;
@@ -76,16 +76,27 @@ static int getversion(char *name, VS_FIXEDFILEINFO *ver)
     return ok;
 }
 
-char *get_aspi_path(int neroaspi)
+const char *get_aspi_path(int aspitype)
 {
-    static int nero, adaptec;
+    static int nero, adaptec, frog;
     static char path_nero[MAX_DPATH];
     static char path_adaptec[MAX_DPATH];
+    static const char *path_frog = "FrogAspi.dll";
     VS_FIXEDFILEINFO ver;
 
-    switch (neroaspi)
+    switch (aspitype)
     {
-	case 1:
+	case 2: // Frog
+	if (frog > 0)
+	    return path_frog;
+	if (frog < 0)
+	    return NULL;
+	frog = -1;
+        if (getversion(path_frog, &ver))
+	    frog = 1;
+	return path_frog;
+
+	case 1: // Nero
 	{
             HKEY key;
 	    DWORD type = REG_SZ;
@@ -97,7 +108,9 @@ char *get_aspi_path(int neroaspi)
 	    nero = -1;
 	    if (RegOpenKeyEx (HKEY_LOCAL_MACHINE, "SOFTWARE\\Ahead\\shared", 0, KEY_ALL_ACCESS, &key) == ERROR_SUCCESS) {
 		if (RegQueryValueEx (key, "NeroAPI", 0, &type, (LPBYTE)path_nero, &size) == ERROR_SUCCESS) {
-		    strcat (path_nero, "\\wnaspi32.dll");
+		    if (path_nero[strlen(path_nero) - 1] != '\\')
+			strcat (path_nero, "\\");
+		    strcat (path_nero, "wnaspi32.dll");
 		    RegCloseKey (key);
 		    if (getversion(path_nero, &ver)) {
 			if (ver.dwFileVersionMS >= 0x20000) {
@@ -112,7 +125,7 @@ char *get_aspi_path(int neroaspi)
 	}
 	return NULL;
 
-	case 0:
+	case 0: // Adaptec
 	{
 	    if (adaptec > 0)
 		return path_adaptec;
@@ -157,7 +170,7 @@ static int open_driver (SCSI *scgp)
     BYTE HACount;
     BYTE ASPIStatus;
     int i;
-    int nero;
+    int nero, frog;
 
     /*
      * Check if ASPI library is already loaded yet
@@ -165,13 +178,19 @@ static int open_driver (SCSI *scgp)
     if (AspiLoaded == TRUE)
 	return TRUE;
 
-    nero = 0;
+    nero = frog = 0;
     strcpy (path, "WNASPI32");
     if (currprefs.win32_uaescsimode == UAESCSI_NEROASPI) {
-	char *p = get_aspi_path(1);
+	const char *p = get_aspi_path(1);
 	if (p) {
 	    strcpy (path, p);
 	    nero = 1;
+	}
+    } else if (currprefs.win32_uaescsimode == UAESCSI_FROGASPI) {
+	const char *p = get_aspi_path(2);
+	if (p) {
+	    strcpy (path, p);
+	    frog = 1;
 	}
     }
     /*
@@ -179,8 +198,8 @@ static int open_driver (SCSI *scgp)
      */
     write_log ("ASPI: driver location '%s'\n", path);
     hAspiLib = LoadLibrary(path);
-    if (hAspiLib == NULL && nero) {
-	write_log ("ASPI: NERO ASPI failed to load, falling back to default\n");
+    if (hAspiLib == NULL && (nero || frog)) {
+	write_log ("ASPI: NERO/FROG ASPI failed to load, falling back to default\n");
 	hAspiLib = LoadLibrary("WNASPI32");
     }
 
@@ -778,7 +797,31 @@ static int mediacheck (int unitnum)
     uae_u8 cmd [6] = { 0,0,0,0,0,0 }; /* TEST UNIT READY */
     if (si[unitnum].handle == 0)
 	return 0;
-    return execscsicmd_out (unitnum, cmd, sizeof(cmd)) ? 1 : 0;
+    return execscsicmd_out(unitnum, cmd, sizeof(cmd)) ? 1 : 0;
+}
+
+static int mediacheck_full (int unitnum, struct device_info *di)
+{
+    uae_u8 cmd1[10] = { 0x25,0,0,0,0,0,0,0,0,0 }; /* READ CAPACITY */
+    uae_u8 cmd2[10] = { 0x5a,0x08,0,0,0,0,0,0,0x10,0 }; /* MODE SENSE */
+    int ok, outlen;
+    uae_u8 *p = si[unitnum].buf;
+
+    di->bytespersector = 2048;
+    di->cylinders = 1;
+    di->write_protected = 1;
+    if (si[unitnum].handle == 0)
+	return 0;
+    ok = execscsicmd_in(unitnum, cmd1, sizeof cmd1, &outlen) ? 1 : 0;
+    if (ok) {
+        di->bytespersector = (p[4] << 24) | (p[5] << 16) | (p[6] << 8) | p[7];
+	di->cylinders = (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
+    }
+    ok = execscsicmd_in(unitnum, cmd2, sizeof cmd2, &outlen) ? 1 : 0;
+    if (ok) {
+	di->write_protected = (p[3]& 0x80) ? 1 : 0;
+    }
+    return 1;
 }
 
 static int open_scsi_device (int unitnum)
@@ -899,12 +942,14 @@ static struct device_info *info_device (int unitnum, struct device_info *di)
     di->target = si[unitnum].target;
     di->lun = si[unitnum].lun;
     di->media_inserted = mediacheck (unitnum);
-    di->write_protected = 1;
-    di->bytespersector = 2048;
-    di->cylinders = 1;
     di->type = si[unitnum].type;
+    mediacheck_full (unitnum, di);
     di->id = unitnum + 1;
     di->label = my_strdup (si[unitnum].label);
+    if (log_scsi) {
+	write_log ("MI=%d TP=%d WP=%d CY=%d BK=%d '%s'\n",
+	    di->media_inserted, di->type, di->write_protected, di->cylinders, di->bytespersector, di->label);
+    }
     return di;
 }
 
@@ -929,8 +974,15 @@ static int check_isatapi (int unitnum)
     return si[unitnum].isatapi;
 }
 
+static struct device_scsi_info *scsi_info (int unitnum, struct device_scsi_info *dsi)
+{
+    dsi->buffer = si[unitnum].buf;
+    dsi->bufsize = DEVICE_SCSI_BUFSIZE;
+    return dsi;
+}
+
 struct device_functions devicefunc_win32_aspi = {
     open_scsi_bus, close_scsi_bus, open_scsi_device, close_scsi_device, info_device,
     execscsicmd_out, execscsicmd_in, execscsicmd_direct,
-    0, 0, 0, 0, 0, 0, 0, check_isatapi
+    0, 0, 0, 0, 0, 0, 0, check_isatapi, scsi_info
 };

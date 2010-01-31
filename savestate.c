@@ -448,6 +448,8 @@ void restore_state (char *filename)
 #ifdef ACTION_REPLAY
 	else if (!strcmp (name, "ACTR"))
 	    end = restore_action_replay (chunk);
+	else if (!strcmp (name, "HRTM"))
+	    end = restore_hrtmon (chunk);
 #endif
 #ifdef FILESYS
 	else if (!strcmp (name, "FSYS"))
@@ -460,6 +462,7 @@ void restore_state (char *filename)
 		       name, len, end - chunk);
 	xfree (chunk);
     }
+    restore_blitter_finish();
     return;
 
     error:
@@ -478,6 +481,7 @@ void savestate_restore_finish (void)
     zfile_fclose (savestate_file);
     savestate_file = 0;
     savestate_state = 0;
+    restore_cpu_finish();
 }
 
 /* 1=compressed,2=not compressed,3=ram dump,4=audio dump */
@@ -590,12 +594,12 @@ void save_state (char *filename, char *description)
     save_chunk (f, dst, len, "DISK", 0);
     xfree (dst);
 
-    dst = save_custom (&len, 0, 0);
-    save_chunk (f, dst, len, "CHIP", 0);
-    xfree (dst);
-
     dst = save_blitter (&len, 0);
     save_chunk (f, dst, len, "BLIT", 0);
+    xfree (dst);
+
+    dst = save_custom (&len, 0, 0);
+    save_chunk (f, dst, len, "CHIP", 0);
     xfree (dst);
 
     dst = save_custom_agacolors (&len, 0);
@@ -647,6 +651,8 @@ void save_state (char *filename, char *description)
 #ifdef ACTION_REPLAY
     dst = save_action_replay (&len, 0);
     save_chunk (f, dst, len, "ACTR", 0);
+    dst = save_hrtmon (&len, 0);
+    save_chunk (f, dst, len, "HRTM", 0);
 #endif
 #ifdef FILESYS
     for (i = 0; i < nr_units (currprefs.mountinfo); i++) {

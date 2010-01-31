@@ -64,6 +64,9 @@
 #include "disk.h"
 #include "catweasel.h"
 #include "lcd.h"
+#include "uaeipc.h"
+#include "ar.h"
+#include "audio.h"
 
 extern FILE *debugfile;
 extern int console_logging;
@@ -442,8 +445,8 @@ void setmouseactive (int active)
 		    ClipCursor (&amigawin_rect);
 		}
 		mousecapture = 1;
+		setcursor (-1, -1);
 	    }
-	    setcursor (-1, -1);
 	}
 	inputdevice_acquire ();
     }
@@ -506,7 +509,7 @@ static void winuae_active (HWND hWnd, int minimized)
 #ifdef AHI
     ahi_open_sound ();
 #endif
-    init_sound ();
+    set_audio ();
     if (WIN32GFX_IsPicassoScreen ())
 	WIN32GFX_EnablePicasso();
     getcapslock ();
@@ -533,7 +536,7 @@ static void winuae_inactive (HWND hWnd, int minimized)
 #ifdef AHI
     ahi_close_sound ();
 #endif
-    init_sound ();
+    set_audio ();
 #ifdef AHI
     ahi_open_sound ();
 #endif
@@ -595,6 +598,8 @@ static void handleXbutton (WPARAM wParam, int updown)
 	setmousebuttonstate (dinput_winmouse(), num, updown);
 }
 
+#define MSGDEBUG 0
+
 static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     PAINTSTRUCT ps;
@@ -602,6 +607,10 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
     int mx, my, v;
     static int mm;
     static int minimized;
+
+#if MSGDEBUG
+    write_log ("AWP: %x %d\n", hWnd, message);
+#endif
 
     if (ignore_messages_all)
 	return DefWindowProc (hWnd, message, wParam, lParam);
@@ -611,10 +620,12 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 
     switch (message)
     {
+    case WM_SETCURSOR:
+    return TRUE;
     case WM_SIZE:
     {
-#if 0
-	write_log ("WM_SIZE %d %d\n", wParam, minimized);
+#if MSGDEBUG
+	write_log ("WM_SIZE %x %d %d\n", hWnd, wParam, minimized);
 #endif
 	if (isfullscreen ()) {
 	    v = minimized;
@@ -643,8 +654,8 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
     }
 	    
     case WM_ACTIVATE:
-#if 0
-	write_log ("WM_ACTIVE %d %d %d\n", HIWORD (wParam), LOWORD (wParam), minimized);
+#if MSGDEBUG
+	write_log ("WM_ACTIVE %x %d %d %d\n", hWnd, HIWORD (wParam), LOWORD (wParam), minimized);
 #endif
 	if (!isfullscreen ()) {
 	    minimized = HIWORD (wParam);
@@ -667,8 +678,8 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 	break;
 
     case WM_ACTIVATEAPP:
-#if 0
-	write_log ("WM_ACTIVATEAPP %d %d\n", wParam, minimized);
+#if MSGDEBUG
+	write_log ("WM_ACTIVATEAPP %x %d %d\n", hWnd, wParam, minimized);
 #endif
 	activateapp = wParam;
 	if (!wParam) {
@@ -798,6 +809,10 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 
     case WM_WINDOWPOSCHANGED:
 	GetWindowRect (hWnd, &amigawin_rect);
+	if (!isfullscreen()) {
+	    currprefs.gfx_size_win.x = amigawin_rect.left;
+	    currprefs.gfx_size_win.y = amigawin_rect.top;
+	}
     break;
 
     case WM_MOUSEMOVE:
@@ -1010,6 +1025,10 @@ static LRESULT CALLBACK MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
     RECT rc;
     HDC hDC;
 
+#if MSGDEBUG
+    write_log ("MWP: %x %d\n", hWnd, message);
+#endif
+
     switch (message)
     {
      case WM_MOUSEMOVE:
@@ -1063,7 +1082,7 @@ static LRESULT CALLBACK MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 
      case WM_WINDOWPOSCHANGED:
 	WIN32GFX_WindowMove();
-	if( hAmigaWnd && GetWindowRect(hAmigaWnd, &amigawin_rect)) {
+	if (hAmigaWnd && GetWindowRect(hAmigaWnd, &amigawin_rect)) {
 	    if (in_sizemove > 0)
 		break;
 
@@ -1071,17 +1090,19 @@ static LRESULT CALLBACK MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 		static int store_xy;
 		RECT rc2;
 		if (GetWindowRect(hMainWnd, &rc2)) {
+		    DWORD left = rc2.left - win_x_diff;
+	    	    DWORD top = rc2.top - win_y_diff;
 		    if (amigawin_rect.left & 3) {
-			MoveWindow (hMainWnd, rc2.left+ 4 - amigawin_rect.left % 4, rc2.top,
+			MoveWindow (hMainWnd, rc2.left + 4 - amigawin_rect.left % 4, rc2.top,
 				    rc2.right - rc2.left, rc2.bottom - rc2.top, TRUE);
 
 		    }
 		    if (hWinUAEKey && store_xy++) {
-			DWORD left = rc2.left - win_x_diff;
-			DWORD top = rc2.top - win_y_diff;
 			RegSetValueEx(hWinUAEKey, "xPos", 0, REG_DWORD, (LPBYTE)&left, sizeof(LONG));
 			RegSetValueEx(hWinUAEKey, "yPos", 0, REG_DWORD, (LPBYTE)&top, sizeof(LONG));
 		    }
+		    currprefs.gfx_size_win.x = left;
+		    currprefs.gfx_size_win.y = top;
 		}
 		return 0;
 	    }
@@ -1143,20 +1164,21 @@ void handle_events (void)
 	inputdevicefunc_joystick.read();
 	inputdevice_handle_inputcode ();
 	check_prefs_changed_gfx ();
+	while (checkIPC(&currprefs));
     }
     while (PeekMessage (&msg, 0, 0, 0, PM_REMOVE)) {
 	TranslateMessage (&msg);
 	DispatchMessage (&msg);
     }
+    while (checkIPC(&currprefs));
     if (was_paused) {
-	init_sound ();
+	set_audio ();
 #ifdef AHI
 	ahi_open_sound ();
 #endif
 	emulation_paused = 0;
 	manual_painting_needed--;
     }
-
 }
 
 /* We're not a console-app anymore! */
@@ -1254,7 +1276,11 @@ int WIN32_CleanupLibraries( void )
 /* HtmlHelp Initialization - optional component */
 int WIN32_InitHtmlHelp( void )
 {
+    char *chm = "WinUAE.chm";
     int result = 0;
+    sprintf(help_file, "%s%s", start_path_data, chm);
+    if (!zfile_exists (help_file))
+	sprintf(help_file, "%s%s", start_path_exe, chm);
     if (zfile_exists (help_file)) {
 	if (hHtmlHelp = LoadLibrary("HHCTRL.OCX")) {
 	    pHtmlHelp = (HWND(WINAPI *)(HWND, LPCSTR, UINT, LPDWORD))GetProcAddress(hHtmlHelp, "HtmlHelpA");
@@ -1364,9 +1390,12 @@ HMODULE language_load(WORD language)
 	    language = pGetUserDefaultUILanguage();
 	language &= 0x3ff; // low 9-bits form the primary-language ID
     }
+    if (language == LANG_GERMAN)
+	hrtmon_lang = 2;
+    if (language == LANG_FRENCH)
+	hrtmon_lang = 3;
     dllname = getlanguagename (language);
-    if (dllname)
-    {
+    if (dllname) {
 	DWORD  dwVersionHandle, dwFileVersionInfoSize;
 	LPVOID lpFileVersionData = NULL;
 	BOOL   success = FALSE;
@@ -1412,7 +1441,7 @@ HMODULE language_load(WORD language)
 	}
 	if (fail) {
 	    DWORD err = GetLastError();
-	    if (err != 126)
+	    if (err != ERROR_MOD_NOT_FOUND && err != ERROR_DLL_NOT_FOUND)
 		write_log ("Translation DLL '%s' failed to load, error %d\n", dllbuf, GetLastError ());
 	}
 	if (result && !success) {
@@ -1475,10 +1504,6 @@ int debuggable (void)
     return 0;
 }
 
-int needmousehack (void)
-{
-    return 1;
-}
 int mousehack_allowed (void)
 {
     return dinput_winmouse () > 0 && dinput_winmousemode ();
@@ -1539,7 +1564,7 @@ void logging_init(void)
 	       "\nPress F12 to show the Settings Dialog (GUI), Alt-F4 to quit."
 	       "\nEnd+F1 changes floppy 0, End+F2 changes floppy 1, etc."
 	       "\n");
-    write_log ("EXE: '%s'\nDATA: '%s'\n", start_path_exe, start_path_data);
+    write_log ("EXE: '%s', DATA: '%s'\n", start_path_exe, start_path_data);
 }
 
 void logging_cleanup( void )
@@ -1803,7 +1828,10 @@ void set_path (char *name, char *path)
     char tmp[MAX_DPATH];
 
     if (!path) {
-	strcpy (tmp, start_path_data);
+	if (!strcmp (start_path_data, start_path_exe))
+	    strcpy (tmp, ".\\");
+	else
+	    strcpy (tmp, start_path_data);
 	if (!strcmp (name, "KickstartPath"))
 	    strcat (tmp, "Roms");
 	if (!strcmp (name, "ConfigurationPath"))
@@ -1814,14 +1842,20 @@ void set_path (char *name, char *path)
 	    strcat (tmp, "Savestates");
 	if (!strcmp (name, "SaveimagePath"))
 	    strcat (tmp, "SaveImages");
+	if (!strcmp (name, "InputPath"))
+	    strcat (tmp, "Inputrecordings");
     } else {
 	strcpy (tmp, path);
     }
     strip_slashes (tmp);
     if (!strcmp (name, "KickstartPath")) {
 	DWORD v = GetFileAttributes (tmp);
-	if (v == INVALID_FILE_ATTRIBUTES || !(v & FILE_ATTRIBUTE_DIRECTORY))
-	    strcpy (tmp, start_path_data);
+	if (v == INVALID_FILE_ATTRIBUTES || !(v & FILE_ATTRIBUTE_DIRECTORY)) {
+	    if (!strcmp (start_path_data, start_path_exe))
+		strcpy (tmp, ".\\");
+	    else
+		strcpy (tmp, start_path_data);
+	}
 	if (af_path_2005) {
 	    strcpy (tmp, start_path_af);
 	    strcat (tmp, "System\\rom");
@@ -1991,6 +2025,7 @@ static void WIN32_HandleRegistryStuff(void)
 	initpath ("StatefilePath", start_path_data);
 	initpath ("SaveimagePath", start_path_data);
 	initpath ("VideoPath", start_path_data);
+	initpath ("InputPath", start_path_data);
 	if (disposition == REG_CREATED_NEW_KEY)
 	{
 	    /* Create and initialize all our sub-keys to the default values */
@@ -2055,6 +2090,8 @@ static void WIN32_HandleRegistryStuff(void)
     CreateDirectory (path, NULL);
     strcat (path, "default.uss");
     strcpy (savestate_fname, path);
+    fetch_path ("InputPath", path, sizeof (path));
+    CreateDirectory (path, NULL);
     fkey = read_disk_history ();
     if (fkey)
 	RegCloseKey (fkey);
@@ -2302,9 +2339,8 @@ static void getstartpaths(int start_data)
     fixtrailing(start_path_data);
 }
 
-
 extern void test (void);
-extern int screenshotmode;
+extern int screenshotmode, b0rken_ati_overlay;
 
 static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
 		    int nCmdShow)
@@ -2352,6 +2388,8 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
 	if (!strcmp (arg, "-disableharddrivesafetycheck")) harddrive_dangerous = 0x1234dead;
 	if (!strcmp (arg, "-noaspifiltering")) aspi_allow_all = 1;
 #endif
+	if (!strcmp (arg, "-disableowr")) b0rken_ati_overlay = -1;
+	if (!strcmp (arg, "-enableowr")) b0rken_ati_overlay = 1;
 	if (!strcmp (arg, "-nordtsc")) no_rdtsc = 1;
 	if (!strcmp (arg, "-forcerdtsc")) no_rdtsc = -1;
 	if (!strcmp (arg, "-norawinput")) no_rawinput = 1;
@@ -2370,7 +2408,6 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
     argv[0] = 0;
 #endif
     getstartpaths(start_data);
-    sprintf(help_file, "%sWinUAE.chm", start_path_data);
     sprintf(VersionStr, "WinUAE %d.%d.%d%s (%d-bit)",
 	UAEMAJOR, UAEMINOR, UAESUBREV, WINUAEBETA ? WINUAEBETASTR : "",
 	#if defined(WIN64)
@@ -2416,9 +2453,12 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
 #ifdef PARALLEL_PORT
 	paraport_mask = paraport_init ();
 #endif
+	createIPC();
 	real_main (argc, argv);
     }
-	
+
+    closeIPC();
+    write_disk_history ();
     if (mm_timerres && timermode == 0)
 	timeend ();
 #ifdef AVIOUTPUT
@@ -2433,9 +2473,9 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
 #endif
     WIN32_CleanupLibraries();
     _fcloseall();
-    if( hWinUAEKey )
-	RegCloseKey( hWinUAEKey );
-    CloseHandle( hMutex );
+    if(hWinUAEKey)
+	RegCloseKey(hWinUAEKey);
+    CloseHandle(hMutex);
 #ifdef _DEBUG
     // show memory leaks
     //_CrtSetDbgFlag ( _CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF );
@@ -2541,11 +2581,6 @@ static LONG WINAPI ExceptionFilter( struct _EXCEPTION_POINTERS * pExceptionPoint
 		efix (&ctx->Edx, p, ps, &got);
 		efix (&ctx->Esi, p, ps, &got);
 		efix (&ctx->Edi, p, ps, &got);
-#if 0
-		gui_message ("Experimental access violation trap code activated\n"
-		    "Trying to prevent WinUAE crash.\nFix %s (68KPC=%08.8X HOSTADDR=%p)\n",
-			got ? "ok" : "failed", m68k_getpc(), p);
-#endif
 		write_log ("Access violation! (68KPC=%08.8X HOSTADDR=%p)\n", m68k_getpc(), p);
 		if (got == 0) {
 		    write_log ("failed to find and fix the problem (%p). crashing..\n", p);
@@ -2569,11 +2604,11 @@ static LONG WINAPI ExceptionFilter( struct _EXCEPTION_POINTERS * pExceptionPoint
 	HMODULE dll = NULL;
 	struct tm when;
 	__time64_t now;
-	
-	_time64(&now);
-	when = *_localtime64(&now);
-	if (GetModuleFileName(NULL, path, MAX_DPATH)) {
+
+	if (os_winnt && GetModuleFileName(NULL, path, MAX_DPATH)) {
 	    char *slash = strrchr (path, '\\');
+	    _time64(&now);
+	    when = *_localtime64(&now);
 	    strcpy (path2, path);
 	    if (slash) {
 		strcpy (slash + 1, "DBGHELP.DLL");
@@ -2687,7 +2722,7 @@ static void LLError(const char *s)
 {
     DWORD err = GetLastError();
 
-    if (err == ERROR_MOD_NOT_FOUND)
+    if (err == ERROR_MOD_NOT_FOUND || err == ERROR_DLL_NOT_FOUND)
 	return;
     write_log("%s failed to open %d\n", s, err);
 }

@@ -670,11 +670,13 @@ static void do_blit( struct RenderInfo *ri, int Bpp,
     uae_u8 *dstp, *srcp;
     int orig_height = height;
 
-    if( picasso96_state.BigAssBitmap && can_do_blit){
+    if(picasso96_state.BigAssBitmap && can_do_blit){
 	srcx=dstx;
 	srcy=dsty;
 	can_do_blit=0;
     } //hack to use cpu rotines for scrolling in big Screens
+    if (picasso96_state.XOffset < 0)
+	can_do_blit = 0;
     
     dstx=dstx-picasso96_state.XOffset;
     dsty=dsty-picasso96_state.YOffset;
@@ -988,6 +990,7 @@ void picasso_handle_vsync (void)
 	    }
 	}
     }
+    setoverlay(1);
 }
 
 static int set_panning_called = 0;
@@ -1908,6 +1911,7 @@ uae_u32 picasso_SetGC (void)
     
     P96TRACE(("SetGC(%d,%d,%d,%d)\n", picasso96_state.Width, picasso96_state.Height, picasso96_state.GC_Depth, border ));
     set_gc_called = 1;
+    picasso96_state.HostAddress = NULL;
     init_picasso_screen ();
     init_hz_p96 ();
     return 1;

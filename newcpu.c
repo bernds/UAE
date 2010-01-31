@@ -29,7 +29,6 @@
 extern uae_u8* compiled_code;
 #include "compemu.h"
 #include <signal.h>
-extern void vec(int x, struct siginfo* si, struct sigcontext* sc);
 int oink=0;
 /* For faster cycles handling */
 signed long pissoff=0;
@@ -53,6 +52,7 @@ static int last_writeaccess_for_exception_3;
 static int last_instructionaccess_for_exception_3;
 unsigned long irqcycles[15];
 int irqdelay[15];
+int mmu_enabled, mmu_triggered;
 
 int areg_byteinc[] = { 1,1,1,1,1,1,1,2 };
 int imm8_table[] = { 8,1,2,3,4,5,6,7 };
@@ -357,7 +357,7 @@ void init_m68k_full (void)
     init_m68k ();
 }
 
-struct regstruct regs, lastint_regs;
+struct regstruct regs, lastint_regs, mmu_backup_regs;
 static struct regstruct regs_backup[16];
 static int backup_pointer = 0;
 static long int m68kpc_offset;
@@ -367,14 +367,14 @@ int lastint_no;
 #define get_iword_1(o) get_word(regs.pc + (regs.pc_p - regs.pc_oldp) + (o))
 #define get_ilong_1(o) get_long(regs.pc + (regs.pc_p - regs.pc_oldp) + (o))
 
-uae_s32 ShowEA (void *f, uae_u16 opcode, int reg, amodes mode, wordsizes size, char *buf)
+static uae_s32 ShowEA (void *f, uae_u16 opcode, int reg, amodes mode, wordsizes size, char *buf, uae_u32 *eaddr, int safemode)
 {
     uae_u16 dp;
     uae_s8 disp8;
     uae_s16 disp16;
     int r;
     uae_u32 dispreg;
-    uaecptr addr;
+    uaecptr addr = 0;
     uae_s32 offset = 0;
     char buffer[80];
 
@@ -387,12 +387,15 @@ uae_s32 ShowEA (void *f, uae_u16 opcode, int reg, amodes mode, wordsizes size, c
 	break;
      case Aind:
 	sprintf (buffer,"(A%d)", reg);
+	addr = regs.regs[reg + 8];
 	break;
      case Aipi:
 	sprintf (buffer,"(A%d)+", reg);
+	addr = regs.regs[reg + 8];
 	break;
      case Apdi:
 	sprintf (buffer,"-(A%d)", reg);
+	addr = regs.regs[reg + 8];
 	break;
      case Ad16:
 	{
@@ -429,7 +432,7 @@ uae_s32 ShowEA (void *f, uae_u16 opcode, int reg, amodes mode, wordsizes size, c
 	    if ((dp & 0x3) == 0x3) { outer = get_ilong_1 (m68kpc_offset); m68kpc_offset += 4; }
 
 	    if (!(dp & 4)) base += dispreg;
-	    if (dp & 3) base = get_long (base);
+	    if ((dp & 3) && !safemode) base = get_long (base);
 	    if (dp & 4) base += dispreg;
 
 	    addr = base + outer;
@@ -476,7 +479,7 @@ uae_s32 ShowEA (void *f, uae_u16 opcode, int reg, amodes mode, wordsizes size, c
 	    if ((dp & 0x3) == 0x3) { outer = get_ilong_1 (m68kpc_offset); m68kpc_offset += 4; }
 
 	    if (!(dp & 4)) base += dispreg;
-	    if (dp & 3) base = get_long (base);
+	    if ((dp & 3) && !safemode) base = get_long (base);
 	    if (dp & 4) base += dispreg;
 
 	    addr = base + outer;
@@ -493,11 +496,13 @@ uae_s32 ShowEA (void *f, uae_u16 opcode, int reg, amodes mode, wordsizes size, c
 	}
 	break;
      case absw:
-	sprintf (buffer,"$%08lx", (unsigned long)(uae_s32)(uae_s16)get_iword_1 (m68kpc_offset));
+	addr = (uae_s32)(uae_s16)get_iword_1 (m68kpc_offset);
+	sprintf (buffer,"$%08lx", (unsigned long)addr);
 	m68kpc_offset += 2;
 	break;
      case absl:
-	sprintf (buffer,"$%08lx", (unsigned long)get_ilong_1 (m68kpc_offset));
+	addr = get_ilong_1 (m68kpc_offset);
+	sprintf (buffer,"$%08lx", (unsigned long)addr);
 	m68kpc_offset += 4;
 	break;
      case imm:
@@ -545,6 +550,8 @@ uae_s32 ShowEA (void *f, uae_u16 opcode, int reg, amodes mode, wordsizes size, c
 	f_out (f, "%s", buffer);
     else
 	strcat (buf, buffer);
+    if (eaddr)
+	*eaddr = addr;
     return offset;
 }
 
@@ -1652,12 +1659,15 @@ static int do_specialties (int cycles)
     if ((regs.spcflags & SPCFLAG_ACTION_REPLAY) && hrtmon_flag != ACTION_REPLAY_INACTIVE) {
 	int isinhrt = (m68k_getpc() >= hrtmem_start && m68k_getpc() < hrtmem_start + hrtmem_size);
 	/* exit from HRTMon? */
-	if(hrtmon_flag == ACTION_REPLAY_HIDE && !isinhrt) hrtmon_hide();
+	if(hrtmon_flag == ACTION_REPLAY_ACTIVE && !isinhrt)
+	    hrtmon_hide();
 	/* HRTMon breakpoint? (not via IRQ7) */
-	if(hrtmon_flag == ACTION_REPLAY_IDLE && isinhrt) hrtmon_breakenter();
-	if(hrtmon_flag == ACTION_REPLAY_ACTIVE && isinhrt) hrtmon_flag = ACTION_REPLAY_HIDE;
-	if(hrtmon_flag == ACTION_REPLAY_ACTIVATE) hrtmon_enter();
-	if(!(regs.spcflags & ~SPCFLAG_ACTION_REPLAY)) return 0;
+	if(hrtmon_flag == ACTION_REPLAY_IDLE && isinhrt)
+	    hrtmon_breakenter();
+	if(hrtmon_flag == ACTION_REPLAY_ACTIVATE)
+	    hrtmon_enter();
+	if(!(regs.spcflags & ~SPCFLAG_ACTION_REPLAY))
+	    return 0;
     }
     #endif
     if ((regs.spcflags & SPCFLAG_ACTION_REPLAY) && action_replay_flag != ACTION_REPLAY_INACTIVE )
@@ -2137,6 +2147,26 @@ static void m68k_run_2 (void)
     }
 }
 
+/* "MMU" 68k  */
+static void m68k_run_mmu (void)
+{
+    for (;;) {
+	int cycles;
+	uae_u32 opcode = get_iword (0);
+	mmu_backup_regs = regs;
+	cycles = (*cpufunctbl[opcode])(opcode);
+	cycles &= cycles_mask;
+	cycles |= cycles_val;
+	if (mmu_triggered)
+	    mmu_do_hit();
+	do_cycles (cycles);
+	if (regs.spcflags) {
+	    if (do_specialties (cycles))
+		return;
+	}
+    }
+}
+
 #endif
 
 #ifdef X86_ASSEMBLY
@@ -2232,10 +2262,14 @@ void m68k_go (int may_quit)
 		    currprefs.cpu_level == 0 && currprefs.cpu_compatible ? m68k_run_1 :
 		    currprefs.cpu_compatible ? m68k_run_2p : m68k_run_2);
 #else
-	m68k_run1 (currprefs.cpu_cycle_exact && currprefs.cpu_level == 0 ? m68k_run_1_ce :
+	if (mmu_enabled && !currprefs.cachesize) {
+	    m68k_run1 (m68k_run_mmu);
+	} else {
+	    m68k_run1 (currprefs.cpu_cycle_exact && currprefs.cpu_level == 0 ? m68k_run_1_ce :
 		   currprefs.cpu_compatible > 0 && currprefs.cpu_level == 0 ? m68k_run_1 :
 		   currprefs.cpu_level >= 2 && currprefs.cachesize ? m68k_run_2a :
 		   currprefs.cpu_compatible ? m68k_run_2p : m68k_run_2);
+	}
 #endif
     }
     in_m68k_go--;
@@ -2269,12 +2303,13 @@ static void m68k_verify (uaecptr addr, uaecptr *nextpc)
     }
 }
 
-void m68k_disasm (void *f, uaecptr addr, uaecptr *nextpc, int cnt)
+void m68k_disasm_2 (void *f, uaecptr addr, uaecptr *nextpc, int cnt, uae_u32 *seaddr, uae_u32 *deaddr, int safemode)
 {
     uaecptr newpc = 0;
     m68kpc_offset = addr - m68k_getpc ();
+
     while (cnt-- > 0) {
-	char instrname[100],*ccpt;
+	char instrname[100], *ccpt;
 	int i;
 	uae_u32 opcode;
 	struct mnemolookup *lookup;
@@ -2307,33 +2342,47 @@ void m68k_disasm (void *f, uaecptr addr, uaecptr *nextpc, int cnt)
 
 	if (dp->suse) {
 	    newpc = m68k_getpc () + m68kpc_offset;
-	    newpc += ShowEA (0, opcode, dp->sreg, dp->smode, dp->size, instrname);
+	    newpc += ShowEA (0, opcode, dp->sreg, dp->smode, dp->size, instrname, seaddr, safemode);
 	}
 	if (dp->suse && dp->duse)
 	    strcat (instrname, ",");
 	if (dp->duse) {
 	    newpc = m68k_getpc () + m68kpc_offset;
-	    newpc += ShowEA (0, opcode, dp->dreg, dp->dmode, dp->size, instrname);
+	    newpc += ShowEA (0, opcode, dp->dreg, dp->dmode, dp->size, instrname, deaddr, safemode);
 	}
-
 
 	for (i = 0; i < (m68kpc_offset - oldpc) / 2; i++) {
 	    f_out (f, "%04x ", get_iword_1 (oldpc + i * 2));
 	}
-	while (i++ < 5) f_out (f, "     ");
+	while (i++ < 5)
+	    f_out (f, "     ");
 	f_out (f, instrname);
 
 	if (ccpt != 0) {
+	    if (deaddr)
+		*deaddr = newpc;
 	    if (cctrue(dp->cc))
 		f_out (f, " == %08lx (TRUE)", newpc);
 	    else
 		f_out (f, " == %08lx (FALSE)", newpc);
-	} else if ((opcode & 0xff00) == 0x6100) /* BSR */
+	} else if ((opcode & 0xff00) == 0x6100) { /* BSR */
+	    if (deaddr)
+		*deaddr = newpc;
 	    f_out (f, " == %08lx", newpc);
+	}
 	f_out (f, "\n");
     }
     if (nextpc)
 	*nextpc = m68k_getpc () + m68kpc_offset;
+}
+
+void m68k_disasm_ea (void *f, uaecptr addr, uaecptr *nextpc, int cnt, uae_u32 *seaddr, uae_u32 *deaddr)
+{
+    m68k_disasm_2 (f, addr, nextpc, cnt, seaddr, deaddr, 1);
+}
+void m68k_disasm (void *f, uaecptr addr, uaecptr *nextpc, int cnt)
+{
+    m68k_disasm_2 (f, addr, nextpc, cnt, NULL, NULL, 0);
 }
 
 /*************************************************************
@@ -2376,13 +2425,13 @@ void sm68k_disasm(char *instrname, char *instrcode, uaecptr addr, uaecptr *nextp
 
     if (dp->suse) {
 	newpc = m68k_getpc () + m68kpc_offset;
-	newpc += ShowEA (0, opcode, dp->sreg, dp->smode, dp->size, instrname);
+	newpc += ShowEA (0, opcode, dp->sreg, dp->smode, dp->size, instrname, NULL, 0);
     }
     if (dp->suse && dp->duse)
 	strcat (instrname, ",");
     if (dp->duse) {
 	newpc = m68k_getpc () + m68kpc_offset;
-	newpc += ShowEA (0, opcode, dp->dreg, dp->dmode, dp->size, instrname);
+	newpc += ShowEA (0, opcode, dp->dreg, dp->dmode, dp->size, instrname, NULL, 0);
     }
 
     if (instrcode)
@@ -2523,9 +2572,13 @@ uae_u8 *restore_cpu (uae_u8 *src)
     write_log ("CPU %d%s%03d, PC=%08.8X\n",
 	model / 1000, flags & 1 ? "EC" : "", model % 1000, regs.pc);
 
+    return src;
+}
+
+void restore_cpu_finish(void)
+{
     init_m68k_full ();
     m68k_setpc (regs.pc);
-    return src;
 }
 
 static int cpumodel[] = { 68000, 68010, 68020, 68020, 68040, 68060 };

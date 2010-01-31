@@ -57,9 +57,9 @@ int lores_factor, lores_shift;
    coordinates have a lower resolution (i.e. we're shrinking the image).  */
 static int res_shift;
 
-static int interlace_seen = 0;
+int interlace_seen = 0;
 #define AUTO_LORES_FRAMES 10
-static int can_use_lores = 0;
+static int can_use_lores = 0, frame_res, frame_res_lace;
 
 /* Lookup tables for dual playfields.  The dblpf_*1 versions are for the case
    that playfield 1 has the priority, dbplpf_*2 are used if playfield 2 has
@@ -155,7 +155,7 @@ typedef void (*line_draw_func)(int, int);
 #define LINE_DONE_AS_PREVIOUS 8
 #define LINE_REMEMBERED_AS_PREVIOUS 9
 
-static char linestate[(MAXVPOS + 1)*2 + 1];
+static char linestate[(MAXVPOS + 1) * 2 + 1];
 
 uae_u8 line_data[(MAXVPOS + 1) * 2][MAX_PLANES * MAX_WORDS_PER_LINE * 2];
 
@@ -1396,6 +1396,8 @@ static void pfield_expand_dp_bplcon (void)
     bplham = dp_for_drawing->ham_seen;
 
     if (bplres > 0)
+	frame_res = 1;
+    if (bplres > 0)
 	can_use_lores = 0;
     if (currprefs.chipset_mask & CSMASK_AGA) {
 	/* The KILLEHB bit exists in ECS, but is apparently meant for Genlock
@@ -1558,9 +1560,11 @@ STATIC_INLINE void pfield_draw_line (int lineno, int gfx_ypos, int follow_ypos)
     case LINE_AS_PREVIOUS:
 	dp_for_drawing--;
 	dip_for_drawing--;
+	linestate[lineno] = LINE_DONE_AS_PREVIOUS;
+	if (!dp_for_drawing->valid)
+	    return;
 	if (dp_for_drawing->plfleft == -1)
 	    border = 1;
-	linestate[lineno] = LINE_DONE_AS_PREVIOUS;
 	break;
 
     case LINE_DONE_AS_PREVIOUS:
@@ -1782,9 +1786,41 @@ static void lores_reset (void)
     lores_shift = currprefs.gfx_lores ? 0 : 1;
 }
 
+#define FRAMES_UNTIL_RES_SWITCH 5
+static int frame_res_cnt;
 static void init_drawing_frame (void)
 {
     int i, maxline;
+    static int frame_res_old;
+
+    if (FRAMES_UNTIL_RES_SWITCH > 0 && frame_res_old == frame_res * 2 + frame_res_lace) {
+	frame_res_cnt--;
+	if (frame_res_cnt == 0) {
+	    int m = frame_res * 2 + frame_res_lace;
+	    struct wh *dst = currprefs.gfx_afullscreen ? &changed_prefs.gfx_size_fs : &changed_prefs.gfx_size_win;
+	    while (m < 4) {
+		struct wh *src = currprefs.gfx_afullscreen ? &currprefs.gfx_size_fs_xtra[m] : &currprefs.gfx_size_win_xtra[m];
+		if ((src->width > 0 && src->height > 0) || (currprefs.gfx_autoresolution && currprefs.gfx_filter > 0)) {
+		    changed_prefs.gfx_lores = (m & 2) == 0 ? 1 : 0;
+		    changed_prefs.gfx_linedbl = (m & 1) == 0 ? 0 : 1;
+		    if (currprefs.gfx_autoresolution) {
+			changed_prefs.gfx_filter_horiz_zoom_mult = 1000 / (changed_prefs.gfx_lores + 1);
+			changed_prefs.gfx_filter_vert_zoom_mult = (changed_prefs.gfx_linedbl + 1) * 500;
+		    } else {
+    			*dst = *src;
+		    }
+		    break;
+		}
+		m++;
+	    }
+	    frame_res_cnt = FRAMES_UNTIL_RES_SWITCH;
+	}
+    } else {
+	frame_res_old = frame_res * 2 + frame_res_lace;
+	frame_res_cnt = FRAMES_UNTIL_RES_SWITCH;
+    }
+    frame_res = 0;
+    frame_res_lace = 0;
 
     if (can_use_lores > AUTO_LORES_FRAMES && 0) {
 	lores_factor = 1;
@@ -1976,15 +2012,14 @@ static void draw_status_line (int line)
 	} else if (led == 8) {
 	    int idle = (gui_data.idle + 5) / 10;
 	    pos = 0;
-	    on_rgb = 0x000;
+	    on = framecnt;
+	    on_rgb = 0xc00;
 	    off_rgb = 0x000;
 	    num1 = idle / 100;
 	    num2 = (idle - num1 * 100) / 10;
 	    num3 = idle % 10;
-	    num4 = 13;
-	    am = 4;
-	    if (num1 == 0)
-		am = 3;
+	    num4 = num1 == 0 ? 13 : -1;
+	    am = 3;
 	}
 
 	c = xcolors[on ? on_rgb : off_rgb];
@@ -2113,10 +2148,11 @@ void vsync_handle_redraw (int long_frame, int lof_changed)
     last_redraw_point++;
     if (lof_changed || ! interlace_seen || last_redraw_point >= 2 || long_frame) {
 	last_redraw_point = 0;
-	interlace_seen = 0;
 
 	if (framecnt == 0)
 	    finish_drawing_frame ();
+
+	interlace_seen = 0;
 
 	/* At this point, we have finished both the hardware and the
 	 * drawing frame. Essentially, we are outside of all loops and
@@ -2180,6 +2216,7 @@ void vsync_handle_redraw (int long_frame, int lof_changed)
 void hsync_record_line_state (int lineno, enum nln_how how, int changed)
 {
     char *state;
+
     if (framecnt != 0)
 	return;
 
@@ -2218,6 +2255,7 @@ void hsync_record_line_state (int lineno, enum nln_how how, int changed)
 void notice_interlace_seen (void)
 {
     interlace_seen = 1;
+    frame_res_lace = 1;
 }
 
 void reset_drawing (void)
@@ -2244,6 +2282,7 @@ void reset_drawing (void)
 
     flush_clear_screen ();
     notice_screen_contents_lost ();
+    frame_res_cnt = FRAMES_UNTIL_RES_SWITCH;
 }
 
 void drawing_init (void)

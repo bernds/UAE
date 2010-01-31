@@ -155,6 +155,7 @@ static int fmode;
 unsigned int beamcon0, new_beamcon0;
 uae_u16 vtotal = MAXVPOS_PAL, htotal = MAXHPOS_PAL;
 static uae_u16 hsstop, hbstrt, hbstop, vsstop, vbstrt, vbstop, hsstrt, vsstrt, hcenter;
+static int interlace_started;
 
 #define HSYNCTIME (maxhpos * CYCLE_UNIT);
 
@@ -380,11 +381,6 @@ static void hsyncdelay(void)
         do_cycles(CYCLE_UNIT);
     prevhpos = current_hpos();
 #endif
-}
-
-STATIC_INLINE int current_hpos (void)
-{
-    return (get_cycles () - eventtab[ev_hsync].oldcycles) / CYCLE_UNIT;
 }
 
 STATIC_INLINE uae_u8 *pfield_xlateptr (uaecptr plpt, int bytecount)
@@ -2056,7 +2052,8 @@ static void finish_decisions (void)
     dip = curr_drawinfo + next_lineno;
     dip_old = prev_drawinfo + next_lineno;
     dp = line_decisions + next_lineno;
-    changed = thisline_changed;
+    dp->valid = 0;
+    changed = thisline_changed + interlace_started;
 
     if (thisline_decision.plfleft != -1)
 	record_diw_line (thisline_decision.plfleft, diwfirstword, diwlastword);
@@ -2087,6 +2084,7 @@ static void finish_decisions (void)
     if (changed) {
 	thisline_changed = 1;
 	*dp = thisline_decision;
+	dp->valid = 1;
     } else
 	/* The only one that may differ: */
 	dp->ctable = thisline_decision.ctable;
@@ -2770,6 +2768,9 @@ static void BPLCON0 (int hpos, uae_u16 v)
 	hpos_previous = hpos;
     }
 
+    if ((v & 4) && !interlace_seen)
+	interlace_started = 2;
+
     ddf_change = vpos;
     decide_line (hpos);
     decide_fetch (hpos);
@@ -3221,6 +3222,25 @@ static uae_u16 CLXDAT (void)
 }
 
 #ifdef AGA
+
+void dump_aga_custom (void)
+{
+    int c1, c2, c3, c4;
+    uae_u32 rgb1, rgb2, rgb3, rgb4;
+
+    for (c1 = 0; c1 < 64; c1++) {
+	c2 = c1 + 64;
+	c3 = c2 + 64;
+	c4 = c3 + 64;
+	rgb1 = current_colors.acolors[c1];
+	rgb2 = current_colors.acolors[c2];
+	rgb3 = current_colors.acolors[c3];
+	rgb4 = current_colors.acolors[c4];
+	console_out("%3d %06.6X %3d %06.6X %3d %06.6X %3d %06.6X\n",
+	    c1, rgb1, c2, rgb2, c3, rgb3, c4, rgb4);
+    }
+}
+
 static uae_u16 COLOR_READ (int num)
 {
     int cr, cg, cb, colreg;
@@ -3978,6 +3998,8 @@ static void init_hardware_frame (void)
     diwstate = DIW_waiting_start;
     hdiwstate = DIW_waiting_start;
     ddfstate = DIW_waiting_start;
+    if (interlace_started > 0)
+	interlace_started--;
 }
 
 void init_hardware_for_drawing_frame (void)
@@ -4076,7 +4098,7 @@ static void fpscounter (void)
     timeframes++;
     if ((timeframes & 31) == 0) {
 	double idle = 1000 - (idletime == 0 ? 0.0 : (double)idletime * 1000.0 / (vsynctime * 32.0));
-	int fps = frametime2 == 0 ? 0 : syncbase * 32 / (frametime2 / 10);
+	int fps = frametime2 == 0 ? 0 : (syncbase * 32) / (frametime2 / 10);
 	if (fps > 9999)
 	    fps = 9999;
 	if (idle < 0)
@@ -4275,7 +4297,7 @@ static void hsync_handler (void)
     if (currprefs.cpu_cycle_exact || currprefs.blitter_cycle_exact) {
 	decide_blitter (hpos);
 	memset (cycle_line, 0, sizeof cycle_line);
-	cycle_line[1] = CYCLE_REFRESH;
+	cycle_line[9] = CYCLE_REFRESH;
 	cycle_line[3] = CYCLE_REFRESH;
 	cycle_line[5] = CYCLE_REFRESH;
 	cycle_line[7] = CYCLE_REFRESH;
@@ -4331,7 +4353,7 @@ static void hsync_handler (void)
     }
 #endif
 
-    if ((bplcon0 & 4) && currprefs.gfx_linedbl)
+    if (bplcon0 & 4)
 	notice_interlace_seen ();
 
     if (!nodraw ()) {
@@ -4362,11 +4384,29 @@ static void hsync_handler (void)
     cop_state.hpos = 0;
     cop_state.last_write = 0;
     compute_spcflag_copper ();
-    inputdevice_hsync ();
     serial_hsynchandler ();
 #ifdef CUSTOM_SIMPLE
     do_sprites (0);
 #endif
+
+    while (input_recording < 0 && inprec_pstart(INPREC_KEY)) {
+	record_key_direct (inprec_pu8());
+	inprec_pend();
+    }
+    while (input_recording < 0 && inprec_pstart(INPREC_DISKREMOVE)) {
+	disk_eject (inprec_pu8());
+	inprec_pend();
+    }
+    while (input_recording < 0 && inprec_pstart(INPREC_DISKINSERT)) {
+	int drv = inprec_pu8();
+	inprec_pstr (currprefs.df[drv]);
+	strcpy (changed_prefs.df[drv], currprefs.df[drv]);
+	disk_insert_force (drv, currprefs.df[drv]);
+	inprec_pend();
+    }
+    inputdevice_hsync ();
+
+    hsync_counter++;
     //copper_check (2);
 }
 
@@ -4403,6 +4443,7 @@ void customreset (void)
     int zero = 0;
 
     write_log ("reset at %x\n", m68k_getpc());
+    hsync_counter = 0;
     if (! savestate_state) {
 	currprefs.chipset_mask = changed_prefs.chipset_mask;
 	if ((currprefs.chipset_mask & CSMASK_AGA) == 0) {
@@ -4598,6 +4639,12 @@ static void gen_custom_tables (void)
     }
 }
 
+/* mousehack is now in "filesys boot rom" */
+static uae_u32 mousehack_helper_old (void)
+{
+    return 0;
+}
+
 void custom_init (void)
 {
 
@@ -4616,7 +4663,7 @@ void custom_init (void)
 	pos = here ();
 
 	org (RTAREA_BASE+0xFF70);
-	calltrap (deftrap (mousehack_helper));
+	calltrap (deftrap (mousehack_helper_old));
 	dw (RTS);
 
 	org (RTAREA_BASE+0xFFA0);
@@ -4647,7 +4694,7 @@ static void custom_bput (uaecptr, uae_u32) REGPARAM;
 addrbank custom_bank = {
     custom_lget, custom_wget, custom_bget,
     custom_lput, custom_wput, custom_bput,
-    default_xlate, default_check, NULL
+    default_xlate, default_check, NULL, "Custom chipset"
 };
 
 STATIC_INLINE uae_u32 REGPARAM2 custom_wget_1 (uaecptr addr, int noput)
@@ -4713,14 +4760,6 @@ STATIC_INLINE uae_u32 REGPARAM2 custom_wget_1 (uaecptr addr, int noput)
  {
     uae_u32 v;
     sync_copper_with_cpu (current_hpos (), 1);
-    if (currprefs.cpu_level >= 2) {
-	if(addr >= 0xde0000 && addr <= 0xdeffff) {
-	    return 0x7f7f;
-	}
-	if(addr >= 0xdd0000 && addr <= 0xddffff) {
-	    return 0xffff;
-	}
-    }
     v = custom_wget_1 (addr, 0);
 #ifdef ACTION_REPLAY
 #ifdef ACTION_REPLAY_COMMON

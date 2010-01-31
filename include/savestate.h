@@ -39,6 +39,7 @@ extern char *restore_string_func (uae_u8 **);
 /* save, restore and initialize routines for Amiga's subsystems */
 
 extern uae_u8 *restore_cpu (uae_u8 *);
+extern void restore_cpu_finish (void);
 extern uae_u8 *save_cpu (int *, uae_u8 *);
 
 extern uae_u8 *restore_fpu (uae_u8 *);
@@ -62,6 +63,7 @@ extern uae_u8 *save_custom_agacolors (int *len, uae_u8 *);
 
 extern uae_u8 *restore_blitter (uae_u8 *src);
 extern uae_u8 *save_blitter (int *len, uae_u8 *);
+extern void restore_blitter_finish (void);
 
 extern uae_u8 *restore_audio (int, uae_u8 *);
 extern uae_u8 *save_audio (int, int *, uae_u8 *);
@@ -99,6 +101,8 @@ extern uae_u8 *save_rom (int, int *, uae_u8 *);
 
 extern uae_u8 *restore_action_replay (uae_u8 *);
 extern uae_u8 *save_action_replay (int *, uae_u8 *);
+extern uae_u8 *restore_hrtmon (uae_u8 *);
+extern uae_u8 *save_hrtmon (int *, uae_u8 *);
 
 extern void savestate_initsave (char *filename, int docompress);
 extern void save_state (char *filename, char *description);

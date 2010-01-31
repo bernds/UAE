@@ -170,8 +170,11 @@
 #define IDS_DEFAULT_AF                  190
 #define IDS_DEFAULT_WINUAE              191
 #define IDI_ROOT                        192
+#define IDS_INP                         192
+#define IDS_RESTOREINP                  193
 #define IDI_ICON2                       194
 #define IDI_MEMORY                      194
+#define IDS_SAVEINP                     194
 #define IDS_SOUND_MONO                  200
 #define IDS_SOUND_MIXED                 201
 #define IDI_QUICKSTART                  201
@@ -182,7 +185,7 @@
 #define IDS_SOUND_INTERPOL_CRUX         205
 #define IDS_SOUND_FILTER_OFF            206
 #define IDS_SOUND_FILTER_EMULATED       207
-#define IDS_SOUND_FILTER_ON_A500        208
+#define IDS_SOUND_FILTER_EMULATED_E     208
 #define IDS_INPUT_COMPATIBILITY         209
 #define IDS_INPUT_CUSTOM                210
 #define IDS_INPUT_COPY_DEFAULT          211
@@ -233,6 +236,10 @@
 #define IDB_LCD160X43                   252
 #define IDS_SOUND_FILTER_ON_AGA         252
 #define IDS_SOUND_FILTER_ON             253
+#define IDS_SOUND_FILTER_ON_A500        253
+#define IDS_DRIVESOUND_PC_FLOPPY        254
+#define IDS_FLOPPYTYPE35DDESCOM         255
+#define IDS_SOUND_STEREO2               256
 #define IDS_NUMSG_NEEDEXT2              300
 #define IDS_NUMSG_NOROMKEY              301
 #define IDS_NUMSG_KSROMCRCERROR         302
@@ -365,6 +372,7 @@
 #define IDC_CS_CPU_TEXT2                1219
 #define IDC_CPUIDLE                     1220
 #define IDC_GENLOCK                     1220
+#define IDC_COMPATIBLE_FPU              1221
 #define IDC_SOUNDSETTINGS               1229
 #define IDC_8BIT                        1230
 #define IDC_16BIT                       1231
@@ -654,6 +662,8 @@
 #define IDC_AVIOUTPUT_FILETEXT          1610
 #define IDC_INPUTDEVICETEXT             1610
 #define IDC_ALWAYSONTOP                 1610
+#define IDC_MAPROM2                     1610
+#define IDC_HRTMON                      1610
 #define IDC_AVIOUTPUT_FILE              1611
 #define IDC_INPUTLIST                   1611
 #define IDC_CATWEASEL                   1611
@@ -678,6 +688,7 @@
 #define IDC_AVIOUTPUT_BORDER_TRIM       1617
 #define IDC_OPENGLVZ                    1617
 #define IDC_FILTERVZ                    1617
+#define IDC_INPREC_RECORD               1617
 #define IDC_AVIOUTPUT_AUDIO_STATIC      1618
 #define IDC_OPENGLHO                    1618
 #define IDC_FILTERHO                    1618
@@ -686,6 +697,7 @@
 #define IDC_FILTERVO                    1619
 #define IDC_AVIOUTPUT_8BIT              1620
 #define IDC_OPENGLHZV                   1620
+#define IDC_INPREC_PLAY                 1620
 #define IDC_AVIOUTPUT_24BIT             1621
 #define IDC_OPENGLVZV                   1621
 #define IDC_AVIOUTPUT_WIDTH             1622
@@ -739,6 +751,7 @@
 #define IDC_MINIMIZED_PRIORITY          1645
 #define IDC_AVIOUTPUT_FRAMELIMITER      1645
 #define IDC_STATE_RATE                  1646
+#define IDC_INPREC_PLAYMODE             1646
 #define IDC_STATE_BUFFERSIZE            1647
 #define IDC_SOUNDDRIVESELECT            1647
 #define IDC_PANELTREE                   1647
@@ -802,6 +815,7 @@
 #define IDC_QUICKSTART_COMPATIBILITY    1676
 #define IDC_PATHS_AVIOUTPUTS            1676
 #define IDC_QUICKSTART_CONFIG           1677
+#define IDC_RESETDISKHISTORY            1677
 #define IDC_DF0Q                        1678
 #define IDC_DF0QQ                       1678
 #define IDC_DF1Q                        1679
@@ -839,6 +853,8 @@
 #define IDC_PROGRESSBAR_TEXT            1706
 #define IDC_SCSIMODE2                   1706
 #define IDC_LANGUAGE                    1706
+#define IDC_CREATE_NAME                 1707
+#define IDC_FILTERAUTORES               1708
 #define ID__FLOPPYDRIVES                40004
 #define ID_FLOPPYDRIVES_DF0             40005
 #define ID_ST_CONFIGURATION             40010
@@ -859,7 +875,7 @@
 #define _APS_3D_CONTROLS                     1
 #define _APS_NEXT_RESOURCE_VALUE        253
 #define _APS_NEXT_COMMAND_VALUE         40021
-#define _APS_NEXT_CONTROL_VALUE         1707
+#define _APS_NEXT_CONTROL_VALUE         1709
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

@@ -32,6 +32,7 @@
 #include "akiko.h"
 #include "debug.h"
 #include "arcadia.h"
+#include "audio.h"
 
 //#define CIA_DEBUG_R
 //#define CIA_DEBUG_W
@@ -73,14 +74,14 @@ static int oldled, oldovl;
 
 unsigned int ciabpra;
 
-unsigned int gui_ledstate;
-
 static unsigned long ciaala, ciaalb, ciabla, ciablb;
 static int ciaatodon, ciabtodon;
 static unsigned int ciaapra, ciaaprb, ciaadra, ciaadrb, ciaasdr, ciaasdr_cnt;
 static unsigned int ciabprb, ciabdra, ciabdrb, ciabsdr, ciabsdr_cnt;
 static int div10;
 static int kbstate, kback, ciaasdr_unread;
+static unsigned int sleepyhead = 0;
+
 #ifdef TOD_HACK
 static int tod_hack, tod_hack_delay;
 #endif
@@ -331,15 +332,13 @@ static void ciaa_checkalarm (void)
 
 void CIA_hsync_handler (void)
 {
-    static unsigned int keytime = 0, sleepyhead = 0;
-
     if (ciabtodon) {
 	ciabtod++;
 	ciabtod &= 0xFFFFFF;
 	ciab_checkalarm ();
     }
 
-    if (keys_available() && kback && (ciaacra & 0x40) == 0 && (++keytime & 15) == 0) {
+    if (keys_available() && kback && (ciaacra & 0x40) == 0 && (hsync_counter & 15) == 0) {
 	/*
 	 * This hack lets one possible ciaaicr cycle go by without any key
 	 * being read, for every cycle in which a key is pulled out of the
@@ -433,10 +432,8 @@ static void bfe001_change (void)
     if ((v & 2) != oldled) {
 	int led = (v & 2) ? 0 : 1;
 	oldled = v & 2;
-	gui_led (0, led);
-	gui_ledstate &= ~1;
 	gui_data.powerled = led;
-	gui_ledstate |= led;
+	led_filter_audio();
     }
     if ((v & 1) != oldovl) {
 	oldovl = v & 1;
@@ -662,6 +659,9 @@ static void WriteCIAA (uae_u16 addr,uae_u8 val)
 #ifdef CIA_DEBUG_W
     write_log("W_CIAA: bfe%x01 %02.2X %08.8X\n", addr, val, m68k_getpc());
 #endif
+#ifdef ACTION_REPLAY
+    ar_ciaa[addr & 0xf] = val;
+#endif
     switch (addr & 0xf) {
     case 0:
 #ifdef DONGLE_DEBUG
@@ -814,6 +814,9 @@ static void WriteCIAB (uae_u16 addr,uae_u8 val)
 #ifdef CIA_DEBUG_W
     write_log("W_CIAB: bfd%x00 %02.2X %08.8X\n", addr, val, m68k_getpc());
 #endif
+#ifdef ACTION_REPLAY
+    ar_ciab[addr & 0xf] = val;
+#endif
     switch (addr & 0xf) {
     case 0:
 #ifdef DONGLE_DEBUG
@@ -944,6 +947,11 @@ static void WriteCIAB (uae_u16 addr,uae_u8 val)
     }
 }
 
+void CIA_inprec_prepare(void)
+{
+    sleepyhead = 0;
+}
+
 void CIA_reset (void)
 {
 #ifdef TOD_HACK
@@ -1017,7 +1025,7 @@ static void cia_bput (uaecptr, uae_u32) REGPARAM;
 addrbank cia_bank = {
     cia_lget, cia_wget, cia_bget,
     cia_lput, cia_wput, cia_bput,
-    default_xlate, default_check, NULL
+    default_xlate, default_check, NULL, "CIA"
 };
 
 
@@ -1272,7 +1280,7 @@ static void clock_bput (uaecptr, uae_u32) REGPARAM;
 addrbank clock_bank = {
     clock_lget, clock_wget, clock_bget,
     clock_lput, clock_wput, clock_bput,
-    default_xlate, default_check, NULL
+    default_xlate, default_check, NULL, "Battery backed up clock"
 };
 
 uae_u32 REGPARAM2 clock_lget (uaecptr addr)
