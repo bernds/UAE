@@ -1,0 +1,73 @@
+﻿Build started 7.11.2009 17:40:23.
+     1>Project "C:\projects\winuae\src\od-win32\uaeunp\uaeunp.vcxproj" on node 73 (build target(s)).
+     1>_PrepareForBuild:
+         Creating "Release\uaeunp.unsuccessfulbuild" because "AlwaysCreate" was specified.
+       ClCompile:
+         C:\msvs\VC\bin\CL.exe /c /I..\..\include /I..\.. /I..\ /I..\resources /I..\osdep /I..\sounddep /I..\..\prowizard\include /I..\tun /Zi /nologo /W3 /WX- /O2 /Oi /Oy- /GL /D WIN32 /D NDEBUG /D _CONSOLE /D WIN32_IE=0x0700 /D WIN32 /D CINTERFACE /D COBJMACROS /D _CRT_SECURE_NO_WARNINGS /D _UNICODE /D UNICODE /Gm- /EHsc /MT /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Fo"Release\\" /Fd"Release\vc100.pdb" /Gd /TC /analyze- /errorReport:prompt ..\..\uaeunp.c
+         uaeunp.c
+     1>..\..\uaeunp.c(425): warning C4244: '=' : conversion from '__int64' to 'int', possible loss of data
+     1>..\..\uaeunp.c(518): warning C4244: '=' : conversion from '__int64' to 'int', possible loss of data
+       Link:
+         C:\msvs\VC\bin\link.exe /ERRORREPORT:PROMPT /OUT:"d:\amiga\uaeunp.exe" /INCREMENTAL:NO /NOLOGO zlibstat.lib wininet.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib Delayimp.lib /DELAYLOAD:wininet.dll /MANIFEST /ManifestFile:"Release\uaeunp.exe.intermediate.manifest" /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /DEBUG /PDB:"d:\amiga\uaeunp.pdb" /SUBSYSTEM:CONSOLE /OPT:REF /OPT:ICF /LTCG /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"d:\amiga\uaeunp.lib" /MACHINE:X86 Release\crc32.obj
+         Release\diskutil.obj
+         Release\fdi2raw.obj
+         Release\missing.obj
+         Release\uaeunp.obj
+         Release\zfile.obj
+         Release\zfile_archive.obj
+         Release\crc_csum.obj
+         Release\getbits.obj
+         Release\maketbl.obj
+         Release\pfile.obj
+         Release\tables.obj
+         Release\u_deep.obj
+         Release\u_heavy.obj
+         Release\u_init.obj
+         Release\u_medium.obj
+         Release\u_quick.obj
+         Release\u_rle.obj
+         Release\7zAlloc.obj
+         Release\7zBuf.obj
+         Release\7zCrc.obj
+         Release\7zDecode.obj
+         Release\7zExtract.obj
+         Release\7zHeader.obj
+         Release\7zIn.obj
+         Release\7zItem.obj
+         Release\7zStream.obj
+         Release\Bcj2.obj
+         Release\Bra.obj
+         Release\Bra86.obj
+         Release\LzmaDec.obj
+         Release\crcio.obj
+         Release\dhuf.obj
+         Release\header.obj
+         Release\huf.obj
+         Release\larc.obj
+         Release\lhamaketbl.obj
+         Release\lharc.obj
+         Release\shuf.obj
+         Release\slide.obj
+         Release\uae_lha.obj
+         Release\util.obj
+         Release\unzip.obj
+         Release\unlzx.obj
+         Release\warp.obj
+         Release\caps_win32.obj
+         Release\fsdb_mywin32.obj
+         Release\posixemu.obj
+         Release\uaeunp_win32.obj
+         Release\unicode.obj
+         Generating code
+         Finished generating code
+         uaeunp.vcxproj -> d:\amiga\uaeunp.exe
+       Manifest:
+         C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\bin\mt.exe /nologo /verbose /outputresource:"d:\amiga\uaeunp.exe;#1" /manifest Release\uaeunp.exe.intermediate.manifest
+       _AfterBuild:
+         Deleting file "Release\uaeunp.unsuccessfulbuild".
+         Touching "Release\uaeunp.lastbuildstate".
+     1>Done Building Project "C:\projects\winuae\src\od-win32\uaeunp\uaeunp.vcxproj" (build target(s)).
+
+Build succeeded.
+
+Time Elapsed 00:00:01.85

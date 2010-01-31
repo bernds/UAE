@@ -7,9 +7,9 @@
   * Copyright 1995-2001 Bernd Schmidt
   */
 
-#define UAEMAJOR 1
-#define UAEMINOR 6
-#define UAESUBREV 1
+#define UAEMAJOR 2
+#define UAEMINOR 0
+#define UAESUBREV 0
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -212,6 +212,8 @@ struct uae_prefs {
     int catweasel;
     int cpu_idle;
     int cpu_cycle_exact;
+    int cpu_clock_multiplier;
+    int cpu_frequency;
     int blitter_cycle_exact;
     int floppy_speed;
     int floppy_write_length;
@@ -264,6 +266,7 @@ struct uae_prefs {
     TCHAR prtname[256];
     TCHAR sername[256];
     TCHAR amaxromfile[MAX_DPATH];
+    TCHAR a2065name[MAX_DPATH];
 
     TCHAR path_floppy[256];
     TCHAR path_hardfile[256];
@@ -343,11 +346,14 @@ struct uae_prefs {
     int win32_midiindev;
     int win32_uaescsimode;
     int win32_soundcard;
+    int win32_soundexclusive;
     int win32_norecyclebin;
     int win32_specialkey;
     int win32_guikey;
     int win32_kbledmode;
     int win32_fscodepage;
+    TCHAR win32_commandpathstart[MAX_DPATH];
+    TCHAR win32_commandpathend[MAX_DPATH];
 
     int curses_reverse_video;
 
@@ -373,6 +379,7 @@ struct uae_prefs {
     struct uae_input_device joystick_settings[MAX_INPUT_SETTINGS + 1][MAX_INPUT_DEVICES];
     struct uae_input_device mouse_settings[MAX_INPUT_SETTINGS + 1][MAX_INPUT_DEVICES];
     struct uae_input_device keyboard_settings[MAX_INPUT_SETTINGS + 1][MAX_INPUT_DEVICES];
+    int dongle;
 };
 
 /* Contains the filename of .uaerc */
@@ -416,7 +423,6 @@ extern void target_save_options (struct zfile*, struct uae_prefs *);
 extern void target_default_options (struct uae_prefs *, int type);
 extern void target_fixup_options (struct uae_prefs *);
 extern int target_cfgfile_load (struct uae_prefs *, TCHAR *filename, int type, int isdefault);
-extern void target_quit (void);
 extern void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type);
 
 extern int cfgfile_load (struct uae_prefs *p, const TCHAR *filename, int *type, int ignorelink, int userconfig);

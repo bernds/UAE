@@ -16,9 +16,10 @@
 #define GETBDD(x) ((x) % 100)
 
 #define WINUAEPUBLICBETA 0
+#define LANG_DLL 1
 
 #define WINUAEBETA L""
-#define WINUAEDATE MAKEBD(2009, 6, 18)
+#define WINUAEDATE MAKEBD(2009, 12, 13)
 #define WINUAEEXTRA L""
 #define WINUAEREV L""
 
@@ -60,8 +61,8 @@ extern void setmouseactive (int active);
 extern void minimizewindow (void);
 extern uae_u32 OSDEP_minimize_uae (void);
 
-extern void resumepaused (void);
-extern void setpaused (void);
+extern void resumepaused (int priority);
+extern void setpaused (int priority);
 
 void finishjob (void);
 void updatedisplayarea (void);
@@ -119,7 +120,7 @@ extern int close_tablet (void*);
 extern void send_tablet (int x, int y, int z, int pres, uae_u32 buttons, int flags, int ax, int ay, int az, int rx, int ry, int rz, RECT *r);
 extern void send_tablet_proximity (int);
 
-void addnotifications (HWND hwnd, int remove);
+void addnotifications (HWND hwnd, int remove, int isgui);
 int win32_hardfile_media_change (const TCHAR *drvname, int inserted);
 extern int CheckRM (TCHAR *DriveName);
 void systray (HWND hwnd, int remove);
@@ -132,6 +133,7 @@ void associate_file_extensions (void);
 
 #define WIN32_PLUGINDIR L"plugins\\"
 HMODULE WIN32_LoadLibrary (const TCHAR *);
+HMODULE WIN32_LoadLibrary2 (const TCHAR *);
 
 extern int screenshot_prepare (void);
 extern void screenshot_free (void);
@@ -156,6 +158,7 @@ extern LONG WINAPI WIN32_ExceptionFilter (struct _EXCEPTION_POINTERS *pException
 #define SOUND_DEVICE_DS 1
 #define SOUND_DEVICE_AL 2
 #define SOUND_DEVICE_PA 3
+#define SOUND_DEVICE_WASAPI 4
 
 struct sound_device
 {

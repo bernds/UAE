@@ -33,10 +33,11 @@
 #define CD32 /* CD32 emulation */
 #define CDTV /* CDTV emulation */
 #define D3D /* D3D display filter support */
-#define OPENGL /* OpenGL display filter support */
+//#define OPENGL /* OpenGL display filter support */
 #define PARALLEL_PORT /* parallel port emulation */
 #define PARALLEL_DIRECT /* direct parallel port emulation */
 #define SERIAL_PORT /* serial port emulation */
+#define SERIAL_ENET /* serial port UDP transport */
 #define SCSIEMU /* uaescsi.device emulation */
 #define UAESERIAL /* uaeserial.device emulation */
 #define FPUEMU /* FPU emulation */
@@ -45,7 +46,9 @@
 #define FULLMMU /* Aranym 68040 MMU */
 #define CPUEMU_0 /* generic 680x0 emulation */
 #define CPUEMU_11 /* 68000+prefetch emulation */
-#define CPUEMU_12 /* cycle-exact cpu&blitter */
+#define CPUEMU_12 /* 68000 cycle-exact cpu&blitter */
+#define CPUEMU_20 /* 68020+ "cycle-exact" + blitter */
+#define CPUEMU_31 /* 68040 Aranym MMU */
 #define ACTION_REPLAY /* Action Replay 1/2/3 support */
 #define PICASSO96 /* Picasso96 display card emulation */
 #define UAEGFX_INTERNAL /* built-in libs:picasso96/uaegfx.card */
@@ -59,6 +62,7 @@
 #define LOGITECHLCD /* Logitech G15 LCD */
 #define SAVESTATE /* State file support */
 #define A2091 /* A590/A2091 SCSI */
+#define A2065 /* A2065 Ethernet card */
 #define NCR /* A4000T/A4091 SCSI */
 #define SANA2 /* SANA2 network driver */
 #define AMAX /* A-Max ROM adapater emulation */

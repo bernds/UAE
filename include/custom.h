@@ -101,7 +101,9 @@ extern uae_u16 INTREQR (void);
 #define VBLANK_HZ_PAL 50
 #define VBLANK_HZ_NTSC 60
 
-extern int maxhpos, maxvpos, maxvpos_max, minfirstline, vblank_endline, numscrlines;
+extern int maxhpos, maxhpos_short;
+extern int maxvpos, maxvpos_max;
+extern int minfirstline, vblank_endline, numscrlines;
 extern int vblank_hz, fake_vblank_hz, vblank_skip, doublescan;
 extern frame_time_t syncbase;
 #define NUMSCRLINES (maxvpos + 1 - minfirstline + 1)
@@ -119,13 +121,13 @@ extern frame_time_t syncbase;
 #define DMA_BLITPRI   0x0400
 
 #define CYCLE_REFRESH	0x01
-#define CYCLE_MISC	0x02
-#define CYCLE_SPRITE	0x04
-#define CYCLE_BITPLANE	0x08
+#define CYCLE_STROBE	0x02
+#define CYCLE_MISC	0x04
+#define CYCLE_SPRITE	0x08
 #define CYCLE_COPPER	0x10
 #define CYCLE_BLITTER	0x20
 #define CYCLE_CPU	0x40
-#define CYCLE_NOCPU	0x80
+#define CYCLE_CPUNASTY	0x80
 
 extern unsigned long frametime, timeframes;
 extern int plfstrt, plfstop, plffirstline, plflastline;

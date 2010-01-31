@@ -1,0 +1,53 @@
+﻿Build started 24.10.2009 14:12:15.
+     1>Project "C:\projects\winuae\src\od-win32\gencpu_msvc\gencpu_msvc.vcxproj" on node 111 (rebuild target(s)).
+     1>_PrepareForClean:
+         Deleting file ".\Release\gencpu.lastbuildstate".
+       _PrepareForBuild:
+         Creating ".\Release\gencpu.unsuccessfulbuild" because "AlwaysCreate" was specified.
+       ClCompile:
+         C:\msvs\VC\bin\CL.exe /c /I..\..\include /I..\.. /I..\ /nologo /W3 /WX- /O2 /Ob1 /Oy- /D WIN32 /D NDEBUG /D _CONSOLE /D _UNICODE /D UNICODE /GF /Gm- /EHsc /MT /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Fo".\Release/" /Fd".\Release/" /Gd /TC /analyze- /errorReport:prompt ..\..\cpudefs.c ..\..\gencpu.c ..\..\missing.c ..\..\readcpu.c ..\unicode.c
+         cpudefs.c
+         gencpu.c
+     1>..\..\gencpu.c(1985): warning C4244: 'function' : conversion from 'unsigned long' to 'uae_u16', possible loss of data
+     1>..\..\gencpu.c(1987): warning C4244: 'function' : conversion from 'unsigned long' to 'uae_u16', possible loss of data
+     1>..\..\gencpu.c(1991): warning C4244: 'function' : conversion from 'unsigned long' to 'uae_u16', possible loss of data
+     1>..\..\gencpu.c(1993): warning C4244: 'function' : conversion from 'unsigned long' to 'uae_u16', possible loss of data
+     1>..\..\gencpu.c(3514): warning C4018: '>' : signed/unsigned mismatch
+         missing.c
+     1>..\..\missing.c(40): warning C4090: 'function' : different 'const' qualifiers
+         readcpu.c
+         unicode.c
+         Generating Code...
+     1>c:\projects\winuae\src\gencpu.c(1419): warning C4715: 'cmask' : not all control paths return a value
+     1>C:\Program Files (x86)\MSBuild\Microsoft.Cpp\v4.0\Microsoft.CppBuild.targets(935,5): warning MSB8012: TargetPath(C:\projects\winuae\src\od-win32\gencpu_msvc\.\Release\gencpu.exe) does not match the Linker's OutputFile property value (C:\projects\winuae\src\od-win32\gencpu_msvc\gencpu.exe). This may cause your project to build incorrectly. To correct this, please make sure that $(OutDir), $(TargetName) and $(TargetExt) property values match the value specified in %(Link.OutputFile).
+       PreLinkEvent:
+         Description: deleting gencpu files
+         del ..\..\cputbl.h
+         del ..\..\cpustbl.c
+         del ..\..\cpuemu.c
+         
+         :VCEnd
+         Could Not Find C:\projects\winuae\src\cpuemu.c
+       Link:
+         C:\msvs\VC\bin\link.exe /ERRORREPORT:PROMPT /OUT:"gencpu.exe" /INCREMENTAL:NO /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /ManifestFile:".\Release\gencpu.exe.intermediate.manifest" /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /PDB:".\Release/gencpu.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE:NO /IMPLIB:".\Release\gencpu.lib" /MACHINE:X86 .\Release/cpudefs.obj
+         .\Release/gencpu.obj
+         .\Release/missing.obj
+         .\Release/readcpu.obj
+         .\Release/unicode.obj /MACHINE:I386 
+         gencpu_msvc.vcxproj -> C:\projects\winuae\src\od-win32\gencpu_msvc\.\Release\gencpu.exe
+       Manifest:
+         C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\bin\mt.exe /nologo /verbose /out:"C:\projects\winuae\src\od-win32\gencpu_msvc\.\Release\gencpu.exe.manifest" /manifest .\Release\gencpu.exe.intermediate.manifest
+       PostBuildEvent:
+         Description: generating gencpu files
+         cd ..\..
+         od-win32\gencpu_msvc\gencpu.exe
+         
+         :VCEnd
+       _AfterBuild:
+         Deleting file ".\Release\gencpu.unsuccessfulbuild".
+         Touching ".\Release\gencpu.lastbuildstate".
+     1>Done Building Project "C:\projects\winuae\src\od-win32\gencpu_msvc\gencpu_msvc.vcxproj" (rebuild target(s)).
+
+Build succeeded.
+
+Time Elapsed 00:00:03.75
