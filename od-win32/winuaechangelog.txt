@@ -1,5 +1,297 @@
 
+Beta 13: (RC2)
+
+- Action Replay 1200 "cartridge support" credits added
+- Nordic Power/X-Power/SuperIV statefile support added (not complete)
+- 68030 "NOP MMU emulation" fix, some variants of PFLUSH caused F-line
+  exception
+- illegal access logger (wd) now supports full 32-bit address space
+
+Beta 12: (RC1)
+
+- added quick enable/disable checkboxes to floppy panel
+- non-word aligned word writes to custom registers emulated correctly
+- byte writes to custom registers emulated properly on a 68060 (perhaps
+  only Blizzard 68060 cards' feature?)
+- 68020 "cycle-exact" does not anymore freeze when switching to RTG mode
+  (but it still should not be used)
+- Nordic Power v2.0 support (got another "blue" Nordic Power today,
+  also "cartridge support" credits added to contributors list)
+
+Beta 11:
+
+- autoconfig memory banks do not show as ****'s in debugger anymore
+- filesystem not initializing if JIT was enabled and no other
+  autoconfig expansions enabled (ancient bug..)
+- do not crash if CD32 is selected in advanced chipset without
+  extended ROM
+- fixes and updates to illegal access logger
+- "faster RTG" "immediate copper" emulation was very broken
+- reverted JIT LSL/LSR/ASR change, merge error most likely, later..
+
+Beta 10:
+
+- Arcadia emulation crash fixed
+- SCSI emulator MODE SENSE code 3 and 4 crash fix (uaehf.device only)
+- A3000 KS 1.3 ROM removed from rom scan "available"-list (only
+  proper A3000 ROMs, 1.4b and 3.1 included)
+- added missing version numbers to cartridge roms
+- xBCD instruction 68040/060 undefined behaviour emulated, N and V
+  flags are not cleared. (from Basilisk II JIT)
+- JIT LSL, LSR, ASR X-flag was incorrectly modified when shift count
+  was zero (from Basilisk II JIT)
+- configuration and bootlog (text format) saved with statefile
+  (compressed, few kb size increase, only for debugging purposes)
+  NOTE: fake END-hunk inserted before CONF and LOG hunks, you can
+  simply delete all "useless" data after first END-hunk without
+  corrupting the statefile.
+- action replay/hrtmon statefile hunks are now compressed
+- drive GUI properly initialized when restoring state (disabled
+  drives are "blanked", no track number visible)
+- empty drive disk change status was incorrect in some cases when
+  restoring state (load state, OS detects disk in empty drive)
+- do not allow JIT direct mode if emulation was originally started
+  without JIT direct enabled (different memory allocation which is not
+  compatible with direct = crashes. Will be properly fixed in future)
+- uaescsi.device SCSI mode selection reset after loading new config
+- messagebox in fullscreen mode tweaks, perhaps fixes problem with
+  hidden "too old rtg.library" messagebox in fullscreen mode
+- close native-side open filehandles after software reset
+  (fixes locked startup-sequence after directory fs setpatch reset)
+
+Beta 9:
+
+- ROM scan dialog listed "available" even if configuration required
+  2 ROMs (like CDTV or CD32) and only one was available.
+- if fullscreen resolution is smaller than GUI size, moving mouse to
+  screen borders moves the GUI dialog. (in future this means it is now
+  possible to increase GUI size to 800x600 without too many complaints)
+- CD32 CD audio end position detection and signaling, interrupt
+  handling finally implemented, fixes non-looping audio tracks,
+  (for example Brian the Lion), and games that freeze (for example
+  Fightin' Spirit, Base Jumpers)
+
+Beta 8:
+
+- plain executable mounted as a harddrive automatically creates
+  virtual s/startup-sequence (same as mounting executable as a floppy)
+- possible crash fix in SCSI emulation
+- X-Power Professional 500 cartridge support. (basically old version
+  of Action Cartridge Super IV)
+- Nordic Power cartridge "support" but only 2 bad non-working rom
+  dumps available (ROM chip fault, one data line stuck) And perhaps
+  suprisingly, perhaps not, Nordic Power is old version of X-Power :)
+- possible fix for audio problems when using audio.device (usually
+  when continuously starting and stopping short samples) in JIT mode.
+  (usual reason: too "fast" cpu/chipset access speed..)
+- removed sound latency value from GUI, it was wildly inaccurate
+
+WANTED: Nordic Power cartridge(s) (can be non-working)
+
+Beta 7:
+
+- rom scanner detects overdumped roms again
+- added "(SK)" to A3000 KS 1.3 ROM name (SuperKickstart disk rip,
+  this version has never been in ROM chip format, only included
+  because it comes with AF)
+- removed A4091 boot rom from scan result dialog (NCR SCSI won't
+  be implemented in next version)
+- removed add host scsi from advanced chipset (not working)
+- added more rom choices to "highend" configuration
+- rom scanner didn't write full path to registry (zipped roms)
+- command line configuration parameters accept compressed
+  configuration files ("-f myconfigurations.zip\myconfig.uae")
+- some dms compressed files failed to decompress and also took
+  very long time to finish 
+- disk history is updating correctly again
+- new rtg.library version number bump. added warning if older
+  library is installed. NOTE: new rtg.library is fully compatible
+  with older (Win)UAE versions.
+- disabled CDTV debug logging
+- hrtmon works again
+- gzip decompression works again
+
+Beta 6:
+
+- rar unpacking double memory deallocation (unrar.dll is still
+  the most stupidly designed unpacking library)
+- crash if dearchiver (rar or archiveaccess) was not available
+- hardfile filesys loader/relocator sometimes incorrectly allocated
+  code/data space from chip memory
+- lha/lzh archive detection fixed
+- P96 ram allocation forced indirect JIT mode
+- -datapath fixed, overrides paths-panel paths again
+
+- recursive harddrive archive support enabled
+  
+  Archives inside archive are only unpacked when first accessed for
+  best performance. Tested by creating 200MB zip archive that contained
+  ~250 pre-installed zipped WHDLoad demo slaves. (Note that this can
+  confuse some programs because size of "harddrive" gets bigger and
+  bigger the more archives inside archives are unpacked..)
+  
+  Original archive is "duplicated" as a directory called
+  <name of archive>.DIR
+  
+  "file not found" or "empty directory" is returned if decompression
+  fails
+ 
+  In future there may be options to disable recursive archive support
+  and ability to replace original archive file with unpacked directory
+  (without .DIR extension) Another future idea is write access (to
+  separate "diff" directory)
+
+  Note: rar archive inside another archive can not be unpacked
+  without archiveaccess.dll (unrar.dll can't do it without temp
+  files and I refuse to use temp files)
+
+Beta 5:
+
+- JIT on/off switching via uae-configuration re-enables direct mode
+  This time it really should work as designed.
+- video recording sound pitch change fix (side-effects possible..)
+- random FPU fixes from Aranym (which btw, isn't feature complete
+  either, at least float to integer clamping is missing)
+- rom scanner uses SHA-1 now (instead of CRC32)
+- archive as a harddrive emulation. Data is decompressed on the fly.
+  Only directory tree is allocated in memory during mount-phase.
+  "file not found error" will be returned if decompression fails
+  (corrupt archive?) Already decompressed files will be left in
+  memory (memory is cheap, repeated decompression can be slow)
+- archive support completely rewritten (memory/file leaks possible)
+  Recursive decompression possible (not yet enabled and not fully
+  implemented), not sure if I enable it later or not.. (would
+  enable transparent archives inside archives inside archives etc..)
+- work in progress (this is really crazy idea..): xfd (Amiga
+  decompression library) slave library support via separate 68k
+  emulation instance :D Crazy or very stupid idea, not sure yet..
+  It would enable full transparent decompression support of nearly
+  every Amiga compression format..
+- built-in lha/lzh archive support added
+- built-in lzx archive support added (store mode not supported yet)
+- "add directory/archive" harddrives: only path is mandatory, volume
+  name (if left empty) is automatically generated from selected path
+- added "add archive" harddrive type. Single plain file also accepted.
+- real harddrive "safety check" system changed, now all drives are
+  listed (and marked as empty,non-empty or RDB) but drive is not
+  mounted if safety check is not disabled and drive is non-empty.
+- disable "add harddrive" on vista without full admin privileges
+- harddisk panel directory and archive dragndrop added
+- included beta updated rtg.library, fully enables >1024 pixel wide
+  bitmaps (including acceleration), obsoletes picasso96fix. (BR)
+
+Beta 4:
+
+- return SCSI-1 style inquiry response when using A590/A2091 SCSI
+  emulation (Old HDToolbox compatibility fix)
+- do not crash with "out of bounds" error if SCSI emulation tried to
+  read/write non-existing HDF block(s)
+- SCSI READ CAPACITY PMI-bit emulated, HDToolbox "Read configuration
+  from drive" compatibility fix
+- A3000 1.3 SuperKickstart support implemented (includes "bonus"
+  code remapping to 0xf00000 area)
+- JIT on/off switching via uae-configuration re-enables direct mode
+- added MOVEC registers and PC to r <reg> <val> debugger command
+- A4091 ("A3090" says driver string in ROM...) Z3 card autoconfig and
+  ROM loading implemented (pointless, no NCR53C710 SCSI chip emulation
+  yet, same infinite loop as with A4000T KS3.1 built-in SCSI driver)
+- A590/A2091 Guru ROM adapter emulated, driver does not yet work,
+  uses not yet emulated WD33C93 features.
+- real SCSI device support (via hardware emulation) is not really
+  working. It isn't so easy to implement after all..
+- copper writes are now detected by memwatch break points (note: writes
+  only, freeze not possible. copper is a special case)
+
+Beta 3:
+
+ROM rescan required (or new hrtmon/superiv config support won't work)
+
+- ROM scan report dialog was totally broken
+- uaescsi.device backends (SPTI/ASPI) are now available in new
+  SCSI emulation mode. Checkbox added to advanced chipset, merges
+  all SCSI and IDE CD/DVD devices automatically, does not override
+  configured HDFs. Not multithreaded yet = emulation is stopped while
+  SCSI command is executing = mostly useless for real world tasks,
+  also SCSI configuration panel is still not implemented..
+- confirmed A3000 3.1 ROM added to rom scan list.
+- floppy drive sound GUI didn't work correctly if fdrawcmd.sys was
+  not installed (=no PC floppy drives listed)
+- A3000 36.141 KS ROM SCSI driver compatibility fix (long word writes
+  to byte wide WD33C93 registers.. not the first time Commodore ignored
+  their own programming guidelines.. )
+- A3000 SuperKickstart support hack, SuperKickstart loading works!
+  (simple memory map remap hack, there is no MMU!)
+- QS panel does not anymore complain about boot block crc error if disk
+  is A1000 Kickstart disk or A3000 SuperKickstart disk
+- A3000 Quickstart settings added, 1.4 = KS with Kickstart menu,
+  SuperKickstart disk (or HD installed SuperKickstart) required.
+  (also try clicking on top/left corner..)
+- added "need 68030 CPU" dialog (KS 1.4)
+- added expansion boot rom missing dialog
+- added process breakpoint debugger feature (KB)
+- GPL Ghostscript registry installation detection added (AFPL was only
+  supported previously)
+- Ghostscript printing fixed (only worked previously by accident..)
+- built-in HRTMon moved to Cartridge ROM select menu
+- added "real" SuperIV cart emulation (=need loader disk)
+- debugger deep trainer improved. "D[<s><dix> <[max diff]>]"
+  Di = value must increase, Dd = decrease, abs(new value minus
+  old value) must be smaller than "max diff". s = 1 = byte, 2 = word.
+  long words not supported. (defaults to byte) Signed integers used in
+  comparison. NOTE: not really tested, I was not interested :)
+
+
+Beta 2:
+
+- WD33C93 + (Super)DMAC based SCSI HDF emulation. A590/A2091, A3000 and
+  CDTV with SCSI expansion. Current implementation is very minimal.
+  A590/A2091 Boot ROMs 6.0, 6.6 and 7.0 tested and confirmed working.
+  A3000 random KS ROMs (including "1.4") also confirmed working.
+  CDTV with 1.0 extended ROM freezes during standard WB 1.3
+  startup-sequence (works if run manually..) Newer extended ROMs work
+  without freezes.
+  NOTE: disconnect/reconnect not emulated (yet?), SCSI Message out +
+  Command + Data in/out + Status + Message in phases emulated. Most
+  WD33C93 registers are not emulated. Non-tested drivers (KS versions)
+  most likely won't work yet. Check the log!
+
+- A3000 KS "1.4" added to ROM list (yes, it is beta but it came with
+  some A3000s) Need confirmed official A3000 and A4000(T) information
+  before more A3000/A4000(T) ROMs will be added. (Note A3000 ROMs,
+  not SuperKickstart images!)
+- A590/A2091 6.0, 6.6 and 7.0 added to ROM list. A590/A2091 ROM is
+  automatically selected, manual rom selection is not possible.
+- A590/A2091 Guru ROM added to ROM list (not yet supported, I need
+  A590/A2091 autoconfig er_InitDiagVec value first, Scout shows it)
+- A4091 40.9 (no CRC available yet) and 40.13 ROM added to ROM list.
+  NCR SCSI (A4091 and A4000T) is not yet emulated.
+
+- Action Cartridge Super IV Professional emulated partially, also added
+  support for Super IV "ROM version" (Super IV cartridge does not have
+  any ROM chips, "ROM" is loaded from disk) Loader disk does not work
+  yet! Interface is very different compared to Action Replay series.
+ 
 Beta 1:
+
+- use Segoe UI font only if running on Vista
+- separated native and P96 vsync setting, note that P96 vsync has
+  never been "real" vsync but sync to internal refresh rate which isn't
+  usually same as real host refresh rate. Sound problems fixed when P96
+  VSync and 56KHz "audio trick" was enabled.
+- sprite attachment fix, fixes "Great Demo" by "The Tremendous Trio" :)
+- clear sound buffer before reopening window/fullscreen
+- delayed CDTV CD inserted notification (Xenon 2)
+- CDTV CD audio stop command fix (DOTC2, ChaosInAndromeda CD player)
+- added MB RAM support to debugger's search commands
+- Paths-panel improved, added previously "hidden" AMIGAFOREVERDATA
+  environmental variable (if set), and separated AF2005 and "new" WinUAE
+  paths (only difference is default KS ROM path, AF2005 =
+  <root>\..\system\rom, WinUAE is <root>\roms or <root>\rom)
+- Quickstart-panel DF1: disable/enable checkbox added (available only in
+  configurations that have DF0: enabled)
+
+
+1.4.2a
 
 - added PCMCIA to advanced chipset. It does not emulate PCMCIA (yet),
   it only reserves address space and makes CIA bank 64k (0xbf only

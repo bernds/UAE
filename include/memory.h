@@ -17,7 +17,7 @@ extern int special_mem;
 extern void *cache_alloc (int);
 extern void cache_free (void*);
 
-extern int canbang;
+extern int canbang, candirect;
 void init_shm (void);
 #endif
 
@@ -68,7 +68,7 @@ extern int uae_boot_rom, uae_boot_rom_size;
 
 extern uae_u8* baseaddr[];
 
-enum { ABFLAG_UNK = 0, ABFLAG_RAM, ABFLAG_ROM, ABFLAG_ROMIN, ABFLAG_IO, ABFLAG_NONE };
+enum { ABFLAG_UNK = 0, ABFLAG_RAM = 1, ABFLAG_ROM = 2, ABFLAG_ROMIN = 4, ABFLAG_IO = 8, ABFLAG_NONE = 16, ABFLAG_SAFE = 32 };
 typedef struct {
     /* These ones should be self-explanatory... */
     mem_get_func lget, wget, bget;
@@ -113,7 +113,6 @@ extern addrbank gayle2_bank;
 extern addrbank gayle_attr_bank;
 extern addrbank mbres_bank;
 extern addrbank akiko_bank;
-extern addrbank mbdmac_a3000_bank;
 extern addrbank cardmem_bank;
 
 extern void rtarea_init (void);
@@ -327,27 +326,40 @@ extern void mapkick (void);
 extern int read_kickstart (struct zfile *f, uae_u8 *mem, int size, int dochecksum, int *cloanto_rom);
 extern int decode_cloanto_rom_do (uae_u8 *mem, int size, int real_size);
 extern void init_shm(void);
+extern void a3000_fakekick(int);
 
 #define ROMTYPE_KICK 1
 #define ROMTYPE_KICKCD32 2
 #define ROMTYPE_EXTCD32 4
 #define ROMTYPE_EXTCDTV 8
-#define ROMTYPE_AR 16
-#define ROMTYPE_KEY 32
-#define ROMTYPE_ARCADIABIOS 64
-#define ROMTYPE_ARCADIAGAME 128
+#define ROMTYPE_A2091BOOT 16
+#define ROMTYPE_A4091BOOT 32
+#define ROMTYPE_AR 64
+#define ROMTYPE_SUPERIV 128
+#define ROMTYPE_KEY 256
+#define ROMTYPE_ARCADIABIOS 512
+#define ROMTYPE_ARCADIAGAME 1024
+#define ROMTYPE_HRTMON 2048
+
+struct romheader {
+    char *name;
+    int id;
+};
 
 struct romdata {
     char *name;
     int ver, rev;
     int subver, subrev;
     char *model;
-    uae_u32 crc32;
     uae_u32 size;
     int id;
     int cpu;
     int cloanto;
     int type;
+    int title;
+    uae_u32 crc32;
+    uae_u32 sha1[5];
+    char *configname;
 };
 
 struct romlist {
@@ -355,15 +367,19 @@ struct romlist {
     struct romdata *rd;
 };
 
+extern struct romdata *getromdatabypath(char *path);
 extern struct romdata *getromdatabycrc (uae_u32 crc32);
 extern struct romdata *getromdatabydata (uae_u8 *rom, int size);
 extern struct romdata *getromdatabyid (int id);
 extern struct romdata *getromdatabyzfile (struct zfile *f);
 extern struct romlist **getarcadiaroms (void);
 extern struct romdata *getarcadiarombyname (char *name);
-extern struct romlist **getrombyident(int ver, int rev, int subver, int subrev, char *model, int all);
+extern struct romlist **getromlistbyident(int ver, int rev, int subver, int subrev, char *model, int all);
 extern void getromname (struct romdata*, char*);
 extern struct romdata *getromdatabyname (char*);
+extern struct romlist *getromlistbyids(int *ids);
+extern void romwarning(int *ids);
+extern struct romlist *getromlistbyromdata(struct romdata *rd);
 extern void romlist_add (char *path, struct romdata *rd);
 extern char *romlist_get (struct romdata *rd);
 extern void romlist_clear (void);

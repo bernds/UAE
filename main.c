@@ -44,6 +44,8 @@
 #include "parallel.h"
 #include "a2091.h"
 #include "ncr_scsi.h"
+#include "scsi.h"
+#include "blkdev.h"
 
 #ifdef USE_SDL
 #include "SDL.h"
@@ -537,7 +539,14 @@ void reset_all_systems (void)
 {
     init_eventtab ();
 
+#ifdef SCSIEMU
+    scsi_reset ();
+    scsidev_reset ();
+    scsidev_start_threads ();
+#endif
+
 #ifdef FILESYS
+    filesys_prepare_reset ();
     filesys_reset ();
 #endif
     memory_reset ();
@@ -547,10 +556,6 @@ void reset_all_systems (void)
 #ifdef FILESYS
     filesys_start_threads ();
     hardfile_reset ();
-#endif
-#ifdef SCSIEMU
-    scsidev_reset ();
-    scsidev_start_threads ();
 #endif
 #ifdef UAESERIAL
     uaeserialdev_reset ();
@@ -575,6 +580,10 @@ void do_start_program (void)
 {
     if (quit_program == -1)
 	return;
+    if (!canbang && candirect < 0)
+	candirect = 0;
+    if (canbang && candirect < 0)
+	candirect = 1;
     /* Do a reset on startup. Whether this is elegant is debatable. */
     inputdevice_updateconfig (&currprefs);
     if (quit_program >= 0)
@@ -615,6 +624,7 @@ void do_leave_program (void)
 #ifdef FILESYS
     filesys_cleanup ();
 #endif
+    device_func_reset();
     savestate_free ();
     memory_cleanup ();
     cfgfile_addcfgparam (0);
@@ -705,6 +715,7 @@ static void real_main2 (int argc, char **argv)
 
     savestate_init ();
 #ifdef SCSIEMU
+    scsi_reset ();
     scsidev_install ();
 #endif
 #ifdef UAESERIAL

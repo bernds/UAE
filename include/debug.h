@@ -10,7 +10,7 @@
 #ifdef DEBUGGER
 
 #define	MAX_HIST 100
-#define MAX_LINEWIDTH 90
+#define MAX_LINEWIDTH 100
 
 extern int debugging;
 extern int exception_debugging;
@@ -55,6 +55,14 @@ struct memwatch_node {
 extern struct memwatch_node mwnodes[MEMWATCH_TOTAL];
 
 extern void memwatch_dump2 (char *buf, int bufsize, int num);
+
+void debug_lgetpeek (uaecptr addr, uae_u32 v);
+void debug_wgetpeek (uaecptr addr, uae_u32 v);
+void debug_bgetpeek (uaecptr addr, uae_u32 v);
+void debug_bputpeek(uaecptr addr, uae_u32 v);
+void debug_wputpeek(uaecptr addr, uae_u32 v);
+void debug_lputpeek(uaecptr addr, uae_u32 v);
+
 
 #else
 

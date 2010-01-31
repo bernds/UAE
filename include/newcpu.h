@@ -305,7 +305,7 @@ extern int get_cpu_model(void);
 extern void REGPARAM3 MakeSR (struct regstruct *regs) REGPARAM;
 extern void REGPARAM3 MakeFromSR (struct regstruct *regs) REGPARAM;
 extern void REGPARAM3 Exception (int, struct regstruct *regs, uaecptr) REGPARAM;
-extern void Interrupt (int nr);
+extern void NMI (void);
 extern void doint (void);
 extern void dump_counts (void);
 extern int m68k_move2c (int, uae_u32 *);
@@ -318,20 +318,20 @@ extern void m68k_go (int);
 extern void m68k_dumpstate (void *, uaecptr *);
 extern void m68k_disasm (void *, uaecptr, uaecptr *, int);
 extern void sm68k_disasm(char *, char *, uaecptr addr, uaecptr *nextpc);
-extern void m68k_reset (void);
+extern void m68k_reset (int);
 extern int getDivu68kCycles(uae_u32 dividend, uae_u16 divisor);
 extern int getDivs68kCycles(uae_s32 dividend, uae_s16 divisor);
 
-extern void mmu_op       (uae_u32, struct regstruct *regs, uae_u16);
-extern void mmu_op30     (uaecptr, uae_u32, struct regstruct *regs, int, uae_u16);
+extern void mmu_op       (uae_u32, struct regstruct *regs, uae_u32);
+extern void mmu_op30     (uaecptr, uae_u32, struct regstruct *regs, int, uaecptr);
 
-extern void fpp_opp      (uae_u32, struct regstruct *regs, uae_u16);
-extern void fdbcc_opp    (uae_u32, struct regstruct *regs, uae_u16);
-extern void fscc_opp     (uae_u32, struct regstruct *regs, uae_u16);
-extern void ftrapcc_opp  (uae_u32, struct regstruct *regs, uaecptr);
-extern void fbcc_opp     (uae_u32, struct regstruct *regs, uaecptr, uae_u32);
-extern void fsave_opp    (uae_u32, struct regstruct *regs);
-extern void frestore_opp (uae_u32, struct regstruct *regs);
+extern void fpuop_arithmetic(uae_u32, struct regstruct *regs, uae_u16);
+extern void fpuop_dbcc(uae_u32, struct regstruct *regs, uae_u16);
+extern void fpuop_scc(uae_u32, struct regstruct *regs, uae_u16);
+extern void fpuop_trapcc(uae_u32, struct regstruct *regs, uaecptr);
+extern void fpuop_bcc(uae_u32, struct regstruct *regs, uaecptr, uae_u32);
+extern void fpuop_save(uae_u32, struct regstruct *regs);
+extern void fpuop_restore(uae_u32, struct regstruct *regs);
 extern uae_u32 fpp_get_fpsr (const struct regstruct *regs);
 
 extern void exception3 (uae_u32 opcode, uaecptr addr, uaecptr fault);
@@ -381,13 +381,14 @@ void newcpu_showstate(void);
 #ifdef JIT
 extern void flush_icache(int n);
 extern void compemu_reset(void);
-extern void check_prefs_changed_comp (void);
+extern int check_prefs_changed_comp (void);
 #else
 #define flush_icache(X) do {} while (0)
 #endif
 
 extern int movec_illg (int regno);
 extern uae_u32 val_move2c (int regno);
+extern void val_move2c2 (int regno, uae_u32 val);
 struct cpum2c {
     int regno;
     char *regname;

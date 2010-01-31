@@ -27,6 +27,25 @@
 #include "zfile.h"
 #include "threaddep/thread.h"
 #include "a2091.h"
+#include "uae.h"
+
+
+/* DMAC CNTR bits. */
+#define CNTR_TCEN               (1<<7)
+#define CNTR_PREST              (1<<6)
+#define CNTR_PDMD               (1<<5)
+#define CNTR_INTEN              (1<<4)
+#define CNTR_DDIR               (1<<3)
+/* ISTR bits. */
+#define ISTR_INTX               (1<<8)
+#define ISTR_INT_F              (1<<7)
+#define ISTR_INTS               (1<<6)  
+#define ISTR_E_INT              (1<<5)
+#define ISTR_INT_P              (1<<4)
+#define ISTR_UE_INT             (1<<3)  
+#define ISTR_OE_INT             (1<<2)
+#define ISTR_FF_FLG             (1<<1)
+#define ISTR_FE_FLG             (1<<0)  
 
 #define AUDIO_STATUS_NOT_SUPPORTED  0x00
 #define AUDIO_STATUS_IN_PROGRESS    0x11
@@ -61,13 +80,15 @@ static volatile int cd_playing, cd_paused, cd_motor, cd_media, cd_error, cd_fini
 
 static volatile int cdtv_hsync, dma_finished, cdtv_sectorsize;
 static volatile uae_u64 dma_wait;
+static int first;
 
 static void do_stch(void);
 
 static void INT2(void)
 {
-    if (!(intreq & 8))
+    if (!(intreq & 8)) {
 	INTREQ_f(0x8000 | 0x0008);
+    }
 }
 
 static int cdrom_command_cnt_out, cdrom_command_size_out;
@@ -140,12 +161,6 @@ static int get_qcode(void)
 	}
     }
     s[1] = cd_audio_status;
-#if 0
-    if (s[1] != subq0) {
-	subq0 = s[1];
-	do_stch();
-    }
-#endif
     return 1;
 }
 
@@ -205,6 +220,8 @@ static void do_play(void)
     if (sys_command_cd_play (DF_IOCTL, unitnum, lsn2msf(play_start), lsn2msf(play_end), 0)) {
 	cd_audio_status = AUDIO_STATUS_IN_PROGRESS;
 	cd_playing = 1;
+    } else {
+	cd_error = 1;
     }
     activate_stch = 1;
 }
@@ -221,16 +238,13 @@ static int play_cdtrack (uae_u8 *p)
     i = (cdrom_toc[0] << 8) | (cdrom_toc[1] << 0);
     i -= 2;
     i /= 11;
+    end = last_cd_position;
     for (j = 0; j < i; j++) {
         uae_u8 *s = cdrom_toc + 4 + j * 11;
 	if (track_start == s[3])
 	    start = (s[8] << 16) | (s[9] << 8) | s[10];
-	if (track_end == s[3]) {
-//	    s += 11;
-//	    if (j == i - 1)
-//		s = cdrom_toc + 4 + 2 * 11; /* end position */
+	if (track_end == s[3])
 	    end = (s[8] << 16) | (s[9] << 8) | s[10];
-	}
     }
     play_end = msf2lsn(end);
     play_start = msf2lsn(start);
@@ -260,6 +274,7 @@ static int play_cd(uae_u8 *p)
 	sys_command_cd_pause (DF_IOCTL, unitnum, 0);
 	sys_command_cd_stop (DF_IOCTL, unitnum);
 	cd_isready = 50;
+	cd_error = 1;
 	return 0;
     }
     if (p[0] == 0x09) { /* lsn */
@@ -464,6 +479,9 @@ static void cdrom_command_thread(uae_u8 b)
 	    cdrom_command_output[0] = flag;
 	    cdrom_command_accepted(1, s, &cdrom_command_cnt_in);
 	    cd_finished = 0;
+	    if (first)
+		do_stch();
+	    first = 0;
 	}
 	break;
 	case 0x82:
@@ -517,13 +535,6 @@ static void cdrom_command_thread(uae_u8 b)
 	break;
     }
 }
-
-#define CNTR_INTEN (1 << 4)
-#define CNTR_PREST (1 << 6)
-#define CNTR_TCEN (1 << 7)
-
-#define ISTR_INT_P (1 << 4)
-#define ISTR_E_INT (1 << 5)
 
 static uae_u8 *read_raw(int sector, int size)
 {
@@ -617,12 +628,11 @@ static void *dev_thread (void *p)
 
 	switch (b)
 	{
-	    case 0x100:
+	    case 0x0100:
 	    dma_do_thread();
 	    break;
-	    case 0x101:
+	    case 0x0101:
 	    {
-		get_qcode();
 		if (ismedia() != cd_media) {
 		    cd_media = ismedia();
 		    get_toc();
@@ -631,18 +641,20 @@ static void *dev_thread (void *p)
 		    if (!cd_media)
 			cd_hunt = 1;
 		}
+		if (cd_media)
+		    get_qcode();
 	    }
 	    break;
-	    case 0x102: // pause
+	    case 0x0102: // pause
 	    sys_command_cd_pause (DF_IOCTL, unitnum, 1);
 	    break;
-	    case 0x103: // unpause
+	    case 0x0103: // unpause
 	    sys_command_cd_pause (DF_IOCTL, unitnum, 0);
 	    break;
-	    case 0x104: // stop
+	    case 0x0104: // stop
 	    cdaudiostop();
 	    break;
-	    case 0x110: // do_play!
+	    case 0x0110: // do_play!
 	    do_play();
 	    break;
 	    case 0xffff:
@@ -773,7 +785,14 @@ static void REGPARAM3 dmac_bput (uaecptr, uae_u32) REGPARAM;
 
 static void dmac_start_dma(void)
 {
-    write_comm_pipe_u32 (&requests, 0x100, 1);
+    if (!(dmac_cntr & CNTR_PDMD)) { // non-scsi dma
+	write_comm_pipe_u32 (&requests, 0x100, 1);
+    }
+}
+
+void cdtv_getdmadata(uae_u32 *acr)
+{
+    *acr = dmac_acr;
 }
 
 static void do_hunt(void)
@@ -798,6 +817,20 @@ static void do_hunt(void)
     }
 }
 
+static void checkint(void)
+{
+    int irq = 0;
+    if (currprefs.cs_cdtvscsi && (wdscsi_getauxstatus() & 0x80)) {
+        dmac_istr |= ISTR_INTS;
+        if ((dmac_cntr & CNTR_INTEN) && (dmac_istr & ISTR_INTS))
+	    irq = 1;
+    }
+    if ((dmac_cntr & CNTR_INTEN) && (dmac_istr & ISTR_E_INT))
+	irq = 1;
+    if (irq)
+	INT2();
+}
+
 void CDTV_hsync_handler(void)
 {
     static int subqcnt;
@@ -816,8 +849,7 @@ void CDTV_hsync_handler(void)
 	dma_finished = 0;
 	cdtv_hsync = -1;
     }
-    if (dmac_istr & ISTR_E_INT)
-	INT2();
+    checkint();
 
     if (cdrom_command_done) {
 	cdrom_command_done = 0;
@@ -897,6 +929,7 @@ static void cdtv_reset (void)
     cd_error = 0;
     cd_finished = 0;
     stch = 0;
+    first = 1;
 }
 
 static uae_u32 dmac_bget2 (uaecptr addr)
@@ -913,6 +946,9 @@ static uae_u32 dmac_bget2 (uaecptr addr)
     {
 	case 0x41:
 	v = dmac_istr;
+	if (v)
+	    v |= ISTR_INT_P;
+	dmac_istr &= ~0xf;
 	break;
 	case 0x43:
 	v = dmac_cntr;
@@ -922,14 +958,13 @@ static uae_u32 dmac_bget2 (uaecptr addr)
 	    v = wdscsi_getauxstatus();
 	break;
 	case 0x93:
-	if (currprefs.cs_cdtvscsi)
+	if (currprefs.cs_cdtvscsi) {
 	    v = wdscsi_get();
+	    checkint();
+	}
 	break;
 	case 0xa1:
-	if (cdrom_command_cnt_out < 0) {
-	    cd_error = 1;
-	    do_stch();
-	} else {
+	if (cdrom_command_cnt_out >= 0) {
 	    v = cdrom_command_output[cdrom_command_cnt_out];
 	    cdrom_command_output[cdrom_command_cnt_out++] = 0;
 	    if (cdrom_command_cnt_out >= cdrom_command_size_out) {
@@ -943,6 +978,16 @@ static uae_u32 dmac_bget2 (uaecptr addr)
 	    }
 	}
 	break;
+	case 0xe8:
+	case 0xe9:
+	dmac_istr |= ISTR_FE_FLG;
+	break;
+	/* XT IO */
+	case 0xa3:
+	case 0xa5:
+	case 0xa7:
+	v = 0xff;
+	break;
     }
 
 #ifdef CDTV_DEBUG
@@ -950,48 +995,6 @@ static uae_u32 dmac_bget2 (uaecptr addr)
 	write_log ("dmac_bget %04.4X=%02.2X PC=%08.8X\n", addr, v, M68K_GETPC);
 #endif
 
-    return v;
-}
-
-static uae_u32 REGPARAM2 dmac_lget (uaecptr addr)
-{
-    uae_u32 v;
-#ifdef JIT
-    special_mem |= S_READ;
-#endif
-    addr &= 65535;
-    v = (dmac_bget2 (addr) << 24) | (dmac_bget2 (addr + 1) << 16) |
-	(dmac_bget2 (addr + 2) << 8) | (dmac_bget2 (addr + 3));
-#ifdef CDTV_DEBUG
-    write_log ("dmac_lget %08.8X=%08.8X PC=%08.8X\n", addr, v, M68K_GETPC);
-#endif
-    return v;
-}
-
-static uae_u32 REGPARAM2 dmac_wget (uaecptr addr)
-{
-    uae_u32 v;
-#ifdef JIT
-    special_mem |= S_READ;
-#endif
-    addr &= 65535;
-    v = (dmac_bget2 (addr) << 8) | dmac_bget2 (addr + 1);
-#ifdef CDTV_DEBUG
-    write_log ("dmac_wget %08.8X=%04.4X PC=%08.8X\n", addr, v, M68K_GETPC);
-#endif
-    return v;
-}
-
-static uae_u32 REGPARAM2 dmac_bget (uaecptr addr)
-{
-    uae_u32 v;
-#ifdef JIT
-    special_mem |= S_READ;
-#endif
-    addr &= 65535;
-    v = dmac_bget2 (addr);
-    if (!configured)
-	return v;
     return v;
 }
 
@@ -1054,12 +1057,16 @@ static void dmac_bput2 (uaecptr addr, uae_u32 b)
 	dmac_dawr |= b << 0;
 	break;
 	case 0x91:
-        if (currprefs.cs_cdtvscsi)
+        if (currprefs.cs_cdtvscsi) {
 	    wdscsi_sasr (b);
+	    checkint();
+	}
 	break;
 	case 0x93:
-	if (currprefs.cs_cdtvscsi)
+        if (currprefs.cs_cdtvscsi) {
 	    wdscsi_put (b);
+	    checkint();
+	}
 	break;
  	case 0xa1:
 	cdrom_command(b);
@@ -1078,14 +1085,57 @@ static void dmac_bput2 (uaecptr addr, uae_u32 b)
 	case 0xe4:
 	case 0xe5:
 	dmac_istr = 0;
+        checkint();
 	break;
 	case 0xe8:
 	case 0xe9:
-	dmac_dma = 0;
+	dmac_istr |= ISTR_FE_FLG;
 	break;
     }
 
     tp_check_interrupts();
+}
+
+static uae_u32 REGPARAM2 dmac_lget (uaecptr addr)
+{
+    uae_u32 v;
+#ifdef JIT
+    special_mem |= S_READ;
+#endif
+    addr &= 65535;
+    v = (dmac_bget2 (addr) << 24) | (dmac_bget2 (addr + 1) << 16) |
+	(dmac_bget2 (addr + 2) << 8) | (dmac_bget2 (addr + 3));
+#ifdef CDTV_DEBUG
+    write_log ("dmac_lget %08.8X=%08.8X PC=%08.8X\n", addr, v, M68K_GETPC);
+#endif
+    return v;
+}
+
+static uae_u32 REGPARAM2 dmac_wget (uaecptr addr)
+{
+    uae_u32 v;
+#ifdef JIT
+    special_mem |= S_READ;
+#endif
+    addr &= 65535;
+    v = (dmac_bget2 (addr) << 8) | dmac_bget2 (addr + 1);
+#ifdef CDTV_DEBUG
+    write_log ("dmac_wget %08.8X=%04.4X PC=%08.8X\n", addr, v, M68K_GETPC);
+#endif
+    return v;
+}
+
+static uae_u32 REGPARAM2 dmac_bget (uaecptr addr)
+{
+    uae_u32 v;
+#ifdef JIT
+    special_mem |= S_READ;
+#endif
+    addr &= 65535;
+    v = dmac_bget2 (addr);
+    if (!configured)
+	return v;
+    return v;
 }
 
 static void REGPARAM2 dmac_lput (uaecptr addr, uae_u32 l)
@@ -1313,6 +1363,13 @@ uae_u8 cdtv_battram_read (int addr)
     return v;
 }
 
+int cdtv_add_scsi_unit(int ch, char *path, int blocksize, int readonly,
+		       char *devname, int sectors, int surfaces, int reserved,
+		       int bootpri, char *filesys)
+{
+    return addscsi(ch, path, blocksize, readonly, devname, sectors, surfaces, reserved, bootpri, filesys, 1);
+}
+
 void cdtv_free (void)
 {
     if (thread_alive > 0) {
@@ -1340,7 +1397,6 @@ void cdtv_init (void)
     }
     write_comm_pipe_u32 (&requests, 0x0104, 1);
    
-
     configured = 0;
     tp_a = tp_b = tp_c = tp_ad = tp_bd = tp_cd = 0;
     tp_imr = tp_cr = tp_air = 0;

@@ -151,6 +151,8 @@ static const char *cscompa[] = {
 };
 /* 3-state boolean! */
 static const char *fullmodes[] = { "false", "true", /* "FILE_NOT_FOUND", */ "fullwindow", 0 };
+/* bleh for compatibility */
+static const char *scsimode[] = { "false", "true", "scsi", 0 };
 
 static const char *obsolete[] = {
     "accuracy", "gfx_opengl", "gfx_32bit_blits", "32bit_blits",
@@ -158,6 +160,7 @@ static const char *obsolete[] = {
     "sound_pri_cutoff", "sound_pri_time", "sound_min_buff",
     "gfx_test_speed", "gfxlib_replacement", "enforcer", "catweasel_io",
     "kickstart_key_file", "fast_copper", "sound_adjust",
+    "serial_hardware_dtrdsr",
     0
 };
 
@@ -177,7 +180,7 @@ char *cfgfile_subst_path (const char *path, const char *subst, const char *file)
     /* @@@ use strcasecmp for some targets.  */
     if (strlen (path) > 0 && strncmp (file, path, strlen (path)) == 0) {
 	int l;
-	char *p = xmalloc (strlen (file) + strlen (subst) + 2);
+	char *p = (char*)xmalloc (strlen (file) + strlen (subst) + 2);
 	strcpy (p, subst);
 	l = strlen (p);
 	while (l > 0 && p[l - 1] == '/')
@@ -220,7 +223,9 @@ static void write_filesys_config (struct uae_prefs *p, const char *unexpanded,
 {
     int i;
     char tmp[MAX_DPATH];
-    char *hdcontrollers[] = { "uae", "ide0", "ide1", "ide2", "ide3" };
+    char *hdcontrollers[] = { "uae",
+	"ide0", "ide1", "ide2", "ide3",
+	"scsi0", "scsi1", "scsi2", "scsi3", "scsi4", "scsi5", "scsi6" };
 
     for (i = 0; i < p->mountitems; i++) {
 	struct uaedev_config_info *uci = &p->mountconfig[i];
@@ -315,7 +320,7 @@ void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type)
     free (str);
     if (p->cartident[0])
 	cfgfile_write (f, "cart=%s\n", p->cartident);
-    cfgfile_write (f, "cart_internal=%s\n", cartsmode[p->cart_internal]);
+    //cfgfile_write (f, "cart_internal=%s\n", cartsmode[p->cart_internal]);
     cfgfile_write (f, "kickshifter=%s\n", p->kickshifter ? "true" : "false");
 
     p->nr_floppies = 4;
@@ -342,7 +347,7 @@ void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type)
     cfgfile_write (f, "serial_on_demand=%s\n", p->serial_demand ? "true" : "false");
     cfgfile_write (f, "serial_hardware_ctsrts=%s\n", p->serial_hwctsrts ? "true" : "false");
     cfgfile_write (f, "serial_direct=%s\n", p->serial_direct ? "true" : "false");
-    cfgfile_write (f, "scsi=%s\n", p->scsi ? "true" : "false");
+    cfgfile_write (f, "scsi=%s\n", scsimode[p->scsi]);
     cfgfile_write (f, "uaeserial=%s\n", p->uaeserial ? "true" : "false");
 
     cfgfile_write (f, "sound_output=%s\n", soundmode1[p->produce_sound]);
@@ -421,7 +426,8 @@ void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type)
     cfgfile_write (f, "gfx_height_fullscreen=%d\n", p->gfx_size_fs.height);
     cfgfile_write (f, "gfx_refreshrate=%d\n", p->gfx_refreshrate);
     cfgfile_write (f, "gfx_autoresolution=%d\n", p->gfx_autoresolution);
-    cfgfile_write (f, "gfx_vsync=%s\n", p->gfx_vsync ? "true" : "false");
+    cfgfile_write (f, "gfx_vsync=%s\n", p->gfx_avsync ? "true" : "false");
+    cfgfile_write (f, "gfx_vsync_picasso=%s\n", p->gfx_pvsync ? "true" : "false");
     cfgfile_write (f, "gfx_lores=%s\n", p->gfx_lores ? "true" : "false");
     cfgfile_write (f, "gfx_lores_mode=%s\n", loresmode[p->gfx_lores_mode]);
     cfgfile_write (f, "gfx_linemode=%s\n", linemode1[p->gfx_linedbl]);
@@ -517,7 +523,8 @@ void cfgfile_save_options (struct zfile *f, struct uae_prefs *p, int type)
     cfgfile_write (f, "scsi_cdtv=%s\n", p->cs_cdtvscsi ? "true" : "false");
     cfgfile_write (f, "scsi_a2091=%s\n", p->cs_a2091 ? "true" : "false");
     cfgfile_write (f, "scsi_a4091=%s\n", p->cs_a4091 ? "true" : "false");
-    cfgfile_write (f, "scsi_a3000=%s\n", p->cs_mbdmac ? "true" : "false");
+    cfgfile_write (f, "scsi_a3000=%s\n", p->cs_mbdmac == 1 ? "true" : "false");
+    cfgfile_write (f, "scsi_a4000t=%s\n", p->cs_mbdmac == 2 ? "true" : "false");
 
     cfgfile_write (f, "fastmem_size=%d\n", p->fastmem_size / 0x100000);
     cfgfile_write (f, "a3000mem_size=%d\n", p->mbresmem_low_size / 0x100000);
@@ -811,7 +818,8 @@ static int cfgfile_parse_host (struct uae_prefs *p, char *option, char *value)
 	|| cfgfile_yesno (option, value, "avoid_vid", &p->avoid_vid)
 	|| cfgfile_yesno (option, value, "log_illegal_mem", &p->illegal_mem)
 	|| cfgfile_yesno (option, value, "filesys_no_fsdb", &p->filesys_no_uaefsdb)
-	|| cfgfile_yesno (option, value, "gfx_vsync", &p->gfx_vsync)
+	|| cfgfile_yesno (option, value, "gfx_vsync", &p->gfx_avsync)
+	|| cfgfile_yesno (option, value, "gfx_vsync_picasso", &p->gfx_pvsync)
 	|| cfgfile_yesno (option, value, "gfx_lores", &p->gfx_lores)
 	|| cfgfile_yesno (option, value, "gfx_correct_aspect", &p->gfx_correct_aspect)
 	|| cfgfile_yesno (option, value, "show_leds", &p->leds_on_screen)
@@ -1048,7 +1056,7 @@ static void decode_rom_ident (char *romfile, int maxlen, char *ident)
 
     if (!ident[0])
 	return;
-    romtxt = malloc (10000);
+    romtxt = (char*)malloc (10000);
     romtxt[0] = 0;
     for (round = 0; round < 2; round++) {
 	ver = rev = subver = subrev = -1;
@@ -1080,7 +1088,7 @@ static void decode_rom_ident (char *romfile, int maxlen, char *ident)
 		}
 	    }
 	    if (*p == 0 || *p == ';') {
-		rl = getrombyident(ver, rev, subver, subrev, modelp, round);
+		rl = getromlistbyident(ver, rev, subver, subrev, modelp, round);
 		if (rl) {
 		    for (i = 0; rl[i]; i++) {
 			if (round) {
@@ -1117,6 +1125,8 @@ int add_filesys_config (struct uae_prefs *p, int index,
 			int secspertrack, int surfaces, int reserved,
 			int blocksize, int bootpri, char *filesysdir, int hdc, int flags) {
     struct uaedev_config_info *uci;
+    int i;
+
     if (index < 0)
 	uci = getuci(p);
     else
@@ -1137,7 +1147,19 @@ int add_filesys_config (struct uae_prefs *p, int index,
     uci->controller = hdc;
     strcpy (uci->filesys, filesysdir ? filesysdir : "");
     if (!uci->devname[0])
-	sprintf(uci->devname,"DH%d", uci - &p->mountconfig[0]);
+	sprintf(uci->devname, "DH%d", uci - &p->mountconfig[0]);
+    if (volname && !uci->volname[0]) {
+	for (i = strlen(rootdir) - 1; i >= 0; i--) {
+	    char c = rootdir[i];
+	    if (c == ':' || c == '/' || c == '\\') {
+		if (i == strlen(rootdir) - 1)
+		    continue;
+		i++;
+		break;
+	    }
+	}
+	strcpy (uci->volname, rootdir + i);
+    }
     return 1;
 }
 
@@ -1155,6 +1177,16 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	return 1;
     }
 
+    if (cfgfile_yesno (option, value, "scsi_a3000", &dummy)) {
+	if (dummy)
+	    p->cs_mbdmac = 1;
+	return 1;
+    }
+    if (cfgfile_yesno (option, value, "scsi_a4000t", &dummy)) {
+	if (dummy)
+	    p->cs_mbdmac = 2;
+	return 1;
+    }
     if (cfgfile_yesno (option, value, "immediate_blits", &p->immediate_blits)
 
 	|| cfgfile_yesno (option, value, "cd32cd", &p->cs_cd32cd)
@@ -1166,7 +1198,6 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	|| cfgfile_yesno (option, value, "scsi_cdtv", &p->cs_cdtvscsi)
 	|| cfgfile_yesno (option, value, "scsi_a4091", &p->cs_a4091)
 	|| cfgfile_yesno (option, value, "scsi_a2091", &p->cs_a2091)
-	|| cfgfile_yesno (option, value, "scsi_a3000", &p->cs_mbdmac)
 
 	|| cfgfile_yesno (option, value, "kickshifter", &p->kickshifter)
 	|| cfgfile_yesno (option, value, "ntsc", &p->ntscmode)
@@ -1188,8 +1219,7 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	|| cfgfile_yesno (option, value, "comp_midopt", &p->comp_midopt)
 	|| cfgfile_yesno (option, value, "comp_lowopt", &p->comp_lowopt)
 	|| cfgfile_yesno (option, value, "rtg_nocustom", &p->picasso96_nocustom)
-	|| cfgfile_yesno (option, value, "uaeserial", &p->uaeserial)
-	|| cfgfile_yesno (option, value, "scsi", &p->scsi))
+	|| cfgfile_yesno (option, value, "uaeserial", &p->uaeserial))
 	return 1;
 
     if (cfgfile_intval (option, value, "cachesize", &p->cachesize, 1)
@@ -1223,6 +1253,7 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	|| cfgfile_strval (option, value, "ksmirror", &p->cs_ksmirror, ksmirrortype, 0)
 	|| cfgfile_strval (option, value, "ciaatod", &p->cs_ciaatod, ciaatodmode, 0)
 	|| cfgfile_strval (option, value, "ide", &p->cs_ide, idemode, 0)
+	|| cfgfile_strval (option, value, "scsi", &p->scsi, scsimode, 0)
 	|| cfgfile_strval (option, value, "comp_trustword", &p->comptrustword, compmode, 0)
 	|| cfgfile_strval (option, value, "comp_trustlong", &p->comptrustlong, compmode, 0)
 	|| cfgfile_strval (option, value, "comp_trustnaddr", &p->comptrustnaddr, compmode, 0)
@@ -1238,8 +1269,14 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	|| cfgfile_string (option, value, "ghostscript_parameters", p->ghostscript_parameters, sizeof p->ghostscript_parameters))
 	return 1;
 
-    if (cfgfile_strval (option, value, "cart_internal", &p->cart_internal, cartsmode, 0))
+    if (cfgfile_strval (option, value, "cart_internal", &p->cart_internal, cartsmode, 0)) {
+	if (p->cart_internal) {
+	    struct romdata *rd = getromdatabyid(63);
+	    if (rd)
+		sprintf(p->cartfile, ":%s", rd->configname);
+	}
 	return 1;
+    }
     if (cfgfile_string (option, value, "kickstart_rom", p->romident, sizeof p->romident)) {
 	decode_rom_ident (p->romfile, sizeof p->romfile, p->romident);
 	return 1;
@@ -1457,8 +1494,13 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 		    *tmpp++ = 0;
 		    hdc = tmpp;
 		    if(strlen(hdc) >= 4 && !memcmp(hdc, "ide", 3)) {
-			hdcv = hdc[3] - '0' + 1;
-			if (hdcv < 1 || hdcv > 4)
+			hdcv = hdc[3] - '0' + HD_CONTROLLER_IDE0;
+			if (hdcv < HD_CONTROLLER_IDE0 || hdcv > HD_CONTROLLER_IDE3)
+			    hdcv = 0;
+		    }
+		    if(strlen(hdc) >= 5 && !memcmp(hdc, "scsi", 4)) {
+			hdcv = hdc[4] - '0' + HD_CONTROLLER_SCSI0;
+			if (hdcv < HD_CONTROLLER_SCSI0 || hdcv > HD_CONTROLLER_SCSI6)
 			    hdcv = 0;
 		    }
 		}
@@ -1568,7 +1610,7 @@ static void cfgfile_parse_separated_line (struct uae_prefs *p, char *line1b, cha
 	    if (sl->option && !strcasecmp (line1b, sl->option)) break;
 	}
 	if (!sl) {
-	    struct strlist *u = xcalloc (sizeof (struct strlist), 1);
+	    struct strlist *u = (struct strlist*)xcalloc (sizeof (struct strlist), 1);
 	    u->option = my_strdup(line3b);
 	    u->value = my_strdup(line4b);
 	    u->next = p->all_lines;
@@ -1598,7 +1640,7 @@ static void subst (char *p, char *f, int n)
     free (str);
 }
 
-static char *cfg_fgets (char *line, int max, FILE *fh)
+static char *cfg_fgets (char *line, int max, struct zfile *fh)
 {
 #ifdef SINGLEFILE
     extern char singlefile_config[];
@@ -1607,7 +1649,7 @@ static char *cfg_fgets (char *line, int max, FILE *fh)
 #endif
 
     if (fh)
-	return fgets (line, max, fh);
+	return zfile_fgets (line, max, fh);
 #ifdef SINGLEFILE
     if (sfile_ptr == 0) {
 	sfile_ptr = singlefile_config;
@@ -1637,7 +1679,7 @@ static char *cfg_fgets (char *line, int max, FILE *fh)
 static int cfgfile_load_2 (struct uae_prefs *p, const char *filename, int real, int *type)
 {
     int i;
-    FILE *fh;
+    struct zfile *fh;
     char line[CONFIG_BLEN], line1b[CONFIG_BLEN], line2b[CONFIG_BLEN];
     struct strlist *sl;
     int type1 = 0, type2 = 0, askedtype = 0;
@@ -1652,7 +1694,7 @@ static int cfgfile_load_2 (struct uae_prefs *p, const char *filename, int real, 
 	reset_inputdevice_config (p);
     }
 
-    fh = fopen (filename, "r");
+    fh = zfile_fopen (filename, "r");
 #ifndef	SINGLEFILE
     if (! fh)
 	return 0;
@@ -1689,8 +1731,7 @@ static int cfgfile_load_2 (struct uae_prefs *p, const char *filename, int real, 
 
     if (type && *type == 0)
 	*type = CONFIG_TYPE_HARDWARE | CONFIG_TYPE_HOST;
-    if (fh)
-	fclose (fh);
+    zfile_fclose (fh);
 
     if (!real)
 	return 1;
@@ -1774,7 +1815,7 @@ int cfgfile_save (struct uae_prefs *p, const char *filename, int type)
 int cfgfile_get_description (const char *filename, char *description, char *hostlink, char *hardwarelink, int *type)
 {
     int result = 0;
-    struct uae_prefs *p = xmalloc (sizeof (struct uae_prefs));
+    struct uae_prefs *p = (struct uae_prefs*)xmalloc (sizeof (struct uae_prefs));
     p->description[0] = 0;
     p->config_host_path[0] = 0;
     p->config_hardware_path[0] = 0;
@@ -2028,7 +2069,7 @@ static void parse_cpu_specs (struct uae_prefs *p, char *spec)
 /* Returns the number of args used up (0 or 1).  */
 int parse_cmdline_option (struct uae_prefs *p, char c, char *arg)
 {
-    struct strlist *u = xcalloc (sizeof (struct strlist), 1);
+    struct strlist *u = (struct strlist*)xcalloc (sizeof (struct strlist), 1);
     const char arg_required[] = "0123rKpImWSAJwNCZUFcblOdHRv";
 
     if (strchr (arg_required, c) && ! arg) {
@@ -2036,7 +2077,7 @@ int parse_cmdline_option (struct uae_prefs *p, char c, char *arg)
 	return 0;
     }
 
-    u->option = malloc (2);
+    u->option = (char*)malloc (2);
     u->option[0] = c;
     u->option[1] = 0;
     u->value = my_strdup(arg);
@@ -2169,7 +2210,7 @@ void cfgfile_addcfgparam (char *line)
     }
     if (!cfgfile_separate_line (line, line1b, line2b))
 	return;
-    u = xcalloc (sizeof (struct strlist), 1);
+    u = (struct strlist*)xcalloc (sizeof (struct strlist), 1);
     u->option = my_strdup(line1b);
     u->value = my_strdup(line2b);
     u->next = temp_lines;
@@ -2452,12 +2493,12 @@ uae_u32 cfgfile_uaelib_modify (uae_u32 index, uae_u32 parms, uae_u32 size, uae_u
     int i, ret;
 
     put_byte (out, 0);
-    parms_p = xmalloc (size + 1);
+    parms_p = (char*)xmalloc (size + 1);
     if (!parms_p) {
 	ret = 10;
 	goto end;
     }
-    out_p = xmalloc (outsize + 1);
+    out_p = (char*)xmalloc (outsize + 1);
     if (!out_p) {
 	ret = 10;
 	goto end;
@@ -2518,14 +2559,51 @@ uae_u32 cfgfile_uaelib (int mode, uae_u32 name, uae_u32 dst, uae_u32 maxlen)
     return 0;
 }
 
+uae_u8 *restore_configuration (uae_u8 *src)
+{
+    write_log(src);
+    src += strlen(src) + 1;
+    return src;
+}
+
+uae_u8 *save_configuration(int *len)
+{
+    int tmpsize = 30000;
+    uae_u8 *dstbak, *dst;
+    char *p;
+    int index = -1;
+
+    dstbak = dst = (uae_u8*)malloc (tmpsize);
+    p = dst;
+    for (;;) {
+	char tmpout[256];
+        int ret;
+        tmpout[0] = 0;
+        ret = cfgfile_modify (index, "*", 1, tmpout, sizeof (tmpout));
+	index++;
+	if (strlen(tmpout) > 0) {
+	    if (!memcmp(tmpout, "input.", 6))
+		continue;
+	    strcpy (p, tmpout);
+	    strcat (p, "\n");
+	    p += strlen(p);
+	    if (p - dstbak >= tmpsize - sizeof(tmpout))
+		break;
+	}
+	if (ret >= 0)
+	    break;
+    }
+    *len = p - dstbak + 1;
+    return dstbak;
+}
+
+
 static int configure_rom (struct uae_prefs *p, int *rom, int msg)
 {
     struct romdata *rd;
-    char tmp1[MAX_DPATH], tmp2[MAX_DPATH];
     char *path = 0;
     int i;
 
-    tmp2[0] = 0;
     i = 0;
     while (rom[i] >= 0) {
 	rd = getromdatabyid (rom[i]);
@@ -2534,22 +2612,13 @@ static int configure_rom (struct uae_prefs *p, int *rom, int msg)
 	    continue;
 	}
 	path = romlist_get (rd);
-	if (!path) {
-	    getromname (rd, tmp1);
-	    strcat (tmp2, "- ");
-	    strcat (tmp2, tmp1);
-	    strcat (tmp2, "\n");
-	    i++;
-	    continue;
-	}
-	break;
+	if (path)
+	    break;
+	i++;
     }
     if (!path) {
-	if (msg) {
-	    char tmp3[MAX_DPATH];
-	    translate_message (NUMSG_ROMNEED, tmp3);
-	    gui_message (tmp3, tmp2);
-	}
+	if (msg)
+	    romwarning(rom);
 	return 0;
     }
     switch (rd->type)
@@ -2809,9 +2878,10 @@ static void buildin_default_prefs (struct uae_prefs *p)
 {
     buildin_default_host_prefs (p);
 
-    p->nr_floppies = 2;
     p->dfxtype[0] = DRV_35_DD;
-    p->dfxtype[1] = DRV_35_DD;
+    if (p->nr_floppies != 1 && p->nr_floppies != 2)
+	p->nr_floppies = 2;
+    p->dfxtype[1] = p->nr_floppies >= 2 ? DRV_35_DD : DRV_NONE;
     p->dfxtype[2] = DRV_NONE;
     p->dfxtype[3] = DRV_NONE;
     p->floppy_speed = 100;
@@ -2916,6 +2986,95 @@ static void set_68000_compa (struct uae_prefs *p, int compa)
     }
 }
 
+static int bip_a3000 (struct uae_prefs *p, int config, int compa, int romcheck)
+{
+    int roms[2];
+
+    if (config) {
+	roms[0] = 61;
+    } else {
+	roms[0] = 59;
+    }
+    roms[1] = -1;
+    p->immediate_blits = 1;
+    p->bogomem_size = 0;
+    p->chipmem_size = 0x200000;
+    p->cpu_model = 68030;
+    p->fpu_model = 68882;
+    p->chipset_mask = CSMASK_ECS_AGNUS | CSMASK_ECS_DENISE;
+    p->cpu_compatible = p->address_space_24 = 0;
+    p->m68k_speed = -1;
+    p->immediate_blits = 0;
+    p->produce_sound = 2;
+    p->cachesize = 8192;
+    p->dfxtype[0] = DRV_35_HD;
+    p->dfxtype[1] = DRV_35_HD;
+    p->floppy_speed = 0;
+    p->cpu_idle = 150;
+    p->cs_compatible = CP_A3000;
+    p->mbresmem_low_size = 8 * 1024 * 1024;
+    build_in_chipset_prefs (p);
+    p->cs_ciaatod = p->ntscmode ? 2 : 1;
+    return configure_rom (p, roms, romcheck);
+}
+static int bip_a4000 (struct uae_prefs *p, int config, int compa, int romcheck)
+{
+    int roms[8];
+
+    roms[0] = 16;
+    roms[1] = 31;
+    roms[2] = 13;
+    roms[3] = -1;
+    p->immediate_blits = 1;
+    p->bogomem_size = 0;
+    p->chipmem_size = 0x200000;
+    p->cpu_model = 68040;
+    p->fpu_model = 68040;
+    p->chipset_mask = CSMASK_AGA | CSMASK_ECS_AGNUS | CSMASK_ECS_DENISE;
+    p->cpu_compatible = p->address_space_24 = 0;
+    p->m68k_speed = -1;
+    p->immediate_blits = 0;
+    p->produce_sound = 2;
+    p->cachesize = 8192;
+    p->dfxtype[0] = DRV_35_HD;
+    p->dfxtype[1] = DRV_35_HD;
+    p->floppy_speed = 0;
+    p->cpu_idle = 150;
+    p->cs_compatible = CP_A4000;
+    build_in_chipset_prefs (p);
+    p->cs_ciaatod = p->ntscmode ? 2 : 1;
+    return configure_rom (p, roms, romcheck);
+}
+static int bip_a4000t (struct uae_prefs *p, int config, int compa, int romcheck)
+{
+
+    int roms[8];
+
+    roms[0] = 16;
+    roms[1] = 31;
+    roms[2] = 13;
+    roms[3] = -1;
+    p->immediate_blits = 1;
+    p->bogomem_size = 0;
+    p->chipmem_size = 0x200000;
+    p->cpu_model = 68040;
+    p->fpu_model = 68040;
+    p->chipset_mask = CSMASK_AGA | CSMASK_ECS_AGNUS | CSMASK_ECS_DENISE;
+    p->cpu_compatible = p->address_space_24 = 0;
+    p->m68k_speed = -1;
+    p->immediate_blits = 0;
+    p->produce_sound = 2;
+    p->cachesize = 8192;
+    p->dfxtype[0] = DRV_35_HD;
+    p->dfxtype[1] = DRV_35_HD;
+    p->floppy_speed = 0;
+    p->cpu_idle = 150;
+    p->cs_compatible = CP_A4000T;
+    build_in_chipset_prefs (p);
+    p->cs_ciaatod = p->ntscmode ? 2 : 1;
+    return configure_rom (p, roms, romcheck);
+}
+
 static int bip_a1000 (struct uae_prefs *p, int config, int compa, int romcheck)
 {
     int roms[4];
@@ -2928,7 +3087,7 @@ static int bip_a1000 (struct uae_prefs *p, int config, int compa, int romcheck)
     p->sound_filter = FILTER_SOUND_ON;
     set_68000_compa (p, compa);
     p->dfxtype[1] = DRV_NONE;
-    p->cs_compatible = 7;
+    p->cs_compatible = CP_A1000;
     build_in_chipset_prefs (p);
     if (config > 0)
 	p->chipset_mask |= CSMASK_NO_EHB;
@@ -2965,7 +3124,7 @@ static int bip_cdtv (struct uae_prefs *p, int config, int compa, int romcheck)
 	p->dfxtype[0] = DRV_35_DD;
     p->dfxtype[1] = DRV_NONE;
     set_68000_compa (p, compa);
-    p->cs_compatible = 2;
+    p->cs_compatible = CP_CDTV;
     build_in_chipset_prefs (p);
     fetch_datapath (p->flashfile, sizeof (p->flashfile));
     strcat(p->flashfile, "cdtv.nvr");
@@ -2977,19 +3136,23 @@ static int bip_cd32 (struct uae_prefs *p, int config, int compa, int romcheck)
     int roms[2];
 
     buildin_default_prefs_68020 (p);
-    roms[0] = 18;
+    roms[0] = 64;
     roms[1] = -1;
-    if (!configure_rom (p, roms, romcheck))
-	return 0;
-    roms[0] = 19;
-    if (!configure_rom (p, roms, romcheck))
-	return 0;
+    if (!configure_rom (p, roms, 0)) {
+	roms[0] = 18;
+	roms[1] = -1;
+	if (!configure_rom (p, roms, romcheck))
+	    return 0;
+	roms[0] = 19;
+	if (!configure_rom (p, roms, romcheck))
+	    return 0;
+    }
     p->cs_cd32c2p = p->cs_cd32cd = p->cs_cd32nvram = 1;
     p->nr_floppies = 0;
     p->dfxtype[0] = DRV_NONE;
     p->dfxtype[1] = DRV_NONE;
     set_68020_compa (p, compa);
-    p->cs_compatible = 3;
+    p->cs_compatible = CP_CD32;
     build_in_chipset_prefs (p);
     fetch_datapath (p->flashfile, sizeof (p->flashfile));
     strcat(p->flashfile, "cd32.nvr");
@@ -3010,7 +3173,7 @@ static int bip_a1200 (struct uae_prefs *p, int config, int compa, int romcheck)
         p->cs_rtc = 2;
     }
     set_68020_compa (p, compa);
-    p->cs_compatible = 8;
+    p->cs_compatible = CP_A1200;
     build_in_chipset_prefs (p);
     return configure_rom (p, roms, romcheck);
 }
@@ -3031,7 +3194,7 @@ static int bip_a600 (struct uae_prefs *p, int config, int compa, int romcheck)
 	p->fastmem_size = 0x400000;
     p->chipset_mask = CSMASK_ECS_AGNUS | CSMASK_ECS_DENISE;
     set_68000_compa (p, compa);
-    p->cs_compatible = 6;
+    p->cs_compatible = CP_A600;
     build_in_chipset_prefs (p);
     return configure_rom (p, roms, romcheck);
 }
@@ -3050,7 +3213,7 @@ static int bip_a500p (struct uae_prefs *p, int config, int compa, int romcheck)
 	p->fastmem_size = 0x400000;
     p->chipset_mask = CSMASK_ECS_AGNUS | CSMASK_ECS_DENISE;
     set_68000_compa (p, compa);
-    p->cs_compatible = 5;
+    p->cs_compatible = CP_A500P;
     build_in_chipset_prefs (p);
     return configure_rom (p, roms, romcheck);
 }
@@ -3101,7 +3264,7 @@ static int bip_a500 (struct uae_prefs *p, int config, int compa, int romcheck)
 	break;
     }
     set_68000_compa (p, compa);
-    p->cs_compatible = 4;
+    p->cs_compatible = CP_A500;
     build_in_chipset_prefs (p);
     return configure_rom (p, roms, romcheck);
 }
@@ -3157,7 +3320,7 @@ static int bip_super (struct uae_prefs *p, int config, int compa, int romcheck)
     p->dfxtype[0] = DRV_NONE;
     p->dfxtype[1] = DRV_NONE;
     set_68000_compa (p, compa);
-    p->cs_compatible = 4;
+    p->cs_compatible = CP_A500;
     build_in_chipset_prefs (p);
     fetch_datapath (p->flashfile, sizeof (p->flashfile));
     strcat(p->flashfile, "arcadia.nvr");
@@ -3178,6 +3341,7 @@ static int bip_super (struct uae_prefs *p, int config, int compa, int romcheck)
 int build_in_prefs (struct uae_prefs *p, int model, int config, int compa, int romcheck)
 {
     int v = 0, i;
+
     buildin_default_prefs (p);
     switch (model)
     {
@@ -3197,15 +3361,24 @@ int build_in_prefs (struct uae_prefs *p, int model, int config, int compa, int r
 	v = bip_a1200 (p, config, compa, romcheck);
 	break;
 	case 5:
-	v = bip_cd32 (p, config, compa, romcheck);
+	v = bip_a3000 (p, config, compa, romcheck);
 	break;
 	case 6:
-	v = bip_cdtv (p, config, compa, romcheck);
+	v = bip_a4000 (p, config, compa, romcheck);
 	break;
 	case 7:
-	v = bip_arcadia (p, config , compa, romcheck);
+	v = bip_a4000t (p, config, compa, romcheck);
+	break;
+	case 8:
+	v = bip_cd32 (p, config, compa, romcheck);
+	break;
+	case 9:
+	v = bip_cdtv (p, config, compa, romcheck);
 	break;
 	case 10:
+	v = bip_arcadia (p, config , compa, romcheck);
+	break;
+	case 11:
 	v = bip_super (p, config, compa, romcheck);
 	break;
     }
@@ -3239,71 +3412,71 @@ int build_in_chipset_prefs (struct uae_prefs *p)
 
     switch (p->cs_compatible)
     {
-	case  1: // generic
+	case  CP_GENERIC: // generic
 	    p->cs_rtc = 2;
 	    p->cs_fatgaryrev = 0;
 	    p->cs_ide = -1;
 	    p->cs_mbdmac = 1;
 	    p->cs_ramseyrev = 0x0f;
 	break;
-	case  2: // CDTV
+	case  CP_CDTV: // CDTV
 	    p->cs_rtc = 1;
 	    p->cs_cdtvcd = p->cs_cdtvram = 1;
 	    p->cs_df0idhw = 0;
 	    p->cs_ksmirror = 0;
 	break;
-	case  3: // CD32
+	case  CP_CD32: // CD32
 	    p->cs_cd32c2p = p->cs_cd32cd = p->cs_cd32nvram = 1;
 	    p->cs_ksmirror = 0;
 	break;
-	case  4: // A500
+	case  CP_A500: // A500
 	    p->cs_df0idhw = 0;
 	break;
-	case  5: // A500+
+	case  CP_A500P: // A500+
 	break;
-	case  6: // A600
+	case  CP_A600: // A600
 	    p->cs_ide = 1;
 	    p->cs_pcmcia = 1;
 	break;
-	case  7: // A1000
+	case  CP_A1000: // A1000
 	    p->cs_a1000ram = 1;
 	    p->cs_ciaatod = p->ntscmode ? 2 : 1;
 	    p->cs_ksmirror = 0;
 	    p->cs_rtc = 0;
 	    p->chipset_mask |= CSMASK_BLTBUSY_BUG;
 	break;
-	case  8: // A1200
+	case  CP_A1200: // A1200
 	    p->cs_ide = 1;
 	    p->cs_pcmcia = 1;
 	    p->cs_ksmirror = 2;
 	break;
-	case  9: // A2000
+	case  CP_A2000: // A2000
 	    p->cs_rtc = 1;
 	    p->cs_ciaatod = p->ntscmode ? 2 : 1;
 	    break;
 	break;
-	case 10: // A3000
+	case CP_A3000: // A3000
 	    p->cs_rtc = 2;
 	    p->cs_fatgaryrev = 0;
 	    p->cs_ramseyrev = 0x0d;
 	    p->cs_mbdmac = 1;
 	    p->cs_ciaatod = p->ntscmode ? 2 : 1;
 	break;
-	case 11: // A3000T
+	case CP_A3000T: // A3000T
 	    p->cs_rtc = 2;
 	    p->cs_fatgaryrev = 0;
 	    p->cs_ramseyrev = 0x0d;
 	    p->cs_mbdmac = 1;
 	    p->cs_ciaatod = p->ntscmode ? 2 : 1;
 	break;
-	case 12: // A4000
+	case CP_A4000: // A4000
 	    p->cs_rtc = 2;
 	    p->cs_fatgaryrev = 0;
 	    p->cs_ramseyrev = 0x0f;
 	    p->cs_ide = 2;
 	    p->cs_mbdmac = 0;
 	break;
-	case 13: // A4000T
+	case CP_A4000T: // A4000T
 	    p->cs_rtc = 2;
 	    p->cs_fatgaryrev = 0;
 	    p->cs_ramseyrev = 0x0f;

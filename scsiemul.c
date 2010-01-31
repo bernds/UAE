@@ -25,6 +25,7 @@
 #include "native2amiga.h"
 #include "blkdev.h"
 #include "scsidev.h"
+#include "uae.h"
 
 #define CDDEV_COMMANDS
 
@@ -125,7 +126,7 @@ static struct device_info *devinfo (int mode, int unitnum, struct device_info *d
 static void io_log (char *msg, uaecptr request)
 {
     if (log_scsi)
-	write_log ("%s: %08X %d %08.8X %d %d io_actual=%d io_error=%d\n",
+	write_log ("%s: %08X %d %08X %d %d io_actual=%d io_error=%d\n",
 	    msg, request, get_word(request + 28), get_long(request + 40),
 	    get_long(request + 36), get_long(request + 44),
 	    get_long (request + 32), get_byte (request + 31));
@@ -158,8 +159,7 @@ static char *getdevname (int type)
 	case UAEDEV_DISK_ID:
 	return UAEDEV_DISK;
 	default:
-	abort ();
-	return NULL;
+	return "NULL";
     }
 }
 
@@ -328,7 +328,7 @@ static int add_async_request (struct devstruct *dev, uaecptr request, int type, 
     int i;
 
     if (log_scsi)
-	write_log ("async request %p (%d) added\n", request, type);
+	write_log ("async request %08x (%d) added\n", request, type);
     i = 0;
     while (i < MAX_ASYNC_REQUESTS) {
 	if (dev->d_request[i] == request) {
@@ -623,7 +623,7 @@ static uae_u32 REGPARAM2 dev_beginio (TrapContext *context)
 
 static void *dev_thread (void *devs)
 {
-    struct devstruct *dev = devs;
+    struct devstruct *dev = (struct devstruct*)devs;
 
     uae_set_thread_priority (2);
     dev->thread_running = 1;
@@ -788,7 +788,7 @@ static uaecptr diskdev_startup (uaecptr resaddr)
 
 uaecptr scsidev_startup (uaecptr resaddr)
 {
-    if (!currprefs.scsi)
+    if (currprefs.scsi != 1)
 	return resaddr;
     if (log_scsi)
 	write_log ("scsidev_startup(0x%x)\n", resaddr);
@@ -813,7 +813,7 @@ static void diskdev_install (void)
     uae_u32 initcode, openfunc, closefunc, expungefunc;
     uae_u32 beginiofunc, abortiofunc;
 
-    if (!currprefs.scsi)
+    if (currprefs.scsi != 1)
 	return;
     if (log_scsi)
 	write_log ("diskdev_install(): 0x%x\n", here ());
@@ -892,7 +892,7 @@ void scsidev_install (void)
     uae_u32 initcode, openfunc, closefunc, expungefunc;
     uae_u32 beginiofunc, abortiofunc;
 
-    if (!currprefs.scsi)
+    if (currprefs.scsi != 1)
 	return;
     if (log_scsi)
 	write_log ("scsidev_install(): 0x%x\n", here ());
@@ -968,7 +968,7 @@ void scsidev_install (void)
 
 void scsidev_start_threads (void)
 {
-    if (!currprefs.scsi) /* quite useless.. */
+    if (currprefs.scsi != 1) /* quite useless.. */
 	return;
     if (log_scsi)
 	write_log ("scsidev_start_threads()\n");
@@ -977,7 +977,7 @@ void scsidev_start_threads (void)
 
 void scsidev_reset (void)
 {
-    if (!currprefs.scsi)
+    if (currprefs.scsi != 1)
 	return;
     dev_reset ();
 }

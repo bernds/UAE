@@ -25,6 +25,8 @@
 #include "readcpu.h"
 
 #define BOOL_TYPE "int"
+/* Define the minimal 680x0 where NV flags are not affected by xBCD instructions.  */
+#define xBCD_KEEPS_NV_FLAGS 4
 
 static FILE *headerfile;
 static FILE *stblfile;
@@ -479,8 +481,9 @@ static void genamode2 (amodes mode, char *reg, wordsizes size, char *name, int g
 	    /* This would ordinarily be done in gen_nextiword, which we bypass.  */
 	    insn_n_cycles += 4;
 	    printf ("\t%sa = get_disp_ea_020(regs, m68k_areg(regs, %s), next_iword(regs));\n", name, reg);
-	} else
+	} else {
 	    printf ("\t%sa = get_disp_ea_000(regs, m68k_areg(regs, %s), %s);\n", name, reg, gen_nextiword (flags & GF_NOREFILL));
+	}
 	if (!(flags & GF_AD8R)) {
 	    addcycles (2);
 	    insn_n_cycles += 2;
@@ -874,7 +877,7 @@ static void duplicate_carry (int n)
 
 typedef enum
 {
-  flag_logical_noclobber, flag_logical, flag_add, flag_sub, flag_cmp, flag_addx, flag_subx, flag_zn,
+  flag_logical_noclobber, flag_logical, flag_add, flag_sub, flag_cmp, flag_addx, flag_subx, flag_z, flag_zn,
   flag_av, flag_sv
 }
 flagtypes;
@@ -929,6 +932,7 @@ static void genflags_normal (flagtypes type, wordsizes size, char *value, char *
     switch (type) {
      case flag_logical_noclobber:
      case flag_logical:
+     case flag_z:
      case flag_zn:
      case flag_av:
      case flag_sv:
@@ -982,6 +986,9 @@ static void genflags_normal (flagtypes type, wordsizes size, char *value, char *
 	break;
      case flag_sv:
 	printf ("\tSET_VFLG (&regs->ccrflags, (flgs ^ flgo) & (flgn ^ flgo));\n");
+	break;
+     case flag_z:
+	printf ("\tSET_ZFLG (&regs->ccrflags, GET_ZFLG (&(regs->ccrflags)) & (%s == 0));\n", vstr);
 	break;
      case flag_zn:
 	printf ("\tSET_ZFLG (&regs->ccrflags, GET_ZFLG (&(regs->ccrflags)) & (%s == 0));\n", vstr);
@@ -1261,8 +1268,15 @@ static void gen_opcode (unsigned long int opcode)
 	printf ("\tif ((((dst & 0xFF) - (src & 0xFF) - (GET_XFLG (&regs->ccrflags) ? 1 : 0)) & 0x100) > 0xFF) { newv -= 0x60; }\n");
 	printf ("\tSET_CFLG (&regs->ccrflags, (((dst & 0xFF) - (src & 0xFF) - bcd - (GET_XFLG (&regs->ccrflags) ? 1 : 0)) & 0x300) > 0xFF);\n");
 	duplicate_carry (0);
-	genflags (flag_zn, curi->size, "newv", "", "");
-	printf ("\tSET_VFLG (&regs->ccrflags, (tmp_newv & 0x80) != 0 && (newv & 0x80) == 0);\n");
+	/* Manual says bits NV are undefined though a real 68040/060 don't change them */
+	if (cpu_level >= xBCD_KEEPS_NV_FLAGS) {
+	    if (next_cpu_level < xBCD_KEEPS_NV_FLAGS)
+		next_cpu_level = xBCD_KEEPS_NV_FLAGS - 1;
+	    genflags (flag_z, curi->size, "newv", "", "");
+	} else {
+	    genflags (flag_zn, curi->size, "newv", "", "");
+	    printf ("\tSET_VFLG (&regs->ccrflags, (tmp_newv & 0x80) != 0 && (newv & 0x80) == 0);\n");
+	}
 	addcycles (2);
 	genastore ("newv", curi->dmode, "dstreg", curi->size, "dst");
 	break;
@@ -1319,8 +1333,16 @@ static void gen_opcode (unsigned long int opcode)
 	printf ("\tif (cflg) newv += 0x60;\n");
 	printf ("\tSET_CFLG (&regs->ccrflags, cflg);\n");
 	duplicate_carry (0);
-	genflags (flag_zn, curi->size, "newv", "", "");
-	printf ("\tSET_VFLG (&regs->ccrflags, (tmp_newv & 0x80) == 0 && (newv & 0x80) != 0);\n");
+	/* Manual says bits NV are undefined though a real 68040 don't change them */
+	if (cpu_level >= xBCD_KEEPS_NV_FLAGS) {
+	    if (next_cpu_level < xBCD_KEEPS_NV_FLAGS)
+		next_cpu_level = xBCD_KEEPS_NV_FLAGS - 1;
+	    genflags (flag_z, curi->size, "newv", "", "");
+	}
+	else {
+	    genflags (flag_zn, curi->size, "newv", "", "");
+	    printf ("\tSET_VFLG (&regs->ccrflags, (tmp_newv & 0x80) == 0 && (newv & 0x80) != 0);\n");
+	}
 	addcycles (2);
 	genastore ("newv", curi->dmode, "dstreg", curi->size, "dst");
 	break;
@@ -1360,7 +1382,15 @@ static void gen_opcode (unsigned long int opcode)
 	printf ("\tif (cflg) newv -= 0x60;\n");
 	printf ("\tSET_CFLG (&regs->ccrflags, cflg);\n");
 	duplicate_carry(0);
-	genflags (flag_zn, curi->size, "newv", "", "");
+	/* Manual says bits NV are undefined though a real 68040 don't change them */
+	if (cpu_level >= xBCD_KEEPS_NV_FLAGS) {
+	    if (next_cpu_level < xBCD_KEEPS_NV_FLAGS)
+		next_cpu_level = xBCD_KEEPS_NV_FLAGS - 1;
+	    genflags (flag_z, curi->size, "newv", "", "");
+	}
+	else {
+	    genflags (flag_zn, curi->size, "newv", "", "");
+	}
 	genastore ("newv", curi->smode, "srcreg", curi->size, "src");
 	break;
     case i_CLR:
@@ -2762,19 +2792,19 @@ static void gen_opcode (unsigned long int opcode)
 	fpulimit();
 	genamode (curi->smode, "srcreg", curi->size, "extra", 1, 0, 0);
 	sync_m68k_pc ();
-	printf ("\tfpp_opp(opcode, regs, extra);\n");
+	printf ("\tfpuop_arithmetic(opcode, regs, extra);\n");
 	break;
     case i_FDBcc:
 	fpulimit();
 	genamode (curi->smode, "srcreg", curi->size, "extra", 1, 0, 0);
 	sync_m68k_pc ();
-	printf ("\tfdbcc_opp(opcode, regs, extra);\n");
+	printf ("\tfpuop_dbcc(opcode, regs, extra);\n");
 	break;
     case i_FScc:
 	fpulimit();
 	genamode (curi->smode, "srcreg", curi->size, "extra", 1, 0, 0);
 	sync_m68k_pc ();
-	printf ("\tfscc_opp(opcode, regs, extra);\n");
+	printf ("\tfpuop_scc(opcode, regs, extra);\n");
 	break;
     case i_FTRAPcc:
 	fpulimit();
@@ -2784,7 +2814,7 @@ static void gen_opcode (unsigned long int opcode)
 	if (curi->smode != am_unknown && curi->smode != am_illg)
 	    genamode (curi->smode, "srcreg", curi->size, "dummy", 1, 0, 0);
 	sync_m68k_pc ();
-	printf ("\tftrapcc_opp(opcode, regs, oldpc);\n");
+	printf ("\tfpuop_trapcc(opcode, regs, oldpc);\n");
 	break;
     case i_FBcc:
 	fpulimit();
@@ -2793,17 +2823,17 @@ static void gen_opcode (unsigned long int opcode)
 	printf ("\tuaecptr pc = m68k_getpc(regs);\n");
 	genamode (curi->dmode, "srcreg", curi->size, "extra", 1, 0, 0);
 	sync_m68k_pc ();
-	printf ("\tfbcc_opp(opcode,regs, pc,extra);\n");
+	printf ("\tfpuop_bcc(opcode,regs, pc,extra);\n");
 	break;
     case i_FSAVE:
 	fpulimit();
 	sync_m68k_pc ();
-	printf ("\tfsave_opp(opcode, regs);\n");
+	printf ("\tfpuop_save(opcode, regs);\n");
 	break;
     case i_FRESTORE:
 	fpulimit();
 	sync_m68k_pc ();
-	printf ("\tfrestore_opp(opcode, regs);\n");
+	printf ("\tfpuop_restore(opcode, regs);\n");
 	break;
 
      case i_CINVL:
@@ -2867,13 +2897,16 @@ static void gen_opcode (unsigned long int opcode)
 	break;
     case i_MMUOP30A:
 	printf ("\tuaecptr pc = m68k_getpc (regs);\n");
-	genamode (curi->smode, "srcreg", curi->size, "extra", 1, 0, 0);
+	if (curi->smode == Areg || curi->smode == Dreg)
+	    printf("\tuae_u16 extraa = 0;\n");
+        else
+	    genamode (curi->smode, "srcreg", curi->size, "extra", 0, 0, 0);
 	sync_m68k_pc ();
-	printf ("\tmmu_op30(pc, opcode, regs, 1, extra);\n");
+	printf ("\tmmu_op30(pc, opcode, regs, 1, extraa);\n");
 	break;
     case i_MMUOP30B:
 	printf ("\tuaecptr pc = m68k_getpc (regs);\n");
-	genamode (curi->smode, "srcreg", curi->size, "extra", 1, 0, 0);
+	genamode (curi->smode, "srcreg", curi->size, "extra", 0, 0, 0);
 	sync_m68k_pc ();
 	printf ("\tmmu_op30(pc, opcode, regs, 0, 0);\n");
 	break;

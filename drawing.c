@@ -1141,8 +1141,8 @@ static void init_aspect_maps (void)
 	free (amiga2aspect_line_map);
 
     /* At least for this array the +1 is necessary. */
-    amiga2aspect_line_map = malloc (sizeof (int) * (MAXVPOS + 1) * 2 + 1);
-    native2amiga_line_map = malloc (sizeof (int) * gfxvidinfo.height);
+    amiga2aspect_line_map = (int*)malloc (sizeof (int) * (MAXVPOS + 1) * 2 + 1);
+    native2amiga_line_map = (int*)malloc (sizeof (int) * gfxvidinfo.height);
 
     if (currprefs.gfx_correct_aspect)
 	native_lines_per_amiga_line = ((double)gfxvidinfo.height
@@ -1252,7 +1252,7 @@ STATIC_INLINE void do_flush_screen (int start, int stop)
     unlockscr ();
     if (start <= stop)
 	flush_screen (start, stop);
-    else if ((currprefs.gfx_afullscreen && currprefs.gfx_vsync) || currprefs.gfx_filter == 8)
+    else if ((currprefs.gfx_afullscreen && currprefs.gfx_avsync) || currprefs.gfx_filter == 8)
 	flush_screen (0, 0); /* vsync mode */
 }
 
@@ -1693,7 +1693,7 @@ static void center_image (void)
     /* @@@ interlace_seen used to be (bplcon0 & 4), but this is probably
      * better.  */
     if (prev_x_adjust != visible_left_border || prev_y_adjust != thisframe_y_adjust)
-	frame_redraw_necessary |= interlace_seen && currprefs.gfx_linedbl ? 2 : 1;
+	frame_redraw_necessary |= (interlace_seen && currprefs.gfx_linedbl) ? 2 : 1;
 
     max_diwstop = 0;
     min_diwstart = 10000;
@@ -2235,9 +2235,6 @@ void vsync_handle_redraw (int long_frame, int lof_changed)
 	    quit_program = -quit_program;
 	    set_inhibit_frame (IHF_QUIT_PROGRAM);
 	    set_special (&regs, SPCFLAG_BRK);
-#ifdef FILESYS
-	    filesys_prepare_reset ();
-#endif
 	    return;
 	}
 
@@ -2256,16 +2253,13 @@ void vsync_handle_redraw (int long_frame, int lof_changed)
 	}
 
 	check_prefs_changed_audio ();
-#ifdef JIT
-	check_prefs_changed_comp ();
-#endif
 	check_prefs_changed_custom ();
 	check_prefs_changed_cpu ();
 
 	if (framecnt == 0)
 	    init_drawing_frame ();
     } else {
-	if (currprefs.gfx_afullscreen && currprefs.gfx_vsync)
+	if (currprefs.gfx_afullscreen && currprefs.gfx_avsync)
 	    flush_screen (0, 0); /* vsync mode */
     }
     gui_hd_led (0);

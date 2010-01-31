@@ -18,6 +18,8 @@ static int have_ioctl;
 
 #ifdef _WIN32
 
+static int initialized;
+
 #include "od-win32/win32.h"
 
 extern struct device_functions devicefunc_win32_aspi;
@@ -62,9 +64,14 @@ void sys_command_close (int mode, int unitnum)
 	device_func[DF_IOCTL]->closedev (unitnum);
 }
 
+void device_func_reset (void)
+{
+    initialized = 0;
+    have_ioctl = 0;
+}
+
 int device_func_init (int flags)
 {
-    static int initialized;
     int support_scsi = 0, support_ioctl = 0;
     int oflags = (flags & DEVICE_TYPE_SCSI) ? 0 : (1 << INQ_ROMD);
 
@@ -85,7 +92,7 @@ int device_func_init (int flags)
 
 static int audiostatus (int unitnum)
 {
-    uae_u8 cmd[10] = {0x42,2,0x40,1,0,0,0,DEVICE_SCSI_BUFSIZE>>8,DEVICE_SCSI_BUFSIZE&0xff,0};
+    uae_u8 cmd[10] = {0x42,2,0x40,1,0,0,0,(uae_u8)(DEVICE_SCSI_BUFSIZE>>8),(uae_u8)(DEVICE_SCSI_BUFSIZE&0xff),0};
     uae_u8 *p = device_func[DF_SCSI]->exec_in (unitnum, cmd, sizeof (cmd), 0);
     if (!p)
 	return 0;
@@ -154,7 +161,7 @@ int sys_command_cd_play (int mode, int unitnum,uae_u32 startmsf, uae_u32 endmsf,
 uae_u8 *sys_command_cd_qcode (int mode, int unitnum)
 {
     if (mode == DF_SCSI || !have_ioctl) {
-	uae_u8 cmd[10] = {0x42,2,0x40,1,0,0,0,DEVICE_SCSI_BUFSIZE>>8,DEVICE_SCSI_BUFSIZE&0xff,0};
+	uae_u8 cmd[10] = {0x42,2,0x40,1,0,0,0,(uae_u8)(DEVICE_SCSI_BUFSIZE>>8),(uae_u8)(DEVICE_SCSI_BUFSIZE&0xff),0};
 	return  device_func[DF_SCSI]->exec_in (unitnum, cmd, sizeof (cmd), 0);
     }
     return device_func[DF_IOCTL]->qcode (unitnum);
@@ -164,7 +171,7 @@ uae_u8 *sys_command_cd_qcode (int mode, int unitnum)
 uae_u8 *sys_command_cd_toc (int mode, int unitnum)
 {
     if (mode == DF_SCSI || !have_ioctl) {
-	uae_u8 cmd [10] = { 0x43,0,2,0,0,0,1,DEVICE_SCSI_BUFSIZE>>8,DEVICE_SCSI_BUFSIZE&0xFF,0};
+	uae_u8 cmd [10] = { 0x43,0,2,0,0,0,1,(uae_u8)(DEVICE_SCSI_BUFSIZE>>8),(uae_u8)(DEVICE_SCSI_BUFSIZE&0xff),0};
 	return device_func[DF_SCSI]->exec_in (unitnum, cmd, sizeof(cmd), 0);
     }
     return device_func[DF_IOCTL]->toc (unitnum);
@@ -279,7 +286,7 @@ void scsi_atapi_fixup_pre (uae_u8 *scsi_cmd, int *len, uae_u8 **datap, int *data
 	scsi_cmd[9] = scsi_cmd[5];
 	scsi_cmd[2] = scsi_cmd[3] = scsi_cmd[4] = scsi_cmd[5] = scsi_cmd[6] = 0;
 	*len = 10;
-	p = xmalloc (8 + datalen + 4);
+	p = (uae_u8*)xmalloc (8 + datalen + 4);
 	if (datalen > 4)
 	    memcpy (p + 8, data + 4, datalen - 4);
 	p[0] = 0;
@@ -298,7 +305,7 @@ void scsi_atapi_fixup_pre (uae_u8 *scsi_cmd, int *len, uae_u8 **datap, int *data
 	scsi_cmd[3] = scsi_cmd[4] = scsi_cmd[5] = scsi_cmd[6] = 0;
 	if (l > 8)
 	    datalen += 4;
-	*datap = xmalloc (datalen);
+	*datap = (uae_u8*)xmalloc (datalen);
 	*len = 10;
 	*parm = MODE_SENSE_10;
     }
@@ -322,33 +329,69 @@ void scsi_atapi_fixup_post (uae_u8 *scsi_cmd, int len, uae_u8 *olddata, uae_u8 *
     }
 }
 
-static void scsi_atapi_fixup_inquiry (uaecptr req)
+static void scsi_atapi_fixup_inquiry (struct amigascsi *as)
 {
-    uaecptr scsi_data = get_long (req + 0);
-    uae_u32 scsi_len = get_long (req + 4);
-    uaecptr scsi_cmd = get_long (req + 12);
+    uae_u8 *scsi_data = as->data;
+    uae_u32 scsi_len = as->len;
+    uae_u8 *scsi_cmd = as->cmd;
     uae_u8 cmd;
 
-    cmd = get_byte (scsi_cmd);
+    cmd = scsi_cmd[0];
     /* CDROM INQUIRY: most Amiga programs expect ANSI version == 2
      * (ATAPI normally responds with zero)
      */
     if (cmd == 0x12 && scsi_len > 2 && scsi_data) {
-	uae_u8 per = get_byte (scsi_data + 0);
-	uae_u8 b = get_byte (scsi_data + 2);
+	uae_u8 per = scsi_data[0];
+	uae_u8 b = scsi_data[2];
 	/* CDROM and ANSI version == 0 ? */
 	if ((per & 31) == 5 && (b & 7) == 0) {
 	    b |= 2;
-	    put_byte (scsi_data + 2, b);
+	    scsi_data[2] = b;
 	}
     }
 }
 
-int sys_command_scsi_direct (int unitnum, uaecptr request)
+int sys_command_scsi_direct_native(int unitnum, struct amigascsi *as)
 {
-    int ret = device_func[DF_SCSI]->exec_direct (unitnum, request);
+    int ret = device_func[DF_SCSI]->exec_direct (unitnum, as);
     if (!ret && device_func[DF_SCSI]->isatapi(unitnum))
-	scsi_atapi_fixup_inquiry (request);
+	scsi_atapi_fixup_inquiry (as);
+    return ret;
+}
+
+int sys_command_scsi_direct (int unitnum, uaecptr acmd)
+{
+    int ret, i;
+    struct amigascsi as;
+    uaecptr ap;
+    addrbank *bank;
+
+    ap = get_long (acmd + 0);
+    as.len = get_long (acmd + 4);
+
+    bank = &get_mem_bank (ap);
+    if (!bank || !bank->check(ap, as.len))
+	return -5;
+    as.data = bank->xlateaddr (ap);
+
+    ap = get_long (acmd + 12);
+    as.cmd_len = get_word (acmd + 16);
+    for (i = 0; i < as.cmd_len; i++)
+	as.cmd[i] = get_byte(ap++);
+    as.flags = get_byte (acmd + 20);
+    as.sense_len = get_word (acmd + 26);
+
+    ret = sys_command_scsi_direct_native (unitnum, &as);
+
+    put_long(acmd + 8, as.actual);
+    put_word(acmd + 18, as.cmdactual);
+    put_byte(acmd + 21, as.status);
+    put_word(acmd + 28, as.sactual);
+
+    ap = get_long(acmd + 22);
+    for (i = 0; i < as.sactual; i++)
+	put_byte(ap, as.sensedata[i]);
+
     return ret;
 }
 

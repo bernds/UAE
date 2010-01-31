@@ -180,6 +180,7 @@
 #define IDS_SCREEN_WINDOWED             195
 #define IDS_SCREEN_FULLSCREEN           196
 #define IDS_SCREEN_FULLWINDOW           197
+#define IDS_SCREEN_VSYNC                198
 #define IDS_SOUND_MONO                  200
 #define IDS_SOUND_MIXED                 201
 #define IDI_QUICKSTART                  201
@@ -247,6 +248,7 @@
 #define IDS_FLOPPYTYPE35DDESCOM         255
 #define IDS_SOUND_STEREO2               256
 #define IDS_INPUT_CUSTOMEVENT           257
+#define IDS_DEFAULT_NEWWINUAE           258
 #define IDS_NUMSG_NEEDEXT2              300
 #define IDS_NUMSG_NOROMKEY              301
 #define IDS_NUMSG_KSROMCRCERROR         302
@@ -269,7 +271,7 @@
 #define IDS_ROMSCANEND                  319
 #define IDS_ROM_AVAILABLE               320
 #define IDS_ROM_UNAVAILABLE             321
-#define IDS_HARDDRIVESAFETYWARNING      322
+#define IDS_HARDDRIVESAFETYWARNING1     322
 #define IDS_NUMSG_KS68EC020             323
 #define IDS_ROMSCANNOROMS               324
 #define IDS_NUMSG_KICKREP               325
@@ -278,6 +280,9 @@
 #define IDS_HDCLONE_OK                  328
 #define IDS_HDCLONE_FAIL                329
 #define IDR_DBGACCEL                    330
+#define IDS_NUMSG_KS68030               331
+#define IDS_NUMSG_EXPROMNEED            332
+#define IDS_HARDDRIVESAFETYWARNING2     333
 #define IDS_QS_MODELS                   1000
 #define IDS_QS_MODEL_A500               1001
 #define IDS_QS_MODEL_A500P              1002
@@ -288,6 +293,9 @@
 #define IDS_QS_MODEL_CDTV               1007
 #define IDS_QS_MODEL_UAE                1008
 #define IDS_QS_MODEL_ARCADIA            1009
+#define IDS_QS_MODEL_A3000              1010
+#define IDS_QS_MODEL_A4000              1011
+#define IDS_QS_MODEL_A4000T             1012
 #define IDC_RESOLUTION                  1021
 #define IDC_SERIAL                      1022
 #define IDC_REFRESHRATE                 1022
@@ -343,7 +351,6 @@
 #define IDC_BLIT32                      1173
 #define IDC_BLITIMM                     1174
 #define IDC_LORES                       1176
-#define IDC_VSYNC                       1177
 #define IDC_LORES_SMOOTHED              1179
 #define IDC_FRAMERATE                   1185
 #define IDC_RATETEXT                    1186
@@ -464,6 +471,7 @@
 #define IDC_NEW_HF                      1340
 #define IDC_NEW_HD                      1341
 #define IDC_PORT0                       1342
+#define IDC_NEW_FSARCH                  1342
 #define IDC_PORT1                       1343
 #define IDC_PATH_NAME                   1362
 #define IDC_SELECTOR                    1363
@@ -522,7 +530,6 @@
 #define IDC_HDF_CONTROLLER              1504
 #define IDC_RESETAMIGA                  1504
 #define IDC_QUITEMU                     1505
-#define IDC_TEST16BIT                   1506
 #define IDC_MAPDRIVES                   1507
 #define IDC_CPUTEXT                     1508
 #define IDC_MAPDRIVES_NET               1508
@@ -896,7 +903,12 @@
 #define IDC_CS_A2091                    1768
 #define IDC_CS_DMAC2                    1769
 #define IDC_CS_A4091                    1770
-
+#define IDC_CS_CDTVSCSI                 1771
+#define IDC_CS_SCSIMODE                 1772
+#define IDC_DF0ENABLE                   1773
+#define IDC_DF1ENABLE                   1774
+#define IDC_DF2ENABLE                   1776
+#define IDC_DF3ENABLE                   1778
 #define ID__FLOPPYDRIVES                40004
 #define ID_FLOPPYDRIVES_DF0             40005
 #define ID_ST_CONFIGURATION             40010
@@ -924,9 +936,9 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
 #define _APS_3D_CONTROLS                     1
-#define _APS_NEXT_RESOURCE_VALUE        253
+#define _APS_NEXT_RESOURCE_VALUE        334
 #define _APS_NEXT_COMMAND_VALUE         40029
-#define _APS_NEXT_CONTROL_VALUE         1771
+#define _APS_NEXT_CONTROL_VALUE         1774
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

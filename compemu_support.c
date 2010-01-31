@@ -423,8 +423,11 @@ STATIC_INLINE void alloc_blockinfos(void)
  ********************************************************************/
 extern int have_done_picasso;
 
-void check_prefs_changed_comp (void)
+int check_prefs_changed_comp (void)
 {
+    int changed = 0;
+    static int cachesize_prev, comptrust_prev, compforce_prev, canbang_prev;
+
     currprefs.comptrustbyte = changed_prefs.comptrustbyte;
     currprefs.comptrustword = changed_prefs.comptrustword;
     currprefs.comptrustlong = changed_prefs.comptrustlong;
@@ -436,23 +439,39 @@ void check_prefs_changed_comp (void)
     currprefs.compfpu = changed_prefs.compfpu;
     currprefs.fpu_strict = changed_prefs.fpu_strict;
 
-    if (currprefs.cachesize!=changed_prefs.cachesize) {
+    if (currprefs.cachesize != changed_prefs.cachesize) {
+	if (currprefs.cachesize == 0 && changed_prefs.cachesize && cachesize_prev) {
+	    changed_prefs.comptrustbyte = currprefs.comptrustbyte = comptrust_prev;
+	    changed_prefs.comptrustword = currprefs.comptrustword = comptrust_prev;
+	    changed_prefs.comptrustlong = currprefs.comptrustlong = comptrust_prev;
+	    changed_prefs.comptrustnaddr = currprefs.comptrustnaddr = comptrust_prev;
+	    changed_prefs.compforcesettings = currprefs.compforcesettings = compforce_prev;
+	    canbang = canbang_prev;
+	} else if (currprefs.cachesize && changed_prefs.cachesize == 0) {
+	    comptrust_prev = currprefs.comptrustbyte;
+	    compforce_prev = currprefs.compforcesettings;
+	    cachesize_prev = currprefs.cachesize;
+	    canbang_prev = canbang;
+	}
 	currprefs.cachesize = changed_prefs.cachesize;
 	alloc_cache();
+	changed = 1;
     }
+    if (!candirect)
+	canbang = 0;
 
     // Turn off illegal-mem logging when using JIT...
-    if( currprefs.cachesize )
+    if(currprefs.cachesize)
 	currprefs.illegal_mem = changed_prefs.illegal_mem;// = 0;
 
     currprefs.comp_midopt=changed_prefs.comp_midopt;
     currprefs.comp_lowopt=changed_prefs.comp_lowopt;
 
-    if ( ( !canbang || !currprefs.cachesize ) &&
-	currprefs.comptrustbyte != 1 )
+    if ((!canbang || !currprefs.cachesize) &&
+	currprefs.comptrustbyte != 1)
     {
 	// Set all of these to indirect when canbang == 0
-	// Basically, set the  compforcesettings option...
+	// Basically, set the compforcesettings option...
 	currprefs.comptrustbyte = 1;
 	currprefs.comptrustword = 1;
 	currprefs.comptrustlong = 1;
@@ -465,7 +484,9 @@ void check_prefs_changed_comp (void)
 	changed_prefs.comptrustnaddr= 1;
 	changed_prefs.compforcesettings = 1;
 
-	if( currprefs.cachesize )
+	changed = 1;
+
+	if(currprefs.cachesize)
 	{
 	    write_log( "JIT: Reverting to \"indirect\" access, because canbang is zero!\n" );
 	}
@@ -503,6 +524,7 @@ void check_prefs_changed_comp (void)
 	}
 #endif
     }
+    return changed;
 }
 
 /********************************************************************
@@ -2395,6 +2417,32 @@ MIDFUNC(2,setcc_m,(IMM d, IMM cc))
     raw_setcc_m(d,cc);
 }
 MENDFUNC(2,setcc_m,(IMM d, IMM cc))
+
+MIDFUNC(3,cmov_b_rr,(RW1 d, R1 s, IMM cc))
+{
+    if (d==s)
+	return;
+    CLOBBER_CMOV;
+    s=readreg(s,1);
+    d=rmw(d,1,1);
+    raw_cmov_b_rr(d,s,cc);
+    unlock(s);
+    unlock(d);
+}
+MENDFUNC(3,cmov_b_rr,(RW1 d, R1 s, IMM cc))
+
+MIDFUNC(3,cmov_w_rr,(RW2 d, R2 s, IMM cc))
+{
+    if (d==s)
+	return;
+    CLOBBER_CMOV;
+    s=readreg(s,2);
+    d=rmw(d,2,2);
+    raw_cmov_w_rr(d,s,cc);
+    unlock(s);
+    unlock(d);
+}
+MENDFUNC(3,cmov_w_rr,(RW2 d, R2 s, IMM cc))
 
 MIDFUNC(3,cmov_l_rr,(RW4 d, R4 s, IMM cc))
 {

@@ -1,3 +1,6 @@
+
+#include "flags_x86.h"
+
 #ifdef CPU_64_BIT
 typedef uae_u64 uintptr;
 #else
@@ -290,6 +293,8 @@ DECLARE(shra_w_ri(RW2 r, IMM i));
 DECLARE(shra_b_ri(RW1 r, IMM i));
 DECLARE(setcc(W1 d, IMM cc));
 DECLARE(setcc_m(IMM d, IMM cc));
+DECLARE(cmov_b_rr(RW1 d, R1 s, IMM cc));
+DECLARE(cmov_w_rr(RW2 d, R2 s, IMM cc));
 DECLARE(cmov_l_rr(RW4 d, R4 s, IMM cc));
 DECLARE(cmov_l_rm(RW4 d, IMM s, IMM cc));
 DECLARE(bsf_l_rr(W4 d, R4 s));
@@ -486,7 +491,7 @@ extern void empty_optimizer(void);
 #define comp_get_ilong(o) do_get_mem_long((uae_u32 *)(comp_pc_p + (o)))
 
 /* Preferences handling */
-void check_prefs_changed_comp (void);
+int check_prefs_changed_comp (void);
 
 struct blockinfo_t;
 

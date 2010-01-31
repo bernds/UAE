@@ -145,6 +145,38 @@
   * for the first time it displays all the familiar text. Then unsets 'PRIN'.
   */
 
+ /* Super IV:
+  *
+  * Possible "ROM" addresses ("ROM" is loaded from disk to Amiga memory)
+  * - 0xd00000
+  * - 0xc00000
+  * - 0x080000
+  *
+  * CIA-A: 0xb40000 (0x000, 0x100,...)
+  * CIA-B: 0xb40001 (0x001, 0x101,...)
+  * Custom: 0xe40000
+  *
+  * NOTE: emulation also supports 0xd40000 relocated "rom"-images
+  */
+
+ /* X-Power 500:
+  *
+  * ROM: 0xe20000 (128k)
+  * RAM: 0xf20000 (64k)
+  * CIA-A: 0xf2fc00 (00,02,04,...)
+  * CIA-B: 0xf2fc01 (01,03,05,...)
+  * Custom: 0xf2fc00 (from 0x20->)
+  */
+
+ /* Nordic Power:
+  *
+  * ROM: 0xf00000 (64k, mirrored at 0xf10000)
+  * RAM: 0xf40000 (32k, mirrored at 0xf48000 - 0xf5ffff)
+  * CIA-A: 0xf43c00 (00,02,04,...)
+  * CIA-B: 0xf43c01 (01,03,05,...)
+  * Custom: 0xf43c00 (from 0x20->)
+  * addresses 0 to 1023: 0xf40000 (weird feature..)
+  */
 
 #include "sysconfig.h"
 #include "sysdeps.h"
@@ -169,6 +201,7 @@
 
 static char *cart_memnames[] = { NULL, "hrtmon", "arhrtmon", "superiv" };
 static char *cart_memnames2[] = { NULL, NULL, NULL, "superiv_2" };
+static char *cart_memnames3[] = { NULL, NULL, NULL, "superiv_3" };
 
 #define ARMODE_FREEZE 0 /* AR2/3 The action replay 'freeze' button has been pressed.  */
 #define ARMODE_BREAKPOINT_AR2 2 /* AR2: The action replay is activated via a breakpoint. */
@@ -183,16 +216,19 @@ static char *cart_memnames2[] = { NULL, NULL, NULL, "superiv_2" };
 
 uae_u8 ar_custom[2*256];
 uae_u8 ar_ciaa[16], ar_ciab[16];
+static int hrtmon_ciadiv = 256;
 
 int hrtmon_flag = ACTION_REPLAY_INACTIVE;
 static int cart_type;
 
-static uae_u8 *hrtmemory = 0, *hrtmemory2 = 0;
+static uae_u8 *hrtmemory = 0, *hrtmemory2 = 0, *hrtmemory3 = 0;
 static uae_u8 *armemory_rom = 0, *armemory_ram = 0;
 
-static uae_u32 hrtmem_mask, hrtmem2_mask;
-static uae_u8 *hrtmon_custom, *hrtmon_ciaa, *hrtmon_ciab;
-uae_u32 hrtmem_start, hrtmem2_start, hrtmem_size, hrtmem2_size;
+static uae_u32 hrtmem_mask, hrtmem2_mask, hrtmem3_mask;
+static uae_u8 *hrtmon_custom, *hrtmon_ciaa, *hrtmon_ciab, *hrtmon_zeropage;
+uae_u32 hrtmem_start, hrtmem2_start, hrtmem3_start, hrtmem_size, hrtmem2_size, hrtmem2_size2, hrtmem3_size;
+uae_u32 hrtmem_end, hrtmem2_end;
+static int hrtmem_rom;
 static int triggered_once;
 
 static void hrtmon_unmap_banks(void);
@@ -218,8 +254,66 @@ static void cartridge_exit(void)
 #endif
 }
 
+static uae_u32 REGPARAM2 hrtmem3_bget (uaecptr addr)
+{
+    addr -= hrtmem3_start & hrtmem3_mask;
+    addr &= hrtmem3_mask;
+    return hrtmemory3[addr];
+}
+static uae_u32 REGPARAM2 hrtmem3_wget (uaecptr addr)
+{
+    return (hrtmem3_bget (addr) << 8) | hrtmem3_bget (addr + 1);
+}
+static uae_u32 REGPARAM2 hrtmem3_lget (uaecptr addr)
+{
+    return (hrtmem3_wget (addr) << 16) | hrtmem3_wget (addr + 2);
+}
+
+static void REGPARAM2 hrtmem3_lput (uaecptr addr, uae_u32 l)
+{
+    uae_u32 *m;
+    addr -= hrtmem3_start & hrtmem3_mask;
+    addr &= hrtmem3_mask;
+    m = (uae_u32 *)(hrtmemory3 + addr);
+    do_put_mem_long (m, l);
+}
+
+static void REGPARAM2 hrtmem3_wput (uaecptr addr, uae_u32 w)
+{
+    uae_u16 *m;
+    addr -= hrtmem3_start & hrtmem3_mask;
+    addr &= hrtmem3_mask;
+    m = (uae_u16 *)(hrtmemory3 + addr);
+    do_put_mem_word (m, (uae_u16)w);
+}
+static void REGPARAM2 hrtmem3_bput (uaecptr addr, uae_u32 b)
+{
+    addr -= hrtmem3_start & hrtmem3_mask;
+    addr &= hrtmem3_mask;
+    hrtmemory3[addr] = b;
+}
+static int REGPARAM2 hrtmem3_check (uaecptr addr, uae_u32 size)
+{
+    addr -= hrtmem3_start & hrtmem3_mask;
+    addr &= hrtmem3_mask;
+    return (addr + size) <= hrtmem3_size;
+}
+
+static uae_u8 *REGPARAM2 hrtmem3_xlate (uaecptr addr)
+{
+    addr -= hrtmem3_start & hrtmem3_mask;
+    addr &= hrtmem3_mask;
+    return hrtmemory3 + addr;
+}
+
 static uae_u32 REGPARAM2 hrtmem2_bget (uaecptr addr)
 {
+    if (addr == 0xb8007c && cart_type == CART_SUPER4) {
+        static int cnt = 60;
+	cnt--;
+	if (cnt == 0)
+	    uae_reset(0);
+    }
     addr -= hrtmem2_start & hrtmem2_mask;
     addr &= hrtmem2_mask;
     return hrtmemory2[addr];
@@ -300,6 +394,8 @@ static void REGPARAM2 hrtmem_lput (uaecptr addr, uae_u32 l)
     addr &= hrtmem_mask;
     if (cart_type == CART_AR1200 && addr < 0x80000)
 	return;
+    if (hrtmem_rom)
+	return;
     m = (uae_u32 *)(hrtmemory + addr);
     do_put_mem_long (m, l);
 }
@@ -311,6 +407,8 @@ static void REGPARAM2 hrtmem_wput (uaecptr addr, uae_u32 w)
     addr &= hrtmem_mask;
     if (cart_type == CART_AR1200 && addr < 0x80000)
 	return;
+    if (hrtmem_rom)
+	return;
     m = (uae_u16 *)(hrtmemory + addr);
     do_put_mem_word (m, (uae_u16)w);
 }
@@ -319,6 +417,8 @@ static void REGPARAM2 hrtmem_bput (uaecptr addr, uae_u32 b)
     addr -= hrtmem_start & hrtmem_mask;
     addr &= hrtmem_mask;
     if (cart_type == CART_AR1200 && addr < 0x80000)
+	return;
+    if (hrtmem_rom)
 	return;
     hrtmemory[addr] = b;
 }
@@ -348,7 +448,12 @@ static addrbank hrtmem2_bank = {
     hrtmem2_xlate, hrtmem2_check, NULL, "Cartridge Bank 2",
     hrtmem2_lget, hrtmem2_wget, ABFLAG_RAM
 };
-
+static addrbank hrtmem3_bank = {
+    hrtmem3_lget, hrtmem3_wget, hrtmem3_bget,
+    hrtmem3_lput, hrtmem3_wput, hrtmem3_bput,
+    hrtmem3_xlate, hrtmem3_check, NULL, "Cartridge Bank 3",
+    hrtmem3_lget, hrtmem3_wget, ABFLAG_RAM
+};
 static void copyfromamiga(uae_u8 *dst,uaecptr src,int len)
 {
 while(len--) {
@@ -811,7 +916,7 @@ static void action_replay_go (void)
     set_special (&regs, SPCFLAG_ACTION_REPLAY);
     copyfromamiga (artemp, regs.vbr + 0x7c, 4);
     copytoamiga (regs.vbr+0x7c, armemory_rom + 0x7c, 4);
-    Interrupt (7);
+    NMI ();
 }
 
 static void action_replay_go1 (int irq)
@@ -820,7 +925,7 @@ static void action_replay_go1 (int irq)
     hide_cart (0);
     action_replay_flag = ACTION_REPLAY_ACTIVE;
     memcpy (armemory_ram + 0xf000, ar_custom, 2 * 256);
-    Interrupt (7);
+    NMI ();
 }
 
 typedef struct {
@@ -865,12 +970,15 @@ static void hrtmon_go (void)
     cartridge_enter();
     hrtmon_flag = ACTION_REPLAY_ACTIVE;
     set_special (&regs, SPCFLAG_ACTION_REPLAY);
-    memcpy (hrtmon_custom, ar_custom, 2 * 256);
+    if (hrtmon_zeropage)
+	memcpy (hrtmon_zeropage, chipmemory, 1024);
+    if (hrtmon_custom)
+	memcpy (hrtmon_custom, ar_custom, 2 * 256);
     for (i = 0; i < 16; i++) {
 	if (hrtmon_ciaa)
-	    hrtmon_ciaa[i * 256 + 1] = ar_ciaa[i];
+	    hrtmon_ciaa[i * hrtmon_ciadiv + 1] = ar_ciaa[i];
 	if (hrtmon_ciab)
-	    hrtmon_ciab[i * 256 + 0] = ar_ciab[i];
+	    hrtmon_ciab[i * hrtmon_ciadiv + 0] = ar_ciab[i];
     }
     if (cart_type == CART_AR1200) {
         old = get_long((uaecptr)(regs.vbr + 0x8));
@@ -878,10 +986,18 @@ static void hrtmon_go (void)
 	put_long ((uaecptr)(regs.vbr + 8), get_long (hrtmem_start + 8));
 	Exception (2, &regs, 0);
 	put_long ((uaecptr)(regs.vbr + 8), old);
+    } else if (cart_type == CART_SUPER4) {
+	uae_u32 v = get_long (hrtmem_start + 0x7c);
+	if (v) {
+	    old = get_long((uaecptr)(regs.vbr + 0x7c));
+	    put_long ((uaecptr)(regs.vbr + 0x7c), v);
+	    NMI ();
+	    put_long ((uaecptr)(regs.vbr + 0x7c), old);
+	}
     } else {
         old = get_long((uaecptr)(regs.vbr + 0x7c));
 	put_long ((uaecptr)(regs.vbr + 0x7c), hrtmem_start + 12 + 2 + get_word (hrtmem_start + 14));
-	Interrupt (7);
+	NMI ();
 	//put_long ((uaecptr)(regs.vbr + 0x7c), old);
     }
 }
@@ -1394,11 +1510,103 @@ int action_replay_unload(int in_memory_reset)
     return 1;
 }
 
+static int superiv_init(struct romdata *rd, struct zfile *f)
+{
+    uae_u32 chip = currprefs.chipmem_size - 0x10000;
+    int subtype = rd->id;
+
+    cart_type = CART_SUPER4;
+
+    hrtmon_custom = 0;
+    hrtmon_ciaa = 0;
+    hrtmon_ciab = 0;
+
+    if (subtype == 65) { /* xpower */
+	hrtmem_start = 0xe20000;
+	hrtmem_size = 0x20000;
+	hrtmem2_start = 0xf20000;
+	hrtmem2_size =  0x10000;
+	hrtmem_rom = 1;
+    } else if (subtype == 66 || subtype == 67) { /* nordic */
+	hrtmem_start = 0xf00000;
+	hrtmem_size = 0x10000;
+	hrtmem_end = 0xf20000;
+	hrtmem2_start = 0xf40000;
+	hrtmem2_end = 0xf60000;
+	hrtmem2_size =  0x10000;
+	hrtmem_rom = 1;
+    } else { /* super4 */
+	hrtmem_start = 0xd00000;
+	hrtmem_size = 0x40000;
+	hrtmem2_start = 0xb00000;
+	hrtmem2_size =  0x100000;
+	hrtmem2_size2 = 0x0c0000;
+	hrtmem3_start = 0xe00000;
+	hrtmem3_size = 0x80000;
+    }
+    if (hrtmem2_size && !hrtmem2_size2)
+	hrtmem2_size2 = hrtmem2_size;
+
+    hrtmemory = mapped_malloc (hrtmem_size, cart_memnames[cart_type]);
+    memset (hrtmemory, 0x00, hrtmem_size);
+    if (f) {
+	zfile_fseek (f, 0, SEEK_SET);
+	zfile_fread (hrtmemory, 1, hrtmem_size, f);
+	zfile_fclose (f);
+    }
+
+    hrtmem_mask = hrtmem_size - 1;
+    hrtmem2_mask = hrtmem2_size - 1;
+    hrtmem3_mask = hrtmem3_size - 1;
+    if (hrtmem2_size) {
+	hrtmemory2 = mapped_malloc (hrtmem2_size, cart_memnames2[cart_type]);
+	memset(hrtmemory2, 0, hrtmem2_size);
+    }
+    if (hrtmem3_size) {
+	hrtmemory3 = mapped_malloc (hrtmem3_size, cart_memnames3[cart_type]);
+        memset(hrtmemory3, 0, hrtmem3_size);
+    }
+    hrtmem3_bank.baseaddr = hrtmemory3;
+    hrtmem2_bank.baseaddr = hrtmemory2;
+    hrtmem_bank.baseaddr = hrtmemory;
+
+    if (subtype == 65) {
+	hrtmon_custom = hrtmemory2 + 0xfc00;
+	hrtmon_ciaa = hrtmemory2 + 0xfc00;
+	hrtmon_ciab = hrtmemory2 + 0xfc01;
+	hrtmon_ciadiv = 2;
+	chip += 0x30000;
+	hrtmemory2[0xfc80] = chip >> 24;
+	hrtmemory2[0xfc81] = chip >> 16;
+	hrtmemory2[0xfc82] = chip >> 8;
+	hrtmemory2[0xfc83] = chip >> 0;
+    } else if (subtype == 66 || subtype == 67) {
+	hrtmon_custom = hrtmemory2 + 0x3c00;
+	hrtmon_ciaa = hrtmemory2 + 0x3c00;
+	hrtmon_ciab = hrtmemory2 + 0x3c01;
+	hrtmon_ciadiv = 2;
+	hrtmon_zeropage = hrtmemory2 + 0; /* eh? why not just use CPU? */
+    } else {
+	hrtmon_custom = hrtmemory3 + 0x040000;
+	hrtmon_ciaa = hrtmemory2 + 0x040000;
+	hrtmon_ciab = hrtmemory2 + 0x040001;
+	chip += 0x30000;
+	hrtmemory2[0x80] = chip >> 24;
+	hrtmemory2[0x81] = chip >> 16;
+	hrtmemory2[0x82] = chip >> 8;
+	hrtmemory2[0x83] = chip >> 0;
+    }
+
+    hrtmon_flag = ACTION_REPLAY_IDLE;
+    write_log("%s installed at %08.8X\n", cart_memnames[cart_type], hrtmem_start);
+    return 1;
+}
 
 int action_replay_load(void)
 {
     struct zfile *f;
     uae_u8 header[8];
+    struct romdata *rd;
 
     armodel = 0;
     action_replay_flag = ACTION_REPLAY_INACTIVE;
@@ -1411,28 +1619,39 @@ int action_replay_load(void)
 
     if (strlen(currprefs.cartfile) == 0)
 	return 0;
-    f = zfile_fopen(currprefs.cartfile,"rb");
+    rd = getromdatabypath(currprefs.cartfile);
+    if (rd && rd->id == 62)
+	return superiv_init(rd, NULL);
+    f = zfile_fopen(currprefs.cartfile, "rb");
     if (!f) {
-	write_log("failed to load '%s' Action Replay ROM\n", currprefs.cartfile);
+	write_log("failed to load '%s' cartridge ROM\n", currprefs.cartfile);
 	return 0;
+    }
+    rd = getromdatabyzfile(f);
+    if (!rd) {
+	write_log("Unknown cartridge ROM\n");
+    } else {
+	if (rd->type & ROMTYPE_SUPERIV) {
+	    return superiv_init(rd, f);
+	}
     }
     zfile_fseek(f, 0, SEEK_END);
     ar_rom_file_size = zfile_ftell(f);
     zfile_fseek(f, 0, SEEK_SET);
-    if (ar_rom_file_size != 65536 && ar_rom_file_size != 131072 && ar_rom_file_size != 262144) {
-	write_log("rom size must be 64KB (AR1), 128KB (AR2) or 256KB (AR3)\n");
-	zfile_fclose(f);
-	return 0;
-    }
     zfile_fread (header, 1, sizeof header, f);
     zfile_fseek (f, 0, SEEK_SET);
     if (!memcmp (header, "ATZ!HRT!", 8)) {
 	zfile_fclose (f);
 	return 0;
     }
+    if (ar_rom_file_size != 65536 && ar_rom_file_size != 131072 && ar_rom_file_size != 262144) {
+	write_log("rom size must be 64KB (AR1), 128KB (AR2) or 256KB (AR3)\n");
+	zfile_fclose(f);
+	return 0;
+    }
     action_replay_flag = ACTION_REPLAY_INACTIVE;
-    armemory_rom = xmalloc (ar_rom_file_size);
-    zfile_fread (armemory_rom, ar_rom_file_size, 1, f);
+    armemory_rom = (uae_u8*)xmalloc (ar_rom_file_size);
+    zfile_fread (armemory_rom, 1, ar_rom_file_size, f);
     zfile_fclose (f);
     if (ar_rom_file_size == 65536) {
 	armodel = 1;
@@ -1450,7 +1669,7 @@ int action_replay_load(void)
     }
     arram_mask = arram_size - 1;
     arrom_mask = arrom_size - 1;
-    armemory_ram = xcalloc (arram_size, 1);
+    armemory_ram = (uae_u8*)xcalloc (arram_size, 1);
     write_log("Action Replay %d installed at %08.8X, size %08.8X\n", armodel, arrom_start, arrom_size);
     action_replay_setbanks ();
     action_replay_version();
@@ -1481,12 +1700,24 @@ void action_replay_cleanup()
 	mapped_free (hrtmemory);
     if (hrtmemory2)
 	mapped_free (hrtmemory2);
+    if (hrtmemory3)
+	mapped_free (hrtmemory3);
 
     armemory_rom = 0;
     armemory_ram = 0;
     hrtmemory = 0;
     hrtmemory2 = 0;
+    hrtmemory3 = 0;
+    hrtmem_size = 0;
+    hrtmem2_size = 0;
+    hrtmem2_size2 = 0;
+    hrtmem3_size = 0;
     cart_type = 0;
+    hrtmem_rom = 0;
+    hrtmon_ciadiv = 256;
+    hrtmon_zeropage = 0;
+    hrtmem_end = 0;
+    hrtmem2_end = 0;
 }
 
 #ifndef FALSE
@@ -1526,6 +1757,8 @@ int hrtmon_load(void)
 {
     struct zfile *f;
     uae_u32 header[4];
+    struct romdata *rd;
+    int isinternal = 0;
 
     /* Don't load a rom if one is already loaded. Use action_replay_unload() first. */
     if (armemory_rom)
@@ -1533,13 +1766,14 @@ int hrtmon_load(void)
     if (hrtmemory)
       return 0;
 
-    //currprefs.cart_internal= changed_prefs.cart_internal = 2;
-
     triggered_once = 0;
     armodel = 0;
     cart_type = CART_AR;
     hrtmem_start = 0xa10000;
-    if (!currprefs.cart_internal) {
+    rd = getromdatabypath(currprefs.cartfile);
+    if (rd && rd->id == 63)
+	isinternal = 1;
+    if (!isinternal) {
 	if (strlen(currprefs.cartfile) == 0)
 	    return 0;
 	f = zfile_fopen(currprefs.cartfile,"rb");
@@ -1561,7 +1795,7 @@ int hrtmon_load(void)
     }
     hrtmem_size = 0x100000;
     hrtmem_mask = hrtmem_size - 1;
-    if (currprefs.cart_internal == 1) {
+    if (isinternal) {
 	#ifdef ACTION_REPLAY_HRTMON
 	struct zfile *zf = zfile_fopen_data ("hrtrom.gz", hrtrom_len, hrtrom);
 	f = zfile_gunzip (zf);
@@ -1569,24 +1803,16 @@ int hrtmon_load(void)
 	return 0;
 	#endif
         cart_type = CART_HRTMON;
-    } else if (currprefs.cart_internal == 2) {
-	hrtmem_start = 0xd00000;
-	hrtmem_size = 0x40000;
-	hrtmem2_start = 0xb00000;
-	hrtmem2_size = 0xc0000;
-	cart_type = CART_SUPER4;
-	goto end;
     }
     hrtmemory = mapped_malloc (hrtmem_size, cart_memnames[cart_type]);
     memset (hrtmemory, 0xff, 0x80000);
     zfile_fseek (f, 0, SEEK_SET);
-    zfile_fread (hrtmemory, 524288, 1, f);
+    zfile_fread (hrtmemory, 1, 524288, f);
     zfile_fclose (f);
     hrtmon_configure();
     hrtmon_custom = hrtmemory + 0x08f000;
     hrtmon_ciaa = hrtmemory + 0x08e000;
     hrtmon_ciab = hrtmemory + 0x08d000;
-end:
     if (hrtmem2_size) {
 	hrtmem2_mask = hrtmem2_size - 1;
 	hrtmemory2 = mapped_malloc (hrtmem2_size, cart_memnames2[cart_type]);
@@ -1601,20 +1827,56 @@ end:
 
 void hrtmon_map_banks()
 {
+    uaecptr addr;
+
     if(!hrtmemory)
 	return;
-    map_banks (&hrtmem_bank, hrtmem_start >> 16, hrtmem_size >> 16, 0);
-    if (hrtmem2_size)
-	map_banks (&hrtmem2_bank, hrtmem2_start >> 16, hrtmem2_size >> 16, 0);
+
+    addr = hrtmem_start;
+    while (addr != hrtmem_end) {
+	map_banks (&hrtmem_bank, addr >> 16, hrtmem_size >> 16, 0);
+	addr += hrtmem_size;
+	if (!hrtmem_end)
+	    break;
+    }
+    if (hrtmem2_size) {
+	addr = hrtmem2_start;
+	while (addr != hrtmem2_end) {
+	    map_banks (&hrtmem2_bank, addr >> 16, hrtmem2_size2 >> 16, 0);
+	    addr += hrtmem2_size;
+	    if (!hrtmem2_end)
+		break;
+	}
+    }
+    if (hrtmem3_size)
+	map_banks (&hrtmem3_bank, hrtmem3_start >> 16, hrtmem3_size >> 16, 0);
 }
 
 static void hrtmon_unmap_banks()
 {
+    uaecptr addr;
+
     if(!hrtmemory)
 	return;
-    map_banks (&dummy_bank, hrtmem_start >> 16, hrtmem_size >> 16, 0);
-    if (hrtmem2_size)
-	map_banks (&dummy_bank, hrtmem2_start >> 16, hrtmem2_size >> 16, 0);
+
+    addr = hrtmem_start;
+    while (addr != hrtmem_end) {
+	map_banks (&dummy_bank, addr >> 16, hrtmem_size >> 16, 0);
+	addr += hrtmem_size;
+	if (!hrtmem_end)
+	    break;
+    }
+    if (hrtmem2_size) {
+	addr = hrtmem2_start;
+	while (addr != hrtmem2_end) {
+	    map_banks (&dummy_bank, addr >> 16, hrtmem2_size2 >> 16, 0);
+	    addr += hrtmem2_size;
+	    if (!hrtmem2_end)
+		break;
+	}
+    }
+    if (hrtmem3_size)
+	map_banks (&dummy_bank, hrtmem3_start >> 16, hrtmem3_size >> 16, 0);
 }
 
 #define AR_VER_STR_OFFSET 0x4 /* offset in the rom where the version string begins. */
@@ -1720,16 +1982,24 @@ uae_u8 *save_hrtmon (int *len, uae_u8 *dstptr)
     if (dstptr)
 	dstbak = dst = dstptr;
     else
-	dstbak = dst = malloc (hrtmem_size + sizeof ar_custom + sizeof ar_ciaa + sizeof ar_ciab + 1024);
-    save_u8 (0);
+	dstbak = dst = (uae_u8*)malloc (hrtmem_size + hrtmem2_size + sizeof ar_custom + sizeof ar_ciaa + sizeof ar_ciab + 1024);
+    save_u8 (cart_type);
     save_u8 (0);
     save_u32 (0);
     strcpy (dst, currprefs.cartfile);
     dst += strlen(dst) + 1;
     save_u32 (0);
-    save_u32 (hrtmem_size);
-    memcpy (dst, hrtmemory, hrtmem_size);
-    dst += hrtmem_size;
+    if (!hrtmem_rom) {
+	save_u32 (hrtmem_size);
+        memcpy (dst, hrtmemory, hrtmem_size);
+	dst += hrtmem_size;
+    } else if (hrtmem2_size) {
+	save_u32 (hrtmem2_size);
+	memcpy (dst, hrtmemory2, hrtmem2_size);
+	dst += hrtmem2_size;
+    } else {
+	save_u32 (0);
+    }
     save_u32 (sizeof ar_custom);
     memcpy (dst, ar_custom, sizeof ar_custom);
     dst += sizeof ar_custom;
@@ -1745,6 +2015,8 @@ uae_u8 *save_hrtmon (int *len, uae_u8 *dstptr)
 
 uae_u8 *restore_hrtmon (uae_u8 *src)
 {
+    uae_u32 size;
+
     action_replay_unload (1);
     restore_u8 ();
     restore_u8 ();
@@ -1753,13 +2025,18 @@ uae_u8 *restore_hrtmon (uae_u8 *src)
     strcpy (currprefs.cartfile, changed_prefs.cartfile);
     src += strlen(src) + 1;
     hrtmon_load ();
+    action_replay_load ();
     if (restore_u32() != 0)
 	return src;
-    if (restore_u32() != hrtmem_size)
-	return src;
-    if (hrtmemory)
-	memcpy (hrtmemory, src, hrtmem_size);
-    src += hrtmem_size;
+    size = restore_u32();
+    if (!hrtmem_rom) {
+	if (hrtmemory)
+	    memcpy (hrtmemory, src, size);
+    } else if (hrtmem2_size) {
+	if (hrtmemory2)
+	    memcpy (hrtmemory2, src, size);
+    }
+    src += size;
     restore_u32();
     memcpy (ar_custom, src, sizeof ar_custom);
     src += sizeof ar_custom;

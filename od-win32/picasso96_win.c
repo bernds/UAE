@@ -111,7 +111,7 @@ static struct ScreenResolution alphacolour = { 640, 480 };
 #include "win32gui.h"
 #include "resource.h"
 #define UAE_RTG_LIBRARY_VERSION 40
-#define UAE_RTG_LIBRARY_REVISION 3993
+#define UAE_RTG_LIBRARY_REVISION 3994
 static void checkrtglibrary(void)
 {
     uae_u32 v;
@@ -1684,6 +1684,7 @@ static struct modeids mi[] =
     480, 360, 168,
     640, 350, 169,
    1600, 900, 170,
+    960, 600, 171,
    -1,-1,0
 };
 
@@ -2949,7 +2950,7 @@ void picasso_handle_hsync (void)
     
     if (currprefs.gfxmem_size == 0)
 	return;
-    if (WIN32GFX_IsPicassoScreen () && currprefs.gfx_pfullscreen && currprefs.gfx_vsync) {
+    if (WIN32GFX_IsPicassoScreen () && currprefs.gfx_pfullscreen && currprefs.gfx_pvsync) {
 	if (DirectDraw_GetVerticalBlankStatus ())
 	    p96hsync = 0;
     } else {

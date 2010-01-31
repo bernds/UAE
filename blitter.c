@@ -149,7 +149,7 @@ static const int blit_cycle_diagram[][10] =
 static const int blit_cycle_diagram_fill[][10] =
 {
     { 0, 3, 0,5,0 },		/* 0 */
-    { 0, 3, 3,5,4 },		/* 1 */
+    { 0, 3, 0,5,4 },		/* 1 */
     { 0, 3, 0,3,0 },		/* 2 */
     { 2, 3, 3,5,4, 3,0 },	/* 3 */
     { 0, 3, 0,2,5 },		/* 4 */
@@ -1194,7 +1194,7 @@ uae_u8 *save_blitter (int *len, uae_u8 *dstptr)
     if (dstptr)
 	dstbak = dst = dstptr;
     else
-	dstbak = dst = malloc (16);
+	dstbak = dst = (uae_u8*)malloc (16);
     save_u32(((bltstate != BLT_done) ? 0 : 1) | forced);
     *len = dst - dstbak;
     return dstbak;
