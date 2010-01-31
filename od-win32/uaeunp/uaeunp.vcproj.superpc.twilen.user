@@ -11,7 +11,7 @@
 			<DebugSettings
 				Command="$(TargetPath)"
 				WorkingDirectory="d:\amiga\"
-				CommandArguments="stuff\fdi\TILT105.zip\tilt105.fdi.dir"
+				CommandArguments="d:\misc\backup_mysql.tar.gz"
 				Attach="false"
 				DebuggerType="3"
 				Remote="1"

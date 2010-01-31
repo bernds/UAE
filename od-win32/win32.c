@@ -4285,6 +4285,7 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR
 		WIN32_InitLang ();
 		WIN32_InitHtmlHelp ();
 		DirectDraw_Release ();
+		unicode_init ();
 		if (betamessage ()) {
 			keyboard_settrans ();
 #ifdef CATWEASEL

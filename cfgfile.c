@@ -268,7 +268,7 @@ static void cfg_dowrite (struct zfile *f, const TCHAR *option, const TCHAR *valu
 	utf8 = 0;
 	tmp1 = ua (value);
 	tmp2 = uutf8 (value);
-	if (strcmp (tmp1, tmp2))
+	if (strcmp (tmp1, tmp2) && tmp2[0] != 0)
 		utf8 = 1;
 
 	if (target)
@@ -2023,9 +2023,11 @@ static int cfgfile_separate_linea (char *line, TCHAR *line1b, TCHAR *line2b)
 	line += strspn (line, "\t \r\n");
 	au_copy (line1b, MAX_DPATH, line);
 	if (isutf8ext (line1b)) {
-		TCHAR *s = utf8u (line2);
-		_tcscpy (line2b, s);
-		xfree (s);
+		if (line2[0]) {
+			TCHAR *s = utf8u (line2);
+			_tcscpy (line2b, s);
+			xfree (s);
+		}
 	} else {
 		au_copy (line2b, MAX_DPATH, line2);
 	}
@@ -2740,7 +2742,7 @@ static int cfgfile_handle_custom_event (TCHAR *custom, int mode)
 	int cnt = 0, cnt_ok = 0;
 
 	if (!mode) {
-		uae_u8 zero = 0;
+		TCHAR zero = 0;
 		configstore = zfile_fopen_empty ("configstore", 50000);
 		cfgfile_save_options (configstore, &currprefs, 0);
 		cfg_write (&zero, configstore);
@@ -3171,7 +3173,7 @@ void default_prefs (struct uae_prefs *p, int type)
 {
 	int i;
 	int roms[] = { 6, 7, 8, 9, 10, 14, 5, 4, 3, 2, 1, -1 };
-	uae_u8 zero = 0;
+	TCHAR zero = 0;
 	struct zfile *f;
 
 	memset (p, 0, sizeof (*p));
