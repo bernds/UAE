@@ -1,5 +1,6 @@
 
 #pragma warning (disable : 4761)
+#pragma warning (disable: 4996)
 
 #define DIRECTINPUT_VERSION  0x0800
 #define DIRECT3D_VERSION 0x0900
@@ -44,6 +45,7 @@
 #define FDI2RAW /* FDI 1.0 and 2.0 image support */
 #define AVIOUTPUT /* Avioutput support */
 #define PROWIZARD /* Pro-Wizard module ripper */
+#define ARCADIA /* Arcadia arcade system */
 
 #else
 

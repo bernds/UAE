@@ -24,7 +24,8 @@ extern void reset_all_systems (void);
 extern int quit_program;
 
 extern char warning_buffer[256];
-extern char *start_path;
+extern char start_path_data[];
+extern char start_path_data_exe[];
 
 /* This structure is used to define menus. The val field can hold key
  * shortcuts, or one of these special codes:
@@ -43,3 +44,4 @@ struct bstring {
 extern char *colormodes[];
 extern void fetch_saveimagepath (char*, int, int);
 extern void fetch_configurationpath (char *out, int size);
+extern void fetch_screenshotpath (char *out, int size);

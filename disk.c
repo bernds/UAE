@@ -32,6 +32,7 @@
 #include "execlib.h"
 #include "savestate.h"
 #include "cia.h"
+#include "debug.h"
 #ifdef FDI2RAW
 #include "fdi2raw.h"
 #endif
@@ -156,6 +157,7 @@ typedef struct {
     int dskready_time;
     int dskready_down_time;
     int steplimit;
+    frame_time_t steplimitcycle;
     int indexhack, indexhackmode;
     int ddhd; /* 1=DD 2=HD */
     int drive_id_scnt; /* drive id shift counter */
@@ -174,6 +176,11 @@ typedef struct {
     int catweasel;
 #endif
 } drive;
+
+int disk_debug_mode;
+int disk_debug_track = -1;
+
+#define MIN_STEPLIMIT_CYCLE (CYCLE_UNIT * 150)
 
 static uae_u16 bigmfmbufw[0x4000 * DDHDMULT];
 static drive floppy[MAX_FLOPPY_DRIVES];
@@ -826,6 +833,7 @@ static int drive_insert (drive * drv, struct uae_prefs *p, int dnum, const char 
     currprefs.df[dnum][255] = 0;
     strncpy (changed_prefs.df[dnum], fname, 255);
     changed_prefs.df[dnum][255] = 0;
+    strcpy (drv->newname, fname);
     gui_filename (dnum, fname);
 
     memset (buffer, 0, sizeof (buffer));
@@ -987,9 +995,9 @@ static void drive_step (drive * drv)
 	return;
     }
 #endif
-    if (drv->steplimit) {
+    if (drv->steplimit && get_cycles() - drv->steplimitcycle < MIN_STEPLIMIT_CYCLE) {
 #ifdef DISK_DEBUG2
-        write_dlog (" step ignored");
+        write_dlog (" step ignored %d", (get_cycles() - drv->steplimitcycle) / CYCLE_UNIT);
 #endif
 	return;
     }
@@ -997,7 +1005,8 @@ static void drive_step (drive * drv)
      * but we'll use very small value for better compatibility with faster CPU emulation
      * (stupid trackloaders with CPU delay loops)
      */
-    drv->steplimit = 2;
+    drv->steplimit = 10;
+    drv->steplimitcycle = get_cycles ();
     if (!drive_empty (drv))
 	drv->dskchange = 0;
     if (direction) {
@@ -1649,6 +1658,9 @@ static void setdskchangetime(drive *drv, int dsktime)
 	}
     }
     drv->dskchange_time = dsktime;
+#ifdef DISK_DEBUG
+    write_dlog("delayed insert enable %d\n", dsktime);
+#endif
 }
 
 void DISK_reinsert (int num)
@@ -2284,6 +2296,12 @@ static void disk_doupdate_read (drive * drv, int floppybits)
 #endif
 }
 
+static void disk_dma_debugmsg(void)
+{
+    write_dlog ("LEN=%04.4X (%d) SYNC=%04.4X PT=%08.8X ADKCON=%04.4X PC=%08.8X\n", 
+	dsklength, dsklength, (adkcon & 0x400) ? dsksync : 0xffff, dskpt, adkcon, m68k_getpc());
+}
+
 #if 0
 /* disk DMA fetch happens on real Amiga at the beginning of next horizontal line
    (cycles 9, 11 and 13 according to hardware manual) We transfer all DMA'd
@@ -2320,6 +2338,22 @@ uae_u16 DSKBYTR (int hpos)
 #ifdef DISK_DEBUG2
     write_dlog ("DSKBYTR=%04.4X hpos=%d\n", v, hpos);
 #endif
+    if (disk_debug_mode & DISK_DEBUG_PIO) {
+	int dr;
+        for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
+	    drive *drv = &floppy[dr];
+	    if (drv->motoroff)
+		continue;
+	    if (!(selected & (1 << dr))) {
+	        if (disk_debug_track < 0 || disk_debug_track == 2 * drv->cyl + side) {
+		    disk_dma_debugmsg();
+		    write_log ("DSKBYTR=%04.4X\n", v);
+		    activate_debugger();
+		    break;
+		}
+	    }
+	}
+    }
     return v;
 }
 
@@ -2353,6 +2387,24 @@ static void DISK_start (void)
 
 static int linecounter;
 
+void DISK_hsync (int tohpos)
+{
+    int dr;
+
+    for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
+	drive *drv = &floppy[dr];
+	if (drv->steplimit)
+	    drv->steplimit--;
+    }
+    if (linecounter) {
+	linecounter--;
+	if (! linecounter)
+	    disk_dmafinished ();
+	return;
+    }
+    DISK_update (tohpos);
+}
+
 void DISK_update (int tohpos)
 {
     int dr;
@@ -2367,18 +2419,6 @@ void DISK_update (int tohpos)
     disk_hpos += cycles;
     if (disk_hpos >= (maxhpos << 8))
 	disk_hpos -= maxhpos << 8;
-
-    for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
-	drive *drv = &floppy[dr];
-	if (drv->steplimit)
-	    drv->steplimit--;
-    }
-    if (linecounter) {
-	linecounter--;
-	if (! linecounter)
-	    disk_dmafinished ();
-	return;
-    }
 
 #if 0
     dodmafetch ();
@@ -2451,6 +2491,23 @@ void DSKLEN (uae_u16 v, int hpos)
 	DISK_start ();
     }
 
+    if (((disk_debug_mode & DISK_DEBUG_DMA_READ) && dskdmaen == 2) ||
+	((disk_debug_mode & DISK_DEBUG_DMA_WRITE) && dskdmaen == 3))
+    {
+        for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
+	    drive *drv = &floppy[dr];
+	    if (drv->motoroff)
+		continue;
+	    if (!(selected & (1 << dr))) {
+	        if (disk_debug_track < 0 || disk_debug_track == 2 * drv->cyl + side) {
+		    disk_dma_debugmsg();
+		    activate_debugger();
+		    break;
+		}
+	    }
+	}
+    }
+
 #ifdef DISK_DEBUG
     for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++) {
         drive *drv = &floppy[dr];
@@ -2468,8 +2525,7 @@ void DSKLEN (uae_u16 v, int hpos)
 	    floppy[dr].cyl * 2 + side, floppy[dr].mfmpos);
 	update_drive_gui (dr);
     }
-    write_dlog ("LEN=%04.4X (%d) SYNC=%04.4X PT=%08.8X ADKCON=%04.4X PC=%08.8X\n", 
-	dsklength, dsklength, (adkcon & 0x400) ? dsksync : 0xffff, dskpt, adkcon, m68k_getpc());
+    disk_dma_debugmsg();
 #endif
 
     for (dr = 0; dr < MAX_FLOPPY_DRIVES; dr++)

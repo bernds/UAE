@@ -29,6 +29,7 @@
 #include <math.h>
 #include <mmsystem.h>
 #include <shobjidl.h>
+#include <shlobj.h>
 
 #include "sysdeps.h"
 #include "options.h"
@@ -68,6 +69,7 @@ unsigned long *win32_freestack[42]; //EXTRA_STACK_SIZE
 extern FILE *debugfile;
 extern int console_logging;
 static OSVERSIONINFO osVersion;
+static SYSTEM_INFO SystemInfo;
 
 int useqpc = 0; /* Set to TRUE to use the QueryPerformanceCounter() function instead of rdtsc() */
 int cpu_mmx = 0;
@@ -75,7 +77,7 @@ static int no_rdtsc;
 
 HINSTANCE hInst = NULL;
 HMODULE hUIDLL = NULL;
-HWND (WINAPI *pHtmlHelp)(HWND, LPCSTR, UINT, LPDWORD ) = NULL;
+HWND (WINAPI *pHtmlHelp)(HWND, LPCSTR, UINT, LPDWORD) = NULL;
 HWND hAmigaWnd, hMainWnd, hHiddenWnd;
 RECT amigawin_rect;
 static UINT TaskbarRestart;
@@ -106,8 +108,9 @@ static int mm_timerres;
 static int timermode, timeon;
 static HANDLE timehandle;
 
-char *start_path;
-char help_file[ MAX_DPATH ];
+char start_path_data[MAX_DPATH];
+char start_path_exe[MAX_DPATH];
+char help_file[MAX_DPATH];
 
 extern int harddrive_dangerous, do_rdbdump, aspi_allow_all, no_rawinput;
 int log_scsi;
@@ -230,7 +233,7 @@ static int figure_processor_speed (void)
 	}
 	if (mmx)
 	    cpu_mmx = 1;
-    } __except( GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION ) {
+    } __except(GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION) {
     }
 
     if (QueryPerformanceFrequency(&freq)) {
@@ -252,7 +255,7 @@ static int figure_processor_speed (void)
     }
 
     init_mmtimer();
-    SetThreadPriority ( GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
     sleep_millis (100);
     dummythread_die = -1;
 
@@ -330,7 +333,7 @@ static int figure_processor_speed (void)
 	write_log("\n");
     }
 
-    SetThreadPriority ( GetCurrentThread(), THREAD_PRIORITY_NORMAL);
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_NORMAL);
     dummythread_die = 1;
 
     sleep_resolution = 1;
@@ -338,11 +341,11 @@ static int figure_processor_speed (void)
 	limit = 2.5;
 	if ((ratea2 / ratecnt) < limit * clockrate1000) { /* regular Sleep() is ok */
 	    timermode = 1;
-	    sleep_resolution = ratea2 * clockrate1000 / (ratecnt * 1000000);
+	    sleep_resolution = (int)(ratea2 * clockrate1000 / (ratecnt * 1000000));
 	    write_log ("Using Sleep() (resolution < %.1fms)\n", limit);
 	} else if (mm_timerres && (ratea1 / ratecnt) < limit * clockrate1000) { /* MM-timer is ok */
 	    timermode = 0;
-	    sleep_resolution = ratea1 * clockrate1000 / (ratecnt * 1000000);
+	    sleep_resolution = (int)(ratea1 * clockrate1000 / (ratecnt * 1000000));
 	    timebegin ();
 	    write_log ("Using MultiMedia timers (resolution < %.1fms)\n", limit);
 	} else {
@@ -368,7 +371,7 @@ static void setcursor(int oldx, int oldy)
     SetCursorPos (amigawin_rect.left + x, amigawin_rect.top + y);
 }
 
-static int activateapp;
+static WPARAM activateapp;
 
 static void checkpause (void)
 {
@@ -581,7 +584,7 @@ static void handleXbutton (WPARAM wParam, int updown)
 	setmousebuttonstate (dinput_winmouse(), num, updown);
 }
 
-static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     PAINTSTRUCT ps;
     HDC hDC;
@@ -851,10 +854,10 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 				inserted = 1;
 			    else if (wParam == DBT_DEVICEREMOVECOMPLETE)
 				inserted = 0;
-	#ifdef WINDDK
+#ifdef WINDDK
 			    win32_spti_media_change (drive, inserted);
 			    win32_ioctl_media_change (drive, inserted);
-	#endif
+#endif
 			    win32_aspi_media_change (drive, inserted);
 			}
 		    }
@@ -935,6 +938,7 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
 	    break;
 	 }
 	break;
+
      case WM_COMMAND:
 	switch (wParam & 0xffff)
 	{
@@ -985,14 +989,14 @@ static long FAR PASCAL AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam, 
     return DefWindowProc (hWnd, message, wParam, lParam);
 }
 
-static long FAR PASCAL MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+static LRESULT CALLBACK MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     PAINTSTRUCT ps;
     RECT rc;
     HDC hDC;
 
-    switch (message) {
-
+    switch (message)
+    {
      case WM_MOUSEMOVE:
      case WM_MOUSEWHEEL:
      case WM_ACTIVATEAPP:
@@ -1044,28 +1048,24 @@ static long FAR PASCAL MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, L
 
      case WM_WINDOWPOSCHANGED:
 	WIN32GFX_WindowMove();
-	if( hAmigaWnd && GetWindowRect (hAmigaWnd, &amigawin_rect) )
-	{
+	if( hAmigaWnd && GetWindowRect(hAmigaWnd, &amigawin_rect)) {
 	    if (in_sizemove > 0)
 		break;
 
-	    if( !isfullscreen() && hAmigaWnd )
-	    {
+	    if (!isfullscreen() && hAmigaWnd) {
 	        static int store_xy;
 	        RECT rc2;
-		if( GetWindowRect( hMainWnd, &rc2 )) {
-		    if (amigawin_rect.left & 3)
-		    {
+		if (GetWindowRect(hMainWnd, &rc2)) {
+		    if (amigawin_rect.left & 3) {
 			MoveWindow (hMainWnd, rc2.left+ 4 - amigawin_rect.left % 4, rc2.top,
 				    rc2.right - rc2.left, rc2.bottom - rc2.top, TRUE);
 
 		    }
-		    if( hWinUAEKey && store_xy++)
-		    {
+		    if (hWinUAEKey && store_xy++) {
 			DWORD left = rc2.left - win_x_diff;
 			DWORD top = rc2.top - win_y_diff;
-			RegSetValueEx( hWinUAEKey, "xPos", 0, REG_DWORD, (LPBYTE)&left, sizeof( LONG ) );
-			RegSetValueEx( hWinUAEKey, "yPos", 0, REG_DWORD, (LPBYTE)&top, sizeof( LONG ) );
+			RegSetValueEx(hWinUAEKey, "xPos", 0, REG_DWORD, (LPBYTE)&left, sizeof(LONG));
+			RegSetValueEx(hWinUAEKey, "yPos", 0, REG_DWORD, (LPBYTE)&top, sizeof(LONG));
 		    }
 		}
 		return 0;
@@ -1098,7 +1098,7 @@ static long FAR PASCAL MainWindowProc (HWND hWnd, UINT message, WPARAM wParam, L
     return DefWindowProc (hWnd, message, wParam, lParam);
 }
 
-static long FAR PASCAL HiddenWindowProc (HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+static LRESULT CALLBACK HiddenWindowProc (HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     return DefWindowProc (hWnd, message, wParam, lParam);
 }
@@ -1222,13 +1222,13 @@ static HINSTANCE hRichEdit = NULL, hHtmlHelp = NULL;
 int WIN32_CleanupLibraries( void )
 {
     if (hRichEdit)
-	FreeLibrary (hRichEdit);
+	FreeLibrary(hRichEdit);
     
-    if( hHtmlHelp )
-        FreeLibrary( hHtmlHelp );
+    if (hHtmlHelp)
+        FreeLibrary(hHtmlHelp);
 
-    if( hUIDLL )
-	FreeLibrary( hUIDLL );
+    if (hUIDLL)
+	FreeLibrary(hUIDLL);
 
     return 1;
 }
@@ -1238,9 +1238,8 @@ int WIN32_InitHtmlHelp( void )
 {
     int result = 0;
     if (zfile_exists (help_file)) {
-        if( hHtmlHelp = LoadLibrary( "HHCTRL.OCX" ) )
-	{
-	    pHtmlHelp = ( HWND(WINAPI *)(HWND, LPCSTR, UINT, LPDWORD ) )GetProcAddress( hHtmlHelp, "HtmlHelpA" );
+        if (hHtmlHelp = LoadLibrary("HHCTRL.OCX")) {
+	    pHtmlHelp = (HWND(WINAPI *)(HWND, LPCSTR, UINT, LPDWORD))GetProcAddress(hHtmlHelp, "HtmlHelpA");
 	    result = 1;
 	}
     }
@@ -1481,23 +1480,23 @@ static HMODULE LoadGUI( void )
 	int fail = 1;
 
         if (language == 0x400)
-	    sprintf (dllbuf, "%sguidll.dll", start_path);
+	    sprintf (dllbuf, "%sguidll.dll", start_path_exe);
 	else
-	    sprintf (dllbuf, "%sWinUAE_%s.dll", start_path, dllname);
+	    sprintf (dllbuf, "%sWinUAE_%s.dll", start_path_exe, dllname);
 	result = WIN32_LoadLibrary (dllbuf);
 	if( result) 
 	{
-	    dwFileVersionInfoSize = GetFileVersionInfoSize(dllbuf, &dwVersionHandle );
-	    if( dwFileVersionInfoSize )
+	    dwFileVersionInfoSize = GetFileVersionInfoSize(dllbuf, &dwVersionHandle);
+	    if (dwFileVersionInfoSize)
 	    {
-		if( lpFileVersionData = calloc( 1, dwFileVersionInfoSize ) )
+		if (lpFileVersionData = calloc(1, dwFileVersionInfoSize))
 		{
-		    if( GetFileVersionInfo (dllbuf, dwVersionHandle, dwFileVersionInfoSize, lpFileVersionData ) )
+		    if (GetFileVersionInfo(dllbuf, dwVersionHandle, dwFileVersionInfoSize, lpFileVersionData))
 		    {
 			VS_FIXEDFILEINFO *vsFileInfo = NULL;
 			UINT uLen;
 			fail = 0;
-			if( VerQueryValue( lpFileVersionData, TEXT("\\"), (void **)&vsFileInfo, &uLen ) )
+			if (VerQueryValue(lpFileVersionData, TEXT("\\"), (void **)&vsFileInfo, &uLen))
 			{
 			    if( vsFileInfo &&
 				HIWORD(vsFileInfo->dwProductVersionMS) == UAEMAJOR
@@ -1514,7 +1513,7 @@ static HMODULE LoadGUI( void )
 			    }
 			}
 		    }
-		    free( lpFileVersionData );
+		    free(lpFileVersionData);
 		}
 	    }
 	}
@@ -1599,29 +1598,35 @@ void logging_init( void )
     }
 #ifndef SINGLEFILE
     if (currprefs.win32_logfile) {
-	sprintf (debugfilename, "%swinuaelog.txt", start_path);
-	if( !debugfile )
+	sprintf (debugfilename, "%swinuaelog.txt", start_path_data);
+	if (!debugfile)
 	    debugfile = fopen (debugfilename, "wt");
     } else if (!first) {
-	sprintf (debugfilename, "%swinuaebootlog.txt", start_path);
-	if( !debugfile )
+	sprintf (debugfilename, "%swinuaebootlog.txt", start_path_data);
+	if (!debugfile)
 	    debugfile = fopen (debugfilename, "wt");
     }
 #endif
     first++;
-    write_log ( "%s", VersionStr );
-    write_log (" (%s %d.%d %s%s)", os_winnt ? "NT" : "W9X/ME",
+    write_log ("%s (%s %d.%d %s%s%s)", VersionStr, os_winnt ? "NT" : "W9X/ME",
 	osVersion.dwMajorVersion, osVersion.dwMinorVersion, osVersion.szCSDVersion,
-	os_winnt_admin ? " Admin" : "");
+	strlen(osVersion.szCSDVersion) > 0 ? " " : "", os_winnt_admin ? "Admin" : "");
+    write_log (" %s %X.%X %d",
+	SystemInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL ? "32-bit x86" :
+	SystemInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_IA64 ? "IA64" :
+	SystemInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64 ? "AMD64" : "Unknown",
+	SystemInfo.wProcessorLevel, SystemInfo.wProcessorRevision,
+	SystemInfo.dwNumberOfProcessors);
     write_log ("\n(c) 1995-2001 Bernd Schmidt   - Core UAE concept and implementation."
-	       "\n(c) 1998-2004 Toni Wilen      - Win32 port, core code updates."
+	       "\n(c) 1998-2005 Toni Wilen      - Win32 port, core code updates."
 	       "\n(c) 1996-2001 Brian King      - Win32 port, Picasso96 RTG, and GUI."
 	       "\n(c) 1996-1999 Mathias Ortmann - Win32 port and bsdsocket support."
 	       "\n(c) 2000-2001 Bernd Meyer     - JIT engine."
-	       "\n(c) 2000-2001 Bernd Roesch    - MIDI input, many fixes."
+	       "\n(c) 2000-2005 Bernd Roesch    - MIDI input, many fixes."
 	       "\nPress F12 to show the Settings Dialog (GUI), Alt-F4 to quit."
 	       "\nEnd+F1 changes floppy 0, End+F2 changes floppy 1, etc."
 	       "\n");
+    write_log ("EXE: '%s'\nDATA: '%s'\n", start_path_exe, start_path_data);
 }
 
 void logging_cleanup( void )
@@ -1680,6 +1685,7 @@ void target_save_options (struct zfile *f, struct uae_prefs *p)
     cfgfile_write (f, "win32.cpu_idle=%d\n", p->cpu_idle);
     cfgfile_write (f, "win32.notaskbarbutton=%s\n", p->win32_notaskbarbutton ? "true" : "false");
     cfgfile_write (f, "win32.always_on_top=%s\n", p->win32_alwaysontop ? "true" : "false");
+    cfgfile_write (f, "win32.no_recyclebin=%s\n", p->win32_norecyclebin ? "true" : "false");
 }
 
 static int fetchpri (int pri, int defpri)
@@ -1715,6 +1721,7 @@ int target_parse_option (struct uae_prefs *p, char *option, char *value)
 	    || cfgfile_yesno (option, value, "iconified_pause", &p->win32_iconified_pause)
 	    || cfgfile_yesno (option, value, "iconified_nosound", &p->win32_iconified_nosound)
 	    || cfgfile_yesno  (option, value, "ctrl_f11_is_quit", &p->win32_ctrl_F11_is_quit)
+	    || cfgfile_yesno  (option, value, "no_recyclebin", &p->win32_norecyclebin)
 	    || cfgfile_intval (option, value, "midi_device", &p->win32_midioutdev, 1)
 	    || cfgfile_intval (option, value, "midiout_device", &p->win32_midioutdev, 1)
 	    || cfgfile_intval (option, value, "midiin_device", &p->win32_midiindev, 1)
@@ -1772,6 +1779,10 @@ void fetch_configurationpath (char *out, int size)
 {
     fetch_path ("ConfigurationPath", out, size);
 }
+void fetch_screenshotpath (char *out, int size)
+{
+    fetch_path ("ScreenshotPath", out, size);
+}
 
 static void strip_slashes (char *p)
 {
@@ -1783,7 +1794,7 @@ void fetch_path (char *name, char *out, int size)
 {
     int size2 = size;
 
-    strcpy (out, start_path);
+    strcpy (out, start_path_data);
     if (!strcmp (name, "FloppyPath"))
 	strcat (out, "..\\shared\\adf\\");
     if (!strcmp (name, "hdfPath"))
@@ -1795,7 +1806,7 @@ void fetch_path (char *name, char *out, int size)
     if (hWinUAEKey)
 	RegQueryValueEx (hWinUAEKey, name, 0, NULL, out, &size);
     if (out[0] == '\\') { /* relative? */
-	strcpy (out, start_path);
+	strcpy (out, start_path_data);
         if (hWinUAEKey) {
 	    size2 -= strlen (out);
 	    RegQueryValueEx (hWinUAEKey, name, 0, NULL, out + strlen (out) - 1, &size2);
@@ -1805,7 +1816,7 @@ void fetch_path (char *name, char *out, int size)
     if (!strcmp (name, "KickstartPath")) {
 	DWORD v = GetFileAttributes (out);
 	if (v == INVALID_FILE_ATTRIBUTES || !(v & FILE_ATTRIBUTE_DIRECTORY))
-	    strcpy (out, start_path);
+	    strcpy (out, start_path_data);
     }
     strncat (out, "\\", size);
 }
@@ -1814,7 +1825,7 @@ void set_path (char *name, char *path)
     char tmp[MAX_DPATH];
 
     if (!path) {
-	strcpy (tmp, start_path);
+	strcpy (tmp, start_path_data);
 	if (!strcmp (name, "KickstartPath"))
 	    strcat (tmp, "Roms");
 	if (!strcmp (name, "ConfigurationPath"))
@@ -1832,7 +1843,7 @@ void set_path (char *name, char *path)
     if (!strcmp (name, "KickstartPath")) {
 	DWORD v = GetFileAttributes (tmp);
 	if (v == INVALID_FILE_ATTRIBUTES || !(v & FILE_ATTRIBUTE_DIRECTORY))
-	    strcpy (tmp, start_path);
+	    strcpy (tmp, start_path_data);
     }
     strcat (tmp, "\\");
 
@@ -1863,7 +1874,7 @@ void read_rom_list (int force)
     if (!hWinUAEKey)
 	return;
     RegCreateKeyEx(hWinUAEKey , "DetectedROMs", 0, NULL, REG_OPTION_NON_VOLATILE,
-	KEY_ALL_ACCESS, NULL, &fkey, &disp);
+	KEY_READ | KEY_WRITE, NULL, &fkey, &disp);
     if (fkey == NULL)
 	return;
     if (disp == REG_CREATED_NEW_KEY || force)
@@ -1934,59 +1945,76 @@ static void WIN32_HandleRegistryStuff( void )
     HKEY hWinUAEKeyLocal = NULL;
     HKEY fkey;
     int forceroms = 0;
+    HKEY rkey;
+    char rpath1[MAX_DPATH], rpath2[MAX_DPATH], rpath3[MAX_DPATH];
+
+    rpath1[0] = rpath2[0] = rpath3[0] = 0;
+    rkey = HKEY_CLASSES_ROOT;
+    if (os_winnt) {
+	if (os_winnt_admin)
+	    rkey = HKEY_LOCAL_MACHINE;
+	else
+	    rkey = HKEY_CURRENT_USER;
+	strcpy(rpath1, "Software\\Classes\\");
+	strcpy(rpath2, rpath1);
+	strcpy(rpath3, rpath1);
+    }
+    strcat(rpath1, ".uae");
+    strcat(rpath2, "WinUAE\\shell\\Edit\\command");
+    strcat(rpath3, "WinUAE\\shell\\Open\\command");
 
     /* Create/Open the hWinUAEKey which points to our config-info */
-    if( RegCreateKeyEx( HKEY_CLASSES_ROOT, ".uae", 0, "", REG_OPTION_NON_VOLATILE,
-                          KEY_ALL_ACCESS, NULL, &hWinUAEKey, &disposition ) == ERROR_SUCCESS )
+    if (RegCreateKeyEx(rkey, rpath1, 0, "", REG_OPTION_NON_VOLATILE,
+	KEY_WRITE | KEY_READ, NULL, &hWinUAEKey, &disposition) == ERROR_SUCCESS)
     {
 	// Regardless of opening the existing key, or creating a new key, we will write the .uae filename-extension
 	// commands in.  This way, we're always up to date.
 
         /* Set our (default) sub-key to point to the "WinUAE" key, which we then create */
-        RegSetValueEx( hWinUAEKey, "", 0, REG_SZ, (CONST BYTE *)"WinUAE", strlen( "WinUAE" ) + 1 );
+        RegSetValueEx(hWinUAEKey, "", 0, REG_SZ, (CONST BYTE *)"WinUAE", strlen( "WinUAE" ) + 1);
 
-        if( ( RegCreateKeyEx( HKEY_CLASSES_ROOT, "WinUAE\\shell\\Edit\\command", 0, "", REG_OPTION_NON_VOLATILE,
-                              KEY_ALL_ACCESS, NULL, &hWinUAEKeyLocal, &disposition ) == ERROR_SUCCESS ) )
+        if((RegCreateKeyEx(rkey, rpath2, 0, "", REG_OPTION_NON_VOLATILE,
+                              KEY_WRITE | KEY_READ, NULL, &hWinUAEKeyLocal, &disposition) == ERROR_SUCCESS))
         {
             /* Set our (default) sub-key to BE the "WinUAE" command for editing a configuration */
-            sprintf( path, "%sWinUAE.exe -f \"%%1\" -s use_gui=yes", start_path );
-            RegSetValueEx( hWinUAEKeyLocal, "", 0, REG_SZ, (CONST BYTE *)path, strlen( path ) + 1 );
+            sprintf(path, "%sWinUAE.exe -f \"%%1\" -s use_gui=yes", start_path_data);
+            RegSetValueEx(hWinUAEKeyLocal, "", 0, REG_SZ, (CONST BYTE *)path, strlen(path) + 1);
+	    RegCloseKey(hWinUAEKeyLocal);
         }
-	RegCloseKey( hWinUAEKeyLocal );
 
-        if( ( RegCreateKeyEx( HKEY_CLASSES_ROOT, "WinUAE\\shell\\Open\\command", 0, "", REG_OPTION_NON_VOLATILE,
-                              KEY_ALL_ACCESS, NULL, &hWinUAEKeyLocal, &disposition ) == ERROR_SUCCESS ) )
+        if((RegCreateKeyEx(rkey, rpath3, 0, "", REG_OPTION_NON_VOLATILE,
+                              KEY_WRITE | KEY_READ, NULL, &hWinUAEKeyLocal, &disposition) == ERROR_SUCCESS))
         {
             /* Set our (default) sub-key to BE the "WinUAE" command for launching a configuration */
-            sprintf( path, "%sWinUAE.exe -f \"%%1\"", start_path );
-            RegSetValueEx( hWinUAEKeyLocal, "", 0, REG_SZ, (CONST BYTE *)path, strlen( path ) + 1 );
+            sprintf(path, "%sWinUAE.exe -f \"%%1\"", start_path_data);
+            RegSetValueEx(hWinUAEKeyLocal, "", 0, REG_SZ, (CONST BYTE *)path, strlen( path ) + 1);
+	    RegCloseKey(hWinUAEKeyLocal);
         }
-	RegCloseKey( hWinUAEKeyLocal );
+        RegCloseKey(hWinUAEKey);
     }
-    RegCloseKey( hWinUAEKey );
     hWinUAEKey = NULL;
 
     /* Create/Open the hWinUAEKey which points our config-info */
-    if( RegCreateKeyEx( HKEY_CURRENT_USER, "Software\\Arabuusimiehet\\WinUAE", 0, "", REG_OPTION_NON_VOLATILE,
-                          KEY_ALL_ACCESS, NULL, &hWinUAEKey, &disposition ) == ERROR_SUCCESS )
+    if (RegCreateKeyEx(HKEY_CURRENT_USER, "Software\\Arabuusimiehet\\WinUAE", 0, "", REG_OPTION_NON_VOLATILE,
+                          KEY_WRITE | KEY_READ, NULL, &hWinUAEKey, &disposition) == ERROR_SUCCESS)
     {
-        initpath ("FloppyPath", start_path);
-        initpath ("KickstartPath", start_path);
-        initpath ("hdfPath", start_path);
-        initpath ("ConfigurationPath", start_path);
-        initpath ("ScreenshotPath", start_path);
-        initpath ("StatefilePath", start_path);
-        initpath ("SaveimagePath", start_path);
-        initpath ("VideoPath", start_path);
-        if( disposition == REG_CREATED_NEW_KEY )
+        initpath ("FloppyPath", start_path_data);
+        initpath ("KickstartPath", start_path_data);
+        initpath ("hdfPath", start_path_data);
+        initpath ("ConfigurationPath", start_path_data);
+        initpath ("ScreenshotPath", start_path_data);
+        initpath ("StatefilePath", start_path_data);
+        initpath ("SaveimagePath", start_path_data);
+        initpath ("VideoPath", start_path_data);
+        if (disposition == REG_CREATED_NEW_KEY)
         {
             /* Create and initialize all our sub-keys to the default values */
             colortype = 0;
-            RegSetValueEx( hWinUAEKey, "DisplayInfo", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
-            RegSetValueEx( hWinUAEKey, "xPos", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
-            RegSetValueEx( hWinUAEKey, "yPos", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
-            RegSetValueEx( hWinUAEKey, "xPosGUI", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
-            RegSetValueEx( hWinUAEKey, "yPosGUI", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof( colortype ) );
+            RegSetValueEx(hWinUAEKey, "DisplayInfo", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof(colortype));
+            RegSetValueEx(hWinUAEKey, "xPos", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof(colortype));
+            RegSetValueEx(hWinUAEKey, "yPos", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof(colortype));
+            RegSetValueEx(hWinUAEKey, "xPosGUI", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof(colortype));
+            RegSetValueEx(hWinUAEKey, "yPosGUI", 0, REG_DWORD, (CONST BYTE *)&colortype, sizeof(colortype));
         }
 	size = sizeof (version);
 	if (RegQueryValueEx (hWinUAEKey, "Version", 0, &dwType, (LPBYTE)&version, &size) == ERROR_SUCCESS) {
@@ -2004,7 +2032,7 @@ static void WIN32_HandleRegistryStuff( void )
 	        forceroms = 1;
 	}
         
-	RegQueryValueEx( hWinUAEKey, "DisplayInfo", 0, &dwType, (LPBYTE)&colortype, &dwDisplayInfoSize );
+	RegQueryValueEx(hWinUAEKey, "DisplayInfo", 0, &dwType, (LPBYTE)&colortype, &dwDisplayInfoSize);
 	if (colortype == 0) /* No color information stored in the registry yet */
 	{
 	    char szMessage[4096];
@@ -2022,7 +2050,7 @@ static void WIN32_HandleRegistryStuff( void )
 	    WIN32GFX_FigurePixelFormats(colortype);
 	}
 	size = sizeof (quickstart);
- 	RegQueryValueEx( hWinUAEKey, "QuickStartMode", 0, &dwType, (LPBYTE)&quickstart, &size );
+ 	RegQueryValueEx(hWinUAEKey, "QuickStartMode", 0, &dwType, (LPBYTE)&quickstart, &size);
     }
     fetch_path ("ConfigurationPath", path, sizeof (path));
     path[strlen (path) - 1] = 0;
@@ -2119,21 +2147,28 @@ static int isadminpriv (void)
     return isadmin;
 }
 
+typedef void (CALLBACK* PGETNATIVESYSTEMINFO)(LPSYSTEM_INFO);
+static PGETNATIVESYSTEMINFO pGetNativeSystemInfo;
+
 static int osdetect (void)
 {
     os_winnt = 0;
     os_winnt_admin = 0;
 
-    osVersion.dwOSVersionInfoSize = sizeof( OSVERSIONINFO );
-    if( GetVersionEx( &osVersion ) )
-    {
-	if( ( osVersion.dwPlatformId == VER_PLATFORM_WIN32_NT ) &&
-	    ( osVersion.dwMajorVersion <= 4 ) )
+    pGetNativeSystemInfo = (PGETNATIVESYSTEMINFO)GetProcAddress(
+	GetModuleHandle("kernel32.dll"), "GetNativeSystemInfo");
+    GetSystemInfo(&SystemInfo);
+    if (pGetNativeSystemInfo)
+	pGetNativeSystemInfo(&SystemInfo);
+    osVersion.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
+    if (GetVersionEx(&osVersion)) {
+	if ((osVersion.dwPlatformId == VER_PLATFORM_WIN32_NT) &&
+	    (osVersion.dwMajorVersion <= 4))
 	{
 	    /* WinUAE not supported on this version of Windows... */
-	    char szWrongOSVersion[ MAX_DPATH ];
-	    WIN32GUI_LoadUIString( IDS_WRONGOSVERSION, szWrongOSVersion, MAX_DPATH );
-	    pre_gui_message( szWrongOSVersion );
+	    char szWrongOSVersion[MAX_DPATH];
+	    WIN32GUI_LoadUIString(IDS_WRONGOSVERSION, szWrongOSVersion, MAX_DPATH);
+	    pre_gui_message(szWrongOSVersion);
 	    return FALSE;
 	}
 	if (osVersion.dwPlatformId == VER_PLATFORM_WIN32_NT)
@@ -2147,17 +2182,68 @@ static int osdetect (void)
     return 1;
 }
 
-    extern void test (void);
+typedef HRESULT (CALLBACK* SHGETFOLDERPATH)(HWND,int,HANDLE,DWORD,LPTSTR);
+typedef BOOL (CALLBACK* SHGETSPECIALFOLDERPATH)(HWND,LPTSTR,int,BOOL);
+
+static void getstartpaths(int start_data)
+{
+    SHGETFOLDERPATH pSHGetFolderPath;
+    SHGETSPECIALFOLDERPATH pSHGetSpecialFolderPath;
+    char *posn, *p;
+    DWORD v;
+
+    pSHGetFolderPath = (SHGETFOLDERPATH)GetProcAddress(
+	GetModuleHandle("shell32.dll"), "SHGetFolderPathA");
+    pSHGetSpecialFolderPath = (SHGETSPECIALFOLDERPATH)GetProcAddress(
+	GetModuleHandle("shell32.dll"), "SHGetSpecialFolderPathA");
+    GetModuleFileName(NULL, start_path_exe, MAX_DPATH);
+    if((posn = strrchr (start_path_exe, '\\')))
+        posn[1] = 0;
+    p = getenv("AMIGAFOREVERDATA");
+    if (start_data == 0 && p) {
+	strcpy (start_path_data, p);
+	v = GetFileAttributes(start_path_data);
+        strcat(start_path_data, "\\WinUAE");
+	if (v != INVALID_FILE_ATTRIBUTES && (v & FILE_ATTRIBUTE_DIRECTORY))
+	    start_data = 1;
+    }
+    if (start_data == 0) {
+	BOOL ok = FALSE;
+	if (pSHGetFolderPath)
+	    ok = SUCCEEDED(pSHGetFolderPath(NULL, CSIDL_COMMON_DOCUMENTS, NULL, 0, start_path_data));
+	else if (pSHGetSpecialFolderPath)
+	    ok = pSHGetSpecialFolderPath(NULL, start_path_data, CSIDL_COMMON_DOCUMENTS, 0);
+	if (ok) {
+	    strcat(start_path_data, "\\My Amiga Files\\WinUAE");
+	    v = GetFileAttributes(start_path_data);
+	    if (v != INVALID_FILE_ATTRIBUTES && (v & FILE_ATTRIBUTE_DIRECTORY))
+		start_data = 1;
+	}
+    }
+    v = GetFileAttributes(start_path_data);
+    if (v == INVALID_FILE_ATTRIBUTES || !(v & FILE_ATTRIBUTE_DIRECTORY) || start_data <= 0)
+        strcpy(start_path_data, start_path_exe);
+
+    if (strlen(start_path_data) > 0 && (start_path_data[strlen(start_path_data) - 1] != '\\' && start_path_data[strlen(start_path_data) - 1] != '/'))
+	strcat(start_path_data, "\\");
+}
+
+
+extern void test (void);
+
+
+
 static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
 		    int nCmdShow)
 {
-    char *posn;
     HANDLE hMutex;
     char **argv;
     int argc;
     int i;
     int multi_display = 1;
+    int start_data = 0;
 
+#if 1
 #ifdef __GNUC__
     __asm__ ("leal -2300*1024(%%esp),%0" : "=r" (win32_stackbase) :);
 #else
@@ -2167,12 +2253,15 @@ __asm{
     mov win32_stackbase,eax
  }
 #endif
+#endif
 
 #ifdef _DEBUG
     {
 	int tmp = _CrtSetDbgFlag(_CRTDBG_REPORT_FLAG);
+	//tmp &= 0xffff;
 	tmp |= _CRTDBG_CHECK_ALWAYS_DF;
 	tmp |= _CRTDBG_CHECK_CRT_DF;
+	//tmp |=_CRTDBG_CHECK_EVERY_16_DF;
 	//tmp |= _CRTDBG_DELAY_FREE_MEM_DF;
 	_CrtSetDbgFlag(tmp);
     }
@@ -2207,56 +2296,54 @@ __asm{
 	if (!strcmp (arg, "-norawinput")) no_rawinput = 1;
 	if (!strcmp (arg, "-scsilog")) log_scsi = 1;
 	if (!strcmp (arg, "-nomultidisplay")) multi_display = 0;
+	if (!strcmp (arg, "-legacypaths")) start_data = -1;
+	if (!strcmp (arg, "-datapath") && i + 1 < argc) {
+	    strcpy(start_path_data, argv[i + 1]);
+	    start_data = 1;
+	    i++;
+	}
     }
 #if 0
     argv = 0;
     argv[0] = 0;
 #endif
-    /* Get our executable's root-path */
-    if ((start_path = xmalloc (MAX_DPATH)))
+    getstartpaths(start_data);
+    sprintf(help_file, "%sWinUAE.chm", start_path_data);
+    sprintf(VersionStr, "WinUAE %d.%d.%d%s", UAEMAJOR, UAEMINOR, UAESUBREV, WINUAEBETA ? WINUAEBETASTR : "");
+    SetCurrentDirectory (start_path_data);
+
+    logging_init ();
+
+    if(WIN32_RegisterClasses() && WIN32_InitLibraries() && DirectDraw_Start(NULL))
     {
-	GetModuleFileName( NULL, start_path, MAX_DPATH );
-	if((posn = strrchr (start_path, '\\')))
-	    posn[1] = 0;
-	sprintf (help_file, "%sWinUAE.chm", start_path );
-	sprintf( VersionStr, "WinUAE %d.%d.%d%s", UAEMAJOR, UAEMINOR, UAESUBREV, WINUAEBETA ? WINUAEBETASTR : "" );
+        DEVMODE devmode;
+        DWORD i = 0;
 
-	logging_init ();
-
-	if( WIN32_RegisterClasses() && WIN32_InitLibraries() && DirectDraw_Start(NULL) )
-	{
-	    DEVMODE devmode;
-	    DWORD i = 0;
-
-	    DirectDraw_Release ();
-	    write_log ("Enumerating display devices.. \n");
-	    enumeratedisplays (multi_display);
-	    write_log ("Sorting devices and modes..\n");
-	    sortdisplays ();
-	    write_log ("done\n");
+        DirectDraw_Release ();
+        write_log ("Enumerating display devices.. \n");
+        enumeratedisplays (multi_display);
+        write_log ("Sorting devices and modes..\n");
+        sortdisplays ();
+        write_log ("done\n");
 	    
-	    memset (&devmode, 0, sizeof(devmode));
-	    devmode.dmSize = sizeof(DEVMODE);
-	    if (EnumDisplaySettings (NULL, ENUM_CURRENT_SETTINGS, &devmode))
-	    {
-		default_freq = devmode.dmDisplayFrequency;
-		if( default_freq >= 70 )
-		    default_freq = 70;
-		else
-		    default_freq = 60;
-	    }
-
-	    WIN32_HandleRegistryStuff();
-	    WIN32_InitHtmlHelp();
-	    DirectDraw_Release();
-	    betamessage ();
-	    keyboard_settrans ();
-#ifdef PARALLEL_PORT
-	    paraport_mask = paraport_init ();
-#endif
-	    real_main (argc, argv);
+        memset (&devmode, 0, sizeof(devmode));
+        devmode.dmSize = sizeof(DEVMODE);
+        if (EnumDisplaySettings (NULL, ENUM_CURRENT_SETTINGS, &devmode)) {
+	    default_freq = devmode.dmDisplayFrequency;
+	    if( default_freq >= 70 )
+	        default_freq = 70;
+	    else
+	        default_freq = 60;
 	}
-	free (start_path);
+        WIN32_HandleRegistryStuff();
+        WIN32_InitHtmlHelp();
+        DirectDraw_Release();
+        betamessage ();
+        keyboard_settrans ();
+#ifdef PARALLEL_PORT
+        paraport_mask = paraport_init ();
+#endif
+        real_main (argc, argv);
     }
 	
     if (mm_timerres && timermode == 0)
@@ -2292,8 +2379,8 @@ int execute_command (char *cmd)
     si.cb = sizeof (si);
     si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
     si.wShowWindow = SW_HIDE;
-    if( CreateProcess( NULL, cmd, NULL, NULL, TRUE, CREATE_NEW_CONSOLE, NULL, NULL, &si, &pi ) )  {
-	WaitForSingleObject( pi.hProcess, INFINITE );
+    if(CreateProcess(NULL, cmd, NULL, NULL, TRUE, CREATE_NEW_CONSOLE, NULL, NULL, &si, &pi))  {
+	WaitForSingleObject(pi.hProcess, INFINITE);
 	return 1;
     }
     return 0;
@@ -2516,9 +2603,9 @@ void systraymenu (HWND hwnd)
 HMODULE WIN32_LoadLibrary (const char *name)
 {
     HMODULE m;
-    char *s = xmalloc (strlen (start_path) + strlen (WIN32_PLUGINDIR) + strlen (name) + 1);
+    char *s = xmalloc (strlen (start_path_exe) + strlen (WIN32_PLUGINDIR) + strlen (name) + 1);
     if (s) {
-	sprintf (s, "%s%s%s", start_path, WIN32_PLUGINDIR, name);
+	sprintf (s, "%s%s%s", start_path_exe, WIN32_PLUGINDIR, name);
 	m = LoadLibrary (s);
         xfree (s);
 	if (m)
@@ -2530,11 +2617,16 @@ HMODULE WIN32_LoadLibrary (const char *name)
 int PASCAL WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine,
 		    int nCmdShow)
 {
+    HANDLE thread;
+    DWORD_PTR oldaff;
+
+    thread = GetCurrentThread();
+    oldaff = SetThreadAffinityMask(thread, 1); 
     __try {
 	WinMain2 (hInstance, hPrevInstance, lpCmdLine, nCmdShow);
-        } __except(ExceptionFilter(GetExceptionInformation(), GetExceptionCode()))
-    {
+    } __except(ExceptionFilter(GetExceptionInformation(), GetExceptionCode())) {
     }
+    SetThreadAffinityMask(thread, oldaff);
     return FALSE;
 }
 

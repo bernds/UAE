@@ -35,7 +35,7 @@ extern uae_u32 allocated_chipmem;
 extern uae_u32 allocated_fastmem;
 extern uae_u32 allocated_bogomem;
 extern uae_u32 allocated_gfxmem;
-extern uae_u32 allocated_z3fastmem;
+extern uae_u32 allocated_z3fastmem, max_z3fastmem;
 extern uae_u32 allocated_a3000mem;
 
 extern uae_u32 wait_cpu_cycle_read (uaecptr addr, int mode);
@@ -81,6 +81,7 @@ extern uae_u8 *filesysory;
 extern uae_u8 *rtarea;
 
 extern addrbank chipmem_bank;
+extern addrbank chipmem_agnus_bank;
 extern addrbank chipmem_bank_ce2;
 extern addrbank kickmem_bank;
 extern addrbank custom_bank;
@@ -200,6 +201,13 @@ extern void chipmem_lput (uaecptr, uae_u32) REGPARAM;
 extern void chipmem_wput (uaecptr, uae_u32) REGPARAM;
 extern void chipmem_bput (uaecptr, uae_u32) REGPARAM;
 
+extern uae_u32 chipmem_agnus_lget (uaecptr) REGPARAM;
+extern uae_u32 chipmem_agnus_wget (uaecptr) REGPARAM;
+extern uae_u32 chipmem_agnus_bget (uaecptr) REGPARAM;
+extern void chipmem_agnus_lput (uaecptr, uae_u32) REGPARAM;
+extern void chipmem_agnus_wput (uaecptr, uae_u32) REGPARAM;
+extern void chipmem_agnus_bput (uaecptr, uae_u32) REGPARAM;
+
 extern uae_u32 chipmem_mask, kickmem_mask;
 extern uae_u8 *kickmemory;
 extern int kickmem_size;
@@ -242,6 +250,7 @@ extern void decode_cloanto_rom_do (uae_u8 *mem, int size, int real_size, uae_u8 
 #define ROMTYPE_EXTCDTV 8
 #define ROMTYPE_AR 16
 #define ROMTYPE_KEY 32
+#define ROMTYPE_ARCADIA 64
 
 struct romdata {
     char *name;
@@ -258,6 +267,7 @@ extern struct romdata *getromdatabycrc (uae_u32 crc32);
 extern struct romdata *getromdatabydata (uae_u8 *rom, int size);
 extern struct romdata *getromdatabyid (int id);
 extern struct romdata *getromdatabyzfile (struct zfile *f);
+extern struct romdata *getarcadiarombyname (char *name);
 extern void getromname (struct romdata*, char*);
 extern struct romdata *getromdatabyname (char*);
 extern void romlist_add (char *path, struct romdata *rd);

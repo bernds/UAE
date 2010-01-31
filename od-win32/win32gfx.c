@@ -325,23 +325,23 @@ static int set_ddraw (void)
     overlay = (currentmode->flags & DM_OVERLAY) ? TRUE : FALSE;
 
     ddrval = DirectDraw_SetCooperativeLevel( hAmigaWnd, dxfullscreen);
-    if (ddrval != DD_OK)
+    if (FAILED(ddrval))
 	goto oops;
 
     if (dxfullscreen)  {
         write_log( "set_ddraw: Trying %dx%d, bits=%d, refreshrate=%d\n", width, height, bits, freq );
         ddrval = DirectDraw_SetDisplayMode (width, height, bits, freq);
-        if (ddrval != DD_OK) {
+        if (FAILED(ddrval)) {
 	    write_log ("set_ddraw: failed, trying without forced refresh rate\n");
             ddrval = DirectDraw_SetDisplayMode (width, height, bits, 0);
-	    if (ddrval != DD_OK) {
+	    if (FAILED(ddrval)) {
 		write_log( "set_ddraw: Couldn't SetDisplayMode()\n" );
 		goto oops;
 	    }
         }
 
 	ddrval = DirectDraw_GetDisplayMode();
-	if (ddrval != DD_OK) {
+	if (FAILED(ddrval)) {
             write_log( "set_ddraw: Couldn't GetDisplayMode()\n" );
 	    goto oops;
         }
@@ -354,18 +354,18 @@ static int set_ddraw (void)
 
     if (dd) {
         ddrval = DirectDraw_CreateClipper();
-        if (ddrval != DD_OK) {
+        if (FAILED(ddrval)) {
 	    write_log( "set_ddraw: No clipping support\n" );
 	    goto oops;
 	}
 	ddrval = DirectDraw_CreateSurface (width, height);
-	if (ddrval != DD_OK) {
+	if (FAILED(ddrval)) {
 	    write_log( "set_ddraw: Couldn't CreateSurface() for primary because %s.\n", DXError( ddrval ) );
 	    goto oops;
 	}
 	if (DirectDraw_GetPrimaryBitCount() != (unsigned)bits && overlay) {
 	    ddrval = DirectDraw_CreateOverlaySurface (width, height, bits, 0);
-	    if( ddrval != DD_OK )
+	    if(FAILED(ddrval))
 	    {
 		write_log( "set_ddraw: Couldn't CreateOverlaySurface(%d,%d,%d) because %s.\n", width, height, bits, DXError( ddrval ) );
 		goto oops2;
@@ -384,14 +384,14 @@ static int set_ddraw (void)
 
 	ddrval = DirectDraw_SetClipper (hAmigaWnd);
 
-	if (ddrval != DD_OK) {
+	if (FAILED(ddrval)) {
 	    write_log( "set_ddraw: Couldn't SetHWnd()\n" );
 	    goto oops;
 	}
 
         if (bits == 8) {
 	    ddrval = DirectDraw_CreatePalette (currentmode->pal);
-	    if (ddrval != DD_OK)
+	    if (FAILED(ddrval))
 	    {
 		write_log( "set_ddraw: Couldn't CreatePalette()\n" );
 		goto oops;
@@ -408,6 +408,26 @@ oops:
 oops2:
     return 0;
 }
+
+/*
+static void dhack(void)
+{
+    int i = 0;
+    while (DisplayModes[i].depth >= 0)
+	i++;
+    if (i >= MAX_PICASSO_MODES - 1)
+	return;
+    DisplayModes[i].res.width = 480;
+    DisplayModes[i].res.height = 640;
+    DisplayModes[i].depth = DisplayModes[i - 1].depth;
+    DisplayModes[i].refresh[0] = 0;
+    DisplayModes[i].refresh[1] = 0;
+    DisplayModes[i].colormodes = DisplayModes[i - 1].colormodes;
+    DisplayModes[i + 1].depth = -1;
+    sprintf(DisplayModes[i].name, "%dx%d, %d-bit",
+        DisplayModes[i].res.width, DisplayModes[i].res.height, DisplayModes[i].depth * 8);
+}
+*/
 
 static HRESULT CALLBACK modesCallback( LPDDSURFACEDESC2 modeDesc, LPVOID context )
 {
@@ -556,12 +576,13 @@ void sortdisplays (void)
         DisplayModes[0].depth = -1;
 	md1->disabled = 1;
 	if (DirectDraw_Start (md1->primary ? NULL : &md1->guid)) {
-	    if (DirectDraw_GetDisplayMode () == DD_OK) {
+	    if (SUCCEEDED(DirectDraw_GetDisplayMode())) {
 		int w = DirectDraw_CurrentWidth ();
 		int h = DirectDraw_CurrentHeight ();
 		int b = DirectDraw_GetSurfaceBitCount ();
 		write_log ("W=%d H=%d B=%d\n", w, h, b);
 		DirectDraw_EnumDisplayModes (DDEDM_REFRESHRATES , modesCallback);
+		//dhack();
 		sortmodes ();
 		modesList ();
 		DirectDraw_Release ();
@@ -591,7 +612,7 @@ RGBFTYPE WIN32GFX_FigurePixelFormats( RGBFTYPE colortype )
 
     ignore_messages_all++;
     DirectDraw_Start (NULL);
-    if( colortype == 0 ) /* Need to query a 16-bit display mode for its pixel-format.  Do this by opening such a screen */
+    if(colortype == 0) /* Need to query a 16-bit display mode for its pixel-format.  Do this by opening such a screen */
     {
         hAmigaWnd = CreateWindowEx (WS_EX_TOPMOST,
 			       "AmigaPowah", VersionStr,
@@ -600,19 +621,19 @@ RGBFTYPE WIN32GFX_FigurePixelFormats( RGBFTYPE colortype )
 			       1,//GetSystemMetrics (SM_CXSCREEN),
 			       1,//GetSystemMetrics (SM_CYSCREEN),
 			       hHiddenWnd, NULL, 0, NULL);
-        if( hAmigaWnd )
+        if(hAmigaWnd)
         {
             window_created = 1;
             ddrval = DirectDraw_SetCooperativeLevel( hAmigaWnd, TRUE ); /* TRUE indicates full-screen */
-            if( ddrval != DD_OK )
+            if(FAILED(ddrval))
             {
-	        gui_message( "WIN32GFX_FigurePixelFormats: ERROR - %s\n", DXError(ddrval) );
+	        gui_message("WIN32GFX_FigurePixelFormats: ERROR - %s\n", DXError(ddrval));
 	        goto out;
             }
         }
         else
         {
-            gui_message( "WIN32GFX_FigurePixelFormats: ERROR - test-window could not be created.\n" );
+            gui_message("WIN32GFX_FigurePixelFormats: ERROR - test-window could not be created.\n");
         }
     }
     else
@@ -627,11 +648,11 @@ RGBFTYPE WIN32GFX_FigurePixelFormats( RGBFTYPE colortype )
     	    write_log ("figure_pixel_formats: Attempting %dx%d..\n", dm->res.width, dm->res.height);
 
 	    ddrval = DirectDraw_SetDisplayMode (dm->res.width, dm->res.height, 16, 0); /* 0 for default freq */
-	    if (ddrval != DD_OK)
+	    if (FAILED(ddrval))
 		continue;
 
 	    ddrval = DirectDraw_GetDisplayMode();
-	    if (ddrval != DD_OK)
+	    if (FAILED(ddrval))
 		continue;
 
 	    colortype = DirectDraw_GetPixelFormat();
@@ -664,7 +685,7 @@ RGBFTYPE WIN32GFX_FigurePixelFormats( RGBFTYPE colortype )
 /* DirectX will fail with "Mode not supported" if we try to switch to a full
  * screen mode that doesn't match one of the dimensions we got during enumeration.
  * So try to find a best match for the given resolution in our list.  */
-int WIN32GFX_AdjustScreenmode( uae_u32 *pwidth, uae_u32 *pheight, uae_u32 *ppixbits )
+int WIN32GFX_AdjustScreenmode(uae_u32 *pwidth, uae_u32 *pheight, uae_u32 *ppixbits)
 {
     struct PicassoResolution *best;
     uae_u32 selected_mask = (*ppixbits == 8 ? RGBMASK_8BIT
@@ -674,8 +695,7 @@ int WIN32GFX_AdjustScreenmode( uae_u32 *pwidth, uae_u32 *pheight, uae_u32 *ppixb
 			     : RGBMASK_32BIT);
     int pass, i = 0, index = 0;
     
-    for (pass = 0; pass < 2; pass++) 
-    {
+    for (pass = 0; pass < 2; pass++) {
 	struct PicassoResolution *dm;
 	uae_u32 mask = (pass == 0
 			? selected_mask
@@ -686,10 +706,13 @@ int WIN32GFX_AdjustScreenmode( uae_u32 *pwidth, uae_u32 *pheight, uae_u32 *ppixb
 	best = &DisplayModes[0];
 	dm = &DisplayModes[1];
 
-	while (dm->depth >= 0) 
-        {
-	    if ((dm->colormodes & mask) != 0) 
-            {
+	while (dm->depth >= 0)  {
+
+	    /* do we already have supported resolution? */
+	    if (dm->res.width == *pwidth && dm->res.height == *pheight && dm->depth == (*ppixbits / 8))
+		return i;
+
+	    if ((dm->colormodes & mask) != 0)  {
 		if (dm->res.width <= best->res.width && dm->res.height <= best->res.height
 		    && dm->res.width >= *pwidth && dm->res.height >= *pheight)
                 {
@@ -706,8 +729,7 @@ int WIN32GFX_AdjustScreenmode( uae_u32 *pwidth, uae_u32 *pheight, uae_u32 *ppixb
 	    dm++;
             i++;
 	}
-	if (best->res.width == *pwidth && best->res.height == *pheight)
-        {
+	if (best->res.width == *pwidth && best->res.height == *pheight) {
             selected_mask = mask; /* %%% - BERND, I added this - does it make sense?  Otherwise, I'd specify a 16-bit display-mode for my
 				     Workbench (using -H 2, but SHOULD have been -H 1), and end up with an 8-bit mode instead*/
 	    break;
@@ -715,7 +737,7 @@ int WIN32GFX_AdjustScreenmode( uae_u32 *pwidth, uae_u32 *pheight, uae_u32 *ppixb
     }
     *pwidth = best->res.width;
     *pheight = best->res.height;
-    if( best->colormodes & selected_mask )
+    if (best->colormodes & selected_mask)
 	return index;
 
     /* Ordering here is done such that 16-bit is preferred, followed by 15-bit, 8-bit, 32-bit and 24-bit */
@@ -964,6 +986,7 @@ static int open_windows (void)
 	ret = doInit ();
     } while (ret < 0);
 
+    setpriority(&priorities[currprefs.win32_active_priority]);
     setmouseactive (1);
     for (i = 0; i < NUM_LEDS; i++)
 	gui_led (i, 0);
@@ -1177,7 +1200,7 @@ void init_colors (void)
 	    case 1:
 		memcpy (xcolors, xcol8, sizeof xcolors);
 		ddrval = DirectDraw_SetPaletteEntries( 0, 256, colors256 );
-		if (ddrval != DD_OK)
+		if (FAILED(ddrval))
 		    write_log ("DX_SetPalette() failed with %s/%d\n", DXError (ddrval), ddrval);
 	    break;
 
@@ -1269,9 +1292,9 @@ void DX_SetPalette (int start, int count)
     /* Set our DirectX palette here */
     if( currentmode->current_depth == 8 )
     {
-	if (DirectDraw_SetPalette( 0 ) == DD_OK) {
+	if (SUCCEEDED(DirectDraw_SetPalette(0))) {
 	    ddrval = DirectDraw_SetPaletteEntries( start, count, (LPPALETTEENTRY)&(picasso96_state.CLUT[start] ) );
-	    if (ddrval != DD_OK)
+	    if (FAILED(ddrval))
 		gui_message("DX_SetPalette() failed with %s/%d\n", DXError (ddrval), ddrval);
 	}
     }
@@ -1595,7 +1618,7 @@ int graphics_init (void)
 
 int graphics_setup (void)
 {
-    if( !DirectDraw_Start (NULL) )
+    if (!DirectDraw_Start (NULL))
 	return 0;
     DirectDraw_Release();
 #ifdef PICASSO96
@@ -1656,12 +1679,12 @@ static void createstatuswindow (void)
     scaleX = GetDeviceCaps (hdc, LOGPIXELSX) / 96.0;
     scaleY = GetDeviceCaps (hdc, LOGPIXELSY) / 96.0;
     ReleaseDC (hStatusWnd, hdc);
-    drive_width = 24 * scaleX;
-    hd_width = 24 * scaleX;
-    cd_width = 24 * scaleX;
-    power_width = 42 * scaleX;
-    fps_width = 64 * scaleX;
-    idle_width = 64 * scaleX;
+    drive_width = (int)(24 * scaleX);
+    hd_width = (int)(24 * scaleX);
+    cd_width = (int)(24 * scaleX);
+    power_width = (int)(42 * scaleX);
+    fps_width = (int)(64 * scaleX);
+    idle_width = (int)(64 * scaleX);
     GetClientRect (hMainWnd, &rc);
     /* Allocate an array for holding the right edge coordinates. */
     hloc = LocalAlloc (LHND, sizeof (int) * num_parts);
@@ -2118,10 +2141,10 @@ void WIN32GFX_PaletteChange( void )
     if (currentmode->current_depth > 8)
 	return;
     hr = DirectDraw_SetPalette (1); /* Remove current palette */
-    if (hr != DD_OK)
+    if (FAILED(hr))
 	write_log ("SetPalette(1) failed, %s\n", DXError (hr));
     hr = DirectDraw_SetPalette (0); /* Set our real palette */
-    if (hr != DD_OK)
+    if (FAILED(hr))
 	write_log ("SetPalette(0) failed, %s\n", DXError (hr));
 }
 
@@ -2132,9 +2155,9 @@ int WIN32GFX_ClearPalette( void )
 	return 1;
     if (!(currentmode->flags & DM_DDRAW) || (currentmode->flags & DM_D3D)) return 1;
     hr = DirectDraw_SetPalette (1); /* Remove palette */
-    if (hr != DD_OK)
+    if (FAILED(hr))
 	write_log ("SetPalette(1) failed, %s\n", DXError (hr));
-    return hr == DD_OK;
+    return SUCCEEDED(hr);
 }
 
 int WIN32GFX_SetPalette( void )
@@ -2144,9 +2167,9 @@ int WIN32GFX_SetPalette( void )
     if (currentmode->current_depth > 8)
 	return 1;
     hr = DirectDraw_SetPalette (0); /* Set palette */
-    if (hr != DD_OK)
+    if (FAILED(hr))
 	write_log ("SetPalette(0) failed, %s\n", DXError (hr));
-    return hr == DD_OK;
+    return SUCCEEDED(hr);
 }
 void WIN32GFX_WindowMove ( void )
 {
@@ -2186,13 +2209,13 @@ void updatedisplayarea (void)
 	    else
 #endif
 	{
-	    if( !isfullscreen() ) {
+	    if (!isfullscreen()) {
 		surface_type_e s;
 		s = DirectDraw_GetLockableType();
 		if (s != overlay_surface && s != invalid_surface)
-		    DX_Blit( 0, 0, 0, 0, WIN32GFX_GetWidth(), WIN32GFX_GetHeight(), BLIT_SRC );
+		    DX_Blit(0, 0, 0, 0, WIN32GFX_GetWidth(), WIN32GFX_GetHeight(), BLIT_SRC);
 	    } else {
-		DirectDraw_Blt( primary_surface, NULL, secondary_surface, NULL, DDBLT_WAIT, NULL );
+		DirectDraw_Blt(primary_surface, NULL, secondary_surface, NULL, DDBLT_WAIT, NULL);
 	    }
 	}
     }
@@ -2245,7 +2268,7 @@ HDC gethdc (void)
     if (D3D_isenabled())
 	return D3D_getDC (0);
 #endif
-    if(DirectDraw_GetDC(&hdc, DirectDraw_GetLockableType()) != DD_OK)
+    if(FAILED(DirectDraw_GetDC(&hdc, DirectDraw_GetLockableType())))
         hdc = 0;
     return hdc;
 }

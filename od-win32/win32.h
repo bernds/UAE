@@ -24,6 +24,9 @@ extern int ignore_messages_all;
 #define WINUAEBETA 0
 #define WINUAEBETASTR ""
 
+extern char start_path_exe[MAX_DPATH];
+extern char start_path_data[MAX_DPATH];
+
 extern void my_kbd_handler (int, int, int);
 extern void clearallkeys(void);
 extern int getcapslock (void);
@@ -65,11 +68,10 @@ extern int win_x_diff, win_y_diff;
 
 extern void sleep_millis (int ms);
 extern void sleep_millis_busy (int ms);
-extern void screenshot(int mode);
 extern void wait_keyrelease (void);
 extern void keyboard_settrans (void);
 
-extern void handle_rawinput (DWORD lParam);
+extern void handle_rawinput (LPARAM lParam);
 
 #define DEFAULT_PRIORITY 2
 struct threadpriorities {
@@ -94,5 +96,9 @@ void read_rom_list (int);
 
 #define WIN32_PLUGINDIR "plugins\\"
 HMODULE WIN32_LoadLibrary (const char *);
+
+extern int screenshot_prepare(void);
+extern void screenshot_free(void);
+
 
 #endif

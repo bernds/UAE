@@ -19,6 +19,7 @@ extern void DISK_check_change (void);
 extern struct zfile *DISK_validate_filename (const char *, int, int *, uae_u32 *);
 extern void DISK_handler (void);
 extern void DISK_update (int hpos);
+extern void DISK_hsync (int hpos);
 extern void DISK_reset (void);
 extern int disk_getwriteprotect (const char *name);
 extern int disk_setwriteprotect (int num, const char *name, int protect);
@@ -36,3 +37,10 @@ extern void DSKDAT (uae_u16);
 extern void DSKSYNC (int, uae_u16);
 extern void DSKPTL (uae_u16);
 extern void DSKPTH (uae_u16);
+
+extern int disk_debug_mode;
+extern int disk_debug_track;
+#define DISK_DEBUG_DMA_READ 1
+#define DISK_DEBUG_DMA_WRITE 2
+#define DISK_DEBUG_PIO 4
+

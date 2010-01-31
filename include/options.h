@@ -7,9 +7,9 @@
   * Copyright 1995-2001 Bernd Schmidt
   */
 
-#define UAEMAJOR 0
-#define UAEMINOR 9
-#define UAESUBREV 92
+#define UAEMAJOR 1
+#define UAEMINOR 0
+#define UAESUBREV 0
 
 typedef enum { KBD_LANG_US, KBD_LANG_DK, KBD_LANG_DE, KBD_LANG_SE, KBD_LANG_FR, KBD_LANG_IT, KBD_LANG_ES } KbdLang;
 
@@ -87,6 +87,8 @@ struct uae_prefs {
     int sound_adjust;
     int sound_filter;
     int sound_volume;
+    int sound_stereo_swap_paula;
+    int sound_stereo_swap_ahi;
 
     int comptrustbyte;
     int comptrustword;
@@ -146,7 +148,7 @@ struct uae_prefs {
     int fast_copper;
     int scsi;
     int uaeserial;
-    int catweasel_io;
+    int catweasel;
     int cpu_idle;
     int cpu_cycle_exact;
     int blitter_cycle_exact;
@@ -219,6 +221,7 @@ struct uae_prefs {
     int win32_midiindev;
     int win32_aspi;
     int win32_soundcard;
+    int win32_norecyclebin;
 
     int curses_reverse_video;
 
@@ -245,6 +248,7 @@ struct uae_prefs {
 extern char optionsfile[];
 extern void save_options (struct zfile *, struct uae_prefs *, int);
 extern void cfgfile_write (struct zfile *, char *format,...);
+extern void cfgfile_backup (const char *path);
 
 extern void default_prefs (struct uae_prefs *, int);
 extern void discard_prefs (struct uae_prefs *, int);

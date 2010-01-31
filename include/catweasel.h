@@ -5,6 +5,7 @@ extern struct catweasel_contr cwc;
 extern int catweasel_read_keyboard (uae_u8 *keycode);
 extern int catweasel_init (void);
 extern void catweasel_free (void);
+extern int catweasel_detect (void);
 extern uae_u32 catweasel_do_bget (uaecptr addr);
 extern void catweasel_do_bput (uaecptr addr, uae_u32 b);
 extern int catweasel_read_joystick (uae_u8 *dir, uae_u8 *buttons);
@@ -44,6 +45,7 @@ typedef struct catweasel_contr {
 #define CATWEASEL_TYPE_NONE  -1
 #define CATWEASEL_TYPE_MK1    1
 #define CATWEASEL_TYPE_MK3    3
+#define CATWEASEL_TYPE_MK4    4
 
 /* Initialize a Catweasel controller; c->iobase and c->msdelay must have
    been initialized -- msdelay might be used */

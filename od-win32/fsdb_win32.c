@@ -67,7 +67,7 @@ static int read_uaefsdb (const char *dir, const char *name, uae_u8 *fsdb)
     char *p;
     HANDLE h;
     DWORD read;
-    
+
     p = make_uaefsdbpath (dir, name);
     h = CreateFile (p, GENERIC_READ, 0,
 	NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -82,14 +82,23 @@ static int read_uaefsdb (const char *dir, const char *name, uae_u8 *fsdb)
     return 0;
 }
 
-static int write_uaefsdb (const char *dir, const char *name, uae_u8 *fsdb)
+static int write_uaefsdb (const char *dir, uae_u8 *fsdb)
 {
     char *p;
     HANDLE h;
     DWORD written, attr = INVALID_FILE_ATTRIBUTES;
+    FILETIME t1, t2, t3;
+    int time_valid = FALSE;
     int ret = 0;
     
-    p = make_uaefsdbpath (dir, name);
+    p = make_uaefsdbpath (dir, NULL);
+    h = CreateFile (dir, GENERIC_READ, 0,
+        NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h != INVALID_HANDLE_VALUE) {    
+	if (GetFileTime (h, &t1, &t2, &t3))
+	    time_valid = TRUE;
+	CloseHandle (h);
+    }
     h = CreateFile (p, GENERIC_WRITE, 0,
         NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE && GetLastError () == ERROR_ACCESS_DENIED) {
@@ -114,6 +123,14 @@ static int write_uaefsdb (const char *dir, const char *name, uae_u8 *fsdb)
 end:
     if (attr != INVALID_FILE_ATTRIBUTES)
 	SetFileAttributes (p, attr);
+    if (time_valid) {
+	h = CreateFile (dir, GENERIC_WRITE, 0,
+	    NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (h != INVALID_HANDLE_VALUE) {	
+	    SetFileTime (h, &t1, &t2, &t3);
+	    CloseHandle (h);
+	}
+    }
     xfree (p);
     return ret;
 }
@@ -257,7 +274,7 @@ int fsdb_fill_file_attrs (a_inode *base, a_inode *aino)
     if (reset) {
 	if (base->volflags & MYVOLUMEINFO_STREAMS) {
 	    create_uaefsdb (aino, fsdb, mode);
-	    write_uaefsdb (aino->nname, NULL, fsdb);
+	    write_uaefsdb (aino->nname, fsdb);
 	}
     }
     return 1;
@@ -294,7 +311,7 @@ int fsdb_set_file_attrs (a_inode *aino)
     aino->dirty = 1;
     if (aino->volflags & MYVOLUMEINFO_STREAMS) {
 	create_uaefsdb (aino, fsdb, mode);
-	write_uaefsdb (aino->nname, NULL, fsdb);
+	write_uaefsdb (aino->nname, fsdb);
     }
     return 0;
 }
@@ -437,7 +454,8 @@ static int recycle (const char *name)
     memset (&fos, 0, sizeof (fos));
     fos.wFunc = FO_DELETE;
     fos.pFrom = p;
-    fos.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_NORECURSION | FOF_SILENT;
+    fos.fFlags = (currprefs.win32_norecyclebin ? 0 : FOF_ALLOWUNDO) |
+	FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_NORECURSION | FOF_SILENT;
     v = SHFileOperation (&fos);
     xfree (p);
     return v ? -1 : 0;
@@ -469,14 +487,12 @@ int my_rmdir (const char *name)
     }
 
     return recycle (name);
-    //return RemoveDirectory (name) == 0 ? -1 : 0;
 }
 
 /* "move to Recycle Bin" (if enabled) -version of DeleteFile() */
 int my_unlink (const char *name)
 {
     return recycle (name);
-    //return DeleteFile (name) == 0 ? -1 : 0;
 }
 
 int my_rename (const char *oldname, const char *newname)
@@ -715,8 +731,10 @@ int my_getvolumeinfo (char *root)
 	return -1;
     if (!(v & FILE_ATTRIBUTE_DIRECTORY))
 	return -1;
+/*
     if (v & FILE_ATTRIBUTE_READONLY)
 	ret |= MYVOLUMEINFO_READONLY;
+*/
     if (!os_winnt)
 	return ret;
     pGetVolumePathName = (GETVOLUMEPATHNAME)GetProcAddress(

@@ -21,6 +21,7 @@
 #define IDS_MISC2                       16
 #define IDS_PATHS                       17
 #define IDS_QUICKSTART                  18
+#define IDS_FRONTEND                    19
 #define IDS_EXTTEXT                     100
 #define IDS_EXTACTUAL                   101
 #define IDS_SOUND                       102
@@ -162,6 +163,7 @@
 #define IDS_PRI_BELOWNORMAL             186
 #define IDS_PRI_LOW                     187
 #define IDI_FOLDER                      188
+#define IDS_OLDRTGLIBRARY               188
 #define IDI_DISPLAY                     190
 #define IDI_ROOT                        192
 #define IDI_ICON2                       194
@@ -213,7 +215,15 @@
 #define IDS_SOUND_4CHANNEL              242
 #define IDS_HF_FS_CUSTOM                243
 #define IDS_SELECTFS                    244
+#define IDS_KEYJOY                      245
 #define IDB_XARCADE                     246
+#define IDS_STATEFILE_UNCOMPRESSED      246
+#define IDS_STATEFILE_RAMDUMP           247
+#define IDS_STATEFILE_WAVE              248
+#define IDD_FRONTEND                    249
+#define IDS_SOUND_SWAP_PAULA            249
+#define IDS_SOUND_SWAP_AHI              250
+#define IDS_SOUND_SWAP_BOTH             251
 #define IDS_NUMSG_NEEDEXT2              300
 #define IDS_NUMSG_NOROMKEY              301
 #define IDS_NUMSG_KSROMCRCERROR         302
@@ -251,6 +261,7 @@
 #define IDS_QS_MODEL_CD32               1006
 #define IDS_QS_MODEL_CDTV               1007
 #define IDS_QS_MODEL_UAE                1008
+#define IDS_QS_MODEL_ARCADIA            1009
 #define IDC_RESOLUTION                  1021
 #define IDC_SERIAL                      1022
 #define IDC_REFRESHRATE                 1022
@@ -621,12 +632,13 @@
 #define IDC_AVIOUTPUT_FPS               1609
 #define IDC_INPUTDEVICE                 1609
 #define IDC_MAPROM                      1609
+#define IDC_NORECYCLEBIN                1609
 #define IDC_AVIOUTPUT_FILETEXT          1610
 #define IDC_INPUTDEVICETEXT             1610
-#define IDC_NOTASKBARBUTTON2            1610
 #define IDC_ALWAYSONTOP                 1610
 #define IDC_AVIOUTPUT_FILE              1611
 #define IDC_INPUTLIST                   1611
+#define IDC_CATWEASEL                   1611
 #define IDC_AVIOUTPUT_FPS_STATIC        1612
 #define IDC_INPUTAMIGA                  1612
 #define IDC_AVIOUTPUT_VIDEO             1613
@@ -642,6 +654,7 @@
 #define IDC_OPENGLHZ                    1616
 #define IDC_INPUTAMIGACNT               1616
 #define IDC_FILTERHZ                    1616
+#define IDC_SAMPLERIPPER_ACTIVATED      1616
 #define IDC_AVIOUTPUT_BORDER_TRIM       1617
 #define IDC_OPENGLVZ                    1617
 #define IDC_FILTERVZ                    1617
@@ -729,6 +742,8 @@
 #define IDC_SOUNDCARD                   1650
 #define IDC_CS_SOUND0                   1650
 #define IDC_UPBM                        1650
+#define IDC_DISKLISTREMOVE2             1650
+#define IDC_DISKLISTINSERT              1650
 #define IDC_SOUNDCARDLIST               1651
 #define IDC_CS_SOUND1                   1651
 #define IDC_SOUNDFREQ                   1652
@@ -756,8 +771,11 @@
 #define IDC_PATHS_ROMS                  1661
 #define IDC_SOUNDSTEREOMIX              1661
 #define IDC_PATHS_CONFIGS               1662
+#define IDC_SOUNDSWAP                   1662
 #define IDC_PATHS_SCREENSHOTS           1663
 #define IDC_PATHS_SAVESTATES            1664
+#define IDC_SOUNDSTEREOSWAPTXT          1664
+#define IDC_SOUNDSWAPTXT                1664
 #define IDC_PATHS_SAVEIMAGES            1665
 #define IDC_PATHS_ROML                  1666
 #define IDC_PATHS_CONFIGL               1667
@@ -800,6 +818,11 @@
 #define IDC_HF_TYPE                     1696
 #define IDC_PRINTERAUTOFLUSH            1697
 #define IDC_PRINTERAUTOFLUSHTXT         1698
+#define IDC_DISKTEXT                    1699
+#define IDC_FE_LIST                     1700
+#define IDC_FE_INFO                     1701
+#define IDC_FE_INFO2                    1702
+#define IDC_FE_SCREENSHOT               1702
 #define ID__FLOPPYDRIVES                40004
 #define ID_FLOPPYDRIVES_DF0             40005
 #define ID_ST_CONFIGURATION             40010
@@ -818,9 +841,9 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
 #define _APS_3D_CONTROLS                     1
-#define _APS_NEXT_RESOURCE_VALUE        247
+#define _APS_NEXT_RESOURCE_VALUE        249
 #define _APS_NEXT_COMMAND_VALUE         40021
-#define _APS_NEXT_CONTROL_VALUE         1699
+#define _APS_NEXT_CONTROL_VALUE         1704
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

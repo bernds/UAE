@@ -58,6 +58,7 @@
 #include "savestate.h"
 #include "uae.h"
 #include "gui.h"
+#include "audio.h"
 
 int savestate_state = 0;
 
@@ -74,7 +75,7 @@ static int frameextra;
 
 struct zfile *savestate_file;
 static uae_u8 *replaybuffer, *replaybufferend;
-static int savestate_docompress, savestate_ramdump;
+static int savestate_docompress, savestate_specialdump;
 static int replaybuffersize;
 
 char savestate_fname[MAX_DPATH];
@@ -237,6 +238,7 @@ static uae_u8 *restore_chunk (struct zfile *f, char *name, long *len, long *tota
     uae_u32 flags;
     long len2;
 
+    *totallen = 0;
     /* chunk name */
     zfile_fread (name, 1, 4, f);
     name[4] = 0;
@@ -359,7 +361,7 @@ void restore_state (char *filename)
 	if (!strcmp (name, prevchunk))
 	    break;
 	strcpy (prevchunk, name);
-	write_log ("Chunk '%s' size %d\n", name, len);
+	write_log ("Chunk '%s' size %d (%d)\n", name, len, totallen);
 	if (!strcmp (name, "END "))
 	    break;
 	if (!strcmp (name, "CRAM")) {
@@ -478,12 +480,12 @@ void savestate_restore_finish (void)
     savestate_state = 0;
 }
 
-/* 1=compressed,2=not compressed,3=ram dump */
+/* 1=compressed,2=not compressed,3=ram dump,4=audio dump */
 void savestate_initsave (char *filename, int mode)
 {
     strcpy (savestate_fname, filename);
     savestate_docompress = (mode == 1) ? 1 : 0;
-    savestate_ramdump = (mode == 3) ? 1 : 0;
+    savestate_specialdump = (mode == 3) ? 1 : (mode == 4) ? 2 : 0;
 }
 
 static void save_rams (struct zfile *f, int comp)
@@ -531,11 +533,28 @@ void save_state (char *filename, char *description)
 
     custom_prepare_savestate ();
 
-    f = zfile_fopen (filename, "wb");
+    f = zfile_fopen (filename, "w+b");
     if (!f)
 	return;
-    if (savestate_ramdump) {
+    if (savestate_specialdump) {
+	size_t pos;
+	if (savestate_specialdump == 2)
+	    write_wavheader(f, 0, 22050);
+	pos = zfile_ftell(f);
 	save_rams (f, -1);
+	if (savestate_specialdump == 2) {
+	    int len, len2, i;
+	    uae_u8 *tmp;
+	    len = zfile_ftell(f) - pos;
+	    tmp = xmalloc(len);
+	    zfile_fseek(f, pos, SEEK_SET);
+	    len2 = zfile_fread(tmp, 1, len, f);
+	    for (i = 0; i < len2; i++)
+		tmp[i] += 0x80;
+	    write_wavheader(f, len, 22050);
+	    zfile_fwrite(tmp, len2, 1, f);	    
+	    xfree(tmp);
+	}
         zfile_fclose (f);
 	return;
     }

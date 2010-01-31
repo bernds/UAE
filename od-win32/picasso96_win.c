@@ -53,7 +53,8 @@ int p96hack_vpos, p96hack_vpos2, p96refresh_active;
 int have_done_picasso; /* For the JIT compiler */
 int picasso_is_special = PIC_WRITE; /* ditto */
 int picasso_is_special_read = PIC_READ; /* ditto */
-static int p96syncrate;
+static int vsyncgfxwrite = 0; 
+static int p96syncrate,vsyncgfxcount;
 int p96hsync_counter;
 #define SWAPSPEEDUP 
 #ifdef PICASSO96
@@ -63,7 +64,7 @@ int p96hsync_counter;
 #endif
 #define LOCK_UNLOCK_MADNESS //need for 7 times faster linedraw
 #define PIXEL_LOCK         //and scrollable screens
-#define MAXFLUSHPIXEL 1600 //pixel draw in a lock
+#define MAXFLUSHPIXEL 3200 //pixel draw in a lock
 static void flushpixels(void);
 int pixelcount,palette_changed;
 struct pixel32{
@@ -106,6 +107,41 @@ struct ScreenResolution chunky = { 640, 480 };
 struct ScreenResolution hicolour = { 640, 480 };
 struct ScreenResolution truecolour = { 640, 480 };
 struct ScreenResolution alphacolour = { 640, 480 };
+
+#include "win32gui.h"
+#include "resource.h"
+#define UAE_RTG_LIBRARY_VERSION 40
+#define UAE_RTG_LIBRARY_REVISION 3993
+static void checkrtglibrary(void)
+{
+    uae_u32 v;
+    static int checked = FALSE;
+
+    if (checked)
+	return;
+    v = get_long (4); // execbase
+    v += 378; // liblist
+    while ((v = get_long(v))) {
+	uae_u32 v2 = get_long(v + 10); // name
+	uae_u8 *p;
+	addrbank *b = &get_mem_bank(v2);
+	if (!b || !b->check (v2, 12))
+	    continue;
+	p = b->xlateaddr(v2);
+	if (!memcmp(p, "rtg.library\0", 12)) {
+	    uae_u16 ver = get_word(v + 20);
+	    uae_u16 rev = get_word(v + 22);
+	    if (ver * 10000 + rev < UAE_RTG_LIBRARY_VERSION * 10000 + UAE_RTG_LIBRARY_REVISION) {
+		char msg[2000];
+		WIN32GUI_LoadUIString(IDS_OLDRTGLIBRARY, msg, sizeof(msg));
+		gui_message(msg, ver, rev, UAE_RTG_LIBRARY_VERSION, UAE_RTG_LIBRARY_REVISION);
+	    } else {
+		write_log("P96: rtg.library %d.%d detected\n", ver, rev);
+	    }
+	    checked = TRUE;
+	}
+    }
+}
 
 static uae_u32 p2ctab[256][2];
 static int set_gc_called = 0;
@@ -326,6 +362,7 @@ static uae_u8 GetBytesPerPixel2(uae_u32 RGBfmt, char *file, int line)
 	    abort();
 	}
     }
+    return 0;
 }
 
 /*
@@ -706,9 +743,10 @@ static void do_blit( struct RenderInfo *ri, int Bpp,
         width *= Bpp;
         while (height-- > 0) 
         {
-            memcpy (dstp, srcp, width);
+			memcpy (dstp, srcp, width);
             srcp += ri->BytesPerRow;
             dstp += picasso_vidinfo.rowbytes;
+			
         }
     }
     else
@@ -920,6 +958,25 @@ void picasso_handle_vsync (void)
         DX_SetPalette (0,256);
         palette_changed = 0;
     }
+
+    if (vsyncgfxwrite==1) {
+	static long blitcount;
+	vsyncgfxcount++;
+	if (vsyncgfxcount>1) {
+	    if (picasso_on) {
+		if (picasso96_state.RGBFormat == picasso_vidinfo.rgbformat
+		    || picasso96_state.RGBFormat == RGBFB_CHUNKY) { 
+		    static frame_time_t cycles;
+		    blitcount++;
+		    cycles = read_processor_time();
+		    picasso_refresh(1);
+		    vsyncgfxcount = 0;
+		    write_log("%d Blitnum %.3fms\n", blitcount,
+			(read_processor_time() - cycles) * 1000 / (double)syncbase);
+		}
+	    }
+	}
+    }
 }
 
 static int set_panning_called = 0;
@@ -935,9 +992,8 @@ void picasso_refresh ( int call_setpalette )
 {
     struct RenderInfo ri;
     static int beamcon0_before, p96refresh_was;
-   
-    if (! picasso_on)
-	return;
+    
+    if (! picasso_on)return;
     {  //for higher P96 mousedraw rate
 	/* HACK */
 	extern uae_u16 vtotal;
@@ -1583,7 +1639,7 @@ static void FillBoardInfo (uaecptr amigamemptr, struct LibResolution *res, struc
     put_byte (amigamemptr + PSSO_ModeInfo_first_union, 98);
     put_byte (amigamemptr + PSSO_ModeInfo_second_union, 14);
     
-    put_long (amigamemptr + PSSO_ModeInfo_PixelClock, dm->res.width * dm->res.height * (currprefs.gfx_refreshrate ? currprefs.gfx_refreshrate : default_freq));
+    put_long (amigamemptr + PSSO_ModeInfo_PixelClock, dm->res.width * dm->res.height * (currprefs.gfx_refreshrate ? abs (currprefs.gfx_refreshrate) : default_freq));
 }
 
 static int AssignModeID( int i, int count )
@@ -1731,6 +1787,7 @@ void picasso_enablescreen (int on)
     wgfx_linestart = 0xFFFFFFFF;
     picasso_refresh (1);
     write_log ("SetSwitch() from threadid %d - showing %s screen\n", GetCurrentThreadId(), on ? "picasso96": "amiga");
+    checkrtglibrary();
 }
 
 /*
@@ -1995,7 +2052,7 @@ uae_u32 picasso_InvertRect (void)
 	for (lines = 0; lines < Height; lines++, uae_mem += ri.BytesPerRow)
 	    do_xor8 (uae_mem, width_in_bytes, xorval);
     
-	if (renderinfo_is_current_screen (&ri)) {
+	if (vsyncgfxwrite==0) if (renderinfo_is_current_screen (&ri)) {
 	    if (mask == 0xFF)
 		do_invertrect( &ri, Bpp, X, Y, Width, Height );
 	    else
@@ -2121,7 +2178,7 @@ uae_u32 picasso_FillRect (void)
 		    if( Y+Height > picasso96_state.Height)
 			Height = picasso96_state.Height - Y;
 
-		    do_fillrect( src, X, Y, Width, Height, Pen, Bpp, RGBFormat );
+		    if (vsyncgfxwrite==0)do_fillrect( src, X, Y, Width, Height, Pen, Bpp, RGBFormat );
 		}
 	    }
 	    result = 1;
@@ -2152,7 +2209,7 @@ uae_u32 picasso_FillRect (void)
 			}
 		    }
 		}
-		if (renderinfo_is_current_screen (&ri))
+		if (vsyncgfxwrite==0) if (renderinfo_is_current_screen (&ri))
 		    do_blit( &ri, Bpp, X, Y, X, Y, Width, Height, BLIT_SRC, 0);
 		result = 1;
 	    }
@@ -2235,7 +2292,8 @@ STATIC_INLINE int BlitRectHelper( void )
     * If we have a destination RenderInfo, then we've been called from picasso_BlitRectNoMaskComplete()
     * and we need to put the results on the screen from the frame-buffer.
     */
-    if (dstri == NULL) 
+    //if (dstri->Memory == ri->Memory)
+    if (dstri == NULL || dstri->Memory == ri->Memory)
     {
         if( mask != 0xFF && Bpp > 1 ) 
         {
@@ -2248,7 +2306,8 @@ STATIC_INLINE int BlitRectHelper( void )
     /* Do our virtual frame-buffer memory first */
     do_blitrect_frame_buffer( ri, dstri, srcx, srcy, dstx, dsty, width, height, mask, opcode );
     /* Now we do the on-screen display, if renderinfo points to it */
-    if (renderinfo_is_current_screen (dstri))
+    if (vsyncgfxwrite==1)return 1;
+	if (renderinfo_is_current_screen (dstri))
     {
         if (mask == 0xFF || Bpp > 1) {
 	    if( can_do_visible_blit )
@@ -2602,7 +2661,7 @@ uae_u32 picasso_BlitPattern (void)
     
 	    /* If we need to update a second-buffer (extra_mem is set), then do it only if visible! */
 	    if ( picasso_vidinfo.extra_mem && renderinfo_is_current_screen (&ri))
-		do_blit( &ri, Bpp, X, Y, X, Y, W, H, BLIT_SRC, 0);
+		if (vsyncgfxwrite==0)do_blit( &ri, Bpp, X, Y, X, Y, W, H, BLIT_SRC, 0);
 
 	    result = 1;
 	}
@@ -2652,12 +2711,12 @@ uae_u32 picasso_BlitTemplate (void)
     uae_u8 *tmpl_base;
     uae_u32 result = 0;
 
-    if (W * H <= 2500)
-	return 0;
+//  if (W * H <= 2500)
+//	return 0;
     special_mem|=picasso_is_special_read|picasso_is_special;     
 
 #ifdef LOCK_UNLOCK_MADNESS
-    PICASSO96_Unlock(); // @@@ We need to unlock here, because do_blit (later) needs to lock...
+    //PICASSO96_Unlock(); // @@@ We need to unlock here, because do_blit (later) needs to lock...
 #else
     wgfx_flushline ();
 #endif
@@ -2791,7 +2850,7 @@ uae_u32 picasso_BlitTemplate (void)
 	    
 	    /* If we need to update a second-buffer (extra_mem is set), then do it only if visible! */
 	    if( picasso_vidinfo.extra_mem && renderinfo_is_current_screen( &ri ) )
-		do_blit( &ri, Bpp, X, Y, X, Y, W, H, BLIT_SRC, 0 );
+		if (vsyncgfxwrite==0)do_blit( &ri, Bpp, X, Y, X, Y, W, H, BLIT_SRC, 0 );
 	    
 	    result = 1;
 	}
@@ -2839,7 +2898,7 @@ uae_u32 picasso_SetDisplay (void)
 void picasso_handle_hsync (void)
 {
     static int p96hsync;
-
+    
     if (currprefs.gfxmem_size == 0)
 	return;
     if (WIN32GFX_IsPicassoScreen () && currprefs.gfx_pfullscreen && currprefs.gfx_vsync) {
@@ -2861,7 +2920,7 @@ void init_hz_p96 (void)
     if (isfullscreen ())
 	rate = DirectDraw_CurrentRefreshRate ();
     else
-	rate = currprefs.gfx_refreshrate;
+	rate = abs (currprefs.gfx_refreshrate);
     if (rate <= 0)
         rate = 60;
     p96syncrate /= rate;
@@ -2992,7 +3051,7 @@ uae_u32 picasso_BlitPlanar2Chunky (void)
 	PlanarToChunky (&local_ri, &local_bm, srcx, srcy, dstx, dsty, width, height, mask);
 	if (renderinfo_is_current_screen (&local_ri))
 	{
-	    do_blit( &local_ri, GetBytesPerPixel( local_ri.RGBFormat ), dstx, dsty, dstx, dsty, width, height, BLIT_SRC, 0);
+	    if (!vsyncgfxwrite)do_blit( &local_ri, GetBytesPerPixel( local_ri.RGBFormat ), dstx, dsty, dstx, dsty, width, height, BLIT_SRC, 0);
 	}
 	result = 1;
     }
@@ -3149,7 +3208,7 @@ uae_u32 picasso_BlitPlanar2Direct (void)
 	    srcx, srcy, dstx, dsty, width, height, minterm, Mask, local_bm.Depth));
 	PlanarToDirect (&local_ri, &local_bm, srcx, srcy, dstx, dsty, width, height, Mask, &local_cim);
 	if (renderinfo_is_current_screen (&local_ri))
-	    do_blit( &local_ri, GetBytesPerPixel( local_ri.RGBFormat ), dstx, dsty, dstx, dsty, width, height, BLIT_SRC, 0);
+	    if (!vsyncgfxwrite)do_blit( &local_ri, GetBytesPerPixel( local_ri.RGBFormat ), dstx, dsty, dstx, dsty, width, height, BLIT_SRC, 0);
 	result = 1;
     }
 #ifdef LOCK_UNLOCK_MADNESS
@@ -3665,7 +3724,7 @@ l2:
 	 do_put_mem_long(m, l);
 #endif
     /* write the long-word to our displayable memory */
-    write_gfx_long(addr, l);
+    if (vsyncgfxwrite==0)write_gfx_long(addr, l);
 }
 
 static void REGPARAM2 gfxmem_wput (uaecptr addr, uae_u32 w)
@@ -3678,7 +3737,7 @@ static void REGPARAM2 gfxmem_wput (uaecptr addr, uae_u32 w)
     do_put_mem_word(m, (uae_u16)w);
     
     /* write the word to our displayable memory */
-    write_gfx_word(addr, (uae_u16)w);
+    if (vsyncgfxwrite==0)write_gfx_word(addr, (uae_u16)w);
 }
 
 static void REGPARAM2 gfxmem_bput (uaecptr addr, uae_u32 b)
@@ -3689,7 +3748,7 @@ static void REGPARAM2 gfxmem_bput (uaecptr addr, uae_u32 b)
     gfxmemory[addr] = b;
     
     /* write the byte to our displayable memory */
-    write_gfx_byte(addr, (uae_u8)b);
+    if (vsyncgfxwrite==0)write_gfx_byte(addr, (uae_u8)b);
 }
 
 static int REGPARAM2 gfxmem_check (uaecptr addr, uae_u32 size)

@@ -1,5 +1,5 @@
 !define PRODUCT_NAME "WinUAE"
-!define PRODUCT_VERSION "0.9.92"
+!define PRODUCT_VERSION "1.0"
 !define PRODUCT_PUBLISHER "Toni Wilen"
 !define PRODUCT_WEB_SITE "http://www.winuae.net/"
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\winuae.exe"
@@ -7,7 +7,7 @@
 !define PRODUCT_UNINST_ROOT_KEY "HKLM"
 
 ;-- Your path here
-!define DISTPATH "C:\projects\winuae\distribution"
+!define DISTPATH "e:\projects\winuae\distribution"
 
 SetCompressor lzma
 
@@ -156,19 +156,19 @@ SubSection "Additional files" secAdditionalFiles
  SectionEnd
 SubSectionEnd
 
-SubSection "Translations" secTranslations
- Section "German" secTransGerman
-  SectionIn 1
-  SetOutPath "$INSTDIR\"
-  File "${DISTPATH}\WinUAE_German.dll"
- SectionEnd
+;SubSection "Translations" secTranslations
+; Section "German" secTransGerman
+;  SectionIn 1
+;  SetOutPath "$INSTDIR\"
+;  File "${DISTPATH}\WinUAE_German.dll"
+; SectionEnd
  
 ; Section "Foo" secTransFoo
 ;  SectionIn 1
 ;  SetOutPath "$INSTDIR\"
 ;  File "${DISTPATH}\WinUAE_Foo.dll"
 ; SectionEnd
-SubSectionEnd
+;SubSectionEnd
 
 SubSection "Shortcuts" secShortcuts
  Section "Startmenu" secStartmenu
@@ -212,7 +212,7 @@ SectionEnd
   !insertmacro MUI_DESCRIPTION_TEXT ${secStartmenu} "Create a startmenu entry"
   !insertmacro MUI_DESCRIPTION_TEXT ${secDesktop} "Create a desktop icon"
   !insertmacro MUI_DESCRIPTION_TEXT ${secQuickLaunch} "Create a Quick Launch icon"
-  !insertmacro MUI_DESCRIPTION_TEXT ${secTranslations} "WinUAE Translations"
+;  !insertmacro MUI_DESCRIPTION_TEXT ${secTranslations} "WinUAE Translations"
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
 
 

@@ -1,197 +1,284 @@
 <?xml version="1.0" encoding="Windows-1252"?>
 <VisualStudioProject
 	ProjectType="Visual C++"
-	Version="7.10"
+	Version="8,00"
 	Name="winuae_mini"
 	ProjectGUID="{AA96D0A2-4F40-4C51-9DBD-3C3CAFC7AAA7}"
-	Keyword="Win32Proj">
+	Keyword="Win32Proj"
+	SignManifests="true"
+	>
 	<Platforms>
 		<Platform
-			Name="Win32"/>
+			Name="Win32"
+		/>
 	</Platforms>
+	<ToolFiles>
+	</ToolFiles>
 	<Configurations>
 		<Configuration
 			Name="Debug|Win32"
 			OutputDirectory="Debug"
 			IntermediateDirectory="Debug"
 			ConfigurationType="1"
-			CharacterSet="2">
+			InheritedPropertySheets="UpgradeFromVC71.vsprops"
+			CharacterSet="2"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+			/>
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
 				FavorSizeOrSpeed="0"
 				AdditionalIncludeDirectories="..\..\include,..\..,..\,..\resources,..\osdep,..\sounddep"
 				PreprocessorDefinitions="WINVER=0x0500,_DEBUG,WIN32,_WINDOWS,WIN32_LEAN_AND_MEAN,ZLIB_DLL,UAE_MINI"
-				MinimalRebuild="TRUE"
-				ExceptionHandling="FALSE"
+				MinimalRebuild="true"
+				ExceptionHandling="0"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="1"
 				UsePrecompiledHeader="0"
 				WarningLevel="3"
-				Detect64BitPortabilityProblems="FALSE"
-				DebugInformationFormat="4"/>
+				Detect64BitPortabilityProblems="false"
+				DebugInformationFormat="4"
+			/>
 			<Tool
-				Name="VCCustomBuildTool"/>
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="opengl32.lib glu32.lib ws2_32.lib ddraw.lib dxguid.lib winmm.lib comctl32.lib version.lib vfw32.lib msacm32.lib zdll.lib dsound.lib dinput8.lib winio.lib setupapi.lib wininet.lib capsimg.lib d3d9.lib d3dx9.lib dxerr8.lib"
 				OutputFile="d:\amiga\winuae_mini.exe"
 				LinkIncremental="2"
 				DelayLoadDLLs="zlib1.dll;winio.dll;setupapi.dll;capsimg.dll"
-				GenerateDebugInformation="TRUE"
+				GenerateDebugInformation="true"
 				ProgramDatabaseFile="$(OutDir)/miniuae.pdb"
 				SubSystem="2"
-				TargetMachine="1"/>
+				TargetMachine="1"
+			/>
 			<Tool
-				Name="VCMIDLTool"/>
+				Name="VCALinkTool"
+			/>
 			<Tool
-				Name="VCPostBuildEventTool"/>
+				Name="VCManifestTool"
+			/>
 			<Tool
-				Name="VCPreBuildEventTool"/>
+				Name="VCXDCMakeTool"
+			/>
 			<Tool
-				Name="VCPreLinkEventTool"/>
+				Name="VCBscMakeTool"
+			/>
 			<Tool
-				Name="VCResourceCompilerTool"/>
+				Name="VCFxCopTool"
+			/>
 			<Tool
-				Name="VCWebServiceProxyGeneratorTool"/>
+				Name="VCAppVerifierTool"
+			/>
 			<Tool
-				Name="VCXMLDataGeneratorTool"/>
+				Name="VCWebDeploymentTool"
+			/>
 			<Tool
-				Name="VCWebDeploymentTool"/>
-			<Tool
-				Name="VCManagedWrapperGeneratorTool"/>
-			<Tool
-				Name="VCAuxiliaryManagedWrapperGeneratorTool"/>
+				Name="VCPostBuildEventTool"
+			/>
 		</Configuration>
 		<Configuration
 			Name="Release|Win32"
 			OutputDirectory="Release"
 			IntermediateDirectory="Release"
 			ConfigurationType="1"
+			InheritedPropertySheets="UpgradeFromVC71.vsprops"
 			CharacterSet="2"
-			WholeProgramOptimization="FALSE">
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+			/>
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="2"
-				GlobalOptimizations="TRUE"
 				InlineFunctionExpansion="1"
-				EnableIntrinsicFunctions="TRUE"
-				ImproveFloatingPointConsistency="TRUE"
+				EnableIntrinsicFunctions="true"
 				FavorSizeOrSpeed="1"
-				OmitFramePointers="TRUE"
-				OptimizeForProcessor="2"
+				OmitFramePointers="true"
 				AdditionalIncludeDirectories="..\..\include,..\..,..\,..\resources,..\osdep,..\sounddep"
 				PreprocessorDefinitions="WINVER=0x0500;WIN32;NDEBUG;_WINDOWS;WIN32_LEAN_AND_MEAN;ZLIB_DLL;UAE_MINI"
-				StringPooling="TRUE"
-				ExceptionHandling="FALSE"
+				StringPooling="true"
+				ExceptionHandling="0"
 				BasicRuntimeChecks="0"
 				RuntimeLibrary="0"
-				BufferSecurityCheck="FALSE"
-				EnableFunctionLevelLinking="TRUE"
+				BufferSecurityCheck="false"
+				EnableFunctionLevelLinking="true"
 				UsePrecompiledHeader="0"
 				WarningLevel="3"
-				Detect64BitPortabilityProblems="FALSE"
+				Detect64BitPortabilityProblems="false"
 				DebugInformationFormat="3"
-				CompileAs="1"/>
+				CompileAs="1"
+			/>
 			<Tool
-				Name="VCCustomBuildTool"/>
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="opengl32.lib glu32.lib ws2_32.lib ddraw.lib dxguid.lib winmm.lib comctl32.lib version.lib vfw32.lib msacm32.lib zdll.lib dsound.lib dinput8.lib winio.lib setupapi.lib wininet.lib capsimg.lib d3d9.lib d3dx9.lib dxerr8.lib"
 				OutputFile="d:\amiga\winuae_mini.exe"
 				LinkIncremental="1"
-				SuppressStartupBanner="TRUE"
+				SuppressStartupBanner="true"
 				DelayLoadDLLs="zlib1.dll;winio.dll;setupapi.dll;capsimg.dll"
-				GenerateDebugInformation="FALSE"
+				GenerateDebugInformation="false"
 				SubSystem="2"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
-				TargetMachine="1"/>
+				TargetMachine="1"
+			/>
 			<Tool
-				Name="VCMIDLTool"/>
+				Name="VCALinkTool"
+			/>
 			<Tool
-				Name="VCPostBuildEventTool"/>
+				Name="VCManifestTool"
+			/>
 			<Tool
-				Name="VCPreBuildEventTool"/>
+				Name="VCXDCMakeTool"
+			/>
 			<Tool
-				Name="VCPreLinkEventTool"/>
+				Name="VCBscMakeTool"
+			/>
 			<Tool
-				Name="VCResourceCompilerTool"/>
+				Name="VCFxCopTool"
+			/>
 			<Tool
-				Name="VCWebServiceProxyGeneratorTool"/>
+				Name="VCAppVerifierTool"
+			/>
 			<Tool
-				Name="VCXMLDataGeneratorTool"/>
+				Name="VCWebDeploymentTool"
+			/>
 			<Tool
-				Name="VCWebDeploymentTool"/>
-			<Tool
-				Name="VCManagedWrapperGeneratorTool"/>
-			<Tool
-				Name="VCAuxiliaryManagedWrapperGeneratorTool"/>
+				Name="VCPostBuildEventTool"
+			/>
 		</Configuration>
 		<Configuration
 			Name="TestRelease|Win32"
 			OutputDirectory="$(ConfigurationName)"
 			IntermediateDirectory="$(ConfigurationName)"
 			ConfigurationType="1"
+			InheritedPropertySheets="UpgradeFromVC71.vsprops"
 			CharacterSet="2"
-			WholeProgramOptimization="FALSE">
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+			/>
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="2"
-				GlobalOptimizations="TRUE"
 				InlineFunctionExpansion="1"
-				EnableIntrinsicFunctions="TRUE"
-				ImproveFloatingPointConsistency="TRUE"
+				EnableIntrinsicFunctions="true"
 				FavorSizeOrSpeed="1"
-				OmitFramePointers="TRUE"
-				OptimizeForProcessor="2"
+				OmitFramePointers="true"
 				AdditionalIncludeDirectories="..\..\include,..\..,..\,..\resources,..\osdep,..\sounddep"
 				PreprocessorDefinitions="WINVER=0x0500;WIN32;NDEBUG;_WINDOWS;WIN32_LEAN_AND_MEAN;ZLIB_DLL;UAE_MINI"
-				StringPooling="TRUE"
-				ExceptionHandling="FALSE"
+				StringPooling="true"
+				ExceptionHandling="0"
 				BasicRuntimeChecks="0"
 				RuntimeLibrary="0"
-				BufferSecurityCheck="FALSE"
-				EnableFunctionLevelLinking="TRUE"
+				BufferSecurityCheck="false"
+				EnableFunctionLevelLinking="true"
 				UsePrecompiledHeader="0"
 				WarningLevel="3"
-				Detect64BitPortabilityProblems="FALSE"
+				Detect64BitPortabilityProblems="false"
 				DebugInformationFormat="3"
-				CompileAs="1"/>
+				CompileAs="1"
+			/>
 			<Tool
-				Name="VCCustomBuildTool"/>
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalDependencies="opengl32.lib glu32.lib ws2_32.lib ddraw.lib dxguid.lib winmm.lib comctl32.lib version.lib vfw32.lib msacm32.lib zdll.lib dsound.lib dinput8.lib winio.lib setupapi.lib wininet.lib capsimg.lib d3d9.lib d3dx9.lib dxerr8.lib"
 				OutputFile="d:\amiga\winuae_mini.exe"
 				LinkIncremental="1"
-				SuppressStartupBanner="TRUE"
+				SuppressStartupBanner="true"
 				DelayLoadDLLs="zlib1.dll;winio.dll;setupapi.dll;capsimg.dll"
-				GenerateDebugInformation="FALSE"
+				GenerateDebugInformation="false"
 				SubSystem="2"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
-				TargetMachine="1"/>
+				TargetMachine="1"
+			/>
 			<Tool
-				Name="VCMIDLTool"/>
+				Name="VCALinkTool"
+			/>
 			<Tool
-				Name="VCPostBuildEventTool"/>
+				Name="VCManifestTool"
+			/>
 			<Tool
-				Name="VCPreBuildEventTool"/>
+				Name="VCXDCMakeTool"
+			/>
 			<Tool
-				Name="VCPreLinkEventTool"/>
+				Name="VCBscMakeTool"
+			/>
 			<Tool
-				Name="VCResourceCompilerTool"/>
+				Name="VCFxCopTool"
+			/>
 			<Tool
-				Name="VCWebServiceProxyGeneratorTool"/>
+				Name="VCAppVerifierTool"
+			/>
 			<Tool
-				Name="VCXMLDataGeneratorTool"/>
+				Name="VCWebDeploymentTool"
+			/>
 			<Tool
-				Name="VCWebDeploymentTool"/>
-			<Tool
-				Name="VCManagedWrapperGeneratorTool"/>
-			<Tool
-				Name="VCAuxiliaryManagedWrapperGeneratorTool"/>
+				Name="VCPostBuildEventTool"
+			/>
 		</Configuration>
 	</Configurations>
 	<References>
@@ -199,280 +286,392 @@
 	<Files>
 		<Filter
 			Name="common"
-			Filter="">
+			>
 			<File
-				RelativePath="..\..\audio.c">
+				RelativePath="..\..\audio.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\blitfunc.c">
+				RelativePath="..\..\blitfunc.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\blittable.c">
+				RelativePath="..\..\blittable.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\blitter.c">
+				RelativePath="..\..\blitter.c"
+				>
 			</File>
 			<File
-				RelativePath="..\caps\caps_win32.c">
+				RelativePath="..\caps\caps_win32.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\cfgfile.c">
+				RelativePath="..\..\cfgfile.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\cia.c">
+				RelativePath="..\..\cia.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\cpudefs.c">
+				RelativePath="..\..\cpudefs.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\cpuemu_0.c">
+				RelativePath="..\..\cpuemu_0.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\cpuemu_5.c">
+				RelativePath="..\..\cpuemu_5.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\cpuemu_6.c">
+				RelativePath="..\..\cpuemu_6.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\cpustbl.c">
+				RelativePath="..\..\cpustbl.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\custom.c">
+				RelativePath="..\..\custom.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\disk.c">
+				RelativePath="..\..\disk.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\drawing.c">
+				RelativePath="..\..\drawing.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\driveclick.c">
+				RelativePath="..\..\driveclick.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\fdi2raw.c">
+				RelativePath="..\..\fdi2raw.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\gfxutil.c">
+				RelativePath="..\..\gfxutil.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\inputdevice.c">
+				RelativePath="..\..\inputdevice.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\keybuf.c">
+				RelativePath="..\..\keybuf.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\main.c">
+				RelativePath="..\..\main.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\memory.c">
+				RelativePath="..\..\memory.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\missing.c">
+				RelativePath="..\..\missing.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\newcpu.c">
+				RelativePath="..\..\newcpu.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\readcpu.c">
+				RelativePath="..\..\readcpu.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\savestate.c">
+				RelativePath="..\..\savestate.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\unzip.c">
+				RelativePath="..\..\unzip.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\zfile.c">
+				RelativePath="..\..\zfile.c"
+				>
 			</File>
 		</Filter>
 		<Filter
 			Name="Resource Files"
-			Filter="rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe">
+			Filter="rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe"
+			>
 			<File
-				RelativePath="..\resources\35floppy.ico">
+				RelativePath="..\resources\35floppy.ico"
+				>
 			</File>
 			<File
-				RelativePath="..\resources\amigainfo.ico">
+				RelativePath="..\resources\amigainfo.ico"
+				>
 			</File>
 			<File
-				RelativePath="..\resources\avioutput.ico">
+				RelativePath="..\resources\avioutput.ico"
+				>
 			</File>
 			<File
-				RelativePath="..\resources\chip.ico">
+				RelativePath="..\resources\chip.ico"
+				>
 			</File>
 			<File
-				RelativePath="..\resources\cpu.ico">
+				RelativePath="..\resources\cpu.ico"
+				>
 			</File>
 			<File
-				RelativePath="..\resources\drive.ico">
+				RelativePath="..\resources\drive.ico"
+				>
 			</File>
 			<File
-				RelativePath="..\resources\file.ico">
+				RelativePath="..\resources\file.ico"
+				>
 			</File>
 			<File
-				RelativePath="..\resources\folder.ico">
+				RelativePath="..\resources\folder.ico"
+				>
 			</File>
 			<File
-				RelativePath="..\resources\h_arrow.cur">
+				RelativePath="..\resources\h_arrow.cur"
+				>
 			</File>
 			<File
-				RelativePath="..\resources\joystick.ico">
+				RelativePath="..\resources\joystick.ico"
+				>
 			</File>
 			<File
-				RelativePath="..\resources\misc.ico">
+				RelativePath="..\resources\misc.ico"
+				>
 			</File>
 			<File
-				RelativePath="..\resources\move_dow.ico">
+				RelativePath="..\resources\move_dow.ico"
+				>
 			</File>
 			<File
-				RelativePath="..\resources\move_up.ico">
+				RelativePath="..\resources\move_up.ico"
+				>
 			</File>
 			<File
-				RelativePath="..\resources\paths.ico">
+				RelativePath="..\resources\paths.ico"
+				>
 			</File>
 			<File
-				RelativePath="..\resources\quickstart.ico">
+				RelativePath="..\resources\quickstart.ico"
+				>
 			</File>
 			<File
-				RelativePath="..\resources\root.ico">
+				RelativePath="..\resources\root.ico"
+				>
 			</File>
 			<File
-				RelativePath="..\resources\screen.ico">
+				RelativePath="..\resources\screen.ico"
+				>
 			</File>
 			<File
-				RelativePath="..\resources\sound.ico">
+				RelativePath="..\resources\sound.ico"
+				>
 			</File>
 			<File
-				RelativePath="..\resources\winuae.ico">
+				RelativePath="..\resources\winuae.ico"
+				>
 			</File>
 			<File
-				RelativePath="..\resources\winuae.rc">
+				RelativePath="..\resources\winuae.rc"
+				>
 			</File>
 		</Filter>
 		<Filter
 			Name="win32"
-			Filter="">
+			>
 			<File
-				RelativePath="..\dinput.c">
+				RelativePath="..\dinput.c"
+				>
 			</File>
 			<File
-				RelativePath="..\direct3d.c">
+				RelativePath="..\direct3d.c"
+				>
 			</File>
 			<File
-				RelativePath="..\dxwrap.c">
+				RelativePath="..\dxwrap.c"
+				>
 			</File>
 			<File
-				RelativePath="..\keyboard_win32.c">
+				RelativePath="..\keyboard_win32.c"
+				>
 			</File>
 			<File
-				RelativePath="..\opengl.c">
+				RelativePath="..\opengl.c"
+				>
 			</File>
 			<File
-				RelativePath="..\posixemu.c">
+				RelativePath="..\posixemu.c"
+				>
 			</File>
 			<File
-				RelativePath="..\scaler.c">
+				RelativePath="..\scaler.c"
+				>
 			</File>
 			<File
-				RelativePath="..\screenshot.c">
+				RelativePath="..\screenshot.c"
+				>
 			</File>
 			<File
-				RelativePath="..\serial_win32.c">
+				RelativePath="..\serial_win32.c"
+				>
 			</File>
 			<File
-				RelativePath="..\sounddep\sound.c">
+				RelativePath="..\sounddep\sound.c"
+				>
 			</File>
 			<File
-				RelativePath="..\support.c">
+				RelativePath="..\support.c"
+				>
 			</File>
 			<File
-				RelativePath="..\win32.c">
+				RelativePath="..\win32.c"
+				>
 			</File>
 			<File
-				RelativePath="..\win32_scale2x.c">
+				RelativePath="..\win32_scale2x.c"
+				>
 			</File>
 			<File
-				RelativePath="..\win32gfx.c">
+				RelativePath="..\win32gfx.c"
+				>
 			</File>
 			<File
-				RelativePath="..\win32gui.c">
+				RelativePath="..\win32gui.c"
+				>
 			</File>
 			<File
-				RelativePath="..\writelog.c">
+				RelativePath="..\writelog.c"
+				>
 			</File>
 		</Filter>
 		<Filter
 			Name="dms"
-			Filter="">
+			>
 			<File
-				RelativePath="..\..\dms\crc_csum.c">
+				RelativePath="..\..\dms\crc_csum.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\dms\getbits.c">
+				RelativePath="..\..\dms\getbits.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\dms\maketbl.c">
+				RelativePath="..\..\dms\maketbl.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\dms\pfile.c">
+				RelativePath="..\..\dms\pfile.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\dms\tables.c">
+				RelativePath="..\..\dms\tables.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\dms\u_deep.c">
+				RelativePath="..\..\dms\u_deep.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\dms\u_heavy.c">
+				RelativePath="..\..\dms\u_heavy.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\dms\u_init.c">
+				RelativePath="..\..\dms\u_init.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\dms\u_medium.c">
+				RelativePath="..\..\dms\u_medium.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\dms\u_quick.c">
+				RelativePath="..\..\dms\u_quick.c"
+				>
 			</File>
 			<File
-				RelativePath="..\..\dms\u_rle.c">
+				RelativePath="..\..\dms\u_rle.c"
+				>
 			</File>
 		</Filter>
 		<File
-			RelativePath="..\1">
+			RelativePath="..\1"
+			>
 		</File>
 		<File
-			RelativePath="..\resources\drive_click.wav">
+			RelativePath="..\resources\drive_click.wav"
+			>
 		</File>
 		<File
-			RelativePath="..\resources\drive_snatch.wav">
+			RelativePath="..\resources\drive_snatch.wav"
+			>
 		</File>
 		<File
-			RelativePath="..\resources\drive_spin.wav">
+			RelativePath="..\resources\drive_spin.wav"
+			>
 		</File>
 		<File
-			RelativePath="..\resources\drive_spinnd.wav">
+			RelativePath="..\resources\drive_spinnd.wav"
+			>
 		</File>
 		<File
-			RelativePath="..\resources\drive_startup.wav">
+			RelativePath="..\resources\drive_startup.wav"
+			>
 		</File>
 		<File
-			RelativePath="..\hq2x32.obj">
+			RelativePath="..\hq2x32.obj"
+			>
 		</File>
 		<File
-			RelativePath="..\hq3x16.obj">
+			RelativePath="..\hq3x16.obj"
+			>
 		</File>
 		<File
-			RelativePath="..\hq3x32.obj">
+			RelativePath="..\hq3x32.obj"
+			>
 		</File>
 		<File
-			RelativePath="..\hq4x32.obj">
+			RelativePath="..\hq4x32.obj"
+			>
 		</File>
 		<File
-			RelativePath="..\resources\resource.h">
+			RelativePath="..\resources\resource.h"
+			>
 		</File>
 		<File
-			RelativePath="..\resources\winuae.exe.manifest">
+			RelativePath="..\resources\winuae.exe.manifest"
+			>
+			<FileConfiguration
+				Name="Debug|Win32"
+				ExcludedFromBuild="true"
+				>
+				<Tool
+					Name="VCCustomBuildTool"
+				/>
+			</FileConfiguration>
+			<FileConfiguration
+				Name="Release|Win32"
+				ExcludedFromBuild="true"
+				>
+				<Tool
+					Name="VCCustomBuildTool"
+				/>
+			</FileConfiguration>
+			<FileConfiguration
+				Name="TestRelease|Win32"
+				ExcludedFromBuild="true"
+				>
+				<Tool
+					Name="VCCustomBuildTool"
+				/>
+			</FileConfiguration>
 		</File>
 	</Files>
 	<Globals>

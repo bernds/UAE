@@ -39,6 +39,7 @@
 #include "scsidev.h"
 #include "akiko.h"
 #include "savestate.h"
+#include "filesys.h"
 
 #ifdef USE_SDL
 #include "SDL.h"
@@ -91,7 +92,6 @@ void discard_prefs (struct uae_prefs *p, int type)
 #ifdef FILESYS
     filesys_cleanup ();
     free_mountinfo (p->mountinfo);
-    p->mountinfo = alloc_mountinfo ();
 #endif
 }
 
@@ -138,15 +138,17 @@ void fixup_prefs (struct uae_prefs *p)
 	err = 1;
     }
     if ((p->gfxmem_size & (p->gfxmem_size - 1)) != 0
-	|| (p->gfxmem_size != 0 && (p->gfxmem_size < 0x100000 || p->gfxmem_size > 0x2000000)))
+	|| (p->gfxmem_size != 0 && (p->gfxmem_size < 0x100000 || p->gfxmem_size > 0x8000000)))
     {
 	write_log ("Unsupported graphics card memory size %lx!\n", p->gfxmem_size);
 	p->gfxmem_size = 0;
 	err = 1;
     }
     if ((p->z3fastmem_size & (p->z3fastmem_size - 1)) != 0
-	|| (p->z3fastmem_size != 0 && (p->z3fastmem_size < 0x100000 || p->z3fastmem_size > 0x20000000)))
+	|| (p->z3fastmem_size != 0 && (p->z3fastmem_size < 0x100000 || p->z3fastmem_size > max_z3fastmem)))
     {
+	if (p->z3fastmem_size > max_z3fastmem)
+	    p->z3fastmem_size = max_z3fastmem;
 	p->z3fastmem_size = 0;
 	write_log ("Unsupported Zorro III fastmem size!\n");
 	err = 1;
@@ -405,7 +407,6 @@ static void parse_cmdline (int argc, char **argv)
 	    } else {
 #ifdef FILESYS
                 free_mountinfo (currprefs.mountinfo);
-	        currprefs.mountinfo = alloc_mountinfo ();
 #endif
 		target_cfgfile_load (&currprefs, argv[++i], -1, 1);
 	    }
@@ -558,7 +559,6 @@ static void real_main2 (int argc, char **argv)
     if (restart_config[0]) {
 #ifdef FILESYS
 	free_mountinfo (currprefs.mountinfo);
-        currprefs.mountinfo = alloc_mountinfo ();
 #endif
 	default_prefs (&currprefs, 0);
 	fixup_prefs (&currprefs);
@@ -599,9 +599,7 @@ static void real_main2 (int argc, char **argv)
     restart_program = 0;
     if (! no_gui) {
 	int err = gui_init ();
-	struct uaedev_mount_info *mi = currprefs.mountinfo;
 	currprefs = changed_prefs;
-	currprefs.mountinfo = mi;
 	if (err == -1) {
 	    write_log ("Failed to initialize the GUI\n");
 	} else if (err == -2) {
@@ -687,6 +685,8 @@ static void real_main2 (int argc, char **argv)
 
 void real_main (int argc, char **argv)
 {
+    free_mountinfo (&options_mountinfo);
+    currprefs.mountinfo = changed_prefs.mountinfo = &options_mountinfo;
     restart_program = 1;
     fetch_configurationpath (restart_config, sizeof (restart_config));
     strcat (restart_config, OPTIONSFILENAME);

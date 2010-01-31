@@ -26,6 +26,8 @@
 #include "gui.h"
 #include "newcpu.h"
 #include "zfile.h"
+#include "filesys.h"
+#include "fsdb.h"
 
 #define CONFIG_BLEN 2560
 
@@ -110,7 +112,7 @@ static struct cfg_lines opttable[] =
     {"floppy3", "Diskfile for drive 3" },
     {"hardfile", "access,sectors, surfaces, reserved, blocksize, path format" },
     {"filesystem", "access,'Amiga volume-name':'host directory path' - where 'access' can be 'read-only' or 'read-write'" },
-    {"catweasel_io","Catweasel board io base address" }
+    {"catweasel", "Catweasel board io base address" }
 };
 
 static const char *guimode1[] = { "no", "yes", "nowait", 0 };
@@ -146,7 +148,10 @@ static const char *obsolete[] = {
     "accuracy", "gfx_opengl", "gfx_32bit_blits", "32bit_blits",
     "gfx_immediate_blits", "gfx_ntsc", "win32", "gfx_filter_bits",
     "sound_pri_cutoff", "sound_pri_time", "sound_min_buff",
-    "gfx_test_speed", "gfxlib_replacement", "enforcer", 0 };
+    "gfx_test_speed", "gfxlib_replacement", "enforcer", "catweasel_io",
+    "kickstart_key_file",
+    0
+};
 
 #define UNEXPANDED "$(FILE_PATH)"
 
@@ -407,7 +412,10 @@ static void save_options (struct zfile *f, struct uae_prefs *p, int type)
     cfgfile_write (f, "blitter_cycle_exact=%s\n", p->blitter_cycle_exact ? "true" : "false");
 
     cfgfile_write (f, "log_illegal_mem=%s\n", p->illegal_mem ? "true" : "false");
-    cfgfile_write (f, "catweasel_io=0x%x\n", p->catweasel_io);
+    if (p->catweasel >= 100)
+	cfgfile_write (f, "catweasel=0x%x\n", p->catweasel);
+    else
+	cfgfile_write (f, "catweasel=%d\n", p->catweasel);
 
     cfgfile_write (f, "kbd_lang=%s\n", (p->keyboard_lang == KBD_LANG_DE ? "de"
 				  : p->keyboard_lang == KBD_LANG_DK ? "dk"
@@ -423,7 +431,7 @@ static void save_options (struct zfile *f, struct uae_prefs *p, int type)
     cfgfile_write (f, "state_replay_buffer=%d\n", p->statecapturebuffersize);
 
 #ifdef FILESYS
-    write_filesys_config (currprefs.mountinfo, UNEXPANDED, p->path_hardfile, f);
+    write_filesys_config (&currprefs, currprefs.mountinfo, UNEXPANDED, p->path_hardfile, f);
     if (p->filesys_no_uaefsdb)
         cfgfile_write (f, "filesys_no_fsdb=%s\n", p->filesys_no_uaefsdb ? "true" : "false");
 #endif
@@ -879,7 +887,7 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	|| cfgfile_intval (option, value, "floppy3type", &p->dfxtype[3], 1)
 	|| cfgfile_intval (option, value, "maprom", &p->maprom, 1)
 	|| cfgfile_intval (option, value, "parallel_autoflush", &p->parallel_autoflush_time, 1)
-	|| cfgfile_intval (option, value, "catweasel_io", &p->catweasel_io, 1))
+	|| cfgfile_intval (option, value, "catweasel", &p->catweasel, 1))
 	return 1;
     if (cfgfile_strval (option, value, "comp_trustbyte", &p->comptrustbyte, compmode, 0)
 	|| cfgfile_strval (option, value, "comp_trustword", &p->comptrustword, compmode, 0)
@@ -997,7 +1005,7 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	tmpp = 0;
 #ifdef FILESYS
 	tmpp = add_filesys_unit (currprefs.mountinfo, 0, aname, str, ro, secs,
-				 heads, reserved, bs, 0, 0);
+				 heads, reserved, bs, 0, 0, 0);
 #endif
 	free (str);
 	if (tmpp)
@@ -1075,7 +1083,7 @@ static int cfgfile_parse_hardware (struct uae_prefs *p, char *option, char *valu
 	tmpp = 0;
 #ifdef FILESYS
 	tmpp = add_filesys_unit (currprefs.mountinfo, dname, aname, str, ro, secs,
-				 heads, reserved, bs, bp, fs);
+				 heads, reserved, bs, bp, fs, 0);
 #endif
 	free (str);
 	if (tmpp)
@@ -1353,12 +1361,26 @@ int cfgfile_load (struct uae_prefs *p, const char *filename, int *type, int igno
 end:
     recursive--;
     fixup_prefs (p);
+    write_log ("%s\n", p->romfile);
     return v;
+}
+
+void cfgfile_backup (const char *path)
+{
+    char dpath[MAX_DPATH];
+
+    fetch_configurationpath (dpath, sizeof (dpath));
+    strcat (dpath, "configuration.backup");
+    my_unlink (dpath);
+    my_rename (path, dpath);
 }
 
 int cfgfile_save (struct uae_prefs *p, const char *filename, int type)
 {
-    struct zfile *fh = zfile_fopen (filename, "w");
+    struct zfile *fh;
+
+    cfgfile_backup (filename);
+    fh = zfile_fopen (filename, "w");
     write_log ("save config '%s'\n", filename);
     if (! fh)
 	return 0;
@@ -1542,7 +1564,7 @@ static void parse_filesys_spec (int readonly, char *spec)
 #endif
 	s2 = 0;
 #ifdef FILESYS
-	s2 = add_filesys_unit (currprefs.mountinfo, 0, buf, s2, readonly, 0, 0, 0, 0, 0, 0);
+	s2 = add_filesys_unit (currprefs.mountinfo, 0, buf, s2, readonly, 0, 0, 0, 0, 0, 0, 0);
 #endif
 	if (s2)
 	    write_log ("%s\n", s2);
@@ -1574,7 +1596,7 @@ static void parse_hardfile_spec (char *spec)
     *x4++ = '\0';
     x4 = 0;
 #ifdef FILESYS
-    x4 = add_filesys_unit (currprefs.mountinfo, 0, 0, x4, 0, atoi (x0), atoi (x1), atoi (x2), atoi (x3), 0, 0);
+    x4 = add_filesys_unit (currprefs.mountinfo, 0, 0, x4, 0, atoi (x0), atoi (x1), atoi (x2), atoi (x3), 0, 0, 0);
 #endif
     if (x4)
 	write_log ("%s\n", x4);
@@ -2150,7 +2172,7 @@ static void default_prefs_mini (struct uae_prefs *p, int type)
 
 void default_prefs (struct uae_prefs *p, int type)
 {
-    int roms[] = { 6, 7, 8, 9, 10, 14, 5, 4, 3, 2, 1 };
+    int roms[] = { 6, 7, 8, 9, 10, 14, 5, 4, 3, 2, 1, -1 };
 
     memset (p, 0, sizeof (*p));
     strcpy (p->description, "UAE default configuration");
@@ -2250,7 +2272,7 @@ void default_prefs (struct uae_prefs *p, int type)
     p->fast_copper = 1;
     p->scsi = 0;
     p->cpu_idle = 0;
-    p->catweasel_io = 0;
+    p->catweasel = 0;
     p->tod_hack = 0;
     p->maprom = 0;
     p->filesys_no_uaefsdb = 0;
@@ -2304,9 +2326,7 @@ void default_prefs (struct uae_prefs *p, int type)
     p->statecapturerate = 5 * 50;
     p->statecapture = 0;
 
-#ifdef FILESYS
-    p->mountinfo = alloc_mountinfo ();
-#endif
+    p->mountinfo = &options_mountinfo;
 
 #ifdef UAE_MINI
     default_prefs_mini (p, 0);
@@ -2336,7 +2356,7 @@ static void buildin_default_host_prefs (struct uae_prefs *p)
 static void buildin_default_prefs (struct uae_prefs *p)
 {
     free_mountinfo (currprefs.mountinfo);
-    currprefs.mountinfo = p->mountinfo = alloc_mountinfo ();
+    p->mountinfo = currprefs.mountinfo = changed_prefs.mountinfo = &options_mountinfo;
 
     buildin_default_host_prefs (p);
 
@@ -2360,7 +2380,7 @@ static void buildin_default_prefs (struct uae_prefs *p)
     p->produce_sound = 3;
     p->scsi = 0;
     p->cpu_idle = 0;
-    p->catweasel_io = 0;
+    p->catweasel = 0;
     p->tod_hack = 0;
     p->maprom = 0;
     p->cachesize = 0;
@@ -2639,6 +2659,13 @@ int build_in_prefs (struct uae_prefs *p, int model, int config, int compa, int r
 	break;
 	case 6:
 	v = bip_cdtv (p, config, compa, romcheck);
+	break;
+	case 7:
+	v = bip_a500 (p, 3, compa, romcheck);
+	p->nr_floppies = 0;
+	p->chipset_mask = CSMASK_ECS_AGNUS;
+	p->dfxtype[0] = -1;
+	p->dfxtype[1] = -1;
 	break;
 	case 10:
 	v = bip_super (p, config, compa, romcheck);

@@ -62,12 +62,8 @@ void activate_debugger (void)
 
 int firsthist = 0;
 int lasthist = 0;
-#ifdef NEED_TO_DEBUG_BADLY
-struct regstruct history[MAX_HIST];
-union flagu historyf[MAX_HIST];
-#else
-uaecptr history[MAX_HIST];
-#endif
+static struct regstruct history[MAX_HIST];
+static struct flag_struct historyf[MAX_HIST];
 
 static char help[] = {
     "          HELP for UAE Debugger\n"
@@ -91,7 +87,7 @@ static char help[] = {
     "  o <1|2|addr> [<lines>]View memory as Copper instructions\n"
     "  O                     Display bitplane offsets\n"
     "  O <plane> <offset>    Offset a bitplane\n"
-    "  H <count>             Show PC history <count> instructions\n"
+    "  H[H] <count>          Show PC history (HH=full CPU info) <count> instructions\n"
     "  M                     Search for *Tracker sound modules\n"
     "  C <value>             Search for values like energy or lifes in games\n"
     "  W <address> <value>   Write into Amiga memory\n"
@@ -105,6 +101,7 @@ static char help[] = {
     "  h,?                   Show this help page\n"
     "  b                     Step to previous state capture position\n"
     "  am <channel mask>     Enable or disable audio channels\n"                  
+    "  di <mode> [<track>]   Break on disk access. R=DMA read,W=write,RW=both,P=PIO\n"
     "  q                     Quit the emulator. You don't want to use this command.\n\n"
 };
 
@@ -169,16 +166,43 @@ static uae_u32 readint (char **c)
     return val * (negative ? -1 : 1);
 }
 
-static char next_char( char **c)
+static char next_char(char **c)
 {
     ignore_ws (c);
     return *(*c)++;
+}
+
+static char peek_next_char(char **c)
+{
+    char *pc = *c;
+    return pc[1];
 }
 
 static int more_params (char **c)
 {
     ignore_ws (c);
     return (**c) != 0;
+}
+
+static int next_string (char **c, char *out, int max, int forceupper)
+{
+    char *p = out;
+
+    *p = 0;
+    while (**c != 0) {
+	if (**c == 32) {
+	    ignore_ws (c);
+	    return strlen (out);
+	}
+	*p = next_char (c);
+	if (forceupper)
+	    *p = toupper(*p);
+	*++p = 0;
+	max--;
+	if (max <= 1)
+	    break;
+    }
+    return strlen (out);
 }
 
 static uae_u32 nextaddr (uae_u32 addr)
@@ -1185,18 +1209,51 @@ static int staterecorder (char **cc)
     return 0;
 }
 
+static void disk_debug(char **inptr)
+{
+    char parm[10];
+    int i;
+
+    disk_debug_mode = 0;
+    disk_debug_track = -1;
+    ignore_ws(inptr);
+    if (!next_string (inptr, parm, sizeof (parm), 1))
+	goto end;
+    for (i = 0; i < strlen(parm); i++) {
+	if (parm[i] == 'R')
+	    disk_debug_mode |= DISK_DEBUG_DMA_READ;
+	if (parm[i] == 'W')
+	    disk_debug_mode |= DISK_DEBUG_DMA_WRITE;
+	if (parm[i] == 'P')
+	    disk_debug_mode |= DISK_DEBUG_PIO;
+    }
+    if (more_params(inptr))
+	disk_debug_track = readint(inptr);
+    if (disk_debug_track < 0 || disk_debug_track > 2 * 83)
+	disk_debug_track = -1;
+end:
+    console_out("disk breakpoint mode %c%c%c track %d\n",
+	disk_debug_mode & DISK_DEBUG_DMA_READ ? 'R' : '-',
+	disk_debug_mode & DISK_DEBUG_DMA_WRITE ? 'W' : '-',
+	disk_debug_mode & DISK_DEBUG_PIO ? 'P' : '-',
+	disk_debug_track);
+}
+
 static void m68k_modify (char **inptr)
 {
-    char c1, c2;
     uae_u32 v;
+    char parm[10];
+    char c1, c2;
     
-    c1 = toupper (next_char (inptr));
-    if (!more_params (inptr))
+    if (!next_string (inptr, parm, sizeof (parm), 1))
 	return;
-    c2 = toupper (next_char (inptr));
-    if (c2 < '0' || c2 > '7')
-	return;
-    c2 -= '0';
+    c1 = toupper (parm[0]);
+    c2 = toupper (parm[1]);
+    if (c1 == 'A' || c1 == 'D' || c1 == 'P') {
+	if (!isdigit (c2))
+	    return;
+	c2 -= '0';
+    }
     v = readhex (inptr);
     if (c1 == 'A')
 	regs.regs[8 + c2] = v;
@@ -1206,6 +1263,24 @@ static void m68k_modify (char **inptr)
 	regs.irc = v;
     else if (c1 == 'P' && c2 == 1)
 	regs.ir = v;
+    else if (!strcmp (parm, "VBR"))
+	regs.vbr = v;
+    else if (!strcmp (parm, "USP")) {
+	regs.usp = v;
+	MakeFromSR ();
+    } else if (!strcmp (parm, "ISP")) {
+	regs.isp = v;
+	MakeFromSR ();
+    } else if (!strcmp (parm, "MSP")) {
+	regs.msp = v;
+	MakeFromSR ();
+    } else if (!strcmp (parm, "SR")) {
+	regs.sr = v;
+	MakeFromSR ();
+    } else if (!strcmp (parm, "CCR")) {
+	regs.sr = (regs.sr & ~15) | (v & 15);
+	MakeFromSR ();
+    }
 }
 
 static void debug_1 (void)
@@ -1239,21 +1314,31 @@ static void debug_1 (void)
 	case 'W': writeintomem (&inptr); break;
 	case 'w': memwatch (&inptr); break;
 	case 'S': savemem (&inptr); break;
-	case 's': searchmem (&inptr); break;
+	case 's':
+	    if (*inptr == 'c') {
+		screenshot (1, 1);
+	    } else {
+		searchmem (&inptr);
+	    }
+	break;
 	case 'd':
 	{
-	    uae_u32 daddr;
-	    int count;
-
-	    if (more_params(&inptr))
-		daddr = readhex(&inptr);
-	    else
-		daddr = nxdis;
-	    if (more_params(&inptr))
-		count = readhex(&inptr);
-	    else
-		count = 10;
-	    m68k_disasm (stdout, daddr, &nxdis, count);
+	    if (*inptr == 'i') {
+		next_char(&inptr);
+		disk_debug(&inptr);
+	    } else {
+	        uae_u32 daddr;
+		int count;
+		if (more_params(&inptr))
+		    daddr = readhex(&inptr);
+		else
+		    daddr = nxdis;
+		if (more_params(&inptr))
+		    count = readhex(&inptr);
+		else
+		    count = 10;
+		m68k_disasm (stdout, daddr, &nxdis, count);
+	    }
 	}
 	break;
 	case 'T': show_exec_tasks (); break;
@@ -1294,12 +1379,16 @@ static void debug_1 (void)
 
 	case 'H':
 	{
-	    int count;
-	    int temp;
-#ifdef NEED_TO_DEBUG_BADLY
+	    int count, temp, badly;
+	    uae_u32 oldpc = m68k_getpc();
 	    struct regstruct save_regs = regs;
-	    union flagu save_flags = regflags;
-#endif
+	    struct flag_struct save_flags = regflags;
+
+	    badly = 0;
+	    if (inptr[0] == 'H') {
+		badly = 1;
+		inptr++;
+	    }
 
 	    if (more_params(&inptr))
 		count = readhex(&inptr);
@@ -1309,22 +1398,26 @@ static void debug_1 (void)
 		break;
 	    temp = lasthist;
 	    while (count-- > 0 && temp != firsthist) {
-		if (temp == 0) temp = MAX_HIST-1; else temp--;
+		if (temp == 0)
+		    temp = MAX_HIST-1;
+		else
+		    temp--;
 	    }
 	    while (temp != lasthist) {
-#ifdef NEED_TO_DEBUG_BADLY
-		regs = history[temp];
+	        regs = history[temp];
 		regflags = historyf[temp];
-		m68k_dumpstate (NULL);
-#else
-		m68k_disasm (stdout, history[temp], NULL, 1);
-#endif
-		if (++temp == MAX_HIST) temp = 0;
+	        m68k_setpc(history[temp].pc);
+		if (badly) {
+		    m68k_dumpstate(stdout, NULL);
+		} else {
+		    m68k_disasm(stdout, history[temp].pc, NULL, 1);
+		}
+		if (++temp == MAX_HIST)
+		    temp = 0;
 	    }
-#ifdef NEED_TO_DEBUG_BADLY
 	    regs = save_regs;
 	    regflags = save_flags;
-#endif
+	    m68k_setpc(oldpc);
 	}
 	break;
 	case 'm':
@@ -1393,6 +1486,18 @@ static void debug_1 (void)
     }
 }
 
+static void addhistory(void)
+{
+    history[lasthist] = regs;
+    history[lasthist].pc = m68k_getpc();
+    historyf[lasthist] = regflags;
+    if (++lasthist == MAX_HIST)
+	lasthist = 0;
+    if (lasthist == firsthist) {
+	if (++firsthist == MAX_HIST) firsthist = 0;
+    }
+}
+
 void debug (void)
 {
     int i;
@@ -1401,6 +1506,7 @@ void debug (void)
 	return;
 
     bogusframe = 1;
+    addhistory();
 
     if (do_skip && skipaddr_start == 0xC0DEDBAD) {
 #if 0
@@ -1473,16 +1579,6 @@ void debug (void)
 	}
     }
 
-#ifdef NEED_TO_DEBUG_BADLY
-    history[lasthist] = regs;
-    historyf[lasthist] = regflags;
-#else
-    history[lasthist] = m68k_getpc();
-#endif
-    if (++lasthist == MAX_HIST) lasthist = 0;
-    if (lasthist == firsthist) {
-	if (++firsthist == MAX_HIST) firsthist = 0;
-    }
     inputdevice_unacquire ();
     pause_sound ();
     do_skip = 0;

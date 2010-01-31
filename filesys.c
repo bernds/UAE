@@ -102,6 +102,7 @@ typedef struct {
     int readonly; /* disallow write access? */
     int bootpri; /* boot priority */
     int devno;
+    int automounted; /* don't save to config if set */
     
     struct hardfiledata hf;
 
@@ -129,7 +130,8 @@ struct uaedev_mount_info {
     UnitInfo ui[MAX_FILESYSTEM_UNITS];
 };
 
-static struct uaedev_mount_info *current_mountinfo;
+static struct uaedev_mount_info current_mountinfo;
+struct uaedev_mount_info options_mountinfo;
 
 int nr_units (struct uaedev_mount_info *mountinfo)
 {
@@ -175,7 +177,7 @@ static void close_filesys_unit (UnitInfo *uip)
 char *get_filesys_unit (struct uaedev_mount_info *mountinfo, int nr,
 			char **devname, char **volname, char **rootdir, int *readonly,
 			int *secspertrack, int *surfaces, int *reserved,
-			int *cylinders, uae_u64 *size, int *blocksize, int *bootpri, char **filesysdir)
+			int *cylinders, uae_u64 *size, int *blocksize, int *bootpri, char **filesysdir, int *flags)
 {
     UnitInfo *uip = mountinfo->ui + nr;
 
@@ -198,6 +200,8 @@ char *get_filesys_unit (struct uaedev_mount_info *mountinfo, int nr,
     *blocksize = uip->hf.blocksize;
     *size = uip->hf.size;
     *bootpri = uip->bootpri;
+    if (flags)
+	*flags = uip->automounted ? FILESYS_FLAG_DONOTSAVE : 0;
     if (filesysdir)
 	*filesysdir = uip->filesysdir ? my_strdup (uip->filesysdir) : 0;
     return 0;
@@ -206,7 +210,7 @@ char *get_filesys_unit (struct uaedev_mount_info *mountinfo, int nr,
 static char *set_filesys_unit_1 (struct uaedev_mount_info *mountinfo, int nr,
 				 char *devname, char *volname, char *rootdir, int readonly,
 				 int secspertrack, int surfaces, int reserved,
-				 int blocksize, int bootpri, char *filesysdir)
+				 int blocksize, int bootpri, char *filesysdir, int flags)
 {
     UnitInfo *ui = mountinfo->ui + nr;
     static char errmsg[1024];
@@ -222,6 +226,7 @@ static char *set_filesys_unit_1 (struct uaedev_mount_info *mountinfo, int nr,
     ui->hf.handle = 0;
     ui->bootpri = 0;
     ui->filesysdir = 0;
+    ui->automounted = flags & FILESYS_FLAG_DONOTSAVE;
 
     if (volname != 0) {
 	int flags;
@@ -277,14 +282,14 @@ static char *set_filesys_unit_1 (struct uaedev_mount_info *mountinfo, int nr,
 char *set_filesys_unit (struct uaedev_mount_info *mountinfo, int nr,
 			char *devname, char *volname, char *rootdir, int readonly,
 			int secspertrack, int surfaces, int reserved,
-			int blocksize, int bootpri, char *filesysdir)
+			int blocksize, int bootpri, char *filesysdir, int flags)
 {
     char *result;
     UnitInfo ui = mountinfo->ui[nr];
 
     hdf_close (&ui.hf);
     result = set_filesys_unit_1 (mountinfo, nr, devname, volname, rootdir, readonly,
-				       secspertrack, surfaces, reserved, blocksize, bootpri, filesysdir);
+	secspertrack, surfaces, reserved, blocksize, bootpri, filesysdir, flags);
     if (result)
 	mountinfo->ui[nr] = ui;
     else
@@ -296,7 +301,7 @@ char *set_filesys_unit (struct uaedev_mount_info *mountinfo, int nr,
 char *add_filesys_unit (struct uaedev_mount_info *mountinfo,
 			char *devname, char *volname, char *rootdir, int readonly,
 			int secspertrack, int surfaces, int reserved,
-			int blocksize, int bootpri, char *filesysdir)
+			int blocksize, int bootpri, char *filesysdir, int flags)
 {
     char *retval;
     int nr = mountinfo->num_units;
@@ -307,7 +312,7 @@ char *add_filesys_unit (struct uaedev_mount_info *mountinfo,
 
     mountinfo->num_units++;
     retval = set_filesys_unit_1 (mountinfo, nr, devname, volname, rootdir, readonly,
-				 secspertrack, surfaces, reserved, blocksize, bootpri, filesysdir);
+				 secspertrack, surfaces, reserved, blocksize, bootpri, filesysdir, flags);
     if (retval)
 	mountinfo->num_units--;
     return retval;
@@ -366,7 +371,7 @@ int sprintf_filesys_unit (struct uaedev_mount_info *mountinfo, char *buffer, int
     return 0;
 }
 
-void write_filesys_config (struct uaedev_mount_info *mountinfo,
+void write_filesys_config (struct uae_prefs *p, struct uaedev_mount_info *mountinfo,
 			   const char *unexpanded, const char *default_path, struct zfile *f)
 {
     UnitInfo *uip = mountinfo->ui;
@@ -374,11 +379,22 @@ void write_filesys_config (struct uaedev_mount_info *mountinfo,
     char tmp[MAX_DPATH];
 
     for (i = 0; i < mountinfo->num_units; i++) {
+	int dosave = 1;
 	char *str;
+
+#ifdef _WIN32
+	if (p->win32_automount_drives && uip[i].automounted)
+	    dosave = 0;
+#endif
+	if (!dosave)
+	    continue;
 	str = cfgfile_subst_path (default_path, unexpanded, uip[i].rootdir);
 	if (uip[i].volname != 0) {
 	    sprintf (tmp, "filesystem2=%s,%s:%s:%s,%d\n", uip[i].readonly ? "ro" : "rw",
 		uip[i].devname ? uip[i].devname : "", uip[i].volname, str, uip[i].bootpri);
+	    zfile_fputs (f, tmp);
+	    sprintf (tmp, "filesystem=%s,%s:%s\n", uip[i].readonly ? "ro" : "rw",
+		uip[i].volname, str);
 	    zfile_fputs (f, tmp);
 	} else {
 	    sprintf (tmp, "hardfile2=%s,%s:%s,%d,%d,%d,%d,%d,%s\n",
@@ -387,24 +403,19 @@ void write_filesys_config (struct uaedev_mount_info *mountinfo,
 		     uip[i].hf.secspertrack, uip[i].hf.surfaces, uip[i].hf.reservedblocks, uip[i].hf.blocksize,
 		     uip[i].bootpri,uip[i].filesysdir ? uip[i].filesysdir : "");
 	    zfile_fputs (f, tmp);
+	    sprintf (tmp, "hardfile=%s,%d,%d,%d,%d,%s\n",
+		     uip[i].readonly ? "ro" : "rw", uip[i].hf.secspertrack,
+		     uip[i].hf.surfaces, uip[i].hf.reservedblocks, uip[i].hf.blocksize, str);
+	    zfile_fputs (f, tmp);
 	}
 	xfree (str);
     }
 }
 
-struct uaedev_mount_info *alloc_mountinfo (void)
-{
-    struct uaedev_mount_info *info;
-    info = malloc (sizeof *info);
-    memset (info, 0, sizeof *info);
-    info->num_units = 0;
-    return info;
-}
-
-struct uaedev_mount_info *dup_mountinfo (struct uaedev_mount_info *mip)
+static void dup_mountinfo (struct uaedev_mount_info *mip, struct uaedev_mount_info *mip_d)
 {
     int i;
-    struct uaedev_mount_info *i2 = alloc_mountinfo ();
+    struct uaedev_mount_info *i2 = mip_d;
 
     memcpy (i2, mip, sizeof *i2);
 
@@ -419,7 +430,6 @@ struct uaedev_mount_info *dup_mountinfo (struct uaedev_mount_info *mip)
 	if (uip->hf.handle)
 	    hdf_dup (&uip->hf, uip->hf.handle);
     }
-    return i2;
 }
 
 void free_mountinfo (struct uaedev_mount_info *mip)
@@ -429,13 +439,13 @@ void free_mountinfo (struct uaedev_mount_info *mip)
 	return;
     for (i = 0; i < mip->num_units; i++)
 	close_filesys_unit (mip->ui + i);
-    xfree (mip);
+    mip->num_units = 0;
 }
 
 struct hardfiledata *get_hardfile_data (int nr)
 {
-    UnitInfo *uip = current_mountinfo->ui;
-    if (nr < 0 || nr >= current_mountinfo->num_units || uip[nr].volname != 0)
+    UnitInfo *uip = current_mountinfo.ui;
+    if (nr < 0 || nr >= current_mountinfo.num_units || uip[nr].volname != 0)
 	return 0;
     return &uip[nr].hf;
 }
@@ -1324,24 +1334,24 @@ static uae_u32 startup_handler (void)
     if (s)
 	*s = '\0';
 
-    for (i = 0; i < current_mountinfo->num_units; i++) {
+    for (i = 0; i < current_mountinfo.num_units; i++) {
 	/* Hardfile volume name? */
-	if (current_mountinfo->ui[i].volname == 0)
+	if (current_mountinfo.ui[i].volname == 0)
 	    continue;
 
-	if (current_mountinfo->ui[i].startup == arg2)
+	if (current_mountinfo.ui[i].startup == arg2)
 	    break;
     }
 
-    if (i == current_mountinfo->num_units
-	|| !my_existsdir (current_mountinfo->ui[i].rootdir))
+    if (i == current_mountinfo.num_units
+	|| !my_existsdir (current_mountinfo.ui[i].rootdir))
     {
 	write_log ("Failed attempt to mount device\n", devname);
 	put_long (pkt + dp_Res1, DOS_FALSE);
 	put_long (pkt + dp_Res2, ERROR_DEVICE_NOT_MOUNTED);
 	return 1;
     }
-    uinfo = current_mountinfo->ui + i;
+    uinfo = current_mountinfo.ui + i;
     unit = startup_create_unit (uinfo);
     unit->volflags = uinfo->volflags;
 
@@ -1742,7 +1752,7 @@ action_lock (Unit *unit, dpacket packet)
     uae_u32 err;
 
     if (mode != SHARED_LOCK && mode != EXCLUSIVE_LOCK) {
-	TRACE(("Bad mode.\n"));
+	TRACE(("Bad mode %d (should be %d or %d).\n", mode, SHARED_LOCK, EXCLUSIVE_LOCK));
 	mode = SHARED_LOCK;
     }
 
@@ -2761,9 +2771,10 @@ action_parent (Unit *unit, dpacket packet)
     if (!lock) {
 	PUT_PCK_RES1 (packet, 0);
 	PUT_PCK_RES2 (packet, 0);
-	return;
+    } else {
+	action_parent_common (unit, packet, get_long (lock + 4));
     }
-    action_parent_common (unit, packet, get_long (lock + 4));
+    TRACE(("=%x %d\n", GET_PCK_RES1 (packet), GET_PCK_RES2 (packet)));
 }
 
 static void
@@ -3174,7 +3185,7 @@ static uae_sem_t singlethread_int_sem;
 
 static uae_u32 exter_int_helper (void)
 {
-    UnitInfo *uip = current_mountinfo->ui;
+    UnitInfo *uip = current_mountinfo.ui;
     uaecptr port;
     static int unit_no;
 
@@ -3208,10 +3219,18 @@ static uae_u32 exter_int_helper (void)
 	    unit->cmds_complete = unit->cmds_acked;
 	    while (comm_pipe_has_data (unit->ui.back_pipe)) {
 		uaecptr locks, lockend;
+		int cnt = 0;
 		locks = read_comm_pipe_int_blocking (unit->ui.back_pipe);
 		lockend = locks;
-		while (get_long (lockend) != 0)
+		while (get_long (lockend) != 0) {
+		    if (get_long (lockend) == lockend) {
+			write_log ("filesystem lock queue corrupted!\n");
+			break;
+		    }
 		    lockend = get_long (lockend);
+		    cnt++;
+		}
+		TRACE(("%d %x %x %x\n", cnt, locks, lockend, m68k_areg (regs, 3)));
 		put_long (lockend, get_long (m68k_areg (regs, 3)));
 		put_long (m68k_areg (regs, 3), locks);
 	    }
@@ -3271,7 +3290,7 @@ static uae_u32 exter_int_helper (void)
 	 * Take care not to dereference self for units that didn't have their
 	 * startup packet sent. */
 	for (;;) {
-	    if (unit_no >= current_mountinfo->num_units)
+	    if (unit_no >= current_mountinfo.num_units)
 		return 0;
 
 	    if (uip[unit_no].self != 0
@@ -3395,7 +3414,7 @@ static void *filesys_thread (void *unit_v)
 	ui->self->cmds_sent++;
 	/* The message is sent by our interrupt handler, so make sure an interrupt
 	 * happens. */
-	uae_int_requested = 1;
+	do_uae_int_requested();
 	/* Send back the locks. */
 	if (get_long (ui->self->locklist) != 0)
 	    write_comm_pipe_int (ui->back_pipe, (int)(get_long (ui->self->locklist)), 0);
@@ -3468,7 +3487,7 @@ static void init_filesys_diagentry (void)
     do_put_mem_long ((uae_u32 *)(filesysory + 0x2100), EXPANSION_explibname);
     do_put_mem_long ((uae_u32 *)(filesysory + 0x2104), filesys_configdev);
     do_put_mem_long ((uae_u32 *)(filesysory + 0x2108), EXPANSION_doslibname);
-    do_put_mem_long ((uae_u32 *)(filesysory + 0x210c), current_mountinfo->num_units);
+    do_put_mem_long ((uae_u32 *)(filesysory + 0x210c), current_mountinfo.num_units);
     native2amiga_startup();
 }
 
@@ -3477,11 +3496,10 @@ void filesys_start_threads (void)
     UnitInfo *uip;
     int i;
 
-    if (savestate_state == STATE_RESTORE)
-	init_filesys_diagentry ();
-    current_mountinfo = currprefs.mountinfo;
-    uip = current_mountinfo->ui;
-    for (i = 0; i < current_mountinfo->num_units; i++) {
+    free_mountinfo (&current_mountinfo);
+    dup_mountinfo (&options_mountinfo, &current_mountinfo);
+    uip = current_mountinfo.ui;
+    for (i = 0; i < current_mountinfo.num_units; i++) {
 	UnitInfo *ui = &uip[i];
 	ui->unit_pipe = 0;
 	ui->back_pipe = 0;
@@ -3491,7 +3509,7 @@ void filesys_start_threads (void)
 	    ui->self = 0;
 	}
 #ifdef UAE_FILESYS_THREADS
-	if (is_hardfile (current_mountinfo, i) == FILESYS_VIRTUAL) {
+	if (is_hardfile (&current_mountinfo, i) == FILESYS_VIRTUAL) {
 	    ui->unit_pipe = (smp_comm_pipe *)xmalloc (sizeof (smp_comm_pipe));
 	    ui->back_pipe = (smp_comm_pipe *)xmalloc (sizeof (smp_comm_pipe));
 	    init_comm_pipe (uip[i].unit_pipe, 100, 3);
@@ -3506,7 +3524,7 @@ void filesys_start_threads (void)
 
 void filesys_cleanup (void)
 {
-    current_mountinfo = 0;
+    free_mountinfo (&current_mountinfo);
 }
 
 void filesys_reset (void)
@@ -3515,7 +3533,7 @@ void filesys_reset (void)
 
     /* We get called once from customreset at the beginning of the program
      * before filesys_start_threads has been called. Survive that.  */
-    if (current_mountinfo == 0 || savestate_state == STATE_RESTORE)
+    if (savestate_state == STATE_RESTORE)
 	return;
 
     for (u = units; u; u = u1) {
@@ -3545,11 +3563,11 @@ void filesys_prepare_reset (void)
     Unit *u;
     int i;
 
-    if (!current_mountinfo || savestate_state == STATE_RESTORE)
+    if (savestate_state == STATE_RESTORE)
 	return;
-    uip = current_mountinfo->ui;
+    uip = current_mountinfo.ui;
 #ifdef UAE_FILESYS_THREADS
-    for (i = 0; i < current_mountinfo->num_units; i++) {
+    for (i = 0; i < current_mountinfo.num_units; i++) {
 	if (uip[i].unit_pipe != 0) {
 	    uae_sem_init (&uip[i].reset_sync_sem, 0, 0);
 	    uip[i].reset_state = FS_GO_DOWN;
@@ -3650,10 +3668,10 @@ static uae_u32 filesys_dev_bootfilesys (void)
     uaecptr fsres = get_long (parmpacket + PP_FSRES);
     uaecptr fsnode;
     uae_u32 dostype, dostype2;
-    UnitInfo *uip = current_mountinfo->ui;
+    UnitInfo *uip = current_mountinfo.ui;
     int no = m68k_dreg (regs, 6);
     int unit_no = no & 65535;
-    int type = is_hardfile (current_mountinfo, unit_no);
+    int type = is_hardfile (&current_mountinfo, unit_no);
 
     if (type == FILESYS_VIRTUAL)
 	return 0;
@@ -3680,7 +3698,7 @@ static uae_u32 filesys_dev_remember (void)
     int no = m68k_dreg (regs, 6);
     int unit_no = no & 65535;
     int sub_no = no >> 16;
-    UnitInfo *uip = &current_mountinfo->ui[unit_no];
+    UnitInfo *uip = &current_mountinfo.ui[unit_no];
     int i;
     uaecptr devicenode = m68k_areg (regs, 3);
     uaecptr parmpacket = m68k_areg (regs, 1);
@@ -3771,7 +3789,7 @@ static char *device_dupfix (uaecptr expbase, char *devname)
 static void dump_partinfo (char *name, int num, uaecptr pp)
 {
     uae_u32 dostype = get_long (pp + 80);
-    write_log ("RDB: '%s' uaehf.device:%d, dostype=%08.8X\n", name, num, dostype);
+    write_log ("RDB: '%s' dostype=%08.8X\n", name, dostype);
     write_log ("BlockSize: %d, Surfaces: %d, SectorsPerBlock %d\n",
 	get_long (pp + 20) * 4, get_long (pp + 28), get_long (pp + 32));
     write_log ("SectorsPerTrack: %d, Reserved: %d, LowCyl %d, HighCyl %d\n",
@@ -3779,6 +3797,8 @@ static void dump_partinfo (char *name, int num, uaecptr pp)
     write_log ("Buffers: %d, BufMemType: %08.8x, MaxTransfer: %08.8x, BootPri: %d\n",
 	get_long (pp + 60), get_long (pp + 64), get_long (pp + 68), get_long (pp + 76));
 }
+
+#define rdbmnt write_log("Mounting uaehf.device %d (%d) (size=%I64u):\n", unit_no, partnum, hfd->size);
 
 static int rdb_mount (UnitInfo *uip, int unit_no, int partnum, uaecptr parmpacket)
 {
@@ -3794,10 +3814,16 @@ static int rdb_mount (UnitInfo *uip, int unit_no, int partnum, uaecptr parmpacke
     int oldversion, oldrevision;
     int newversion, newrevision;
 
-    if (lastblock * hfd->blocksize > hfd->size)
+    if (lastblock * hfd->blocksize > hfd->size) {
+	rdbmnt
+	write_log("failed, too small (%d*%d > %I64u)\n", lastblock, hfd->blocksize, hfd->size);
 	return -2;
-    if (hfd->blocksize == 0)
+    }
+    if (hfd->blocksize == 0) {
+	rdbmnt
+	write_log("failed, blocksize == 0\n");
 	return -2;
+    }
     for (rdblock = 0; rdblock < lastblock; rdblock++) {
 	hdf_read (hfd, bufrdb, rdblock * hfd->blocksize, hfd->blocksize);
 	if (rdb_checksum ("RDSK", bufrdb, rdblock))
@@ -3815,17 +3841,22 @@ static int rdb_mount (UnitInfo *uip, int unit_no, int partnum, uaecptr parmpacke
 	    }
 	}
     }
-    if (rdblock == lastblock)
+    if (rdblock == lastblock) {
+	rdbmnt
+	write_log("failed, no RDB detected\n");
 	return -2;
+    }
     blocksize = rl (bufrdb + 16);
     readblocksize = blocksize > hfd->blocksize ? blocksize : hfd->blocksize;
     badblock = rl (bufrdb + 24);
     if (badblock != -1) {
+	rdbmnt
 	write_log ("RDB: badblock list is not yet supported. Contact the author.\n");
 	return -2;
     }
     driveinitblock = rl (bufrdb + 36);
     if (driveinitblock != -1) {
+	rdbmnt
 	write_log ("RDB: driveinit is not yet supported. Contact the author.\n");
 	return -2;
     }
@@ -3848,9 +3879,11 @@ static int rdb_mount (UnitInfo *uip, int unit_no, int partnum, uaecptr parmpacke
 	partblock = rl (buf + 4 * 4);
     }
 
+    rdbmnt
     flags = rl (buf + 20);
     if (flags & 2) { /* do not mount */
 	err = -1;
+	write_log("Automount disabled, not mounting\n");
 	goto error;
     }
 
@@ -3869,10 +3902,14 @@ static int rdb_mount (UnitInfo *uip, int unit_no, int partnum, uaecptr parmpacke
     dostype = get_long (parmpacket + 80);
 
     if (dostype == 0) {
+	write_log("failed, dostype==0\n");
 	err = -1;
 	goto error;
     }
     
+    if (hfd->cylinders * hfd->sectors * hfd->heads * blocksize > hfd->size)
+	write_log("WARNING: end of partition > size of disk!\n");
+
     err = 2;
 
     /* load custom filesystems if needed */
@@ -3913,10 +3950,10 @@ static int rdb_mount (UnitInfo *uip, int unit_no, int partnum, uaecptr parmpacke
     if (get_long (fsnode)) {
 	oldversion = get_word (fsnode + 18);
 	oldrevision = get_word (fsnode + 20);
-	write_log ("RDB: ROM filesystem version %d.%d\n", oldversion, oldrevision);
+	write_log ("RDB: %08.8X in FileSystem.resouce version %d.%d\n", dostype, oldversion, oldrevision);
     }
     if (newversion * 65536 + newrevision <= oldversion * 65536 + oldrevision && oldversion >= 0) {
-	write_log ("RDB: ROM filesystem is newer or same, ignoring RDB filesystem\n");
+	write_log ("RDB: fs in FileSystem.resource is newer or same, ignoring RDB filesystem\n");
 	goto error;
     }
 
@@ -4029,22 +4066,22 @@ static void get_new_device (int type, uaecptr parmpacket, char **devname, uaecpt
     }
     *devname_amiga = ds (device_dupfix (get_long (parmpacket + PP_EXPLIB), buffer));
     if (type == FILESYS_VIRTUAL)
-	write_log ("FS: mounted virtual unit %s (%s)\n", buffer, current_mountinfo->ui[unit_no].rootdir);
+	write_log ("FS: mounted virtual unit %s (%s)\n", buffer, current_mountinfo.ui[unit_no].rootdir);
     else
 	write_log ("FS: mounted HDF unit %s (%04.4x-%08.8x, %s)\n", buffer,
-	    (uae_u32)(current_mountinfo->ui[unit_no].hf.size >> 32),
-	    (uae_u32)(current_mountinfo->ui[unit_no].hf.size),
-	    current_mountinfo->ui[unit_no].rootdir);
+	    (uae_u32)(current_mountinfo.ui[unit_no].hf.size >> 32),
+	    (uae_u32)(current_mountinfo.ui[unit_no].hf.size),
+	    current_mountinfo.ui[unit_no].rootdir);
 }
 
 /* Fill in per-unit fields of a parampacket */
 static uae_u32 filesys_dev_storeinfo (void)
 {
-    UnitInfo *uip = current_mountinfo->ui;
+    UnitInfo *uip = current_mountinfo.ui;
     int no = m68k_dreg (regs, 6);
     int unit_no = no & 65535;
     int sub_no = no >> 16;
-    int type = is_hardfile (current_mountinfo, unit_no);
+    int type = is_hardfile (&current_mountinfo, unit_no);
     uaecptr parmpacket = m68k_areg (regs, 0);
 
     if (type == FILESYS_HARDFILE_RDB || type == FILESYS_HARDDRIVE) {
@@ -4054,6 +4091,7 @@ static uae_u32 filesys_dev_storeinfo (void)
     }
     if (sub_no)
         return -2;
+    write_log("Mounting uaehf.device %d (%d):\n", unit_no, sub_no);
     get_new_device (type, parmpacket, &uip[unit_no].devname, &uip[unit_no].devname_amiga, unit_no);
     uip[unit_no].devno = unit_no;
     put_long (parmpacket, uip[unit_no].devname_amiga);
@@ -4434,10 +4472,10 @@ uae_u8 *save_filesys (int num, int *len)
 {
     uae_u8 *dstbak, *dst;
     UnitInfo *ui;
-    int type = is_hardfile (current_mountinfo, num);
+    int type = is_hardfile (&current_mountinfo, num);
 
     dstbak = dst = malloc (10000);
-    ui = &current_mountinfo->ui[num];
+    ui = &current_mountinfo.ui[num];
     save_u32 (1); /* version */
     save_u32 (ui->devno);
     save_u16 (type);
@@ -4465,7 +4503,7 @@ uae_u8 *restore_filesys (uae_u8 *src)
     if (restore_u32 () != 1)
 	return src;
     devno = restore_u32 ();
-    if (devno >= current_mountinfo->num_units)
+    if (devno >= current_mountinfo.num_units)
 	return src;
     type = restore_u16 ();
     rootdir = restore_string ();
@@ -4474,12 +4512,12 @@ uae_u8 *restore_filesys (uae_u8 *src)
     filesysdir = restore_string ();
     bootpri = restore_u8 ();
     readonly = restore_u8 ();
-    if (set_filesys_unit (current_mountinfo, devno, devname, volname, rootdir, readonly,
-	0, 0, 0, 0, bootpri, filesysdir[0] ? filesysdir : NULL)) {
+    if (set_filesys_unit (&current_mountinfo, devno, devname, volname, rootdir, readonly,
+	0, 0, 0, 0, bootpri, filesysdir[0] ? filesysdir : NULL, 0)) {
 	write_log ("filesys '%s' failed to restore\n", rootdir);
 	goto end;
     }
-    ui = &current_mountinfo->ui[devno];
+    ui = &current_mountinfo.ui[devno];
     ui->startup = restore_u32 ();
     filesys_configdev = restore_u32 ();
     if (type == FILESYS_VIRTUAL)
