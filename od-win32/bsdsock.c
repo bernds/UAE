@@ -37,6 +37,24 @@
 
 static int hWndSelector = 0; /* Set this to zero to get hSockWnd */
 
+struct threadargs {
+    struct socketbase *sb;
+    uae_u32 args1;
+    uae_u32 args2;
+    int args3;
+    long args4;
+    char *args5;
+};
+
+struct threadargsw {
+	struct socketbase *sb;
+	uae_u32 nfds;
+	uae_u32 readfds;
+	uae_u32 writefds;
+	uae_u32 exceptfds;
+	uae_u32 timeout;
+};
+
 #define MAX_SELECT_THREADS 64
 #define MAX_GET_THREADS 64
 
@@ -50,14 +68,14 @@ struct bsdsockdata {
 	DWORD threadid;
 	WSADATA wsbData;
 
-	HANDLE hGetThreads[MAX_GET_THREADS];
-	struct threadargs *threadGetargs[MAX_GET_THREADS];
-	int threadGetargs_inuse[MAX_GET_THREADS];
-	HANDLE hGetEvents[MAX_GET_THREADS];
+	volatile HANDLE hGetThreads[MAX_GET_THREADS];
+	volatile struct threadargs *threadGetargs[MAX_GET_THREADS];
+	volatile int threadGetargs_inuse[MAX_GET_THREADS];
+	volatile HANDLE hGetEvents[MAX_GET_THREADS];
 
-	HANDLE hThreads[MAX_SELECT_THREADS];
-	struct threadargsw *threadargsw[MAX_SELECT_THREADS];
-	HANDLE hEvents[MAX_SELECT_THREADS];
+	volatile HANDLE hThreads[MAX_SELECT_THREADS];
+	volatile struct threadargsw *threadargsw[MAX_SELECT_THREADS];
+	volatile HANDLE hEvents[MAX_SELECT_THREADS];
 
 	struct socketbase *asyncsb[MAXPENDINGASYNC];
 	SOCKET asyncsock[MAXPENDINGASYNC];
@@ -92,24 +110,6 @@ extern HWND hAmigaWnd;
 static LRESULT CALLBACK SocketWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 
 static int PASCAL WSAEventSelect(SOCKET,HANDLE,long);
-
-struct threadargs {
-    struct socketbase *sb;
-    uae_u32 args1;
-    uae_u32 args2;
-    int args3;
-    long args4;
-    char *args5;
-};
-
-struct threadargsw {
-	struct socketbase *sb;
-	uae_u32 nfds;
-	uae_u32 readfds;
-	uae_u32 writefds;
-	uae_u32 exceptfds;
-	uae_u32 timeout;
-};
 
 #define PREPARE_THREAD EnterCriticalSection(&bsd->SockThreadCS)
 #define TRIGGER_THREAD { SetEvent(bsd->hSockReq); WaitForSingleObject(bsd->hSockReqHandled, INFINITE); LeaveCriticalSection(&bsd->SockThreadCS); }
@@ -414,8 +414,8 @@ static void sockmsg(unsigned int msg, WPARAM wParam, LPARAM lParam)
 static unsigned	int allocasyncmsg(SB,uae_u32 sd,SOCKET s)
 {
 	int i;
+
 	locksigqueue();
-	
 	for (i = bsd->asyncindex + 1; i != bsd->asyncindex; i++) {
 		if (i >= MAXPENDINGASYNC)
 			i = 0;
@@ -435,7 +435,7 @@ static unsigned	int allocasyncmsg(SB,uae_u32 sd,SOCKET s)
 	}
 	unlocksigqueue();
 
-	bsdsocklib_seterrno(sb,12); // ENOMEM
+	bsdsocklib_seterrno(sb, 12); // ENOMEM
 	write_log("BSDSOCK: ERROR - Async operation completion table overflow\n");
 	
 	return 0;
@@ -445,7 +445,7 @@ static void cancelasyncmsg(TrapContext *context, unsigned int wMsg)
 {
 	SB;
 	
-	wMsg = (wMsg-0xb000)/2;
+	wMsg = (wMsg-0xb000) / 2;
 
 	sb = bsd->asyncsb[wMsg];
 
@@ -464,14 +464,14 @@ void sockabort(SB)
 
 void setWSAAsyncSelect(SB, uae_u32 sd, SOCKET s, long lEvent )
 {
-	if (sb->mtable[sd-1]) {
+	if (sb->mtable[sd - 1]) {
 		long wsbevents = 0;
 		long eventflags;
 		int i;
 		locksigqueue();
 	
 
-		eventflags = sb->ftable[sd-1]  & REP_ALL;
+		eventflags = sb->ftable[sd - 1]  & REP_ALL;
 
 		if (eventflags & REP_ACCEPT)
 			wsbevents |= FD_ACCEPT;
@@ -486,11 +486,11 @@ void setWSAAsyncSelect(SB, uae_u32 sd, SOCKET s, long lEvent )
 		if (eventflags & REP_CLOSE)
 			wsbevents |= FD_CLOSE;
 		wsbevents |= lEvent;
-		i = (sb->mtable[sd-1]-0xb000)/2;
+		i = (sb->mtable[sd - 1] - 0xb000) / 2;
 		bsd->asyncsb[i] = sb;
 		bsd->asyncsd[i] = sd;
 		bsd->asyncsock[i] = s;
-		WSAAsyncSelect(s, hWndSelector ? hAmigaWnd : bsd->hSockWnd, sb->mtable[sd-1], wsbevents);
+		WSAAsyncSelect(s, hWndSelector ? hAmigaWnd : bsd->hSockWnd, sb->mtable[sd - 1], wsbevents);
 
 		unlocksigqueue();
 	}
@@ -590,23 +590,25 @@ uae_u32 host_bind(SB, uae_u32 sd, uae_u32 name, uae_u32 namelen)
     SOCKET s;
 
 	sd++;
-    TRACE(("bind(%d,0x%lx,%d) -> ",sd,name,namelen));
+    TRACE(("bind(%d,0x%lx,%d) -> ",sd, name, namelen));
     s = getsock(sb, sd);
 
     if (s != INVALID_SOCKET) {
 		if (namelen <= sizeof buf) {
-			memcpy(buf,get_real_address(name),namelen);
+			if (!addr_valid("host_bind", name, namelen))
+				return 0;
+		    memcpy(buf, get_real_address(name), namelen);
 		    
 			// some Amiga programs set this field to bogus values
 			prephostaddr((SOCKADDR_IN *)buf);
 
-			if ((success = bind(s,(struct sockaddr *)buf,namelen)) != 0) {
+			if ((success = bind(s,(struct sockaddr *)buf, namelen)) != 0) {
 				SETERRNO;
 				TRACE(("failed (%d)\n",sb->sb_errno));
 			} else
 				TRACE(("OK\n"));
 		} else
-			write_log("BSDSOCK: ERROR - Excessive namelen (%d) in bind()!\n",namelen);
+			write_log("BSDSOCK: ERROR - Excessive namelen (%d) in bind()!\n", namelen);
     }
 
     return success;
@@ -618,7 +620,7 @@ uae_u32 host_listen(SB, uae_u32 sd, uae_u32 backlog)
     uae_u32 success = -1;
 
 	sd++;
-    TRACE(("listen(%d,%d) -> ",sd,backlog));
+    TRACE(("listen(%d,%d) -> ", sd, backlog));
     s = getsock(sb, sd);
 
     if (s != INVALID_SOCKET) {
@@ -642,6 +644,8 @@ void host_accept(TrapContext *context, SB, uae_u32 sd, uae_u32 name, uae_u32 nam
     
     sd++;
 	if (name != 0) {
+		if (!addr_valid("host_accept1", name, sizeof(struct sockaddr)) || !addr_valid("host_accept2", namelen, 4))
+			return;
 		rp_nameuae = rp_name = (struct sockaddr *)get_real_address(name);
 	    hlenuae = hlen = get_long(namelen);
 		if (hlenuae < sizeof(sockaddr))
@@ -655,7 +659,7 @@ void host_accept(TrapContext *context, SB, uae_u32 sd, uae_u32 name, uae_u32 nam
 	}
     TRACE(("accept(%d,%d,%d) -> ",sd,name,hlenuae));
 
-    s = (SOCKET)getsock(sb,(int)sd);
+    s = (SOCKET)getsock(sb, (int)sd);
     
     if (s != INVALID_SOCKET) {
 		BEGINBLOCKING;
@@ -850,7 +854,7 @@ static LRESULT CALLBACK SocketWindowProc(HWND hwnd, UINT message, WPARAM wParam,
 
 
 
-static unsigned int __stdcall sock_thread(void *blah)
+static unsigned int sock_thread2(void *blah)
 {
 	unsigned int result = 0;
 	HANDLE WaitHandle;
@@ -872,7 +876,7 @@ static unsigned int __stdcall sock_thread(void *blah)
 			if(bsd->hSockReq) {
 				DWORD wait;
 				WaitHandle = bsd->hSockReq;
-				wait = MsgWaitForMultipleObjects (1, &WaitHandle, FALSE,INFINITE, QS_POSTMESSAGE);
+				wait = MsgWaitForMultipleObjects (1, &WaitHandle, FALSE, INFINITE, QS_POSTMESSAGE);
 				if (wait == WAIT_OBJECT_0) {
 					if(HandleStuff()) // See if its time to quit...
 						break;
@@ -892,6 +896,14 @@ static unsigned int __stdcall sock_thread(void *blah)
 	return result;
 }
 
+static unsigned int __stdcall sock_thread(void *p)
+{
+    __try {
+	return sock_thread2 (p);
+    } __except(WIN32_ExceptionFilter(GetExceptionInformation(), GetExceptionCode())) {
+    }
+    return 0;
+}
 
 void host_connect(TrapContext *context, SB, uae_u32 sd, uae_u32 name, uae_u32 namelen)
 {
@@ -901,7 +913,10 @@ void host_connect(TrapContext *context, SB, uae_u32 sd, uae_u32 name, uae_u32 na
     char buf[MAXADDRLEN];
 
 	sd++;
-    TRACE(("connect(%d,0x%lx,%d) -> ",sd,name,namelen));
+    TRACE(("connect(%d,0x%lx,%d) -> ", sd, name, namelen));
+
+	if (!addr_valid("host_connect", name, namelen))
+		return;
 
     s = (SOCKET)getsock(sb,(int)sd);
     
@@ -917,7 +932,7 @@ void host_connect(TrapContext *context, SB, uae_u32 sd, uae_u32 name, uae_u32 na
 				BEGINBLOCKING;
 				PREPARE_THREAD;
 
-				memcpy(buf,get_real_address(name),namelen);
+				memcpy(buf, get_real_address(name), namelen);
 				prephostaddr((SOCKADDR_IN *)buf);
 				
 				sockreq.packet_type = connect_req;
@@ -931,7 +946,7 @@ void host_connect(TrapContext *context, SB, uae_u32 sd, uae_u32 name, uae_u32 na
 				if (sb->resultval) {
 					if (sb->sb_errno == WSAEWOULDBLOCK - WSABASEERR) {
 						if (sb->ftable[sd-1] & SF_BLOCKING) {
-							bsdsocklib_seterrno(sb,0);
+							bsdsocklib_seterrno(sb, 0);
 						
 							WAITSIGNAL;
 
@@ -943,7 +958,7 @@ void host_connect(TrapContext *context, SB, uae_u32 sd, uae_u32 name, uae_u32 na
 								sb->dtable[sd-1] = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
 							}
 						} else {
-							bsdsocklib_seterrno(sb,36); // EINPROGRESS
+							bsdsocklib_seterrno(sb, 36); // EINPROGRESS
 						}
 					} else {
 						CANCELSIGNAL; // Cancel pending signal
@@ -981,12 +996,17 @@ void host_sendto(TrapContext *context, SB, uae_u32 sd, uae_u32 msg, uae_u32 len,
     s = getsock(sb,sd);
 
     if (s != INVALID_SOCKET) {
+		if (!addr_valid("host_sendto1", msg, 4))
+			return;
 		realpt = get_real_address(msg);
 		
 		if (to) {
-			if (tolen > sizeof buf) write_log("BSDSOCK: WARNING - Target address in sendto() too large (%d)!\n", tolen);
-			else {
-				memcpy(buf,get_real_address(to),tolen);
+			if (tolen > sizeof buf) {
+				write_log("BSDSOCK: WARNING - Target address in sendto() too large (%d)!\n", tolen);
+			} else {
+				if (!addr_valid("host_sendto2", to, tolen))
+					return;
+				memcpy(buf, get_real_address(to), tolen);
 				// some Amiga software sets this field to bogus values
 				prephostaddr((SOCKADDR_IN *)buf);
 			}
@@ -1075,7 +1095,7 @@ void host_sendto(TrapContext *context, SB, uae_u32 sd, uae_u32 msg, uae_u32 len,
 				sb->resultval += iCut;
 			}
 			if (sb->resultval == -1) {
-				if (sb->sb_errno != WSAEWOULDBLOCK-WSABASEERR || !(sb->ftable[sd-1] & SF_BLOCKING))
+				if (sb->sb_errno != WSAEWOULDBLOCK - WSABASEERR || !(sb->ftable[sd-1] & SF_BLOCKING))
 					break;
 			} else {
 				realpt += sb->resultval;
@@ -1141,10 +1161,16 @@ void host_recvfrom(TrapContext *context, SB, uae_u32 sd, uae_u32 msg, uae_u32 le
     s = getsock(sb,sd);
 
     if (s != INVALID_SOCKET) {
+		if (!addr_valid("host_recvfrom1", msg, 4))
+			return;
 		realpt = get_real_address(msg);
 
 		if (addr) {
+			if (!addr_valid("host_recvfrom1", addrlen, 4))
+				return;
 			hlen = get_long(addrlen);
+			if (!addr_valid("host_recvfrom2", addr, hlen))
+				return;
 			rp_addr = (struct sockaddr *)get_real_address(addr);
 		}
 
@@ -1166,7 +1192,7 @@ void host_recvfrom(TrapContext *context, SB, uae_u32 sd, uae_u32 msg, uae_u32 le
 
 		    TRIGGER_THREAD;
 		    if (sb->resultval == -1) {
-				if (sb->sb_errno == WSAEWOULDBLOCK-WSABASEERR && sb->ftable[sd-1] & SF_BLOCKING)
+				if (sb->sb_errno == WSAEWOULDBLOCK - WSABASEERR && sb->ftable[sd-1] & SF_BLOCKING)
 			{
 		    if (sb->mtable[sd-1] || (wMsg = allocasyncmsg(sb,sd,s)) != 0) {
 				if (sb->mtable[sd-1] == 0) {
@@ -1345,6 +1371,8 @@ uae_u32 host_getsockname(SB, uae_u32 sd, uae_u32 name, uae_u32 namelen)
 	struct sockaddr *rp_name;
 
 	sd++;
+	if (!addr_valid("host_getsockname1", namelen, 4))
+		return -1;
 	len = get_long(namelen);
 	
 	TRACE(("getsockname(%d,0x%lx,%d) -> ",sd,name,len));
@@ -1352,6 +1380,8 @@ uae_u32 host_getsockname(SB, uae_u32 sd, uae_u32 name, uae_u32 namelen)
 	s = getsock(sb,sd);
 	
 	if (s != INVALID_SOCKET) {
+		if (!addr_valid("host_getsockname2", name, len))
+			return -1;
 		rp_name = (struct sockaddr *)get_real_address(name);
 		
 		if (getsockname(s,rp_name,&len)) {
@@ -1375,6 +1405,8 @@ uae_u32 host_getpeername(SB, uae_u32 sd, uae_u32 name, uae_u32 namelen)
 	struct sockaddr *rp_name;
 	
 	sd++;
+	if (!addr_valid("host_getpeername1", namelen, 4))
+		return -1;
 	len = get_long(namelen);
 	
 	TRACE(("getpeername(%d,0x%lx,%d) -> ",sd,name,len));
@@ -1382,6 +1414,8 @@ uae_u32 host_getpeername(SB, uae_u32 sd, uae_u32 name, uae_u32 namelen)
 	s = getsock(sb,sd);
 	
 	if (s != INVALID_SOCKET) {
+		if (!addr_valid("host_getpeername2", name, len))
+			return -1;
 		rp_name = (struct sockaddr *)get_real_address(name);
 		
 		if (getpeername(s,rp_name,&len)) {
@@ -1455,7 +1489,7 @@ uae_u32 host_IoctlSocket(TrapContext *context, SB, uae_u32 sd, uae_u32 request, 
 				break;
 			default:
 				write_log("BSDSOCK: WARNING - Unknown IoctlSocket request: 0x%08lx\n", request);
-				bsdsocklib_seterrno(sb,22); // EINVAL
+				bsdsocklib_seterrno(sb, 22); // EINVAL
 				break;
 		}
 	}
@@ -1607,16 +1641,16 @@ static void fd_zero(uae_u32 fdset, uae_u32 nfds)
 }
 
 // This seems to be the only way of implementing a cancelable WinSock2 select() call... sigh.
-static unsigned int __stdcall thread_WaitSelect(void *indexp)
+static unsigned int thread_WaitSelect2(void *indexp)
 {
-    uae_u32 index = *((uae_u32*)indexp);
+    int index = *((int*)indexp);
     unsigned int result = 0;
     long nfds;
     uae_u32 readfds, writefds, exceptfds;
     uae_u32 timeout;
     struct fd_set readsocks, writesocks, exceptsocks;
     struct timeval tv;
-    struct threadargsw *args;
+    volatile struct threadargsw *args;
 
     SB;
 
@@ -1624,7 +1658,7 @@ static unsigned int __stdcall thread_WaitSelect(void *indexp)
 	    WaitForSingleObject(bsd->hEvents[index], INFINITE);
 
 	    if ((args = bsd->threadargsw[index]) != NULL) {
-			sb = args->sb;
+		    sb = args->sb;
 		    nfds = args->nfds;
 		    readfds = args->readfds;
 		    writefds = args->writefds;
@@ -1632,11 +1666,11 @@ static unsigned int __stdcall thread_WaitSelect(void *indexp)
 		    timeout = args->timeout;
 	    
 		    // construct descriptor tables
-		    makesocktable(sb,readfds,&readsocks,nfds,sb->sockAbort);
+		    makesocktable(sb, readfds, &readsocks, nfds, sb->sockAbort);
 		    if (writefds)
-				makesocktable(sb,writefds,&writesocks,nfds,INVALID_SOCKET);
+				makesocktable(sb, writefds, &writesocks, nfds, INVALID_SOCKET);
 		    if (exceptfds)
-				makesocktable(sb,exceptfds,&exceptsocks,nfds,INVALID_SOCKET);
+				makesocktable(sb, exceptfds, &exceptsocks, nfds, INVALID_SOCKET);
 	    
 		    if (timeout) {
 			    tv.tv_sec = get_long(timeout);
@@ -1646,16 +1680,16 @@ static unsigned int __stdcall thread_WaitSelect(void *indexp)
 	    
 		    TRACE(("-> "));
 	    
-		    sb->resultval = select(nfds+1,&readsocks,writefds ? &writesocks : NULL,
-					exceptfds ? &exceptsocks : NULL,timeout ? &tv : 0);
+		    sb->resultval = select(nfds+1, &readsocks, writefds ? &writesocks : NULL,
+					exceptfds ? &exceptsocks : NULL, timeout ? &tv : 0);
 			if (sb->resultval == SOCKET_ERROR) { 
 				// select was stopped by sb->sockAbort
 				if (readsocks.fd_count > 1) {
-					makesocktable(sb,readfds,&readsocks,nfds,INVALID_SOCKET);
+					makesocktable(sb, readfds, &readsocks, nfds, INVALID_SOCKET);
 					tv.tv_sec = 0;
 					tv.tv_usec = 10000;
 					// Check for 10ms if data is available
-					sb->resultval = select(nfds+1,&readsocks,writefds ? &writesocks : NULL,exceptfds ? &exceptsocks : NULL,&tv);
+					sb->resultval = select(nfds+1, &readsocks, writefds ? &writesocks : NULL,exceptfds ? &exceptsocks : NULL,&tv);
 					if (sb->resultval == 0) { // Now timeout -> really no data available
 						if (GetLastError() != 0) {
 							sb->resultval = SOCKET_ERROR;
@@ -1697,6 +1731,15 @@ static unsigned int __stdcall thread_WaitSelect(void *indexp)
     }
     THREADEND(result);
     return result;
+}
+
+static unsigned int __stdcall thread_WaitSelect(void *p)
+{
+    __try {
+	return thread_WaitSelect2 (p);
+    } __except(WIN32_ExceptionFilter(GetExceptionInformation(), GetExceptionCode())) {
+    }
+    return 0;
 }
 
 void host_WaitSelect(TrapContext *context, SB, uae_u32 nfds, uae_u32 readfds, uae_u32 writefds, uae_u32 exceptfds, uae_u32 timeout, uae_u32 sigmp)
@@ -1766,7 +1809,7 @@ void host_WaitSelect(TrapContext *context, SB, uae_u32 nfds, uae_u32 readfds, ua
 	    for (i = 0; i < MAX_SELECT_THREADS; i++) {
 			if (!bsd->hThreads[i]) {
 				bsd->hEvents[i] = CreateEvent(NULL,FALSE,FALSE,NULL);
-				bsd->hThreads[i] = THREAD(thread_WaitSelect, &i);
+				bsd->hThreads[i] = THREAD(thread_WaitSelect, &threadindextable[i]);
 				if (bsd->hEvents[i] == NULL || bsd->hThreads[i] == NULL) {
 					bsd->hThreads[i] = 0;
 					write_log("BSDSOCK: ERROR - Thread/Event creation failed - error code: %d\n",
@@ -1776,7 +1819,7 @@ void host_WaitSelect(TrapContext *context, SB, uae_u32 nfds, uae_u32 readfds, ua
 					return;
 				}
 				// this should improve responsiveness
-				SetThreadPriority(bsd->hThreads[i], THREAD_PRIORITY_TIME_CRITICAL);
+				SetThreadPriority(bsd->hThreads[i], THREAD_PRIORITY_ABOVE_NORMAL);
 				break;
 			}
 	    }
@@ -1876,6 +1919,8 @@ uae_u32 host_inet_addr(uae_u32 cp)
 	uae_u32 addr;
 	char *cp_rp;
 
+	if (!addr_valid("host_inet_addr", cp, 4))
+		return 0;
 	cp_rp = get_real_address(cp);
 
 	addr = htonl(inet_addr(cp_rp));
@@ -1906,11 +1951,12 @@ static BOOL CheckOnline(SB)
 	return bReturn;
 }
 
-static unsigned int __stdcall thread_get(void *indexp)
+static unsigned int thread_get2(void *indexp)
 {
     int index = *((int*)indexp);
     unsigned int result = 0;
-    struct threadargs *args;
+    volatile struct threadargs *argsp;
+	struct threadargs margs, *args;
     uae_u32 name;
     uae_u32 namelen;
     long addrtype;
@@ -1919,13 +1965,16 @@ static unsigned int __stdcall thread_get(void *indexp)
     SB;
 
     for (;;) {
-	    WaitForSingleObject(bsd->hGetEvents[index], INFINITE);
+		WaitForSingleObject(bsd->hGetEvents[index], INFINITE);
 		if (bsd->threadGetargs_inuse[index] == -1) {
 			bsd->threadGetargs_inuse[index] = 0;
 			bsd->threadGetargs[index] = NULL;
 		}
-	    if ((args = bsd->threadGetargs[index]) != NULL) {
+		if ((argsp = bsd->threadGetargs[index]) != NULL) {
+			margs = *argsp;
+			args = &margs;
 			sb = args->sb;
+
 			if (args->args1 == 0) {
 				// gethostbyname or gethostbyaddr
 				struct hostent *host;
@@ -1933,9 +1982,11 @@ static unsigned int __stdcall thread_get(void *indexp)
 				namelen = args->args3;
 				addrtype = args->args4;
 				buf = args->args5;
-				name_rp = get_real_address(name);
+				name_rp = "";
+				if (addr_valid("thread_get1", name, 1))
+					name_rp = get_real_address(name);
 
-				if (strchr(name_rp,'.') == 0 || CheckOnline(sb) == TRUE) {
+				if (strchr(name_rp, '.') == 0 || CheckOnline(sb) == TRUE) {
 					// Local Address or Internet Online ?
 					if (addrtype == -1) {
 						host = gethostbyname(name_rp);
@@ -1954,14 +2005,15 @@ static unsigned int __stdcall thread_get(void *indexp)
 						}
 					}
 				}
-			}
-			if (args->args1 == 1) {
+			} else if (args->args1 == 1) {
 				// getprotobyname
 				struct protoent  *proto;
 
 				name = args->args2;
 				buf = args->args5;
-				name_rp = get_real_address(name);
+				name_rp = "";
+				if (addr_valid("thread_get2", name, 1))
+					name_rp = get_real_address(name);
 				proto = getprotobyname (name_rp);
 				if (bsd->threadGetargs_inuse[index] != -1) { // No CTRL-C Signal
 					if (proto == 0) {
@@ -1973,8 +2025,7 @@ static unsigned int __stdcall thread_get(void *indexp)
 						memcpy(buf, proto, sizeof(struct protoent));
 					}
 				}
-			}
-			if (args->args1 == 2) {
+			} else if (args->args1 == 2) {
 				// getservbyport and getservbyname
 				uae_u32 nameport;
 				uae_u32 proto;
@@ -1987,13 +2038,16 @@ static unsigned int __stdcall thread_get(void *indexp)
 				type = args->args4;
 				buf = args->args5;
 	
-				if (proto)
-					proto_rp = get_real_address(proto);
+				if (proto) {
+					if (addr_valid("thread_get3", proto, 1))
+						proto_rp = get_real_address(proto);
+				}
 
 				if (type) {
 					serv = getservbyport(nameport, proto_rp);
 				} else {
-					name_rp = get_real_address(nameport);
+					if (addr_valid("thread_get4", nameport, 1))
+						name_rp = get_real_address(nameport);
 					serv = getservbyname(name_rp, proto_rp);
 				}
 				if (bsd->threadGetargs_inuse[index] != -1) {
@@ -2023,6 +2077,69 @@ static unsigned int __stdcall thread_get(void *indexp)
     return result;
 }
 
+static unsigned int __stdcall thread_get(void *p)
+{
+    __try {
+	return thread_get2 (p);
+    } __except(WIN32_ExceptionFilter(GetExceptionInformation(), GetExceptionCode())) {
+    }
+    return 0;
+}
+
+static int run_get_thread(TrapContext *context, SB, volatile struct threadargs *args)
+{
+	int i;
+
+	for (i = 0; i < MAX_GET_THREADS; i++)  {
+		if (bsd->threadGetargs_inuse[i] == -1) {
+			bsd->threadGetargs_inuse[i] = 0;
+			bsd->threadGetargs[i] = NULL;
+		}
+		if (bsd->hGetThreads[i] && !bsd->threadGetargs_inuse[i])
+			break;
+	}
+
+	if (i >= MAX_GET_THREADS) {
+	    for (i = 0; i < MAX_GET_THREADS; i++) {
+			if (bsd->hGetThreads[i] == NULL) {
+				bsd->hGetEvents[i] = CreateEvent(NULL,FALSE,FALSE,NULL);
+				bsd->hGetThreads[i] = THREAD(thread_get, &threadindextable[i]);
+				if (bsd->hGetEvents[i] == NULL || bsd->hGetThreads[i] == NULL) {
+					bsd->hGetThreads[i] = NULL;
+					write_log("BSDSOCK: ERROR - Thread/Event creation failed - error code: %d\n",
+						GetLastError());
+					bsdsocklib_seterrno(sb, 12); // ENOMEM
+					sb->resultval = -1;
+					return 0;
+				}
+				break;
+			}
+	    }
+	}
+	
+	if (i >= MAX_GET_THREADS) {
+		write_log("BSDSOCK: ERROR - Too many gethostbyname()s\n");
+		bsdsocklib_seterrno(sb, 12); // ENOMEM
+		sb->resultval = -1;
+		return 0;
+	} else {
+		bsdsetpriority (bsd->hGetThreads[i]);
+		bsd->threadGetargs[i] = args;
+		bsd->threadGetargs_inuse[i] = 1;
+		SetEvent(bsd->hGetEvents[i]);
+	}
+
+	sb->eintr = 0;
+	while (bsd->threadGetargs_inuse[i] != 0 && sb->eintr == 0) {	
+		WAITSIGNAL;
+		if (sb->eintr == 1)
+			bsd->threadGetargs_inuse[i] = -1;
+	}
+	CANCELSIGNAL;
+
+	return 1;
+}
+
 void host_gethostbynameaddr(TrapContext *context, SB, uae_u32 name, uae_u32 namelen, long addrtype)
 {
 	HOSTENT *h;
@@ -2040,8 +2157,9 @@ void host_gethostbynameaddr(TrapContext *context, SB, uae_u32 name, uae_u32 name
 //	InternetSetOption(0,INTERNET_OPTION_SETTINGS_CHANGED,&on,strlen(&on));
 //  Do not use:	Causes locks with some machines
 
-	name_rp = get_real_address(name);
-
+	name_rp = "";
+	if (addr_valid("host_gethostbynameaddr", name, 1))
+		name_rp = get_real_address(name);
 
 	if (addrtype == -1) {
 		TRACE(("gethostbyname(%s) -> ",name_rp));
@@ -2070,51 +2188,8 @@ void host_gethostbynameaddr(TrapContext *context, SB, uae_u32 name, uae_u32 name
 	args.args4 = addrtype;
 	args.args5 = buf;
 
-	for (i = 0; i < MAX_GET_THREADS; i++)  {
-		if (bsd->threadGetargs_inuse[i] == -1) {
-			bsd->threadGetargs_inuse[i] = 0;
-			bsd->threadGetargs[i] = NULL;
-		}
-		if (bsd->hGetThreads[i] && !bsd->threadGetargs_inuse[i])
-			break;
-	}
-
-	if (i >= MAX_GET_THREADS) {
-	    for (i = 0; i < MAX_GET_THREADS; i++) {
-			if (bsd->hGetThreads[i] == NULL) {
-				bsd->hGetEvents[i] = CreateEvent(NULL,FALSE,FALSE,NULL);
-				bsd->hGetThreads[i] = THREAD(thread_get, &threadindextable[i]);
-				if (bsd->hGetEvents[i] == NULL || bsd->hGetThreads[i] == NULL) {
-					bsd->hGetThreads[i] = NULL;
-					write_log("BSDSOCK: ERROR - Thread/Event creation failed - error code: %d\n",
-						GetLastError());
-					bsdsocklib_seterrno(sb, 12); // ENOMEM
-					sb->resultval = -1;
-					return;
-				}
-				break;
-			}
-	    }
-	}
-	
-	if (i >= MAX_GET_THREADS)
-		write_log("BSDSOCK: ERROR - Too many gethostbyname()s\n");
-	else {
-		bsdsetpriority (bsd->hGetThreads[i]);
-		bsd->threadGetargs[i] = &args;
-		bsd->threadGetargs_inuse[i] = 1;
-
-		SetEvent(bsd->hGetEvents[i]);
-	}
-
-	sb->eintr = 0;
-	while (bsd->threadGetargs_inuse[i] != 0 && sb->eintr == 0) {	
-		WAITSIGNAL;
-		if (sb->eintr == 1)
-			bsd->threadGetargs_inuse[i] = -1;
-	}
-
-	CANCELSIGNAL;
+	if (!run_get_thread(context, sb, &args))
+		return;
 
 	if (!sb->sb_errno) {
 kludge:
@@ -2123,15 +2198,15 @@ kludge:
 		// compute total size of hostent
 		size = 28;
 		if (h->h_name != NULL)
-			size += strlen(h->h_name)+1;
+			size += strlen(h->h_name) + 1;
 
 		if (h->h_aliases != NULL)
 			while (h->h_aliases[numaliases])
-				size += strlen(h->h_aliases[numaliases++])+5;
+				size += strlen(h->h_aliases[numaliases++]) + 5;
 
 		if (h->h_addr_list != NULL) {
 			while (h->h_addr_list[numaddr]) numaddr++;
-			size += numaddr*(h->h_length+4);
+			size += numaddr*(h->h_length + 4);
 		}
 
 		if (sb->hostent) {
@@ -2144,34 +2219,34 @@ kludge:
 			write_log("BSDSOCK: WARNING - gethostby%s() ran out of Amiga memory "
 				"(couldn't allocate %ld bytes) while returning result of lookup for '%s'\n",
 				addrtype == -1 ? "name" : "addr", size, name_rp);
-			bsdsocklib_seterrno(sb,12); // ENOMEM
+			bsdsocklib_seterrno(sb, 12); // ENOMEM
 			return;
 		}
 		
 		sb->hostentsize = size;
 		
-		aptr = sb->hostent+28+numaliases*4+numaddr*4;
+		aptr = sb->hostent + 28 + numaliases * 4 + numaddr * 4;
 	
 		// transfer hostent to Amiga memory
-		put_long(sb->hostent+4,sb->hostent+20);
-		put_long(sb->hostent+8,h->h_addrtype);
-		put_long(sb->hostent+12,h->h_length);
-		put_long(sb->hostent+16,sb->hostent+24+numaliases*4);
+		put_long(sb->hostent + 4, sb->hostent + 20);
+		put_long(sb->hostent + 8, h->h_addrtype);
+		put_long(sb->hostent + 12, h->h_length);
+		put_long(sb->hostent + 16, sb->hostent + 24 + numaliases * 4);
 		
 		for (i = 0; i < numaliases; i++)
-			put_long(sb->hostent+20+i*4,addstr(&aptr,h->h_aliases[i]));
-		put_long(sb->hostent+20+numaliases*4,0);
+			put_long(sb->hostent + 20 + i * 4, addstr(&aptr, h->h_aliases[i]));
+		put_long(sb->hostent + 20 + numaliases * 4, 0);
 		for (i = 0; i < numaddr; i++)
-			put_long(sb->hostent+24+(numaliases+i)*4,addmem(&aptr,h->h_addr_list[i],h->h_length));
-		put_long(sb->hostent+24+numaliases*4+numaddr*4,0);
-		put_long(sb->hostent,aptr);
-		addstr(&aptr,h->h_name);
+			put_long(sb->hostent + 24 + (numaliases + i) * 4, addmem(&aptr, h->h_addr_list[i], h->h_length));
+		put_long(sb->hostent + 24 + numaliases * 4 + numaddr * 4, 0);
+		put_long(sb->hostent, aptr);
+		addstr(&aptr, h->h_name);
 
-		TRACE(("OK (%s)\n",h->h_name));
-		bsdsocklib_seterrno(sb,0);
+		TRACE(("OK (%s)\n", h->h_name));
+		bsdsocklib_seterrno(sb, 0);
 
 	} else {
-		TRACE(("failed (%d/%d)\n",sb->sb_errno,sb->sb_herrno));
+		TRACE(("failed (%d/%d)\n", sb->sb_errno, sb->sb_herrno));
 	}
 
 }
@@ -2186,7 +2261,9 @@ void host_getprotobyname(TrapContext *context, SB, uae_u32 name)
 	struct threadargs args;
 	char buf[MAXGETHOSTSTRUCT];
 
-	name_rp = get_real_address(name);
+	name_rp = "";
+	if (addr_valid("host_gethostbynameaddr", name, 1))
+		name_rp = get_real_address(name);
 
 	TRACE(("getprotobyname(%s) -> ",name_rp));
 
@@ -2195,50 +2272,8 @@ void host_getprotobyname(TrapContext *context, SB, uae_u32 name)
 	args.args2 = name;
 	args.args5 = buf;
 
-	for (i = 0; i < MAX_GET_THREADS; i++)  {
-		if (bsd->threadGetargs_inuse[i] == -1) {
-			bsd->threadGetargs_inuse[i] = 0;
-			bsd->threadGetargs[i] = NULL;
-		}
-		if (bsd->hGetThreads[i] && !bsd->threadGetargs_inuse[i]) break;
-	}
-	if (i >= MAX_GET_THREADS) {
-	    for (i = 0; i < MAX_GET_THREADS; i++) {
-			if (!bsd->hGetThreads[i]) {
-				bsd->hEvents[i] = CreateEvent(NULL, FALSE, FALSE, NULL);
-				bsd->hGetThreads[i] = THREAD(thread_get, &i);
-				if (bsd->hGetEvents[i] == NULL || bsd->hGetThreads[i] == NULL) {
-					bsd->hGetThreads[i] = 0;
-					write_log("BSDSOCK: ERROR - Thread/Event creation failed - error code: %d\n", GetLastError());
-					bsdsocklib_seterrno(sb, 12); // ENOMEM
-					sb->resultval = -1;
-					return;
-				}
-				break;
-			}
-	    }
-	}
-	
-	if (i >= MAX_GET_THREADS)
-		write_log("BSDSOCK: ERROR - Too many getprotobyname()s\n");
-	else {
-		bsdsetpriority (bsd->hGetThreads[i]);
-
-		bsd->threadGetargs[i] = &args;
-		bsd->threadGetargs_inuse[i] = 1;
-
-		SetEvent(bsd->hGetEvents[i]);
-	}
-
-	sb->eintr = 0;
-	while (bsd->threadGetargs_inuse[i] != 0 && sb->eintr == 0)  {	
-		WAITSIGNAL;
-		if (sb->eintr == 1)
-			bsd->threadGetargs_inuse[i] = -1;
-	}
-
-	CANCELSIGNAL;
-
+	if (!run_get_thread(context, sb, &args))
+		return;
 
 	if (!sb->sb_errno) {
 		p = (PROTOENT *)buf;
@@ -2303,13 +2338,16 @@ void host_getservbynameport(TrapContext *context, SB, uae_u32 nameport, uae_u32 
 	char buf[MAXGETHOSTSTRUCT];
 	struct threadargs args;
 
-	if (proto)
-		proto_rp = get_real_address(proto);
+	if (proto) {
+		if (addr_valid("host_getservbynameport1", proto, 1))
+			proto_rp = get_real_address(proto);
+	}
 
 	if (type) {
 		TRACE(("getservbyport(%d,%s) -> ",nameport,proto_rp ? proto_rp : "NULL"));
 	} else {
-		name_rp = get_real_address(nameport);
+		if (addr_valid("host_getservbynameport2", nameport, 1))
+			name_rp = get_real_address(nameport);
 		TRACE(("getservbyname(%s,%s) -> ",name_rp,proto_rp ? proto_rp : "NULL"));
 	}
 
@@ -2320,50 +2358,8 @@ void host_getservbynameport(TrapContext *context, SB, uae_u32 nameport, uae_u32 
 	args.args4 = type;
 	args.args5 = buf;
 
-	for (i = 0; i < MAX_GET_THREADS; i++)  {
-		if (bsd->threadGetargs_inuse[i] == -1) {
-			bsd->threadGetargs_inuse[i] = 0;
-			bsd->threadGetargs[i] = NULL;
-		}
-		if (bsd->hGetThreads[i] && !bsd->threadGetargs_inuse[i]) break;
-	}
-	if (i >= MAX_GET_THREADS) {
-	    for (i = 0; i < MAX_GET_THREADS; i++) {
-			if (!bsd->hGetThreads[i]) {
-				bsd->hGetEvents[i] = CreateEvent(NULL, FALSE, FALSE, NULL);
-				bsd->hGetThreads[i] = THREAD(thread_get, &i);
-				if (bsd->hGetEvents[i] == NULL || bsd->hGetThreads[i] == NULL) {
-					bsd->hGetThreads[i] = 0;
-					write_log("BSDSOCK: ERROR - Thread/Event creation failed - error code: %d\n", GetLastError());
-					bsdsocklib_seterrno(sb, 12); // ENOMEM
-					sb->resultval = -1;
-					return;
-				}
-			    
-				break;
-			}
-	    }
-	}
-	
-	if (i >= MAX_GET_THREADS)
-		write_log("BSDSOCK: ERROR - Too many getprotobyname()s\n");
-	else {
-		bsdsetpriority (bsd->hGetThreads[i]);
-
-		bsd->threadGetargs[i] = &args;
-		bsd->threadGetargs_inuse[i] = 1;
-
-		SetEvent(bsd->hGetEvents[i]);
-	}
-
-	sb->eintr = 0;
-	while (bsd->threadGetargs_inuse[i] != 0 && sb->eintr == 0) {	
-		WAITSIGNAL;
-		if (sb->eintr == 1)
-			bsd->threadGetargs_inuse[i] = -1;
-	}
-
-	CANCELSIGNAL;
+	if (!run_get_thread(context, sb, &args))
+		return;
 
 	if (!sb->sb_errno) {
 		s = (SERVENT *)buf;
@@ -2418,6 +2414,8 @@ void host_getservbynameport(TrapContext *context, SB, uae_u32 nameport, uae_u32 
 
 uae_u32 host_gethostname(uae_u32 name, uae_u32 namelen)
 {
+	if (!addr_valid("host_gethostname", name, namelen))
+		return -1;
 	return gethostname(get_real_address(name),namelen);
 }
 

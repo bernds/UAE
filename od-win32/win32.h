@@ -17,7 +17,7 @@
 
 #define WINUAEBETA 0
 #define WINUAEPUBLICBETA 0
-#define WINUAEDATE MAKEBD(2006, 12, 30)
+#define WINUAEDATE MAKEBD(2007, 3, 2)
 
 #define IHF_WINDOWHIDDEN 6
 #define NORMAL_WINDOW_STYLE (WS_VISIBLE | WS_BORDER | WS_CAPTION | WS_MINIMIZEBOX | WS_SYSMENU)
@@ -39,12 +39,12 @@ extern void clearallkeys(void);
 extern int getcapslock (void);
 
 void releasecapture (void);
-int WIN32_RegisterClasses( void );
-int WIN32_InitHtmlHelp( void );
-int WIN32_InitLibraries( void );
-int WIN32_CleanupLibraries( void );
-void WIN32_MouseDefaults( int, int );
-void WIN32_HandleRegistryStuff( void );
+int WIN32_RegisterClasses(void);
+int WIN32_InitHtmlHelp(void);
+int WIN32_InitLibraries(void);
+int WIN32_CleanupLibraries(void);
+void WIN32_MouseDefaults(int, int);
+void WIN32_HandleRegistryStuff(void);
 extern void setup_brkhandler (void);
 extern void remove_brkhandler (void);
 extern void disablecapture (void);
@@ -53,6 +53,9 @@ extern void fullscreentoggle (void);
 extern void setmouseactive (int active);
 extern void minimizewindow (void);
 extern uae_u32 OSDEP_minimize_uae(void);
+
+extern void resumepaused(void);
+extern void setpaused(void);
 
 void finishjob (void);
 void updatedisplayarea (void);
@@ -121,4 +124,5 @@ extern HMODULE language_load(WORD language);
 extern void logging_open(int,int);
 extern void logging_cleanup(void);
 
+extern LONG WINAPI WIN32_ExceptionFilter(struct _EXCEPTION_POINTERS *pExceptionPointers, DWORD ec);
 #endif

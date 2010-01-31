@@ -96,7 +96,7 @@
 #define force_z3	0x10 /* *MUST* be set if card is Z3 */
 #define ext_size	0x20 /* Use extended size table for bits 0-2 of er_Type */
 #define no_shutup	0x40 /* Card cannot receive Shut_up_forever */
-#define care_addr	0x80 /* Adress HAS to be $200000-$9fffff */
+#define care_addr	0x80 /* Z2=Adress HAS to be $200000-$9fffff Z3=1->mem,0=io */
 
 /* ********************************************************** */
 /* 40-42 */
@@ -125,6 +125,7 @@ uaecptr ROM_filesys_resname, ROM_filesys_resid;
 uaecptr ROM_filesys_diagentry;
 uaecptr ROM_hardfile_resname, ROM_hardfile_resid;
 uaecptr ROM_hardfile_init;
+int uae_boot_rom;
 
 /* ********************************************************** */
 
@@ -132,6 +133,8 @@ static void (*card_init[MAX_EXPANSION_BOARDS]) (void);
 static void (*card_map[MAX_EXPANSION_BOARDS]) (void);
 
 static int ecard;
+
+static uae_u16 uae_id;
 
 /* ********************************************************** */
 
@@ -265,8 +268,14 @@ static void REGPARAM2 expamem_wput (uaecptr addr, uae_u32 value)
 	switch (addr & 0xff) {
 	 case 0x44:
 	    if (expamem_type() == zorroIII) {
-		// +Bernd Roesch
-		value = (value - 0x4000) + (z3fastmem_start >> 16); /* hack address (TW) */
+		// +Bernd Roesch & Toni Wilen
+		if (expamem[0] & add_memory) {
+		    // Z3 RAM expansion
+		    value = z3fastmem_start >> 16;
+		} else {
+		    // Z3 P96 RAM
+		    value = p96ram_start >> 16;
+		}
 		chipmem_wput (regs.regs[11] + 0x20, value);
 		chipmem_wput (regs.regs[11] + 0x28, value);
 		// -Bernd Roesch
@@ -733,7 +742,7 @@ uae_u32 gfxmem_start;
 static void expamem_map_fastcard (void)
 {
     fastmem_start = ((expamem_hi | (expamem_lo >> 4)) << 16);
-    map_banks (&fastmem_bank, fastmem_start >> 16, allocated_fastmem >> 16, allocated_fastmem);
+    map_banks (&fastmem_bank, fastmem_start >> 16, allocated_fastmem >> 16, 0);
     write_log ("Fastcard: mapped @$%lx: %dMB fast memory\n", fastmem_start, allocated_fastmem >> 20);
 }
 
@@ -753,8 +762,8 @@ static void expamem_init_fastcard (void)
 
     expamem_write (0x04, 1);
 
-    expamem_write (0x10, hackers_id >> 8);
-    expamem_write (0x14, hackers_id & 0xff);
+    expamem_write (0x10, uae_id >> 8);
+    expamem_write (0x14, uae_id & 0xff);
 
     expamem_write (0x18, 0x00); /* ser.no. Byte 0 */
     expamem_write (0x1c, 0x00); /* ser.no. Byte 1 */
@@ -804,8 +813,8 @@ static void expamem_init_filesys (void)
     expamem_write (0x08, no_shutup);
 
     expamem_write (0x04, 2);
-    expamem_write (0x10, hackers_id >> 8);
-    expamem_write (0x14, hackers_id & 0xff);
+    expamem_write (0x10, uae_id >> 8);
+    expamem_write (0x14, uae_id & 0xff);
 
     expamem_write (0x18, 0x00); /* ser.no. Byte 0 */
     expamem_write (0x1c, 0x00); /* ser.no. Byte 1 */
@@ -871,12 +880,12 @@ static void expamem_init_z3fastmem (void)
     expamem_init_clear();
     expamem_write (0x00, add_memory | zorroIII | code);
 
-    expamem_write (0x08, no_shutup | force_z3 | (allocated_z3fastmem > 0x800000 ? ext_size : Z3_MEM_AUTO));
+    expamem_write (0x08, care_addr | no_shutup | force_z3 | (allocated_z3fastmem > 0x800000 ? ext_size : Z3_MEM_AUTO));
 
     expamem_write (0x04, 3);
 
-    expamem_write (0x10, hackers_id >> 8);
-    expamem_write (0x14, hackers_id & 0xff);
+    expamem_write (0x10, uae_id >> 8);
+    expamem_write (0x14, uae_id & 0xff);
 
     expamem_write (0x18, 0x00); /* ser.no. Byte 0 */
     expamem_write (0x1c, 0x00); /* ser.no. Byte 1 */
@@ -898,10 +907,16 @@ static void expamem_init_z3fastmem (void)
  *  Fake Graphics Card (ZORRO III) - BDK
  */
 
+uaecptr p96ram_start;
+int p96mode = 0;
+
 static void expamem_map_gfxcard (void)
 {
-    gfxmem_start = ((expamem_hi | (expamem_lo >> 4)) << 16);
-    map_banks (&gfxmem_bank, gfxmem_start >> 16, allocated_gfxmem >> 16, allocated_gfxmem);
+    gfxmem_start = (expamem_hi | (expamem_lo >> 4)) << 16;
+    if (p96mode)
+	map_banks (&gfxmem_bankx, gfxmem_start >> 16, allocated_gfxmem >> 16, allocated_gfxmem);
+    else
+	map_banks (&gfxmem_bank, gfxmem_start >> 16, allocated_gfxmem >> 16, allocated_gfxmem);
     write_log ("UAEGFX-card: mapped @$%lx, %d MB RTG RAM\n", gfxmem_start, allocated_gfxmem / 0x100000);
 }
 
@@ -914,16 +929,24 @@ static void expamem_init_gfxcard (void)
 	: allocated_gfxmem == 0x1000000 ? Z2_MEM_16MB
 	: allocated_gfxmem == 0x2000000 ? Z2_MEM_32MB
 	: allocated_gfxmem == 0x4000000 ? Z2_MEM_64MB
-	: Z2_MEM_128MB);
+	: allocated_gfxmem == 0x8000000 ? Z2_MEM_128MB
+	: allocated_gfxmem == 0x10000000 ? Z2_MEM_256MB
+	: allocated_gfxmem == 0x20000000 ? Z2_MEM_512MB
+	: Z2_MEM_1GB);
+    int subsize = (allocated_gfxmem == 0x100000 ? Z3_MEM_1MB
+	: allocated_gfxmem == 0x200000 ? Z3_MEM_2MB
+	: allocated_gfxmem == 0x400000 ? Z3_MEM_4MB
+	: allocated_gfxmem == 0x800000 ? Z3_MEM_8MB
+	: 0);
 
     expamem_init_clear();
     expamem_write (0x00, zorroIII | code);
 
-    expamem_write (0x08, no_shutup | force_z3 | (allocated_gfxmem > 0x800000 ? ext_size : Z3_MEM_AUTO));
+    expamem_write (0x08, care_addr | no_shutup | force_z3 | ext_size | subsize);
     expamem_write (0x04, 96);
 
-    expamem_write (0x10, hackers_id >> 8);
-    expamem_write (0x14, hackers_id & 0xff);
+    expamem_write (0x10, uae_id >> 8);
+    expamem_write (0x14, uae_id & 0xff);
 
     expamem_write (0x18, 0x00); /* ser.no. Byte 0 */
     expamem_write (0x1c, 0x00); /* ser.no. Byte 1 */
@@ -1002,6 +1025,8 @@ static void allocate_expamem (void)
 
     z3fastmem_bank.baseaddr = z3fastmem;
     fastmem_bank.baseaddr = fastmemory;
+    gfxmem_bank.baseaddr = NULL;
+    gfxmem_bankx.baseaddr = gfxmemory;
 
 #ifdef SAVESTATE
     if (savestate_state == STATE_RESTORE) {
@@ -1018,15 +1043,17 @@ static void allocate_expamem (void)
 #ifdef PICASSO96
 	if (allocated_gfxmem > 0 && gfxmem_start > 0) {
 	    restore_ram (p96_filepos, gfxmemory);
-	    map_banks (&gfxmem_bank, gfxmem_start >> 16, currprefs.gfxmem_size >> 16,
-		allocated_gfxmem);
+	    if (p96mode)
+		map_banks (&gfxmem_bankx, gfxmem_start >> 16, currprefs.gfxmem_size >> 16,
+		    allocated_gfxmem);
+	    else
+		map_banks (&gfxmem_bank, gfxmem_start >> 16, currprefs.gfxmem_size >> 16,
+		    allocated_gfxmem);
 	}
 #endif
     }
 #endif /* SAVESTATE */
 }
-
-extern int cdtv_enabled;
 
 void expamem_reset (void)
 {
@@ -1034,16 +1061,12 @@ void expamem_reset (void)
     int cardno = 0;
     ecard = 0;
 
+    uae_id = hackers_id;
+
     allocate_expamem ();
 
-#ifdef CDTV
-#if 0
-    if (cdtv_enabled) {
-	map_banks (&dmac_bank, DMAC_START >> 16, 0x10000 >> 16, 0x10000);
-	dmac_init ();
-    }
-#endif
-#endif
+    if (currprefs.cs_cdtvcd)
+	cdtv_init ();
 
     /* check if Kickstart version is below 1.3 */
     if (! ersatzkickfile && kickstart_version
@@ -1058,7 +1081,7 @@ void expamem_reset (void)
     }
 #ifdef FILESYS
     /* No need for filesystem stuff if there aren't any mounted.  */
-    if (nr_units (currprefs.mountinfo) == 0)
+    if (nr_units() == 0)
 	do_mount = 0;
 #endif
     if (fastmemory != NULL) {
@@ -1128,12 +1151,12 @@ void expansion_init (void)
     allocate_expamem ();
 
 #ifdef FILESYS
-    filesysory = (uae_u8 *) mapped_malloc (0x10000, "filesys");
+    filesysory = mapped_malloc (0x10000, "filesys");
     if (!filesysory) {
 	write_log ("virtual memory exhausted (filesysory)!\n");
 	exit (0);
     }
-    filesys_bank.baseaddr = (uae_u8*)filesysory;
+    filesys_bank.baseaddr = filesysory;
 #endif
 }
 

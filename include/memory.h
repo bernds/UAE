@@ -43,6 +43,7 @@ extern uae_u32 allocated_bogomem;
 extern uae_u32 allocated_gfxmem;
 extern uae_u32 allocated_z3fastmem, max_z3fastmem;
 extern uae_u32 allocated_a3000mem;
+extern uae_u32 allocated_cardmem;
 
 extern uae_u32 wait_cpu_cycle_read (uaecptr addr, int mode);
 extern uae_u32 wait_cpu_cycle_read_cycles (uaecptr addr, int mode, int *cycles);
@@ -53,14 +54,17 @@ extern void wait_cpu_cycle_write (uaecptr addr, int mode, uae_u32 v);
 
 #define chipmem_start 0x00000000
 #define bogomem_start 0x00C00000
-#define a3000mem_start 0x07000000
+#define cardmem_start 0x00E00000
 #define kickmem_start 0x00F80000
 extern uaecptr z3fastmem_start;
+extern uaecptr p96ram_start;
 extern uaecptr fastmem_start;
+extern uaecptr a3000lmem_start, a3000hmem_start;
 
 extern int ersatzkickfile;
 extern int cloanto_rom;
 extern uae_u16 kickstart_version;
+extern int uae_boot_rom;
 
 extern uae_u8* baseaddr[];
 
@@ -103,8 +107,12 @@ extern addrbank cia_bank;
 extern addrbank rtarea_bank;
 extern addrbank expamem_bank;
 extern addrbank fastmem_bank;
-extern addrbank gfxmem_bank;
+extern addrbank gfxmem_bank, gfxmem_bankx;
 extern addrbank gayle_bank;
+extern addrbank mbres_bank;
+extern addrbank akiko_bank;
+extern addrbank mbdmac_bank;
+extern addrbank cardmem_bank;
 
 extern void rtarea_init (void);
 extern void rtarea_setup (void);
@@ -265,6 +273,8 @@ STATIC_INLINE int valid_address(uaecptr addr, uae_u32 size)
     return get_mem_bank(addr).check(addr, size);
 }
 
+extern int addr_valid(char*,uaecptr,uae_u32);
+
 /* For faster access in custom chip emulation.  */
 extern uae_u32 REGPARAM3 chipmem_lget (uaecptr) REGPARAM;
 extern uae_u32 REGPARAM3 chipmem_wget (uaecptr) REGPARAM;
@@ -321,7 +331,8 @@ extern void init_shm(void);
 #define ROMTYPE_EXTCDTV 8
 #define ROMTYPE_AR 16
 #define ROMTYPE_KEY 32
-#define ROMTYPE_ARCADIA 64
+#define ROMTYPE_ARCADIABIOS 64
+#define ROMTYPE_ARCADIAGAME 128
 
 struct romdata {
     char *name;
@@ -345,6 +356,7 @@ extern struct romdata *getromdatabycrc (uae_u32 crc32);
 extern struct romdata *getromdatabydata (uae_u8 *rom, int size);
 extern struct romdata *getromdatabyid (int id);
 extern struct romdata *getromdatabyzfile (struct zfile *f);
+extern struct romlist **getarcadiaroms (void);
 extern struct romdata *getarcadiarombyname (char *name);
 extern struct romlist **getrombyident(int ver, int rev, int subver, int subrev, char *model, int all);
 extern void getromname (struct romdata*, char*);
@@ -357,3 +369,11 @@ extern int load_keyring (struct uae_prefs *p, char *path);
 extern uae_u8 *target_load_keyfile (struct uae_prefs *p, char *path, int *size, char *name);
 extern void free_keyring (void);
 extern int get_keyring (void);
+
+uaecptr strcpyha_safe (uaecptr dst, const char *src);
+extern char *strcpyah_safe (char *dst, uaecptr src);
+void memcpyha_safe (uaecptr dst, const uae_u8 *src, int size);
+void memcpyha (uaecptr dst, const uae_u8 *src, int size);
+void memcpyah_safe (uae_u8 *dst, uaecptr src, int size);
+void memcpyah (uae_u8 *dst, uaecptr src, int size);
+

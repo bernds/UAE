@@ -15,7 +15,8 @@
 #if defined(NATMEM_OFFSET)
 
 static struct shmid_ds shmids[MAX_SHMID];
-static uae_u32 gfxoffs;
+
+extern int p96mode;
 
 uae_u8 *natmem_offset = NULL;
 #ifdef CPU_64_BIT
@@ -23,6 +24,9 @@ int max_allowed_mman = 2048;
 #else
 int max_allowed_mman = 512;
 #endif
+
+static uae_u8 *p96mem_offset;
+static uae_u8 *p96fakeram;
 
 void cache_free(void *cache)
 {
@@ -85,7 +89,6 @@ void init_shm(void)
     size = max_z3fastmem = (uae_u32)size64;
 
     canbang = 0;
-    gfxoffs = 0;
     shm_start = 0;
     for (i = 0; i < MAX_SHMID; i++) {
 	shmids[i].attached = 0;
@@ -107,6 +110,13 @@ void init_shm(void)
     }
     if (os_winnt) {
 	natmem_offset = blah;
+	if (p96mode) {
+	    p96mem_offset = VirtualAlloc(natmem_offset + size + add, 128 * 1024 * 1024, MEM_RESERVE | MEM_WRITE_WATCH, PAGE_EXECUTE_READWRITE);
+	    if (!p96mem_offset) {
+		write_log("NATMEM: failed to allocate special Picasso96 GFX RAM\n");
+		p96mode = 0;
+	    }
+	}
     } else {
 	VirtualFree(blah, 0, MEM_RELEASE);
 	while (address < (LPBYTE)0xa0000000) {
@@ -139,26 +149,41 @@ void init_shm(void)
 void mapped_free(uae_u8 *mem)
 {
     shmpiece *x = shm_start;
+
+    if (!p96mode && mem == p96fakeram) {
+	xfree (p96fakeram);
+	p96fakeram = NULL;
+	while(x) {
+	    struct shmid_ds blah;
+	    if (mem == x->native_address) {
+		int shmid = x->id;
+		shmids[shmid].key = -1;
+		shmids[shmid].name[0] = '\0';
+		shmids[shmid].size = 0;
+		shmids[shmid].attached = 0;
+	    }
+	    x = x->next;
+	}
+	return;
+    }
+
     while(x) {
-	if( mem == x->native_address )
-	    shmdt( x->native_address);
+	if(mem == x->native_address)
+	    shmdt(x->native_address);
 	x = x->next;
     }
     x = shm_start;
     while(x) {
 	struct shmid_ds blah;
 	if (mem == x->native_address) {
-	    if (shmctl(x->id, IPC_STAT, &blah) == 0) {
+	    if (shmctl(x->id, IPC_STAT, &blah) == 0)
 		shmctl(x->id, IPC_RMID, &blah);
-	    } else {
-		VirtualFree((LPVOID)mem, 0, os_winnt ? MEM_DECOMMIT : MEM_RELEASE);
-	    }
 	}
 	x = x->next;
     }
 }
 
-static key_t get_next_shmkey( void )
+static key_t get_next_shmkey(void)
 {
     key_t result = -1;
     int i;
@@ -172,7 +197,7 @@ static key_t get_next_shmkey( void )
     return result;
 }
 
-STATIC_INLINE key_t find_shmkey( key_t key )
+STATIC_INLINE key_t find_shmkey(key_t key)
 {
     int result = -1;
     if(shmids[key].key == key) {
@@ -194,14 +219,12 @@ void *shmat(int shmid, void *shmaddr, int shmflg)
 	
 #ifdef NATMEM_OFFSET
     unsigned int size=shmids[shmid].size;
-    if(shmids[shmid].attached )
+    if(shmids[shmid].attached)
 	return shmids[shmid].attached;
     if ((uae_u8*)shmaddr<natmem_offset) {
 	if(!strcmp(shmids[shmid].name,"chip")) {
 	    shmaddr=natmem_offset;
 	    got = TRUE;
-//	    if(!currprefs.fastmem_size)
-//		size+=32;
 	}
 	if(!strcmp(shmids[shmid].name,"kick")) {
 	    shmaddr=natmem_offset+0xf80000;
@@ -226,21 +249,32 @@ void *shmat(int shmid, void *shmaddr, int shmflg)
 	    got = TRUE;
 	    size+=32;
 	}
+	if(!strcmp(shmids[shmid].name,"ramsey_low")) {
+	    shmaddr=natmem_offset + a3000lmem_start;
+	    got = TRUE;
+	}
+	if(!strcmp(shmids[shmid].name,"ramsey_high")) {
+	    shmaddr=natmem_offset + a3000hmem_start;
+	    got = TRUE;
+	}
 	if(!strcmp(shmids[shmid].name,"z3")) {
-	    shmaddr=natmem_offset+currprefs.z3fastmem_start;
-	    if (allocated_z3fastmem<0x1000000)
-		gfxoffs=0x1000000;
-	    else
-		gfxoffs=allocated_z3fastmem;
+	    shmaddr=natmem_offset + currprefs.z3fastmem_start;
 	    got = TRUE;
 	}
 	if(!strcmp(shmids[shmid].name,"gfx")) {
-	    shmaddr=natmem_offset+currprefs.z3fastmem_start+gfxoffs;
 	    got = TRUE;
-	    size+=32;
-	    result=malloc(size);
-	    shmids[shmid].attached=result;
-	    return result;
+	    if (p96mode) {
+		p96ram_start = p96mem_offset - natmem_offset;
+		shmaddr = natmem_offset + p96ram_start;
+	    } else {
+		p96ram_start = currprefs.z3fastmem_start + ((currprefs.z3fastmem_size + 0xffffff) & ~0xffffff);
+		shmaddr = natmem_offset + p96ram_start;
+		VirtualFree(shmaddr, os_winnt ? size : 0, os_winnt ? MEM_DECOMMIT : MEM_RELEASE);
+		xfree(p96fakeram);
+		result = p96fakeram = xcalloc (size + 4096, 1);
+		shmids[shmid].attached = result;
+		return result;
+	    }
 	}
 	if(!strcmp(shmids[shmid].name,"bogo")) {
 	    shmaddr=natmem_offset+0x00C00000;
@@ -274,15 +308,18 @@ void *shmat(int shmid, void *shmaddr, int shmflg)
 	if (got == FALSE) {
 	    if (shmaddr)
 		VirtualFree(shmaddr, os_winnt ? size : 0, os_winnt ? MEM_DECOMMIT : MEM_RELEASE);
-	    result = VirtualAlloc(shmaddr, size, os_winnt ? MEM_COMMIT : (MEM_RESERVE | MEM_COMMIT),
+	    result = VirtualAlloc(shmaddr, size, os_winnt ? MEM_COMMIT : (MEM_RESERVE | MEM_COMMIT | (p96mode ? MEM_WRITE_WATCH : 0)),
 		PAGE_EXECUTE_READWRITE);
 	    if (result == NULL) {
 		result = (void*)-1;
-		write_log ("VirtualAlloc %p-%p %x (%dk) failed %d\n", shmaddr, (uae_u8*)shmaddr + size,
+		write_log ("VirtualAlloc %08.8X - %08.8X %x (%dk) failed %d\n",
+		    (uae_u8*)shmaddr - natmem_offset, (uae_u8*)shmaddr - natmem_offset + size,
 		    size, size >> 10, GetLastError());
 	    } else {
 		shmids[shmid].attached = result; 
-		write_log ("VirtualAlloc %p-%p %x (%dk) ok\n", shmaddr, (uae_u8*)shmaddr + size, size, size >> 10);
+		write_log ("VirtualAlloc %08.8X - %08.8X %x (%dk) ok\n",
+		    (uae_u8*)shmaddr - natmem_offset, (uae_u8*)shmaddr - natmem_offset + size,
+		    size, size >> 10);
 	    }
 	} else {
 	    shmids[shmid].attached = shmaddr;
@@ -325,9 +362,12 @@ int shmctl(int shmid, int cmd, struct shmid_ds *buf)
 		result = 0;
 	    break;
 	    case IPC_RMID:
+		VirtualFree(shmids[shmid].attached, os_winnt ? shmids[shmid].size : 0,
+		    os_winnt ? MEM_DECOMMIT : MEM_RELEASE);
 		shmids[shmid].key = -1;
 		shmids[shmid].name[0] = '\0';
 		shmids[shmid].size = 0;
+		shmids[shmid].attached = 0;
 		result = 0;
 	    break;
 	}
@@ -335,7 +375,7 @@ int shmctl(int shmid, int cmd, struct shmid_ds *buf)
     return result;
 }
 
-int isinf( double x )
+int isinf(double x)
 {
     const int nClass = _fpclass(x);
     int result;

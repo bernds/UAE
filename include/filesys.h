@@ -31,6 +31,7 @@ struct hardfiledata {
     unsigned int heads;
     uae_u64 size2;
     uae_u64 offset2;
+    int warned;
 };
 
 #define FILESYS_VIRTUAL 0
@@ -38,14 +39,11 @@ struct hardfiledata {
 #define FILESYS_HARDFILE_RDB 2
 #define FILESYS_HARDDRIVE 3
 
-#define FILESYS_FLAG_DONOTSAVE 1
-
 #define MAX_FILESYSTEM_UNITS 30
 
 struct uaedev_mount_info;
 extern struct uaedev_mount_info options_mountinfo;
 
-extern void filesys_init (void);
 extern struct hardfiledata *get_hardfile_data (int nr);
 #define FILESYS_MAX_BLOCKSIZE 2048
 extern int hdf_open (struct hardfiledata *hfd, char *name);

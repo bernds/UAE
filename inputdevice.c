@@ -46,7 +46,6 @@
 #include "autoconf.h"
 
 int inputdevice_logging = 0;
-static int potgo_logging = 0;
 
 #define DIR_LEFT 1
 #define DIR_RIGHT 2
@@ -745,25 +744,156 @@ void read_inputdevice_config (struct uae_prefs *pr, char *option, char *value)
 
 static int ievent_alive = 0;
 static int lastmx, lastmy;
+static uae_u32 magicmouse_ibase = 0;
 
-int mousehack_alive (void)
+static uaecptr get_intuitionbase(void)
 {
-    return ievent_alive > 0;
+    uaecptr v = get_long(4);
+    addrbank *b = &get_mem_bank(v);
+
+    if (!b || !b->check(v, 400) || b->flags != ABFLAG_RAM)
+	return 0;
+    v += 378; // liblist
+    while (v = get_long(v)) {
+	uae_u32 v2;
+	uae_u8 *p;
+	b = &get_mem_bank(v);
+	if (!b || !b->check (v, 32) || b->flags != ABFLAG_RAM) {
+	    magicmouse_ibase = 0xffffffff;
+	    return 0;
+	}
+	v2 = get_long(v + 10); // name
+	b = &get_mem_bank(v2);
+	if (!b || !b->check (v2, 20)) {
+	    magicmouse_ibase = 0xffffffff;
+	    return 0;
+	}
+	if (b->flags != ABFLAG_ROM)
+	    return 0;
+	p = b->xlateaddr(v2);
+	if (!strcmp(p, "intuition.library"))
+	    return v;
+    }
+    return 0;
 }
 
 static void mousehack_enable (void)
 {
-    if (!mousehack_allowed())
+    if (!uae_boot_rom)
 	return;
     if (rtarea[get_long (RTAREA_BASE + 40) + 12 - 1])
 	return;
     rtarea[get_long (RTAREA_BASE + 40) + 12 - 1] = 1;
 }
 
+static void mousehack_setpos(int mousexpos, int mouseypos)
+{
+    uae_u8 *p;
+    if (!uae_boot_rom)
+	return;
+    p = rtarea + get_long (RTAREA_BASE + 40) + 12;
+    p[0] = mousexpos >> 8;
+    p[1] = mousexpos;
+    p[2] = mouseypos >> 8;
+    p[3] = mouseypos;
+    //write_log("%dx%d\n", mousexpos, mouseypos);
+}
+
+static int mouseedge_x, mouseedge_y, mouseedge_time;
+#define MOUSEEDGE_RANGE 1000
+#define MOUSEEDGE_RANGE_MENU 1000
+#define MOUSEEDGE_TIME 2
+
+void setamigamouse(int x, int y)
+{
+    mousehack_enable();
+    mousehack_setpos(x, y);
+}
+
+extern void setmouseactivexy(int,int,int);
+extern void drawing_adjust_mousepos(int*,int*);
+
+static void mouseedge(void)
+{
+    int x, y, dir;
+    uaecptr ib;
+    static int melast_x, melast_y;
+    static int isnonzero;
+
+    if (!currprefs.win32_outsidemouse || magicmouse_ibase == 0xffffffff)
+	return;
+    dir = 0;
+    if (!mouseedge_time) {
+	isnonzero = 0;
+	goto end;
+    }
+    if (magicmouse_ibase == 0)
+	ib = get_intuitionbase();
+    else
+	ib = magicmouse_ibase;
+    if (!ib)
+	return;
+    x = get_word(ib + 70);
+    y = get_word(ib + 68);
+    if (x || y)
+	isnonzero = 1;
+    //write_log("%x x %d\n", x, y);
+    if (!isnonzero)
+	return;
+    if (melast_x == x) {
+	if (mouseedge_x < -MOUSEEDGE_RANGE) {
+	    mouseedge_x = 0;
+	    dir |= 1;
+	    goto end;
+	}
+	if (mouseedge_x > MOUSEEDGE_RANGE) {
+	    mouseedge_x = 0;
+	    dir |= 2;
+	    goto end;
+	}
+    } else {
+	mouseedge_x = 0;
+        melast_x = x;
+    }
+    if (melast_y == y) {
+	if (mouseedge_y < -MOUSEEDGE_RANGE_MENU) {
+	    mouseedge_y = 0;
+	    dir |= 4;
+	    goto end;
+	}
+	if (mouseedge_y > MOUSEEDGE_RANGE) {
+	    mouseedge_y = 0;
+	    dir |= 8;
+	    goto end;
+	}
+    } else {
+	mouseedge_y = 0;
+        melast_y = y;
+    }
+    return;
+
+end:
+    mouseedge_time = 0;
+    if (dir) {
+	if (!picasso_on) {
+	    drawing_adjust_mousepos(&x, &y);
+	}
+	//write_log("%d\n", dir);
+	if (!dmaen(DMA_SPRITE))
+	    setmouseactivexy(x, y, 0);
+	else
+	    setmouseactivexy(x, y, dir);
+    }
+}
+
+int mousehack_alive (void)
+{
+    return ievent_alive > 0;
+}
+
 static void mousehack_helper (void)
 {
     int mousexpos, mouseypos;
-    uae_u8 *p;
 
     if (!mousehack_allowed())
 	return;
@@ -777,13 +907,7 @@ static void mousehack_helper (void)
 	mouseypos = coord_native_to_amiga_y (lastmy) << 1;
 	mousexpos = coord_native_to_amiga_x (lastmx);
     }
-    if (!mousehack_allowed())
-	mousexpos = mouseypos = 0;
-    p = rtarea + get_long (RTAREA_BASE + 40) + 12;
-    p[0] = mousexpos >> 8;
-    p[1] = mousexpos;
-    p[2] = mouseypos >> 8;
-    p[3] = mouseypos;
+    mousehack_setpos(mousexpos, mouseypos);
 }
 
 STATIC_INLINE int adjust (int val)
@@ -827,6 +951,44 @@ int getbuttonstate (int joy, int button)
 static void mouseupdate (int pct)
 {
     int v, i;
+
+    if (pct == 100) {
+	if (mouse_delta[0][0] < 0) {
+	    if (mouseedge_x > 0)
+		mouseedge_x = 0;
+	    else
+		mouseedge_x += mouse_delta[0][0];
+	    mouseedge_time = MOUSEEDGE_TIME;
+	}
+	if (mouse_delta[0][0] > 0) {
+	    if (mouseedge_x < 0)
+		mouseedge_x = 0;
+	    else
+		mouseedge_x += mouse_delta[0][0];
+	    mouseedge_time = MOUSEEDGE_TIME;
+	}
+	if (mouse_delta[0][1] < 0) {
+	    if (mouseedge_y > 0)
+		mouseedge_y = 0;
+	    else
+		mouseedge_y += mouse_delta[0][1];
+	    mouseedge_time = MOUSEEDGE_TIME;
+	}
+	if (mouse_delta[0][1] > 0) {
+	    if (mouseedge_y < 0)
+		mouseedge_y = 0;
+	    else
+		mouseedge_y += mouse_delta[0][1];
+	    mouseedge_time = MOUSEEDGE_TIME;
+	}
+	if (mouseedge_time > 0) {
+	    mouseedge_time--;
+	    if (mouseedge_time == 0) {
+		mouseedge_x = 0;
+		mouseedge_y = 0;
+	    }
+	}
+    }
 
     for (i = 0; i < 2; i++) {
 
@@ -893,7 +1055,7 @@ int getjoystate (int joy)
     int left = 0, right = 0, top = 0, bot = 0;
     uae_u16 v = 0;
 
-    if (inputdevice_logging > 2)
+    if (inputdevice_logging & 2)
 	write_log("JOY%dDAT %x\n", joy, m68k_getpc(&regs));
     readinput ();
     if (joydir[joy] & DIR_LEFT)
@@ -956,7 +1118,8 @@ void JOYTEST (uae_u16 v)
     mouse_frame_y[0] = mouse_y[0];
     mouse_frame_x[1] = mouse_x[1];
     mouse_frame_y[1] = mouse_y[1];
-//    write_log ("%d:%04.4X %p\n",vpos,v,m68k_getpc());
+    if (inputdevice_logging & 2)
+	write_log ("JOYTEST: %04.4X PC=%x\n", v , M68K_GETPC);
 }
 
 static uae_u8 parconvert (uae_u8 v, int jd, int shift)
@@ -1017,6 +1180,8 @@ uae_u8 handle_joystick_buttons (uae_u8 dra)
 	    but |= 0x40 << i;
 	}
     }
+    if (inputdevice_logging & 4)
+	write_log("BFE001: %02.2X:%02.2X %x\n", dra, but, M68K_GETPC);
     return but;
 }
 
@@ -1166,8 +1331,8 @@ void POTGO (uae_u16 v)
 {
     int i;
 
-    if (potgo_logging)
-	write_log ("W:%d: %04.4X %p\n", vpos, v, M68K_GETPC);
+    if (inputdevice_logging & 16)
+	write_log ("POTGO_W: %04.4X %p\n", v, M68K_GETPC);
 #ifdef DONGLE_DEBUG
     if (notinrom ())
 	write_log ("POTGO %04.4X %s\n", v, debuginfo(0));
@@ -1203,8 +1368,8 @@ uae_u16 POTGOR (void)
     if (notinrom ())
 	write_log ("POTGOR %04.4X %s\n", v, debuginfo(0));
 #endif
-    if (potgo_logging)
-	write_log("R:%d:%04.4X %d %p\n", vpos, v, cd32_shifter[1], M68K_GETPC);
+    if (inputdevice_logging & 16)
+	write_log("POTGO_R: %04.4X %d %p\n", v, cd32_shifter[1], M68K_GETPC);
     return v;
 }
 
@@ -1283,7 +1448,7 @@ void inputdevice_do_keyboard (int code, int state)
 	    uae_reset (r);
 	}
 	record_key ((uae_u8)((key << 1) | (key >> 7)));
-	if (inputdevice_logging > 0)
+	if (inputdevice_logging & 1)
 	    write_log("Amiga key %02.2X %d\n", key & 0x7f, key >> 7);
 	return;
     }
@@ -1461,7 +1626,7 @@ int handle_input_event (int nr, int state, int max, int autofire)
     if (nr <= 0)
 	return 0;
     ie = &events[nr];
-    if (inputdevice_logging > 0)
+    if (inputdevice_logging & 1)
 	write_log("'%s' %d %d\n", ie->name, state, max);
     if (autofire) {
 	if (state)
@@ -1610,14 +1775,16 @@ void inputdevice_vsync (void)
     if (ievent_alive > 0)
 	ievent_alive--;
 #ifdef ARCADIA
-    if (arcadia_rom)
+    if (arcadia_bios)
 	arcadia_vsync ();
 #endif
+    mouseedge();
 }
 
 void inputdevice_reset (void)
 {
     ievent_alive = 0;
+    magicmouse_ibase = 0;
 }
 
 static int switchdevice(struct uae_input_device *id, int num)
@@ -1737,10 +1904,6 @@ static int ismouse (int ei)
     }
     return 0;
 }
-
-#ifdef CD32
-extern int cd32_enabled;
-#endif
 
 static void scanevents(struct uae_prefs *p)
 {
@@ -1878,7 +2041,7 @@ static void compatibility_mode (struct uae_prefs *prefs)
 	joysticks[joy].eventid[ID_BUTTON_OFFSET + 1][0] = INPUTEVENT_JOY2_2ND_BUTTON;
 	joysticks[joy].eventid[ID_BUTTON_OFFSET + 2][0] = INPUTEVENT_JOY2_3RD_BUTTON;
 #ifdef CD32
-	if (cd32_enabled)
+	if (currprefs.cs_cd32cd)
 	    setcd32 (joy, 1);
 #endif
 	joysticks[joy].enabled = 1;
@@ -1914,7 +2077,7 @@ static void compatibility_mode (struct uae_prefs *prefs)
 	joysticks[joy].eventid[ID_BUTTON_OFFSET + 1][0] = INPUTEVENT_JOY2_2ND_BUTTON;
 	joysticks[joy].eventid[ID_BUTTON_OFFSET + 2][0] = INPUTEVENT_JOY2_3RD_BUTTON;
 #ifdef CD32
-	if (cd32_enabled)
+	if (currprefs.cs_cd32cd)
 	    setcd32 (joy, 1);
 #endif
 	joysticks[joy].enabled = 1;
@@ -1973,11 +2136,12 @@ void inputdevice_updateconfig (struct uae_prefs *prefs)
     scanevents (prefs);
 
 #ifdef CD32
-    if (currprefs.input_selected_setting == 0 && cd32_enabled)
+    if (currprefs.input_selected_setting == 0 && currprefs.cs_cd32cd)
 	cd32_pad_enabled[1] = 1;
 #endif
 
-    mousehack_enable();
+    if (mousehack_allowed())
+        mousehack_enable();
 }
 
 static void set_kbr_default (struct uae_prefs *p, int index, int num)
@@ -2647,6 +2811,10 @@ void setjoystickstate (int joy, int axis, int state, int max)
 	    id->flags[ID_AXIS_OFFSET + axis][i]);
     id2->states[axis] = state;
 }
+int getjoystickstate(int joy)
+{
+    return joysticks[joy].enabled;
+}
 
 void setmousestate (int mouse, int axis, int data, int isabs)
 {
@@ -2685,6 +2853,10 @@ void setmousestate (int mouse, int axis, int data, int isabs)
     for (i = 0; i < MAX_INPUT_SUB_EVENT; i++)
 	handle_input_event (id->eventid[ID_AXIS_OFFSET + axis][i], v, 0, 0);
     mousehack_helper();
+}
+int getmousestate(int joy)
+{
+    return mice[joy].enabled;
 }
 
 void warpmode (int mode)

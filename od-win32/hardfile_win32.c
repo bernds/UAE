@@ -81,7 +81,7 @@ static void rdbdump (HANDLE *h, uae_u64 offset, uae_u8 *buf, int blocksize)
     cnt++;
 }
 
-static int safetycheck (HANDLE *h, uae_u64 offset, uae_u8 *buf, int blocksize)
+static int safetycheck (HANDLE *h, uae_u64 offset, uae_u8 *buf, int blocksize, int dowarn)
 {
     int i, j, blocks = 63, empty = 1;
     DWORD outlen, high;
@@ -120,7 +120,8 @@ static int safetycheck (HANDLE *h, uae_u64 offset, uae_u8 *buf, int blocksize)
 	write_log ("hd accepted (empty)\n");
 	return 1;
     }
-    gui_message_id (IDS_HARDDRIVESAFETYWARNING);
+    if (dowarn)
+	gui_message_id (IDS_HARDDRIVESAFETYWARNING);
     return 2;
 }
 
@@ -150,6 +151,7 @@ int hdf_open (struct hardfiledata *hfd, char *name)
     int i;
     struct uae_driveinfo *udi;
 
+    hfd->flags = 0;
     hdf_close (hfd);
     hfd->cache = VirtualAlloc (NULL, CACHE_SIZE, MEM_COMMIT, PAGE_READWRITE);
     hfd->cache_valid = 0;
@@ -166,7 +168,10 @@ int hdf_open (struct hardfiledata *hfd, char *name)
 	    udi = &uae_drives[i];
 	    hfd->flags = 1;
 	    flags =  FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS;
-	    h = CreateFile (udi->device_path, GENERIC_READ | (hfd->readonly ? 0 : GENERIC_WRITE), FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, flags, NULL);
+	    h = CreateFile (udi->device_path,
+		GENERIC_READ | (hfd->readonly ? 0 : GENERIC_WRITE),
+		FILE_SHARE_READ | (hfd->readonly ? 0 : FILE_SHARE_WRITE),
+		NULL, OPEN_EXISTING, flags, NULL);
 	    hfd->handle = h;
 	    if (h == INVALID_HANDLE_VALUE) {
 		hdf_close (hfd);
@@ -185,10 +190,11 @@ int hdf_open (struct hardfiledata *hfd, char *name)
 	    }
 	    hfd->blocksize = udi->bytespersector;
 	    if (hfd->offset == 0) {
-		if (!safetycheck (hfd->handle, 0, hfd->cache, hfd->blocksize)) {
+		if (!safetycheck (hfd->handle, 0, hfd->cache, hfd->blocksize, hfd->warned ? 0 : 1)) {
 		    hdf_close (hfd);
 		    return 0;
 		}
+		hfd->warned = 1;
 	    }
 	    hfd->handle_valid = HDF_HANDLE_WIN32;
 	}
@@ -262,7 +268,6 @@ void hdf_close (struct hardfiledata *hfd)
     if (!hfd->handle_valid)
 	return;
     hfd_log ("close handle=%p\n", hfd->handle);
-    hfd->flags = 0;
     if (hfd->handle && hfd->handle != INVALID_HANDLE_VALUE) {
 	if (hfd->handle_valid == HDF_HANDLE_WIN32)
 	    CloseHandle (hfd->handle);
@@ -881,7 +886,7 @@ Return Value:
 	    udi->offset = udi->offset2 = pi->StartingOffset.QuadPart;
 	    udi->size = udi->size2 = pi->PartitionLength.QuadPart;
 	    write_log ("used\n");
-	    if (safetycheck (hDevice, udi->offset, buffer, dg.BytesPerSector)) {
+	    if (safetycheck (hDevice, udi->offset, buffer, dg.BytesPerSector, 1)) {
 		sprintf (udi->device_name, "HD_P#%d_%s", pi->PartitionNumber, orgname);
 		udi++;
 		(*index2)++;
@@ -900,7 +905,7 @@ Return Value:
 	write_log ("no MBR partition table detected, checking for RDB\n");
     }
 
-    i = safetycheck (hDevice, 0, buffer, dg.BytesPerSector);
+    i = safetycheck (hDevice, 0, buffer, dg.BytesPerSector, 1);
     if (!i) {
 	ret = 1;
 	goto end;
@@ -1034,7 +1039,7 @@ int harddrive_to_hdf(HWND hDlg, struct uae_prefs *p, int idx)
     cache = VirtualAlloc (NULL, COPY_CACHE_SIZE, MEM_COMMIT, PAGE_READWRITE);
     if (!cache)
 	goto err;
-    h = CreateFile (uae_drives[idx].device_path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+    h = CreateFile (uae_drives[idx].device_path, GENERIC_READ, FILE_SHARE_READ, NULL,
 	OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS | FILE_FLAG_NO_BUFFERING, NULL);
     if (h == INVALID_HANDLE_VALUE)
 	goto err;
@@ -1044,7 +1049,7 @@ int harddrive_to_hdf(HWND hDlg, struct uae_prefs *p, int idx)
     GetDlgItemText (hDlg, IDC_PATH_NAME, path, MAX_DPATH);
     if (*path == 0)
 	goto err;
-    hdst = CreateFile (path, GENERIC_WRITE, FILE_SHARE_WRITE, NULL,
+    hdst = CreateFile (path, GENERIC_WRITE, 0, NULL,
 	CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN | FILE_FLAG_NO_BUFFERING, NULL);
     if (hdst == INVALID_HANDLE_VALUE)
 	goto err;

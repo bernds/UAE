@@ -262,7 +262,7 @@ static void DoSomeWeirdPrintingStuff (char val)
 
 	    if (currprefs.parallel_postscript_emulation) {
 		prt_started = 0;
-		if (uae_start_thread (prt_thread, psbuffer, &prt_tid)) {
+		if (uae_start_thread ("postscript", prt_thread, psbuffer, &prt_tid)) {
 		    while (!prt_started)
 			Sleep (5);
 		    psbuffers = 0;
@@ -540,13 +540,14 @@ int uaeser_break (struct uaeserialdatawin32 *sd, int brklen)
     return 1;
 }
 
-int uaeser_setparams (struct uaeserialdatawin32 *sd, int baud, int rbuffer, int bits, int sbits, int rtscts, int parity)
+int uaeser_setparams (struct uaeserialdatawin32 *sd, int baud, int rbuffer, int bits, int sbits, int rtscts, int parity, uae_u32 xonxoff)
 {
     DCB dcb;
 
+    memset (&dcb, 0, sizeof (dcb));
     dcb.DCBlength = sizeof (DCB);
     if (!GetCommState (sd->hCom, &dcb))
-	return 0;
+	return 5;
 
     dcb.BaudRate = baud;
     dcb.ByteSize = bits;
@@ -566,8 +567,15 @@ int uaeser_setparams (struct uaeserialdatawin32 *sd, int baud, int rbuffer, int 
     }   
 
     dcb.fTXContinueOnXoff = FALSE;
-    dcb.fOutX = FALSE;
-    dcb.fInX = FALSE;
+    dcb.XonChar = (xonxoff >> 8) & 0xff;
+    dcb.XoffChar = (xonxoff >> 16) & 0xff;
+    if (xonxoff & 1) {
+	dcb.fOutX = TRUE;
+	dcb.fInX = TRUE;
+    } else {
+	dcb.fOutX = FALSE;
+	dcb.fInX = FALSE;
+    }
 
     dcb.fErrorChar = FALSE;
     dcb.fNull = FALSE;
@@ -576,11 +584,12 @@ int uaeser_setparams (struct uaeserialdatawin32 *sd, int baud, int rbuffer, int 
     dcb.XoffLim = 512;
     dcb.XonLim = 2048;
 
-    dcb.ByteSize = rbuffer;
-
-    if (!SetCommState (sd->hCom, &dcb))
-	return 0;
-    return 1;
+    if (!SetCommState (sd->hCom, &dcb)) {
+	write_log("uaeserial: SetCommState() failed %d\n", GetLastError());
+	return 5;
+    }
+    SetupComm (sd->hCom, rbuffer, rbuffer);
+    return 0;
 }
 
 static void startwce(struct uaeserialdatawin32 *sd, DWORD *evtmask)
@@ -700,7 +709,7 @@ int uaeser_open (struct uaeserialdatawin32 *sd, void *user, int unit)
     }
     uae_sem_init (&sd->sync_sem, 0, 0);
     uae_sem_init (&sd->change_sem, 0, 1);
-    uae_start_thread (uaeser_trap_thread, sd, &sd->tid);
+    uae_start_thread ("uaeserial_win32", uaeser_trap_thread, sd, &sd->tid);
     uae_sem_wait (&sd->sync_sem);
 
     CommTimeOuts.ReadIntervalTimeout = 0;
@@ -1173,17 +1182,39 @@ end:
 
 int enumserialports(void)
 {
-    int port, cnt;
+    int cnt, i, j;
     char name[256];
-    COMMCONFIG cc;
     DWORD size = sizeof(COMMCONFIG);
+    char devname[1000];
 
     write_log("Serial port enumeration..\n");
-    if (os_winnt) {
+    cnt = 0;
+    if (os_winnt)
 	cnt = enumserialports_2();
-    } else {
+    for (i = 0; i < 10; i++) {
+	sprintf(name, "COM%d", i);
+	if (!QueryDosDevice(name, devname, sizeof devname)) {
+	    continue;
+	} else {
+	    for(j = 0; j < cnt; j++) {
+		if (!strcmp(comports[j].cfgname, name))
+		    break;
+	    }
+	    if (j == cnt) {
+		comports[j].dev = xmalloc(100);
+		sprintf(comports[cnt].dev, "\\.\\\\%s", name);
+		comports[j].cfgname = my_strdup (name);
+		comports[j].name = my_strdup (name);
+	        write_log("SERPORT: '%s' = '%s' (%s)\n", comports[j].name, comports[j].dev, devname);
+		cnt++;
+	    }
+	}
+    }
+#if 0
+    {
 	cnt = 0;
 	for(port = 0; port < MAX_SERIAL_PORTS; port++) {
+	    COMMCONFIG cc;
 	    sprintf(name, "COM%d", port);
 	    if(GetDefaultCommConfig(name, &cc, &size)) {
 		if (cnt < MAX_SERIAL_PORTS) {
@@ -1197,6 +1228,7 @@ int enumserialports(void)
 	    }
 	}
     }
+#endif
     write_log("Serial port enumeration end\n");
     return cnt;
 }

@@ -373,7 +373,7 @@ static int start_thread (int unit)
     memset (hfpd, 0, sizeof (struct hardfileprivdata));
     init_comm_pipe (&hfpd->requests, 100, 1);
     uae_sem_init (&hfpd->sync_sem, 0, 0);
-    uae_start_thread (hardfile_thread, hfpd, &hfpd->tid);
+    uae_start_thread ("hardfile", hardfile_thread, hfpd, &hfpd->tid);
     uae_sem_wait (&hfpd->sync_sem);
     return hfpd->thread_running;
 }
@@ -406,7 +406,7 @@ static uae_u32 REGPARAM2 hardfile_open (TrapContext *context)
 	hf_log ("hardfile_open, unit %d (%d), OK\n", unit, m68k_dreg (&context->regs, 0));
 	return 0;
     }
-    if (is_hardfile(NULL, unit) == FILESYS_VIRTUAL)
+    if (is_hardfile(unit) == FILESYS_VIRTUAL)
 	err = -6;
     hf_log ("hardfile_open, unit %d (%d), ERR=%d\n", unit, m68k_dreg (&context->regs, 0), err);
     put_long (tmp1 + 20, (uae_u32)err);

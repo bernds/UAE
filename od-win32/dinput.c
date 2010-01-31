@@ -91,7 +91,7 @@ static int oldleds, oldusedleds, newleds, oldusbleds;
 static int normalmouse, supermouse, rawmouse, winmouse, winmousenumber, winmousemode;
 static int normalkb, superkb, rawkb;
 
-int no_rawinput;
+int no_rawinput, dinput_enum_all;
 
 int dinput_winmouse (void)
 {
@@ -848,8 +848,17 @@ static int di_do_init (void)
 	gui_message ("Failed to initialize DirectInput!");
 	return 0;
     }
-    write_log("DirectInput enumeration..\n");
-    IDirectInput8_EnumDevices (g_lpdi, DI8DEVCLASS_ALL, di_enumcallback, 0, DIEDFL_ATTACHEDONLY);
+    if (dinput_enum_all) {
+	write_log("DirectInput enumeration..\n");
+	IDirectInput8_EnumDevices (g_lpdi, DI8DEVCLASS_ALL, di_enumcallback, 0, DIEDFL_ATTACHEDONLY);
+    } else {
+	write_log("DirectInput enumeration.. Keyboards..\n");
+	IDirectInput8_EnumDevices (g_lpdi, DI8DEVCLASS_KEYBOARD, di_enumcallback, 0, DIEDFL_ATTACHEDONLY);
+	write_log("DirectInput enumeration.. Pointing devices..\n");
+	IDirectInput8_EnumDevices (g_lpdi, DI8DEVCLASS_POINTER, di_enumcallback, 0, DIEDFL_ATTACHEDONLY);
+	write_log("DirectInput enumeration.. Game controllers..\n");
+	IDirectInput8_EnumDevices (g_lpdi, DI8DEVCLASS_GAMECTRL, di_enumcallback, 0, DIEDFL_ATTACHEDONLY);
+    }
     write_log("RawInput enumeration..\n");
     initialize_rawinput();
     write_log("Windowsmouse initialization..\n");
@@ -1056,15 +1065,17 @@ static void read_mouse (void)
 	if (!did->acquired)
 	    continue;
 	if (did->connection == DIDC_CAT) {
-	    int cx, cy, cbuttons;
-	    if (catweasel_read_mouse(did->catweasel, &cx, &cy, &cbuttons)) {
-		if (cx)
-		    setmousestate(i, 0, cx, 0);
-		if (cy)
-		    setmousestate(i, 1, cy, 0);
-		setmousebuttonstate(i, 0, cbuttons & 8);
-		setmousebuttonstate(i, 1, cbuttons & 4);
-		setmousebuttonstate(i, 2, cbuttons & 2);
+	    if (getmousestate(i)) {
+		int cx, cy, cbuttons;
+		if (catweasel_read_mouse(did->catweasel, &cx, &cy, &cbuttons)) {
+		    if (cx)
+			setmousestate(i, 0, cx, 0);
+		    if (cy)
+			setmousestate(i, 1, cy, 0);
+		    setmousebuttonstate(i, 0, cbuttons & 8);
+		    setmousebuttonstate(i, 1, cbuttons & 4);
+		    setmousebuttonstate(i, 2, cbuttons & 2);
+		}
 	    }
 	    continue;
 	}
@@ -1707,15 +1718,18 @@ static void read_joystick (void)
 	if (!did->acquired)
 	    continue;
 	if (did->connection == DIDC_CAT) {
-	    uae_u8 cdir, cbuttons;
-	    if (catweasel_read_joystick(&cdir, &cbuttons)) {
-		cdir >>= did->catweasel * 4;
-		cbuttons >>= did->catweasel * 4;
-		setjoystickstate(i, 0, !(cdir & 1) ? 1 : !(cdir & 2) ? -1 : 0, 0);
-		setjoystickstate(i, 1, !(cdir & 4) ? 1 : !(cdir & 8) ? -1 : 0, 0);
-		setjoybuttonstate(i, 0, cbuttons & 8);
-		setjoybuttonstate(i, 1, cbuttons & 4);
-		setjoybuttonstate(i, 2, cbuttons & 2);
+	    if (getjoystickstate(i)) {
+		/* only read CW state if it is really needed */
+		uae_u8 cdir, cbuttons;
+		if (catweasel_read_joystick(&cdir, &cbuttons)) {
+		    cdir >>= did->catweasel * 4;
+		    cbuttons >>= did->catweasel * 4;
+		    setjoystickstate(i, 0, !(cdir & 1) ? 1 : !(cdir & 2) ? -1 : 0, 0);
+		    setjoystickstate(i, 1, !(cdir & 4) ? 1 : !(cdir & 8) ? -1 : 0, 0);
+		    setjoybuttonstate(i, 0, cbuttons & 8);
+		    setjoybuttonstate(i, 1, cbuttons & 4);
+		    setjoybuttonstate(i, 2, cbuttons & 2);
+		}
 	    }
 	    continue;
 	}
@@ -1899,7 +1913,7 @@ void input_get_default_joystick (struct uae_input_device *uid)
 	uid[i].eventid[ID_BUTTON_OFFSET + 0][0] = port ? INPUTEVENT_JOY2_FIRE_BUTTON : INPUTEVENT_JOY1_FIRE_BUTTON;
 	uid[i].eventid[ID_BUTTON_OFFSET + 1][0] = port ? INPUTEVENT_JOY2_2ND_BUTTON : INPUTEVENT_JOY1_2ND_BUTTON;
 	uid[i].eventid[ID_BUTTON_OFFSET + 2][0] = port ? INPUTEVENT_JOY2_3RD_BUTTON : INPUTEVENT_JOY1_3RD_BUTTON;
-	if (cd32_enabled) {
+	if (currprefs.cs_cd32cd) {
 	    uid[i].eventid[ID_BUTTON_OFFSET + 0][0] = port ? INPUTEVENT_JOY2_CD32_RED : INPUTEVENT_JOY1_CD32_RED;
 	    uid[i].eventid[ID_BUTTON_OFFSET + 1][0] = port ? INPUTEVENT_JOY2_CD32_BLUE : INPUTEVENT_JOY1_CD32_BLUE;
 	    uid[i].eventid[ID_BUTTON_OFFSET + 2][0] = port ? INPUTEVENT_JOY2_CD32_YELLOW : INPUTEVENT_JOY1_CD32_YELLOW;

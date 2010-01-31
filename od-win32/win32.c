@@ -7,8 +7,7 @@
  * Copyright 1997-1999 Brian King
  */
 
-/* Uncomment this line if you want the logs time-stamped */
-/* #define TIMESTAMP_LOGS */
+//#define MEMDEBUG
 
 #include "sysconfig.h"
 
@@ -67,6 +66,8 @@
 #include "uaeipc.h"
 #include "ar.h"
 #include "audio.h"
+#include "akiko.h"
+#include "cdtv.h"
 
 extern FILE *debugfile;
 extern int console_logging;
@@ -108,6 +109,7 @@ int pause_emulation;
 
 static int didmousepos;
 static int sound_closed;
+static int recapture;
 int mouseactive, focus;
 
 static int mm_timerres;
@@ -437,6 +439,34 @@ static void setcursor(int oldx, int oldy)
     SetCursorPos (amigawin_rect.left + x, amigawin_rect.top + y);
 }
 
+void resumepaused(void)
+{
+    resume_sound ();
+#ifdef AHI
+    ahi_open_sound ();
+#endif
+#ifdef CD32
+    akiko_exitgui ();
+#endif
+#ifdef CDTV
+    cdtv_exitgui ();
+#endif
+}
+
+void setpaused(void)
+{
+    pause_sound ();
+#ifdef AHI
+    ahi_close_sound ();
+#endif
+#ifdef CD32
+    akiko_entergui ();
+#endif
+#ifdef CDTV
+    cdtv_entergui ();
+#endif
+}
+
 static WPARAM activateapp;
 
 static void checkpause (void)
@@ -444,24 +474,31 @@ static void checkpause (void)
     if (activateapp)
 	return;
     if (currprefs.win32_inactive_pause) {
-	close_sound ();
-    #ifdef AHI
-	ahi_close_sound ();
-    #endif
+	setpaused ();
 	emulation_paused = 1;
     }
 }
 
+static int showcursor;
+
 void setmouseactive (int active)
 {
     int oldactive = mouseactive;
-    static int mousecapture, showcursor;
     char txt[400], txt2[200];
 
+    if (showcursor) {
+	ClipCursor(NULL);
+	ReleaseCapture();
+	ShowCursor (TRUE);
+	showcursor = 0;
+    }
+    recapture = 0;
+#if 0
     if (active > 0 && mousehack_allowed () && mousehack_alive ()) {
 	if (!isfullscreen ())
 	    return;
     }
+#endif
     inputdevice_unacquire ();
 
     mouseactive = active;
@@ -479,28 +516,15 @@ void setmouseactive (int active)
 	strcat (txt, txt2);
     }
     SetWindowText (hMainWnd, txt);
-    if (mousecapture) {
-	ClipCursor (0);
-	ReleaseCapture ();
-	mousecapture = 0;
-    }
-    if (showcursor) {
-	ShowCursor (TRUE);
-	showcursor = 0;
-    }
     if (mouseactive) {
 	if (focus) {
-	    if (!showcursor)
+	    if (!showcursor) {
 		ShowCursor (FALSE);
-	    showcursor = 1;
-	    if (!isfullscreen()) {
-		if (!mousecapture) {
-		    SetCapture (hAmigaWnd);
-		    ClipCursor (&amigawin_rect);
-		}
-		mousecapture = 1;
-		setcursor (-1, -1);
+		SetCapture (hAmigaWnd);
+		ClipCursor (&amigawin_rect);
 	    }
+	    showcursor = 1;
+	    setcursor (-1, -1);
 	}
 	inputdevice_acquire ();
     }
@@ -555,22 +579,9 @@ static void winuae_active (HWND hWnd, int minimized)
 	emulation_paused = -1;
     ShowWindow (hWnd, SW_RESTORE);
     if (sound_closed) {
-#ifdef AHI
-	ahi_open_sound ();
-#endif
-	set_audio ();
+	resumepaused();
 	sound_closed = 0;
     }
-#if 0
-#ifdef AHI
-    ahi_close_sound ();
-#endif
-    close_sound ();
-#ifdef AHI
-    ahi_open_sound ();
-#endif
-    set_audio ();
-#endif
     if (WIN32GFX_IsPicassoScreen ())
 	WIN32GFX_EnablePicasso();
     getcapslock ();
@@ -598,48 +609,28 @@ static void winuae_inactive (HWND hWnd, int minimized)
 	    inputdevice_unacquire ();
 	    pri = &priorities[currprefs.win32_iconified_priority];
 	    if (currprefs.win32_iconified_nosound) {
-		close_sound ();
-    #ifdef AHI
-		ahi_close_sound ();
-    #endif
+		setpaused();
 		sound_closed = 1;
 	    }
 	    if (!avioutput_video) {
 		set_inhibit_frame (IHF_WINDOWHIDDEN);
 	    }
 	    if (currprefs.win32_iconified_pause) {
-		close_sound ();
-    #ifdef AHI
-		ahi_close_sound ();
-    #endif
+		if (!sound_closed)
+		    setpaused();
 		emulation_paused = 1;
 		sound_closed = 1;
 	    }
 	} else {
 	    if (currprefs.win32_inactive_nosound) {
-		close_sound ();
-    #ifdef AHI
-		ahi_close_sound ();
+		setpaused();
 		sound_closed = 1;
-    #endif
 	    }
 	}
     }
     setpriority (pri);
 #ifdef FILESYS
     filesys_flush_cache ();
-#endif
-#if 0
-    close_sound ();
-#ifdef AHI
-    ahi_close_sound ();
-#endif
-    if (gui_active)
-	return;
-    set_audio ();
-#ifdef AHI
-    ahi_open_sound ();
-#endif
 #endif
 }
 
@@ -651,12 +642,32 @@ void minimizewindow (void)
 void disablecapture (void)
 {
     setmouseactive (0);
-#if 0
-    close_sound ();
-#ifdef AHI
-    ahi_close_sound ();
-#endif
-#endif
+}
+
+extern void setamigamouse(int,int);
+void setmouseactivexy(int x, int y, int dir)
+{
+    int diff = 8;
+    if (isfullscreen())
+	return;
+    x += amigawin_rect.left;
+    y += amigawin_rect.top;
+    if (dir & 1)
+	x = amigawin_rect.left - diff;
+    if (dir & 2)
+	x = amigawin_rect.right + diff;
+    if (dir & 4)
+	y = amigawin_rect.top - diff;
+    if (dir & 8)
+	y = amigawin_rect.bottom + diff;
+    if (!dir) {
+	x += (amigawin_rect.right - amigawin_rect.left) / 2;
+	y += (amigawin_rect.bottom - amigawin_rect.top) / 2;
+    }
+    disablecapture();
+    SetCursorPos(x, y);
+    if (dir)
+	recapture = 1;
 }
 
 static void handleXbutton (WPARAM wParam, int updown)
@@ -818,8 +829,10 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
     case WM_MBUTTONDOWN:
     case WM_MBUTTONDBLCLK:
 	if (currprefs.win32_middle_mouse) {
+#ifndef _DEBUG
 	    if (isfullscreen ())
 		minimizewindow ();
+#endif
 	    if (mouseactive)
 		setmouseactive(0);
 	} else {
@@ -900,10 +913,15 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 
     case WM_MOUSEMOVE:
     {
-	if (normal_display_change_starting)
-	    return 0;
 	mx = (signed short) LOWORD (lParam);
 	my = (signed short) HIWORD (lParam);
+	if (recapture && !isfullscreen()) {
+	    setmouseactive(1);
+	    setamigamouse(mx, my);
+	    return 0;
+	}
+	if (normal_display_change_starting)
+	    return 0;
 	if (dinput_winmouse () >= 0) {
 	    if (dinput_winmousemode ()) {
 		/* absolete + mousehack */
@@ -923,7 +941,7 @@ static LRESULT CALLBACK AmigaWindowProc (HWND hWnd, UINT message, WPARAM wParam,
 	    setmousestate (0, 0, mx, 1);
 	    setmousestate (0, 1, my, 1);
 	}
-	if (mouseactive)
+	if (showcursor || mouseactive)
 	    setcursor (LOWORD (lParam), HIWORD (lParam));
     }
     return 0;
@@ -1233,10 +1251,7 @@ void handle_events (void)
 
     while (emulation_paused > 0 || pause_emulation) {
 	if ((emulation_paused > 0 || pause_emulation) && was_paused == 0) {
-	    close_sound ();
-#ifdef AHI
-	    ahi_close_sound ();
-#endif
+	    setpaused();
 	    was_paused = 1;
 	    manual_painting_needed++;
 	    gui_fps (0, 0);
@@ -1261,11 +1276,9 @@ void handle_events (void)
     }
     while (checkIPC(&currprefs));
     if (was_paused) {
-	set_audio ();
-#ifdef AHI
-	ahi_open_sound ();
-#endif
+	resumepaused();
 	emulation_paused = 0;
+	sound_closed = 0;
 	manual_painting_needed--;
     }
 }
@@ -1589,8 +1602,6 @@ int debuggable (void)
 
 int mousehack_allowed (void)
 {
-    if (nr_units (currprefs.mountinfo) == 0)
-	return 0;
     return dinput_winmouse () > 0 && dinput_winmousemode ();
 }
 
@@ -1615,8 +1626,12 @@ void logging_open(int bootlog, int append)
 #endif
 }
 
+typedef BOOL (WINAPI *LPFN_ISWOW64PROCESS) (HANDLE, PBOOL);
+
 void logging_init(void)
 {
+    LPFN_ISWOW64PROCESS fnIsWow64Process;
+    int wow64 = 0;
     static int started;
     static int first;
 
@@ -1631,17 +1646,17 @@ void logging_init(void)
     }
     logging_open(first ? 0 : 1, 0);
     first++;
-    write_log ("%s (%s %d.%d %s%s%s)", VersionStr, os_winnt ? "NT" : "W9X/ME",
+    fnIsWow64Process = (LPFN_ISWOW64PROCESS)GetProcAddress(GetModuleHandle("kernel32"),"IsWow64Process");
+    if (fnIsWow64Process)
+	fnIsWow64Process(GetCurrentProcess(), &wow64);
+    write_log ("%s (%s %d.%d %s%s[%d])", VersionStr, os_winnt ? "NT" : "W9X/ME",
 	osVersion.dwMajorVersion, osVersion.dwMinorVersion, osVersion.szCSDVersion,
-	strlen(osVersion.szCSDVersion) > 0 ? " " : "", os_winnt_admin ? "Admin" : "");
-    write_log (" %s %X.%X %d",
-	SystemInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL ? "32-bit x86" :
-	SystemInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_IA64 ? "IA64" :
-	SystemInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64 ? "64-bit" : "Unknown",
+	strlen(osVersion.szCSDVersion) > 0 ? " " : "", os_winnt_admin);
+    write_log (" %d-bit %X.%X %d", wow64 ? 64 : 32,
 	SystemInfo.wProcessorLevel, SystemInfo.wProcessorRevision,
 	SystemInfo.dwNumberOfProcessors);
     write_log ("\n(c) 1995-2001 Bernd Schmidt   - Core UAE concept and implementation."
-	       "\n(c) 1998-2006 Toni Wilen      - Win32 port, core code updates."
+	       "\n(c) 1998-2007 Toni Wilen      - Win32 port, core code updates."
 	       "\n(c) 1996-2001 Brian King      - Win32 port, Picasso96 RTG, and GUI."
 	       "\n(c) 1996-1999 Mathias Ortmann - Win32 port and bsdsocket support."
 	       "\n(c) 2000-2001 Bernd Meyer     - JIT engine."
@@ -1715,6 +1730,7 @@ void target_default_options (struct uae_prefs *p, int type)
 	p->win32_uaescsimode = get_aspi_path(1) ? 2 : ((os_winnt && os_winnt_admin) ? 0 : 1);
 	p->win32_borderless = 0;
 	p->win32_powersavedisabled = 1;
+	p->win32_outsidemouse = 0;
     }
     if (type == 1 || type == 0) {
 	p->win32_midioutdev = -2;
@@ -1727,6 +1743,7 @@ static const char *scsimode[] = { "SPTI", "SPTI+SCSISCAN", "AdaptecASPI", "NeroA
 void target_save_options (struct zfile *f, struct uae_prefs *p)
 {
     cfgfile_target_write (f, "middle_mouse=%s\n", p->win32_middle_mouse ? "true" : "false");
+    cfgfile_target_write (f, "magic_mouse=%s\n", p->win32_outsidemouse ? "true" : "false");
     cfgfile_target_write (f, "logfile=%s\n", p->win32_logfile ? "true" : "false");
     cfgfile_target_write (f, "map_drives=%s\n", p->win32_automount_drives ? "true" : "false");
     cfgfile_target_write (f, "map_net_drives=%s\n", p->win32_automount_netdrives ? "true" : "false");
@@ -1801,6 +1818,7 @@ int target_parse_option (struct uae_prefs *p, char *option, char *value)
 	    || cfgfile_yesno (option, value, "notaskbarbutton", &p->win32_notaskbarbutton)
 	    || cfgfile_yesno (option, value, "always_on_top", &p->win32_alwaysontop)
 	    || cfgfile_yesno (option, value, "powersavedisabled", &p->win32_powersavedisabled)
+	    || cfgfile_yesno (option, value, "magic_mouse", &p->win32_outsidemouse)
 	    || cfgfile_intval (option, value, "specialkey", &p->win32_specialkey, 1)
 	    || cfgfile_intval (option, value, "kbledmode", &p->win32_kbledmode, 1)
 	    || cfgfile_intval (option, value, "cpu_idle", &p->cpu_idle, 1));
@@ -1878,6 +1896,10 @@ void fetch_screenshotpath (char *out, int size)
 {
     fetch_path ("ScreenshotPath", out, size);
 }
+void fetch_datapath (char *out, int size)
+{
+    fetch_path (NULL, out, size);
+}
 
 static void strip_slashes (char *p)
 {
@@ -1898,6 +1920,8 @@ void fetch_path (char *name, char *out, int size)
     int size2 = size;
 
     strcpy (out, start_path_data);
+    if (!name)
+	return;
     if (!strcmp (name, "FloppyPath"))
 	strcat (out, "..\\shared\\adf\\");
     if (!strcmp (name, "hdfPath"))
@@ -2098,7 +2122,7 @@ static void WIN32_HandleRegistryStuff(void)
 			      KEY_WRITE | KEY_READ, NULL, &hWinUAEKeyLocal, &disposition) == ERROR_SUCCESS))
 	{
 	    /* Set our (default) sub-key to BE the "WinUAE" command for editing a configuration */
-	    sprintf(path, "%sWinUAE.exe -f \"%%1\" -s use_gui=yes", start_path_exe);
+	    sprintf(path, "\"%sWinUAE.exe\" -f \"%%1\" -s use_gui=yes", start_path_exe);
 	    RegSetValueEx(hWinUAEKeyLocal, "", 0, REG_SZ, (CONST BYTE *)path, strlen(path) + 1);
 	    RegCloseKey(hWinUAEKeyLocal);
 	}
@@ -2107,7 +2131,7 @@ static void WIN32_HandleRegistryStuff(void)
 			      KEY_WRITE | KEY_READ, NULL, &hWinUAEKeyLocal, &disposition) == ERROR_SUCCESS))
 	{
 	    /* Set our (default) sub-key to BE the "WinUAE" command for launching a configuration */
-	    sprintf(path, "%sWinUAE.exe -f \"%%1\"", start_path_exe);
+	    sprintf(path, "\"%sWinUAE.exe\" -f \"%%1\"", start_path_exe);
 	    RegSetValueEx(hWinUAEKeyLocal, "", 0, REG_SZ, (CONST BYTE *)path, strlen( path ) + 1);
 	    RegCloseKey(hWinUAEKeyLocal);
 	}
@@ -2363,10 +2387,12 @@ static int isadminpriv (void)
 }
 
 typedef void (CALLBACK* PGETNATIVESYSTEMINFO)(LPSYSTEM_INFO);
-static PGETNATIVESYSTEMINFO pGetNativeSystemInfo;
+typedef BOOL (CALLBACK* PISUSERANADMIN)(VOID);
 
 static int osdetect (void)
 {
+    PGETNATIVESYSTEMINFO pGetNativeSystemInfo;
+    PISUSERANADMIN pIsUserAnAdmin;
     os_winnt = 0;
     os_winnt_admin = 0;
     os_vista = 0;
@@ -2374,6 +2400,9 @@ static int osdetect (void)
 
     pGetNativeSystemInfo = (PGETNATIVESYSTEMINFO)GetProcAddress(
 	GetModuleHandle("kernel32.dll"), "GetNativeSystemInfo");
+    pIsUserAnAdmin = (PISUSERANADMIN)GetProcAddress(
+	GetModuleHandle("shell32.dll"), "IsUserAnAdmin");
+
     GetSystemInfo(&SystemInfo);
     if (pGetNativeSystemInfo)
 	pGetNativeSystemInfo(&SystemInfo);
@@ -2395,11 +2424,14 @@ static int osdetect (void)
 	if (SystemInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64)
 	    os_64bit = 1;
     }
-
-    if (!os_winnt) {
+    if (!os_winnt)
 	return 1;
-    }
     os_winnt_admin = isadminpriv ();
+    if (os_winnt_admin && pIsUserAnAdmin) {
+	if (pIsUserAnAdmin())
+	    os_winnt_admin++;
+    }
+
     return 1;
 }
 
@@ -2684,8 +2716,10 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
 	//tmp &= 0xffff;
 	tmp |= _CRTDBG_CHECK_ALWAYS_DF;
 	tmp |= _CRTDBG_CHECK_CRT_DF;
-	//tmp |=_CRTDBG_CHECK_EVERY_16_DF;
-	//tmp |= _CRTDBG_DELAY_FREE_MEM_DF;
+#ifdef MEMDEBUG
+	tmp |=_CRTDBG_CHECK_EVERY_16_DF;
+	tmp |= _CRTDBG_DELAY_FREE_MEM_DF;
+#endif
 	_CrtSetDbgFlag(tmp);
     }
 #endif
@@ -2694,6 +2728,8 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
 	return 0;
     if (!dxdetect())
 	return 0;
+    if (!os_winnt && max_allowed_mman > 256)
+	max_allowed_mman = 256;
 
     hInst = hInstance;
     hMutex = CreateMutex( NULL, FALSE, "WinUAE Instantiated" ); // To tell the installer we're running
@@ -2701,15 +2737,12 @@ static int PASCAL WinMain2 (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR 
     AVIOutput_Initialize();
 #endif
 
+    argv = xcalloc (sizeof (char*),  __argc);
+    argc = process_arg(argv);
+
     getstartpaths(start_data);
     makeverstr(VersionStr);
     SetCurrentDirectory (start_path_data);
-
-    if (!os_winnt && max_allowed_mman > 256)
-	max_allowed_mman = 256;
-
-    argv = xcalloc (sizeof (char*),  __argc);
-    argc = process_arg(argv);
 
     logging_init ();
 
@@ -2830,7 +2863,7 @@ int driveclick_loadresource (struct drvsample *sp, int drivetype)
 
 #if defined(WIN64)
 
-static LONG WINAPI ExceptionFilter( struct _EXCEPTION_POINTERS * pExceptionPointers, DWORD ec)
+static LONG WINAPI WIN32_ExceptionFilter( struct _EXCEPTION_POINTERS * pExceptionPointers, DWORD ec)
 {
     write_log("EVALEXCEPTION!\n");
     return EXCEPTION_EXECUTE_HANDLER;
@@ -2856,7 +2889,7 @@ static void efix (DWORD *regp, void *p, void *ps, int *got)
     }
 }
 
-static LONG WINAPI ExceptionFilter( struct _EXCEPTION_POINTERS * pExceptionPointers, DWORD ec)
+LONG WINAPI WIN32_ExceptionFilter(struct _EXCEPTION_POINTERS *pExceptionPointers, DWORD ec)
 {
     static uae_u8 *prevpc;
     LONG lRet = EXCEPTION_CONTINUE_SEARCH;
@@ -2918,7 +2951,8 @@ static LONG WINAPI ExceptionFilter( struct _EXCEPTION_POINTERS * pExceptionPoint
 		p = slash + 1;
 	    else
 		p = path2;
-	    sprintf (p, "winuae_%d%02d%02d_%02d%02d%02d.dmp",
+	    sprintf (p, "winuae_%d%d%d%d_%d%02d%02d_%02d%02d%02d.dmp",
+		UAEMAJOR, UAEMINOR, UAESUBREV, WINUAEBETA,
 		when.tm_year + 1900, when.tm_mon + 1, when.tm_mday, when.tm_hour, when.tm_min, when.tm_sec);
 	    if (dll == NULL)
 		dll = WIN32_LoadLibrary ("DBGHELP.DLL");
@@ -3095,7 +3129,6 @@ int PASCAL WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 
     thread = GetCurrentThread();
     original_affinity = SetThreadAffinityMask(thread, 1); 
-    SetThreadAffinityMask(thread, original_affinity);
 #if 0
     CHANGEWINDOWMESSAGEFILTER pChangeWindowMessageFilter;
     pChangeWindowMessageFilter = (CHANGEWINDOWMESSAGEFILTER)GetProcAddress(
@@ -3105,7 +3138,7 @@ int PASCAL WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 #endif
     __try {
 	WinMain2 (hInstance, hPrevInstance, lpCmdLine, nCmdShow);
-    } __except(ExceptionFilter(GetExceptionInformation(), GetExceptionCode())) {
+    } __except(WIN32_ExceptionFilter(GetExceptionInformation(), GetExceptionCode())) {
     }
     SetThreadAffinityMask(thread, original_affinity);
     return FALSE;

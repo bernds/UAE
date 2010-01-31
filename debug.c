@@ -47,6 +47,7 @@ int debug_sprite_mask = 0xff;
 static uaecptr debug_copper_pc;
 
 extern int audio_channel_mask;
+extern int inputdevice_logging;
 
 static FILE *logfile;
 
@@ -113,6 +114,7 @@ static char help[] = {
     "  sm <sprite mask>      Enable or disable sprites\n"
     "  di <mode> [<track>]   Break on disk access. R=DMA read,W=write,RW=both,P=PIO\n"
     "                        Also enables extended disk logging\n"
+    "  dj [<level bitmask>]  Enable joystick/mouse input debugging\n"
     "  dm                    Dump current address space map\n"
     "  q                     Quit the emulator. You don't want to use this command.\n\n"
 };
@@ -823,7 +825,6 @@ static struct memwatch_node mwhit;
 
 static uae_u8 *illgdebug;
 static int illgdebug_break;
-extern int cdtv_enabled, cd32_enabled;
 
 static void illg_init (void)
 {
@@ -853,21 +854,21 @@ static void illg_init (void)
     memset (illgdebug + 0xf80000, 1, 512 * 1024); /* KS ROM */
     memset (illgdebug + 0xdc0000, 0, 0x3f); /* clock */
 #ifdef CDTV
-    if (cdtv_enabled) {
-	memset (illgdebug + 0xf00000, 1, 256 * 1024); /* CDTV ext ROM */
+    if (currprefs.cs_cdtvram) {
 	memset (illgdebug + 0xdc8000, 0, 4096); /* CDTV batt RAM */
+	memset (illgdebug + 0xf00000, 1, 256 * 1024); /* CDTV ext ROM */
     }
 #endif
 #ifdef CD32
-    if (cd32_enabled) {
+    if (currprefs.cs_cd32cd) {
 	memset (illgdebug + AKIKO_BASE, 0, AKIKO_BASE_END - AKIKO_BASE);
 	memset (illgdebug + 0xe00000, 1, 512 * 1024); /* CD32 ext ROM */
     }
 #endif
-    if (cloanto_rom)
+    if (currprefs.cs_ksmirror)
 	memset (illgdebug + 0xe00000, 1, 512 * 1024);
 #ifdef FILESYS
-    if (nr_units (currprefs.mountinfo) > 0) /* filesys "rom" */
+    if (uae_boot_rom) /* filesys "rom" */
 	memset (illgdebug + RTAREA_BASE, 1, 0x10000);
 #endif
 }
@@ -1701,6 +1702,8 @@ static void searchmem (char **cc)
     }
     console_out ("Searching from %08x to %08x..\n", addr, endaddr);
     while ((addr = nextaddr (addr, NULL)) != 0xffffffff) {
+	if (addr == endaddr)
+	    break;
 	for (i = 0; i < sslen; i++) {
 	    uae_u8 b = get_byte (addr + i);
 	    if (stringmode) {
@@ -1908,7 +1911,13 @@ static void debug_1 (void)
 	    if (*inptr == 'i') {
 		next_char(&inptr);
 		disk_debug(&inptr);
-	    }  else if(*inptr == 'm') {
+	    } else if(*inptr == 'j') {
+		inptr++;
+		inputdevice_logging = 1 | 2;
+		if (more_params(&inptr))
+		    inputdevice_logging = readint(&inptr);
+	        console_out("input logging level %d\n", inputdevice_logging);
+	    } else if(*inptr == 'm') {
 		memory_map_dump_2(0);
 	    } else {
 		uae_u32 daddr;
@@ -2172,7 +2181,7 @@ void debug (void)
     debug_1 ();
     if (!debug_rewind && !currprefs.cachesize
 #ifdef FILESYS
-	&& nr_units (currprefs.mountinfo) == 0
+	&& nr_units () == 0
 #endif
 	) {
 	savestate_capture (1);

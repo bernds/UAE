@@ -212,6 +212,21 @@ int sys_command_write (int mode, int unitnum, int offset)
     return device_func[DF_IOCTL]->write (unitnum, offset);
 }
 
+int sys_command_ismedia (int mode, int unitnum, int quick)
+{
+    struct device_info di;
+
+    if (mode == DF_SCSI || !have_ioctl || !device_func[DF_IOCTL]->ismedia) {
+	if (quick)
+	    return -1;
+        memset(&di, 0, sizeof di);
+	device_func[DF_SCSI]->info (unitnum, &di);
+	return di.media_inserted;
+    } else {
+	return device_func[DF_IOCTL]->ismedia (unitnum, quick);
+    }
+}
+
 struct device_info *sys_command_info (int mode, int unitnum, struct device_info *di)
 {
     if (mode == DF_SCSI || !have_ioctl)

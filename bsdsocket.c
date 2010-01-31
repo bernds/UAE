@@ -41,41 +41,11 @@ struct sockd {
 static long curruniqid = 65536;
 static struct sockd *sockdata;
 
-/* Memory-related helper functions */
-STATIC_INLINE void memcpyha (uae_u32 dst, const char *src, int size)
-{
-    while (size--)
-	put_byte (dst++, *src++);
-}
-
-char *strncpyah (char *dst, uae_u32 src, int size)
-{
-    char *res = dst;
-    while (size-- && (*dst++ = get_byte (src++)));
-    return res;
-}
-
-char *strcpyah (char *dst, uae_u32 src)
-{
-    char *res = dst;
-    while ((*dst++ = get_byte (src++)) != 0);
-    return res;
-}
-
-uae_u32 strcpyha (uae_u32 dst, const char *src)
-{
-    uae_u32 res = dst;
-
-    do {
-	put_byte (dst++, *src);
-    } while (*src++);
-
-    return res;
-}
-
 uae_u32 strncpyha (uae_u32 dst, const char *src, int size)
 {
     uae_u32 res = dst;
+    if (!addr_valid("strncpyha", dst, size))
+	return res;
     while (size--) {
 	put_byte (dst++, *src);
 	if (!*src++)
@@ -91,7 +61,7 @@ uae_u32 addstr (uae_u32 * dst, const char *src)
 
     len = strlen (src) + 1;
 
-    strcpyha (*dst, src);
+    strcpyha_safe (*dst, src);
     (*dst) += len;
 
     return res;
@@ -104,7 +74,7 @@ uae_u32 addmem (uae_u32 * dst, const char *src, int len)
     if (!src)
 	return 0;
 
-    memcpyha (*dst, src, len);
+    memcpyha_safe (*dst, src, len);
     (*dst) += len;
 
     return res;
@@ -223,10 +193,22 @@ SOCKET_TYPE getsock (SB, int sd)
 	return -1;
     }
     if (sb->dtable[sd - 1] == INVALID_SOCKET) {
-	struct socketbase *sb1,*nsb;
+	struct socketbase *sb1, *nsb;
+	uaecptr ot;
+	if (!addr_valid("getsock1", sb->ownertask + 10, 4))
+	    return -1;
+	ot = get_long (sb->ownertask + 10);
+	if (!addr_valid("getsock2", ot, 1))
+	    return -1;
 	// Fix for Newsrog (All Tasks of Newsrog using the same dtable)
 	for (sb1 = socketbases; sb1; sb1 = nsb) {
-	    if (strcmp(get_real_address (get_long (sb1->ownertask + 10)), get_real_address (get_long (sb->ownertask + 10))) == 0) {
+	    uaecptr ot1;
+	    if (!addr_valid("getsock3", sb1->ownertask + 10, 4))
+		break;
+	    ot1 = get_long (sb1->ownertask + 10);
+	    if (!addr_valid("getsock4", ot1, 1))
+		break;
+	    if (strcmp(get_real_address (ot1), get_real_address (ot)) == 0) {
 		// Task with same name already exists -> use same dtable 
 	    	if (sb1->dtable[sd - 1] != INVALID_SOCKET)
 		    return sb1->dtable[sd - 1];
@@ -245,14 +227,16 @@ void releasesock (SB, int sd)
 
 /* Signal queue */
 /* @@@ TODO: ensure proper interlocking */
-#if 0
+#if 1
 struct socketbase *sbsigqueue;
 volatile int bsd_int_requested;
 #endif
 
 void addtosigqueue (SB, int events)
 {
+#if 0
     uae_u32 ot, sts;
+#endif
 
     locksigqueue ();
 
@@ -260,7 +244,7 @@ void addtosigqueue (SB, int events)
 	sb->sigstosend |= sb->eventsigs;
     else
 	sb->sigstosend |= ((uae_u32) 1) << sb->signal;
-#if 0
+#if 1
     if (!sb->dosignal) {
 	sb->nextsig = sbsigqueue;
 	sbsigqueue = sb;
@@ -268,7 +252,10 @@ void addtosigqueue (SB, int events)
     sb->dosignal = 1;
 
     bsd_int_requested = 1;
-#endif
+
+    unlocksigqueue ();
+
+#else
 
     ot = sb->ownertask;
     sts = sb->sigstosend;
@@ -279,11 +266,36 @@ void addtosigqueue (SB, int events)
 
     if (sts)
 	uae_Signal(ot, sts);
+#endif
 
-    //INTREQ (0x8000 | 0x2000);
 }
 
-#if 0
+#if 1
+void bsdsock_fake_int_handler(void)
+{
+    locksigqueue ();
+
+    bsd_int_requested = 0;
+
+    if (sbsigqueue != NULL) {
+        SB;
+
+	for (sb = sbsigqueue; sb; sb = sb->nextsig) {
+	    if (sb->dosignal == 1) {
+		uae_Signal(sb->ownertask, sb->sigstosend);
+		sb->sigstosend = 0;
+	    }
+	    sb->dosignal = 0;
+	}
+
+	sbsigqueue = NULL;
+    }
+
+    unlocksigqueue ();
+}
+
+#else
+
 static uae_u32 REGPARAM2 bsdsock_int_handler (TrapContext *context)
 {
     SB;
@@ -334,7 +346,7 @@ void waitsig (TrapContext *context, SB)
 
 void cancelsig (TrapContext *context, SB)
 {
-#if 0
+#if 1
     locksigqueue ();
     if (sb->dosignal)
 	sb->dosignal = 2;
@@ -442,7 +454,7 @@ static void free_socketbase (TrapContext *context)
 	    }
 	}
 
-#if 0
+#if 1
 	if (sb == sbsigqueue)
 	    sbsigqueue = sb->next;
 	else {
@@ -1037,7 +1049,8 @@ static uae_u32 REGPARAM2 bsdsocklib_gethostname (TrapContext *context)
 
 static uae_u32 REGPARAM2 bsdsocklib_gethostid (TrapContext *context)
 {
-    write_log ("bsdsocket: WARNING: Process '%s' calls deprecated function gethostid() - returning 127.0.0.1\n", get_real_address (get_long (gettask (context) + 10)));
+    write_log ("bsdsocket: WARNING: Process '%s' calls deprecated function gethostid() - returning 127.0.0.1\n",
+	get_real_address (get_long (gettask (context) + 10)));
     return 0x7f000001;
 }
 
@@ -1270,10 +1283,18 @@ static uae_u32 REGPARAM2 bsdsocklib_SocketBaseTagList (TrapContext *context)
 		    sb->herrnosize = 4;
 		    break;
 		 default:
-		    write_log ("bsdsocket: WARNING: Unsupported tag type (%x) in SocketBaseTagList()\n", currtag);
+		    write_log ("bsdsocket: WARNING: Unsupported tag type (%08.8x) in SocketBaseTagList(%x)\n",
+			currtag, m68k_areg (&context->regs, 0));
+		    break;
 		}
 	    } else {
 		TRACE (("TAG_UNKNOWN(0x%x)", currtag));
+		/* Aminetradio uses 0x00004e55 as an ending tag */
+		if ((currtag & 0xffff8000) == 0) {
+		    write_log("bsdsocket: WARNING: Corrupted SocketBaseTagList(%x) tag detected (%08.8x)\n",
+			m68k_areg (&context->regs, 0), currtag);
+		    goto done;
+		}
 	    }
 	}
 
@@ -1411,7 +1432,7 @@ void bsdlib_reset (void)
     }
 
     socketbases = NULL;
-#if 0
+#if 1
     sbsigqueue = NULL;
 #endif
 
@@ -1466,13 +1487,14 @@ void bsdlib_install (void)
     uae_u32 func_place, data_place, init_place;
     int i;
 
-    if (!sockdata)
+    if (!sockdata) {
 	sockdata = xcalloc (sizeof (struct sockd), 1);
+        for (i = 0; i < SOCKPOOLSIZE; i++)
+	    sockdata->sockpoolids[i] = UNIQUE_ID;
+    }
+
     if (!init_socket_layer ())
 	return;
-
-    for (i = 0; i < SOCKPOOLSIZE; i++)
-	sockdata->sockpoolids[i] = UNIQUE_ID;
 
     resname = ds ("bsdsocket.library");
     resid = ds ("UAE bsdsocket.library 4.1");
